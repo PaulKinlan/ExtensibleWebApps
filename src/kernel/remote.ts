@@ -28,11 +28,17 @@ export interface ServiceProvider {
   call(plugin: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown> | unknown;
 }
 
+/** Where a plugin came from: bundled with the app, or kept in the data folder. */
+export type Origin = "built-in" | "data";
+
 export interface Installed {
   id: string;
   source: string;
   manifest: Manifest;
   caps: Set<string>;
+  origin: Origin;
+  /** A plugin that is turned off stays installed but runs no instances. */
+  enabled: boolean;
 }
 
 export type InstallResult = { ok: true; id: string; started: boolean } | { ok: false; error: string };
@@ -45,6 +51,8 @@ export class RemotePlugins {
   readonly installed = new Map<string, Installed>();
   readonly live = new Map<string, Remote>();
   private waiting = new Map<string, Waiter[]>();
+  /** Told when plugins are installed, removed, or turned on or off. */
+  onChange?: (change: "install" | "uninstall" | "enable" | "disable", id: string) => void;
 
   constructor(
     readonly root: any,
@@ -53,7 +61,7 @@ export class RemotePlugins {
   ) {}
 
   /** Installs (or replaces) a plugin from its source and starts it. The manifest is read without running the code. */
-  async install(source: string): Promise<InstallResult> {
+  async install(source: string, options: { origin?: Origin; enabled?: boolean } = {}): Promise<InstallResult> {
     let manifest: Manifest;
     try {
       manifest = readManifest(source);
@@ -62,16 +70,19 @@ export class RemotePlugins {
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }
+    const previous = this.installed.get(manifest.id);
     this.stop(manifest.id);
-    this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest) });
-    record({ kind: "lifecycle", name: "plugin:install", plugin: manifest.id, detail: `${manifest.scope ?? "shared"}: ${manifest.permissions.join(" ")}` });
-    return { ok: true, id: manifest.id, started: await this.start(manifest.id) };
+    const enabled = options.enabled ?? previous?.enabled ?? true;
+    this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest), origin: options.origin ?? "data", enabled });
+    record({ kind: "lifecycle", name: "plugin:install", plugin: manifest.id, detail: `${manifest.scope ?? "shared"}: ${manifest.permissions.join(" ")}${enabled ? "" : " (off)"}` });
+    this.onChange?.("install", manifest.id);
+    return { ok: true, id: manifest.id, started: enabled && (await this.start(manifest.id)) };
   }
 
   /** Starts every instance a plugin needs. Resolves true when all of them are running. */
   async start(id: string): Promise<boolean> {
     const plugin = this.installed.get(id);
-    if (!plugin) return false;
+    if (!plugin?.enabled) return false;
     const targets = this.targets(plugin);
     const started = await Promise.all(targets.map(([instance, host]) => this.startInstance(plugin, instance, host)));
     return started.length > 0 && started.every(Boolean);
@@ -105,7 +116,13 @@ export class RemotePlugins {
   attach(instance: string, host: Host, port: MessagePort): void {
     const id = instance.split("@")[0];
     const plugin = this.installed.get(id);
-    if (!plugin) return port.close();
+    if (!plugin?.enabled) {
+      // Removed or turned off while its worker was starting: don't keep it.
+      port.close();
+      this.hosts.send(host, { t: "terminate", plugin: instance });
+      this.settle(instance, false);
+      return;
+    }
     this.live.get(instance)?.dispose();
     this.live.set(instance, new Remote(instance, plugin, host, port, this));
   }
@@ -133,8 +150,28 @@ export class RemotePlugins {
   /** Stops a plugin and forgets it. */
   uninstall(id: string): void {
     this.stop(id);
-    this.installed.delete(id);
+    if (!this.installed.delete(id)) return;
     record({ kind: "lifecycle", name: "plugin:uninstall", plugin: id });
+    this.onChange?.("uninstall", id);
+  }
+
+  /** Turns a plugin on (starting its instances) or off (stopping them). */
+  async setEnabled(id: string, enabled: boolean): Promise<boolean> {
+    const plugin = this.installed.get(id);
+    if (!plugin || plugin.enabled === enabled) return false;
+    plugin.enabled = enabled;
+    record({ kind: "lifecycle", name: enabled ? "plugin:enable" : "plugin:disable", plugin: id });
+    this.onChange?.(enabled ? "enable" : "disable", id);
+    if (!enabled) {
+      this.stop(id);
+      return true;
+    }
+    return this.start(id);
+  }
+
+  /** Every running instance of a plugin. */
+  instances(id: string): string[] {
+    return [...this.live.values()].filter((remote) => remote.plugin.id === id).map((remote) => remote.instance);
   }
 
   async reload(id: string): Promise<boolean> {
@@ -145,7 +182,7 @@ export class RemotePlugins {
   /** A tab opened: start its instances of tab-scoped plugins. */
   hostJoined(host: Host): void {
     for (const plugin of this.installed.values()) {
-      if (plugin.manifest.scope === "tab") void this.startInstance(plugin, `${plugin.id}@${host.tab}`, host);
+      if (plugin.enabled && plugin.manifest.scope === "tab") void this.startInstance(plugin, `${plugin.id}@${host.tab}`, host);
     }
   }
 
@@ -157,7 +194,7 @@ export class RemotePlugins {
   /** The spawner tab changed: start the shared plugins again in the new one. */
   spawnerChanged(host: Host): void {
     for (const plugin of this.installed.values()) {
-      if (plugin.manifest.scope === "tab") continue;
+      if (!plugin.enabled || plugin.manifest.scope === "tab") continue;
       if (this.live.get(plugin.id)?.host === host) continue;
       this.stopInstance(plugin.id, false);
       void this.startInstance(plugin, plugin.id, host);

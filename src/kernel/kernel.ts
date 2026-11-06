@@ -8,6 +8,7 @@
 import { Context } from "cordis";
 import { defineHook, hooks } from "./hooks";
 import { Hosts } from "./hosts";
+import { catalog } from "./catalog";
 import { notesApp } from "./notes";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { Store } from "./store";
@@ -79,10 +80,13 @@ const services: Record<string, ServiceProvider> = {
 };
 
 const remote = new RemotePlugins(root, hosts, services);
+const plugins = catalog(remote, store, hosts);
+services.settings = plugins.service;
 
 const BUILT_IN = [wordCount, editTimes, noShouting, tone, bars, pinger, sneaky, fetcher, offline];
 
 let started = false;
+let loaded = false;
 hosts.onHello = (host, folder) => {
   if (!started) {
     started = true;
@@ -97,8 +101,9 @@ hosts.onLeave = (host) => remote.hostLeft(host);
 
 hosts.onSpawnerChange = (host) => {
   if (!host) return;
-  if (!remote.installed.size) {
-    for (const source of BUILT_IN) void remote.install(source);
+  if (!loaded) {
+    loaded = true;
+    void plugins.load(BUILT_IN);
   } else {
     record({ kind: "lifecycle", name: "spawner:handover", detail: host.tab });
     remote.spawnerChanged(host);
@@ -109,6 +114,7 @@ hosts.onMessage = async (host, message) => {
   switch (message.t) {
     case "event":
       if (message.owner === "notes") return void notes.event(message.action, message.value, message.trace);
+      if (message.owner === "plugins") return void plugins.event(message.action, message.value, message.trace);
       return remote.deliver(message.owner, { t: "event", action: message.action, value: message.value, trace: message.trace });
     case "spawned":
       return remote.attach(message.plugin, host, message.port);
@@ -125,7 +131,8 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "bench") return bench(Number(arg) || 300);
   if (name === "reload-test") return reloadTest(Number(arg) || 50);
   if (name === "reload") return remote.reload(String(arg));
-  if (name === "install") return remote.install(String(arg));
+  if (name === "install") return plugins.install(String(arg));
+  if (name === "uninstall") return plugins.remove(String(arg));
   if (name === "trace") return recent();
   return undefined;
 }

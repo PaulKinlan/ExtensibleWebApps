@@ -61,7 +61,7 @@ try {
   await a.waitForFunction(() => window.__host.traces.some((e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"), null, { timeout: 3000 }).catch(() => {});
   check("a plugin whose manifest changes when it runs is stopped", liar.ok && !liar.started && (await traceHas(a, `(e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"`)), JSON.stringify(liar));
   // `late` also has a button whose handler makes a call before and after an await.
-  const lateSource = `export const manifest = { id: 'late', name: 'Late', permissions: ['ui'] };
+  const lateSource = `export const manifest = { id: 'late', name: 'Late', permissions: ['ui'], settings: { "mode:loud": { type: "boolean", title: "Loud" } } };
 export default (ctx) => {
   ctx.ui.render('statusbar', 'late', { type: 'stack', direction: 'row', children: [{ type: 'text', text: 'late plugin here' }, { type: 'button', label: 'Ping twice', action: 'ping' }] });
   ctx.ui.onEvent(async () => {
@@ -73,6 +73,26 @@ export default (ctx) => {
   const installed = await a.evaluate((source) => window.__host.command("install", source), lateSource);
   await a.waitForSelector("footer >> text=late plugin here");
   check("a plugin installed at run time starts and renders", installed.ok && installed.started);
+  const reserved = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'plugins', name: 'Fake panel', permissions: ['ui'] };\nexport default () => {};"));
+  check("a plugin can't take an id the kernel uses for its own views", reserved.ok === false && /reserved/.test(reserved.error), reserved.error);
+
+  // The plugins panel: where each plugin came from, on and off, remove.
+  const panel = (id) => `aside [data-key="plugins:${id}"]`;
+  await a.waitForSelector(`${panel("late")} >> text=with the data`);
+  check("the plugins panel shows built-in plugins and ones kept with the data", (await a.textContent(panel("tone"))).includes("built in"));
+  const workers = () => a.evaluate(() => window.__host.workers.size);
+  const before = await workers();
+  await a.click(`${panel("sneaky")} >> text=Turn off`);
+  await a.waitForFunction((n) => window.__host.workers.size === n - 1, before, { timeout: 5000 });
+  await a.click(`${panel("sneaky")} >> text=Turn on`);
+  await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
+  check("turning a plugin off stops its worker, and on starts it again", true, `${before} → ${before - 1} → ${before} workers`);
+  await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'temp', name: 'Temporary', permissions: [] };\nexport default () => {};"));
+  await a.waitForFunction((n) => window.__host.workers.size === n + 1, before, { timeout: 5000 });
+  await a.click(`${panel("temp")} >> text=Remove`);
+  await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
+  check("removing a plugin kept with the data stops it and takes it off the panel", !(await a.$(panel("temp"))));
+  check("built-in plugins can't be removed", !(await a.$(`${panel("tone")} >> text=Remove`)));
 
   // Worker content security policy.
   await a.waitForFunction(() => window.__host.traces.filter((e) => e.detail?.startsWith("network:")).length >= 2, null, { timeout: 5000 });
@@ -111,7 +131,21 @@ export default (ctx) => {
   check("the gate refuses a service the manifest doesn't grant", await traceHas(a, `(e) => e.kind === "denied" && e.plugin === "sneaky" && e.name === "audio"`));
 
   // Audio: DSP in an AudioWorklet, registered by a plugin in a worker.
-  await a.click("text=Play 440 Hz");
+  // Settings: a form built from the manifest; the plugin hears the change.
+  await a.fill(`${panel("tone")} input[name=frequency]`, "880");
+  await a.press(`${panel("tone")} input[name=frequency]`, "Tab");
+  await a.waitForSelector("text=Play 880 Hz", { timeout: 5000 });
+  check("a settings form built from the manifest reaches the plugin", true);
+  await a.selectOption(`${panel("tone")} select[name=wave]`, "square");
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.name === "settings:changed" && e.detail === 'wave = "square"'));
+  check("a select field takes its options from the manifest's enum", (await a.$$eval(`${panel("tone")} select[name=wave] option`, (o) => o.map((x) => x.value))).join() === "sine,square");
+  check("focus stays on the field after the panel redraws", await a.evaluate(() => document.activeElement?.getAttribute("name") === "wave"));
+  await a.check(`${panel("late")} input[name="mode:loud"]`);
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "late" && e.name === "settings:changed" && e.detail === "mode:loud = true"), null, { timeout: 5000 }).catch(() => {});
+  const colon = await a.evaluate(() => window.__host.traces.filter((e) => e.plugin === "late" && e.name.startsWith("settings:")).map((e) => `${e.name} ${e.detail}`).join("; "));
+  check("a setting whose key has a colon saves", /settings:changed mode:loud = true/.test(colon), colon);
+
+  await a.click("text=Play 880 Hz");
   await a.waitForFunction(() => window.__host.audioStats.played > 0, null, { timeout: 5000 });
   check("tone.js plays through an AudioWorklet", true, `context ${await a.evaluate(() => window.__host.audioStats.state)}`);
   await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "tone" && e.detail === "played 1"), null, { timeout: 5000 });
@@ -177,6 +211,18 @@ export default (ctx) => {
   await b.click("nav >> text=Hello there");
   await b.waitForFunction(() => /\d+ words/.test(document.querySelector("footer").textContent), null, { timeout: 5000 });
   check("plugins work again after the handover", true, await status(b));
+
+  // A second kernel on the same data folder loads what the first one kept there.
+  const d = await openTab(`${URL}?kernel=dedicated`);
+  await d.waitForSelector("footer >> text=late plugin here", { timeout: 10000 });
+  await d.waitForSelector("text=Play 880 Hz", { timeout: 5000 });
+  const dPlugins = await d.$$eval('aside [data-key^="plugins:"]', (els) => els.map((e) => e.dataset.key.slice(8)));
+  check(
+    "installed plugins and settings are kept with the data and load in a new kernel",
+    dPlugins.includes("late") && !dPlugins.includes("temp") && !dPlugins.includes("liar"),
+    dPlugins.join(", "),
+  );
+  await d.close();
 
   // ---- Fallback: kernel in a dedicated worker ----
   const isolated = await browser.newContext();

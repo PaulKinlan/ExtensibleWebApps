@@ -3,7 +3,7 @@
 // workers when it is the spawner tab, and bridges APIs that only exist in a
 // page (Web Audio here). It runs no plugin code.
 
-import type { HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
+import type { Command, HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
 
 const tab = Math.random().toString(36).slice(2, 8);
 const params = new URLSearchParams(location.search);
@@ -85,6 +85,32 @@ function element(view: View, owner: string): HTMLElement {
       };
       return el;
     }
+    case "field": {
+      const label = document.createElement("label");
+      label.className = `field ${view.kind}`;
+      const caption = document.createElement("span");
+      caption.textContent = view.label;
+      if (view.description) caption.title = view.description;
+      let input: HTMLInputElement | HTMLSelectElement;
+      if (view.kind === "select") {
+        input = document.createElement("select");
+        for (const option of view.options ?? []) input.append(new Option(option, option, false, option === view.value));
+      } else {
+        input = document.createElement("input");
+        input.type = view.kind;
+        if (view.kind === "checkbox") input.checked = Boolean(view.value);
+        else input.value = String(view.value);
+      }
+      input.name = view.name;
+      // Sent when the change is committed (blur, Enter, or a click), not on every key.
+      input.onchange = () => {
+        const el = input as HTMLInputElement;
+        event(view.action, view.kind === "checkbox" ? el.checked : view.kind === "number" ? el.valueAsNumber : el.value);
+      };
+      if (view.kind === "checkbox") label.append(input, caption);
+      else label.append(caption, input);
+      return label;
+    }
     case "canvas": {
       // A canvas can only go to a worker this tab created: handing an
       // OffscreenCanvas to another tab's worker crashed the renderer
@@ -124,13 +150,15 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
   const el = document.createElement("div");
   el.dataset.key = key;
   el.append(element(view, owner));
-  // Keep the text field the person is typing in.
-  const focused = old?.el.querySelector("textarea");
-  if (focused && document.activeElement === focused) {
-    const replacement = el.querySelector(`textarea[name="${focused.name}"]`);
-    replacement?.replaceWith(focused);
-  }
+  // Keep the text field the person is typing in, and keep focus on any other
+  // named control they were on, so keyboard use carries on after a redraw.
+  const active = document.activeElement as (HTMLElement & { name?: string }) | null;
+  const hadFocus = old && active && old.el.contains(active) && typeof active.name === "string" ? active : undefined;
+  const sameName = (root: HTMLElement) =>
+    hadFocus ? [...root.querySelectorAll<HTMLElement & { name: string }>(hadFocus.tagName)].find((x) => x.name === hadFocus.name) : undefined;
+  if (hadFocus instanceof HTMLTextAreaElement) sameName(el)?.replaceWith(hadFocus);
   if (old) old.el.replaceWith(el);
+  if (hadFocus && !(hadFocus instanceof HTMLTextAreaElement)) sameName(el)?.focus();
   entries.set(key, { owner, order, el });
   if (!old) {
     const sorted = [...entries.values()].sort((a, b) => a.order - b.order);
@@ -212,7 +240,7 @@ function notice(text: string) {
 
 let commandId = 0;
 const waiting = new Map<number, (value: unknown) => void>();
-function command(name: "bench" | "reload-test" | "reload" | "install", arg?: unknown): Promise<unknown> {
+function command(name: Command, arg?: unknown): Promise<unknown> {
   const id = ++commandId;
   return new Promise((resolve) => {
     waiting.set(id, resolve);

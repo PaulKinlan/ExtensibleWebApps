@@ -15,6 +15,7 @@ const handlers = new Map<number, (...args: any[]) => unknown>();
 const calls = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 const eventHandlers = new Set<(action: string, value: unknown) => void>();
 const canvasHandlers = new Map<string, (canvas: OffscreenCanvas) => void>();
+const settingsHandlers = new Set<(values: Record<string, unknown>) => void>();
 
 /** The trace id of the hook or event being handled; calls made while handling it carry it. */
 let activeTrace: string | undefined;
@@ -49,12 +50,24 @@ interface Api {
     onEvent(handler: (action: string, value: unknown) => void): () => void;
     onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void): void;
   };
+  /** The plugin's own settings, from the form the shell builds out of its manifest. */
+  settings: {
+    get(): Promise<Record<string, unknown>>;
+    onChange(handler: (values: Record<string, unknown>) => void): () => void;
+  };
   traced(): Api;
   log(text: string, level?: "info" | "error"): void;
 }
 
 function api(trace: () => string | undefined): Api {
   const log = (text: string, level: "info" | "error" = "info") => send({ t: "log", level, text, trace: trace() });
+  const call = (service: string, method: string, ...args: unknown[]): Promise<unknown> => {
+    const id = ++nextCall;
+    return new Promise((resolve, reject) => {
+      calls.set(id, { resolve, reject });
+      send({ t: "call", id, service, method, args, trace: trace() });
+    });
+  };
   return {
     on(name: string, handler: (...args: any[]) => unknown): () => void {
       const listener = ++nextListener;
@@ -65,13 +78,7 @@ function api(trace: () => string | undefined): Api {
         send({ t: "off", listener });
       };
     },
-    call(service: string, method: string, ...args: unknown[]): Promise<unknown> {
-      const id = ++nextCall;
-      return new Promise((resolve, reject) => {
-        calls.set(id, { resolve, reject });
-        send({ t: "call", id, service, method, args, trace: trace() });
-      });
-    },
+    call,
     ui: {
       render(slot: Slot, key: string, view: View | null, order?: number) {
         send({ t: "render", slot, key, view, order, trace: trace() });
@@ -82,6 +89,13 @@ function api(trace: () => string | undefined): Api {
       },
       onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void) {
         canvasHandlers.set(id, handler);
+      },
+    },
+    settings: {
+      get: () => call("settings", "get") as Promise<Record<string, unknown>>,
+      onChange(handler: (values: Record<string, unknown>) => void) {
+        settingsHandlers.add(handler);
+        return () => void settingsHandlers.delete(handler);
       },
     },
     /** A copy of this API whose calls carry the trace active now, even after an `await`. */
@@ -139,7 +153,7 @@ function editorShim() {
       return () => commands.delete(`command:${id}`);
     },
     storage: { get: async () => undefined, set: async () => {} },
-    settings: { get: async () => ({}) },
+    settings: { get: () => ctx.settings.get() },
   };
 }
 
@@ -181,6 +195,10 @@ async function receive(message: KernelToPlugin) {
       return;
     }
     case "event":
+      if (message.action === "settings:changed") {
+        for (const handler of settingsHandlers) traced(message.trace, (bound) => handler.call(bound, message.value as Record<string, unknown>));
+        return;
+      }
       if (message.action === "kernel:denied") log(`Denied: ${message.value}`, "error");
       for (const handler of eventHandlers) traced(message.trace, (bound) => handler.call(bound, message.action, message.value));
       return;
