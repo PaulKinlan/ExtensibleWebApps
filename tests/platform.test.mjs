@@ -1,4 +1,4 @@
-// End-to-end checks for the phase 0 spike. Builds are served with
+// End-to-end checks for the platform. Builds are served with
 // `vite preview`; Chromium (Playwright) drives two tabs against one shared
 // worker kernel, then a third with the dedicated-worker fallback.
 //
@@ -47,8 +47,24 @@ const status = (page) => page.textContent("footer");
 try {
   // ---- One tab ----
   const a = await openTab();
-  await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "plugin:ready").length >= 7, null, { timeout: 10000 });
-  check("all seven sandboxed plugins start in their own workers", (await a.evaluate(() => window.__host.workers.size)) === 7);
+  await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "plugin:ready").length >= 9, null, { timeout: 10000 });
+  check("all nine sandboxed plugins start in their own workers", (await a.evaluate(() => window.__host.workers.size)) === 9);
+
+  // Manifests are read before any code runs.
+  const refused = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'bad', name: 'Bad', permissions: ['ui'].concat(['network']) };\nexport default () => {};"));
+  check("a manifest that isn't a plain literal is refused before running", refused.ok === false && /plain literal/.test(refused.error), refused.error);
+  const liar = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'liar', name: 'Liar', permissions: [] };\nmanifest.permissions.push('audio');\nexport default () => {};"));
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"), null, { timeout: 3000 }).catch(() => {});
+  check("a plugin whose manifest changes when it runs is stopped", liar.ok && !liar.started && (await traceHas(a, `(e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"`)), JSON.stringify(liar));
+  const installed = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'late', name: 'Late', permissions: ['ui'] };\nexport default (ctx) => ctx.ui.render('statusbar', 'late', { type: 'text', text: 'late plugin here' });"));
+  await a.waitForSelector("footer >> text=late plugin here");
+  check("a plugin installed at run time starts and renders", installed.ok && installed.started);
+
+  // Worker content security policy.
+  await a.waitForFunction(() => window.__host.traces.filter((e) => e.detail?.startsWith("network:")).length >= 2, null, { timeout: 5000 });
+  const net = await a.evaluate(() => Object.fromEntries(window.__host.traces.filter((e) => e.detail?.startsWith("network:")).map((e) => [e.plugin, e.detail])));
+  check("a plugin with the network permission can fetch", /status 200/.test(net.fetcher ?? ""), net.fetcher);
+  check("a plugin without it is blocked by its worker's CSP", /refused/.test(net.offline ?? ""), net.offline);
   check("the kernel runs in a shared worker", (await a.textContent("#mode")).includes("shared worker"));
 
   // Editor extensions, unchanged, through the shim.
@@ -82,17 +98,26 @@ try {
   check("tone.js plays through an AudioWorklet", true, `context ${await a.evaluate(() => window.__host.audioStats.state)}`);
 
   // Drawing: an OffscreenCanvas animated in the plugin's worker.
-  await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "bars" && /frames drawn: [1-9]/.test(e.detail ?? "")), null, { timeout: 5000 });
-  const frames = await a.evaluate(() => window.__host.traces.filter((e) => e.plugin === "bars" && e.detail?.startsWith("frames")).at(-1).detail);
-  check("bars.js draws on an OffscreenCanvas in its worker", true, frames);
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin?.startsWith("bars@") && /frames drawn: [1-9]/.test(e.detail ?? "")), null, { timeout: 5000 });
+  const frames = await a.evaluate(() => window.__host.traces.filter((e) => e.plugin?.startsWith("bars@") && e.detail?.startsWith("frames")).at(-1).detail);
+  check("bars.js (scope: tab) draws on an OffscreenCanvas in its worker", true, frames);
 
-  // Observability: one action followed across threads by its trace id.
-  const traced = await a.evaluate(() => {
-    const byTrace = new Map();
-    for (const e of window.__host.traces) if (e.trace) byTrace.set(e.trace, [...(byTrace.get(e.trace) ?? []), e]);
-    return [...byTrace.values()].some((events) => events.some((e) => e.kind === "dispatch") && events.some((e) => e.kind === "remote"));
+  // Observability: one save followed across awaits and workers by its trace id.
+  const saveTrace = await a.evaluate(() => {
+    const blocked = window.__host.traces.find((e) => e.kind === "remote" && e.plugin === "no-shouting" && e.detail?.includes("all capitals"));
+    return blocked ? window.__host.traces.filter((e) => e.trace === blocked.trace).map((e) => `${e.kind}:${e.name}`) : [];
   });
-  check("a trace id links a dispatch in the kernel to the plugin answering it", traced);
+  check("a trace id links the click, the kernel dispatch and the plugin's answer", saveTrace.includes("dispatch:data:beforeWrite") && saveTrace.includes("remote:data:beforeWrite"), saveTrace.join(", "));
+  await a.fill("textarea", "Hello there\n\nOne two three four five six seven eight nine ten.");
+  await a.waitForTimeout(400);
+  await a.click("text=Save");
+  await a.waitForSelector("main >> text=Saved");
+  await a.waitForTimeout(300);
+  const afterAwait = await a.evaluate(() => {
+    const changed = window.__host.traces.filter((e) => e.kind === "dispatch" && e.name === "data:changed" && e.trace).at(-1);
+    return changed ? window.__host.traces.filter((e) => e.trace === changed.trace).map((e) => `${e.kind}:${e.name}`) : [];
+  });
+  check("the trace id survives the awaits between a write's check and its change event", afterAwait.includes("dispatch:data:beforeWrite") && afterAwait.includes("dispatch:data:changed") && afterAwait.includes("dispatch:note:save"), afterAwait.join(", "));
 
   // Measurements.
   const bench = await a.evaluate(() => window.__host.command("bench", 500));
@@ -111,12 +136,15 @@ try {
   const b = await openTab();
   await b.waitForSelector("nav >> text=Hello there");
   check("a second tab shares the kernel and sees the same notes", true);
-  check("only the first tab runs plugin workers", (await b.evaluate(() => window.__host.workers.size)) === 0 && !(await b.evaluate(() => window.__host.spawner)));
+  await b.waitForFunction(() => window.__host.workers.size === 1, null, { timeout: 5000 });
+  check("the second tab runs only its own tab-scoped plugin", [...(await b.evaluate(() => [...window.__host.workers.keys()]))].every((k) => k.startsWith("bars@")) && !(await b.evaluate(() => window.__host.spawner)));
+  await b.waitForFunction((t) => window.__host.traces.some((e) => e.plugin === `bars@${t}` && /frames drawn: [1-9]/.test(e.detail ?? "")), await b.evaluate(() => window.__host.tab), { timeout: 5000 });
+  check("a tab-scoped plugin draws in the second tab too", true);
   check("plugin views appear in the second tab", (await b.textContent("aside")).includes("Tone"));
 
   // Hand over: close the spawner tab; the second tab starts the plugins again.
   await a.close({ runBeforeUnload: true });
-  await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 7, null, { timeout: 10000 });
+  await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 10, null, { timeout: 10000 });
   check("closing the spawner tab moves the plugin workers to the other tab", true);
   await b.click("nav >> text=Hello there");
   await b.waitForFunction(() => /\d+ words/.test(document.querySelector("footer").textContent), null, { timeout: 5000 });
@@ -127,7 +155,7 @@ try {
   const c = await isolated.newPage();
   c.on("pageerror", (e) => errors.push(e.message));
   await c.goto(`${URL}?kernel=dedicated`);
-  await c.waitForFunction(() => window.__host && window.__host.workers.size === 7, null, { timeout: 10000 });
+  await c.waitForFunction(() => window.__host && window.__host.workers.size === 9, null, { timeout: 10000 });
   check("the kernel also runs in a dedicated worker", (await c.textContent("#mode")).includes("dedicated worker"));
   await isolated.close();
 

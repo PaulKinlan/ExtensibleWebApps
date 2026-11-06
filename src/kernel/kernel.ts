@@ -20,6 +20,8 @@ import tone from "../../plugins/tone.js?raw";
 import bars from "../../plugins/bars.js?raw";
 import pinger from "../../plugins/pinger.js?raw";
 import sneaky from "../../plugins/sneaky.js?raw";
+import fetcher from "../../plugins/fetcher.js?raw";
+import offline from "../../plugins/offline.js?raw";
 
 declare const SharedWorkerGlobalScope: { new (): unknown } | undefined;
 const shared = typeof SharedWorkerGlobalScope !== "undefined" && self instanceof SharedWorkerGlobalScope;
@@ -57,7 +59,7 @@ const notes = notesApp(root, store, hosts);
 const services: Record<string, ServiceProvider> = {
   audio: {
     capability: () => "audio",
-    call: (_plugin, method, args) => hosts.bridge("audio", method, args),
+    call: (_plugin, method, args, dispatch) => hosts.bridge("audio", method, args, dispatch),
   },
   store: {
     capability: (method) => (method === "list" ? "data:read:notes" : "data:write:notes"),
@@ -78,31 +80,28 @@ const services: Record<string, ServiceProvider> = {
 
 const remote = new RemotePlugins(root, hosts, services);
 
-const BUILT_IN: [string, string][] = [
-  ["word-count", wordCount],
-  ["edit-times", editTimes],
-  ["no-shouting", noShouting],
-  ["tone", tone],
-  ["bars", bars],
-  ["pinger", pinger],
-  ["sneaky", sneaky],
-];
+const BUILT_IN = [wordCount, editTimes, noShouting, tone, bars, pinger, sneaky, fetcher, offline];
 
 let started = false;
-hosts.onHello = (_host, folder) => {
-  if (started) return;
-  started = true;
-  store.use(folder);
-  void notes.start();
+hosts.onHello = (host, folder) => {
+  if (!started) {
+    started = true;
+    store.use(folder);
+    void notes.start();
+    return;
+  }
+  remote.hostJoined(host);
 };
+
+hosts.onLeave = (host) => remote.hostLeft(host);
 
 hosts.onSpawnerChange = (host) => {
   if (!host) return;
-  if (!remote.sources.size) {
-    for (const [id, source] of BUILT_IN) void remote.install(id, source);
+  if (!remote.installed.size) {
+    for (const source of BUILT_IN) void remote.install(source);
   } else {
     record({ kind: "lifecycle", name: "spawner:handover", detail: host.tab });
-    remote.respawnAll();
+    remote.spawnerChanged(host);
   }
 };
 
@@ -112,7 +111,7 @@ hosts.onMessage = async (host, message) => {
       if (message.owner === "notes") return void notes.event(message.action, message.value, message.trace);
       return remote.deliver(message.owner, { t: "event", action: message.action, value: message.value, trace: message.trace });
     case "spawned":
-      return remote.attach(message.plugin, message.port);
+      return remote.attach(message.plugin, host, message.port);
     case "canvas":
       return remote.deliver(message.owner, { t: "canvas", id: message.id, canvas: message.canvas }, [message.canvas]);
     case "command": {
@@ -126,10 +125,7 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "bench") return bench(Number(arg) || 300);
   if (name === "reload-test") return reloadTest(Number(arg) || 50);
   if (name === "reload") return remote.reload(String(arg));
-  if (name === "install") {
-    const { id, source } = arg as { id: string; source: string };
-    return remote.install(id, source);
-  }
+  if (name === "install") return remote.install(String(arg));
   if (name === "trace") return recent();
   return undefined;
 }
@@ -144,7 +140,7 @@ async function bench(n: number) {
   const remoteTimes: number[] = [];
   for (let i = 0; i < n; i++) {
     const t = performance.now();
-    await root.serial("bench:ping", i);
+    await root.serial({ trace: `bench-${i}` }, "bench:ping", i);
     remoteTimes.push(performance.now() - t);
   }
   const fiber = root.plugin({ name: "bench-local", apply: (ctx: any) => {

@@ -6,7 +6,7 @@
 // kernel a port to each. When the spawner tab goes away, the next tab takes
 // over and the plugins are started again there.
 
-import type { HostToKernel, KernelToHost, Slot, View } from "../shared/protocol";
+import type { Dispatch, HostToKernel, KernelToHost, Slot, View } from "../shared/protocol";
 import { record } from "./trace";
 
 export interface Host {
@@ -14,7 +14,7 @@ export interface Host {
   port: MessagePort;
 }
 
-type Rendered = { slot: Slot; key: string; owner: string; order: number; view: View | null };
+type Rendered = { slot: Slot; key: string; owner: string; order: number; view: View | null; tab?: string };
 
 export class Hosts {
   readonly list: Host[] = [];
@@ -24,6 +24,7 @@ export class Hosts {
   onSpawnerChange?: (host: Host | undefined) => void;
   onMessage?: (host: Host, message: HostToKernel) => void;
   onHello?: (host: Host, folder: FileSystemDirectoryHandle | undefined) => void;
+  onLeave?: (host: Host) => void;
 
   constructor(readonly mode: "shared" | "dedicated") {}
 
@@ -46,7 +47,7 @@ export class Hosts {
         void navigator.locks.request(`ewa-tab-${message.tab}`, () => this.disconnect(leaving));
         const spawner = this.spawner === host;
         this.send(host, { t: "welcome", tab: message.tab, spawner, mode: this.mode });
-        for (const view of this.views.values()) this.send(host, { t: "render", ...view });
+        for (const { tab, ...view } of this.views.values()) if (!tab || tab === host.tab) this.send(host, { t: "render", ...view });
         record({ kind: "lifecycle", name: "host:connect", detail: `${message.tab}${spawner ? " (spawner)" : ""}` });
         if (spawner) this.onSpawnerChange?.(host);
         return;
@@ -71,6 +72,7 @@ export class Hosts {
     const wasSpawner = index === 0;
     this.list.splice(index, 1);
     record({ kind: "lifecycle", name: "host:disconnect", detail: host.tab });
+    this.onLeave?.(host);
     if (wasSpawner) {
       if (this.spawner) this.send(this.spawner, { t: "welcome", tab: this.spawner.tab, spawner: true, mode: this.mode });
       this.onSpawnerChange?.(this.spawner);
@@ -85,11 +87,13 @@ export class Hosts {
     for (const host of this.list) this.send(host, message);
   }
 
-  render(owner: string, slot: Slot, key: string, view: View | null, order = 1000): void {
+  /** Shows a view in a slot: in every tab, or only in `tab` for a tab-scoped plugin. */
+  render(owner: string, slot: Slot, key: string, view: View | null, order = 1000, tab?: string): void {
     const id = `${slot}/${key}`;
-    if (view) this.views.set(id, { slot, key, owner, order, view });
+    if (view) this.views.set(id, { slot, key, owner, order, view, tab });
     else this.views.delete(id);
-    this.broadcast({ t: "render", slot, key, owner, order, view });
+    const message: KernelToHost = { t: "render", slot, key, owner, order, view };
+    for (const host of this.list) if (!tab || host.tab === tab) this.send(host, message);
   }
 
   /** Removes every view a plugin rendered (when it unloads). */
@@ -97,12 +101,13 @@ export class Hosts {
     for (const [id, view] of this.views) {
       if (view.owner !== owner) continue;
       this.views.delete(id);
-      this.broadcast({ t: "render", slot: view.slot, key: view.key, owner, order: view.order, view: null });
+      const message: KernelToHost = { t: "render", slot: view.slot, key: view.key, owner, order: view.order, view: null };
+      for (const host of this.list) if (!view.tab || host.tab === view.tab) this.send(host, message);
     }
   }
 
   /** Calls a page-only API in the spawner tab (audio, worker counts, ...). */
-  bridge(service: string, method: string, args: unknown[]): Promise<unknown> {
+  bridge(service: string, method: string, args: unknown[], dispatch: Dispatch = {}): Promise<unknown> {
     const host = this.spawner;
     if (!host) return Promise.reject(new Error("No tab is open"));
     const id = ++this.bridgeId;
@@ -110,6 +115,6 @@ export class Hosts {
     return new Promise<unknown>((resolve, reject) => {
       this.bridgeWaiting.set(id, { resolve, reject });
       this.send(host, { t: "bridge", id, service, method, args });
-    }).finally(() => record({ kind: "bridge", name: `${service}.${method}`, ms: Math.round((performance.now() - started) * 100) / 100 }));
+    }).finally(() => record({ kind: "bridge", name: `${service}.${method}`, ms: Math.round((performance.now() - started) * 100) / 100, trace: dispatch.trace }));
   }
 }

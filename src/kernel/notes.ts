@@ -5,7 +5,7 @@
 
 import type { Hosts } from "./hosts";
 import type { Note, Store } from "./store";
-import { withTrace } from "./trace";
+import type { Dispatch } from "../shared/protocol";
 
 export function notesApp(ctx: any, store: Store, hosts: Hosts) {
   let openId: string | undefined;
@@ -44,39 +44,39 @@ export function notesApp(ctx: any, store: Store, hosts: Hosts) {
       : { type: "text", text: "Pick a note, or make a new one.", tone: "muted" }, 10);
   };
 
-  const open = (id: string) => {
-    if (openId) ctx.emit("note:close", null);
+  const open = (id: string, d: Dispatch) => {
+    if (openId) ctx.emit(d, "note:close", null);
     openId = id;
     draft = store.get(id)?.text ?? "";
     status = "";
     render();
-    ctx.emit("note:open", snapshot(false));
+    ctx.emit(d, "note:open", snapshot(false));
   };
 
-  const save = async () => {
+  const save = async (d: Dispatch) => {
     const note = openId ? store.get(openId) : undefined;
     if (!note) return;
     const next: Note = { ...note, text: draft, title: titleOf(draft), updated: Date.now() };
-    const result = await store.put(next);
+    const result = await store.put(next, d);
     status = result.ok ? "Saved" : `Not saved: ${result.reason}`;
     render();
-    if (result.ok) ctx.emit("note:save", snapshot(false));
+    if (result.ok) ctx.emit(d, "note:save", snapshot(false));
   };
 
-  const handle = async (action: string, value: unknown) => {
+  const handle = async (action: string, value: unknown, d: Dispatch) => {
     if (action === "new") {
       const id = Math.random().toString(36).slice(2, 8);
-      await store.put({ id, title: "Untitled", text: "", updated: Date.now() });
-      return open(id);
+      await store.put({ id, title: "Untitled", text: "", updated: Date.now() }, d);
+      return open(id, d);
     }
-    if (action.startsWith("open:")) return open(action.slice(5));
+    if (action.startsWith("open:")) return open(action.slice(5), d);
     if (action === "edit") {
       draft = String(value ?? "");
       status = "Unsaved changes";
-      ctx.emit("note:change", snapshot(true));
+      ctx.emit(d, "note:change", snapshot(true));
       return;
     }
-    if (action === "save") return save();
+    if (action === "save") return save(d);
   };
 
   return {
@@ -88,7 +88,7 @@ export function notesApp(ctx: any, store: Store, hosts: Hosts) {
       render();
     },
     event(action: string, value: unknown, trace: string) {
-      return withTrace(trace, () => handle(action, value));
+      return handle(action, value, { trace });
     },
     get openId() {
       return openId;

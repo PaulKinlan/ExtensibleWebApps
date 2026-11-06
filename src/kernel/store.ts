@@ -4,6 +4,7 @@
 // into workers; a folder the person picks works the same way.
 
 import { Service } from "cordis";
+import type { Dispatch } from "../shared/protocol";
 import { record } from "./trace";
 
 export interface Note {
@@ -58,14 +59,14 @@ export class Store extends Service {
   }
 
   /** Writes a note unless a `data:beforeWrite` listener blocks it. */
-  async put(note: Note): Promise<{ ok: true } | { ok: false; reason: string }> {
+  async put(note: Note, dispatch: Dispatch = {}): Promise<{ ok: true } | { ok: false; reason: string }> {
     const change: Change = { collection: "notes", id: note.id, before: this.notes.get(note.id), after: note };
     const ctx = this.ctx as any;
-    const verdict = await ctx.serial("data:beforeWrite", change);
+    const verdict = await ctx.serial(dispatch, "data:beforeWrite", change);
     if (verdict && typeof verdict === "object" && "block" in verdict) return { ok: false, reason: String(verdict.block) };
     this.notes.set(note.id, note);
     await this.flush();
-    ctx.emit("data:changed", change);
+    ctx.emit(dispatch, "data:changed", change);
     return { ok: true };
   }
 

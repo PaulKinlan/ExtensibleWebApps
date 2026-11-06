@@ -86,13 +86,13 @@ function element(view: View, owner: string): HTMLElement {
       return el;
     }
     case "canvas": {
-      // Plugin workers live in the spawner tab, and handing an OffscreenCanvas
-      // to a worker in another tab crashed the renderer (Chromium 153). Until
-      // plugins can run per tab, only the spawner tab draws.
-      if (!spawner) {
+      // A canvas can only go to a worker this tab created: handing an
+      // OffscreenCanvas to another tab's worker crashed the renderer
+      // (Chromium 153). Plugins that draw use `scope: "tab"`.
+      if (!owner.endsWith(`@${tab}`)) {
         const note = document.createElement("span");
         note.className = "muted";
-        note.textContent = "Drawn in the tab that runs the plugins.";
+        note.textContent = "Plugins that draw need scope: \"tab\".";
         return note;
       }
       const key = `${owner}/${view.id}`;
@@ -142,9 +142,12 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
 
 const workers = new Map<string, Worker>();
 
-function spawn(plugin: string, source: string) {
+function spawn(plugin: string, source: string, network: boolean) {
   workers.get(plugin)?.terminate();
-  const worker = new Worker(new URL("../sandbox/runtime.ts", import.meta.url), { type: "module", name: plugin });
+  // Two copies of the runtime, served with different content security policies.
+  const worker = network
+    ? new Worker(new URL("../sandbox/net-runtime.ts", import.meta.url), { type: "module", name: plugin })
+    : new Worker(new URL("../sandbox/runtime.ts", import.meta.url), { type: "module", name: plugin });
   const channel = new MessageChannel();
   worker.postMessage({ t: "init", source }, [channel.port2]);
   workers.set(plugin, worker);
@@ -242,7 +245,8 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
     case "render":
       return render(message.slot, message.key, message.owner, message.order, message.view);
     case "spawn":
-      if (spawner) spawn(message.plugin, message.source);
+      // The kernel decides which tab runs which plugin instance.
+      spawn(message.plugin, message.source, message.network);
       return;
     case "terminate":
       workers.get(message.plugin)?.terminate();
