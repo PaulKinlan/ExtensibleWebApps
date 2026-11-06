@@ -207,6 +207,16 @@ export default (ctx) => {
   await a.waitForFunction((t) => document.querySelector("textarea").value === t, tidied, { timeout: 5000 });
   check("accepting applies the change, and the notes app shows it", (await a.textContent("main")).includes("Changed by a plugin"));
 
+  // The person saves new edits while a review is open: accepting the old proposal must not overwrite them.
+  await saveText(messy);
+  await a.click("text=Tidy this note");
+  await a.waitForSelector(card);
+  const mine = `${messy}\nMy newer line.`;
+  await saveText(mine);
+  await a.click(`${card} >> text=Accept`);
+  await a.waitForSelector("aside >> text=the note changed while the review was open");
+  check("accepting a review after the note changed doesn't overwrite the newer text", (await textarea()) === mine);
+
   await saveText(messy);
   await a.click("text=Tidy this note");
   await a.waitForSelector(card);
@@ -294,6 +304,8 @@ export default (ctx) => {
   await d.waitForSelector("footer >> text=late plugin here", { timeout: 10000 });
   await d.waitForSelector("text=Play 880 Hz", { timeout: 5000 });
   const dPlugins = await d.$$eval('aside [data-key^="plugins:"]', (els) => els.map((e) => e.dataset.key.slice(8)));
+  await d.waitForSelector('aside [data-key="tidy:tidy"] >> text=Tidied 3 · exported 1', { timeout: 5000 }).catch(() => {});
+  check("a plugin's own storage is still there in a new kernel", (await d.textContent('aside [data-key="tidy:tidy"]')).includes("Tidied 3 · exported 1"), await d.textContent('aside [data-key="tidy:tidy"]'));
   check(
     "installed plugins and settings are kept with the data and load in a new kernel",
     dPlugins.includes("late") && !dPlugins.includes("temp") && !dPlugins.includes("liar"),

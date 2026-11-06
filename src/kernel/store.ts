@@ -61,12 +61,18 @@ export class Store extends Service {
     return this.notes.get(id);
   }
 
-  /** Writes a note unless a `data:beforeWrite` listener blocks it. */
-  async put(note: Note, dispatch: Dispatch = {}): Promise<{ ok: true } | { ok: false; reason: string }> {
+  /**
+   * Writes a note unless a `data:beforeWrite` listener blocks it. With
+   * `expected` (the text the person reviewed, or null for "no such note"),
+   * the write only happens if the note still matches it at that moment.
+   */
+  async put(note: Note, dispatch: Dispatch = {}, expected?: string | null): Promise<{ ok: true } | { ok: false; reason: string }> {
     const change: Change = { collection: "notes", id: note.id, before: this.notes.get(note.id), after: note };
     const ctx = this.ctx as any;
     const verdict = await ctx.serial(dispatch, "data:beforeWrite", change);
     if (verdict && typeof verdict === "object" && "block" in verdict) return { ok: false, reason: String(verdict.block) };
+    // Checked after the awaits, right before the write, so nothing can slip in between.
+    if (expected !== undefined && (this.notes.get(note.id)?.text ?? null) !== expected) return { ok: false, reason: "the note changed while the review was open" };
     this.notes.set(note.id, note);
     await this.flush();
     ctx.emit(dispatch, "data:changed", change);
@@ -75,9 +81,10 @@ export class Store extends Service {
 
   /** Reads a JSON file from the data folder, or `fallback` when there is none. */
   async readJson<T>(name: string, fallback: T): Promise<T> {
-    await this.ready;
+    const text = await this.readText(name);
+    if (text === undefined) return fallback;
     try {
-      return JSON.parse(await (await (await this.dir!.getFileHandle(name)).getFile()).text()) as T;
+      return JSON.parse(text) as T;
     } catch {
       return fallback;
     }
@@ -103,9 +110,11 @@ export class Store extends Service {
    * folders on the way. Writes run one at a time, in the order they were
    * asked for, so an older write never lands after a newer one.
    */
-  writeText(path: string, text: string): Promise<void> {
+  writeText(path: string, text: string, expected?: string | null): Promise<void> {
     const run = this.writes.then(async () => {
       await this.ready;
+      // With `expected` (the contents the person reviewed, or null for "no such file"), only write if the file still matches.
+      if (expected !== undefined && ((await this.readText(path)) ?? null) !== expected) throw new Error("The file changed while the review was open; nothing was written");
       const { folder, name } = await this.locate(path, true);
       await write(await folder.getFileHandle(name, { create: true }), text);
     });

@@ -53,6 +53,8 @@ export class RemotePlugins {
   private waiting = new Map<string, Waiter[]>();
   /** Told when plugins are installed, removed, or turned on or off. */
   onChange?: (change: "install" | "uninstall" | "enable" | "disable", id: string) => void;
+  /** Told whenever an instance's worker goes, for any reason. */
+  onDispose?: (instance: string) => void;
 
   constructor(
     readonly root: any,
@@ -361,7 +363,12 @@ export class Remote {
     const provider = this.manager.services[service];
     const reply = (ok: boolean, value?: unknown, error?: string) => this.post({ t: "result", id, ok, value, error });
     if (!provider) return reply(false, undefined, `No service named ${service}`);
-    const needed = provider.capability(method, args);
+    let needed: string | undefined;
+    try {
+      needed = provider.capability(method, args);
+    } catch (error) {
+      return reply(false, undefined, String(error instanceof Error ? error.message : error));
+    }
     if (needed && !check(this.instance, this.caps, needed)) return reply(false, undefined, `Missing capability ${needed}`);
     const started = performance.now();
     try {
@@ -377,6 +384,7 @@ export class Remote {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.manager.onDispose?.(this.instance);
     for (const { resolve, timer } of this.pending.values()) {
       clearTimeout(timer);
       resolve({ failed: "plugin stopped" });

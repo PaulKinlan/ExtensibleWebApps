@@ -5,11 +5,14 @@
 export type DiffLine = { op: "same" | "add" | "del"; text: string };
 
 const LIMIT = 4_000_000; // cells in the LCS table
+/** Most lines a review shows; the rest are summed up in one line, so a huge change can't freeze the page. */
+export const SHOWN = 400;
 
 export function diffLines(before: string, after: string): DiffLine[] {
   const a = before === "" ? [] : before.split("\n");
   const b = after === "" ? [] : after.split("\n");
-  if (a.length * b.length > LIMIT) return [...a.map((text) => ({ op: "del" as const, text })), ...b.map((text) => ({ op: "add" as const, text }))];
+  const replaceAll = () => [...a.map((text) => ({ op: "del" as const, text })), ...b.map((text) => ({ op: "add" as const, text }))];
+  if (!a.length || !b.length || (a.length + 1) * (b.length + 1) > LIMIT) return replaceAll();
   const n = a.length;
   const m = b.length;
   const table = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
@@ -48,5 +51,11 @@ export function trim(lines: DiffLine[], context = 2): DiffLine[] {
     } else skipped++;
   });
   if (skipped) out.push({ op: "same", text: `… ${skipped} unchanged line${skipped === 1 ? "" : "s"}` });
-  return out;
+  if (out.length > SHOWN) {
+    const hidden = out.length - SHOWN;
+    out.length = SHOWN;
+    out.push({ op: "same", text: `… ${hidden} more line${hidden === 1 ? "" : "s"} not shown` });
+  }
+  // Very long lines are cut too.
+  return out.map((line) => (line.text.length > 1000 ? { ...line, text: `${line.text.slice(0, 1000)} …` } : line));
 }

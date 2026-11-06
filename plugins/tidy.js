@@ -59,9 +59,11 @@ export default async function (ctx) {
         if (text === note.text) {
           status = "Already tidy";
         } else {
-          const id = note.path.replace(/^notes\//, "").replace(/\.md$/, "");
+          // The person may open another note while the review is open; remember which one this is.
+          const target = note.path;
+          const id = target.replace(/^notes\//, "").replace(/\.md$/, "");
           const result = await here.call("store", "put", { id, text }, "Trim trailing spaces and extra blank lines");
-          note = { ...note, text };
+          if (note?.path === target) note = { ...note, text };
           counts.tidied++;
           status = `Tidied (${result.outcome})`;
         }

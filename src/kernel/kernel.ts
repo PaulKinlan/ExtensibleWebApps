@@ -69,7 +69,7 @@ const titleOf = (text: string) => text.split("\n")[0].replace(/^#+\s*/, "").trim
 async function reviewed(instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: { trace?: string }) {
   const id = base(instance);
   const outcome = await reviews.ask(
-    { plugin: id, name: remote.installed.get(id)?.manifest.name ?? id, place, target, before, after, reason: String(reason ?? "").slice(0, 300) },
+    { plugin: id, instance, name: remote.installed.get(id)?.manifest.name ?? id, place, target, before, after, reason: String(reason ?? "").slice(0, 300) },
     dispatch,
   );
   if (!allowed(outcome)) throw new Error(outcome === "rejected" ? "The person declined the change" : "Nobody answered the review, so nothing changed");
@@ -78,8 +78,10 @@ async function reviewed(instance: string, place: string, target: string, before:
 
 /** Each plugin's own data: `plugin-data/<id>.json`. No review, since it is the plugin's own. */
 const ownData = new Map<string, Promise<Record<string, unknown>>>();
+/** A record with no prototype, so keys such as `constructor` or `__proto__` are just keys. */
+const record0 = (from: unknown): Record<string, unknown> => Object.assign(Object.create(null), from && typeof from === "object" && !Array.isArray(from) ? from : {});
 const dataOf = (id: string) => {
-  if (!ownData.has(id)) ownData.set(id, store.readJson<Record<string, unknown>>(`plugin-data/${id}.json`, {}).then((v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {})));
+  if (!ownData.has(id)) ownData.set(id, store.readJson<unknown>(`plugin-data/${id}.json`, {}).then(record0));
   return ownData.get(id)!;
 };
 
@@ -100,14 +102,15 @@ const services: Record<string, ServiceProvider> = {
       const before = store.get(id);
       const title = titleOf(input.text);
       const outcome = await reviewed(plugin, "notes", `the note “${before?.title ?? title}”`, before?.text ?? "", input.text, reason, dispatch);
-      const result = await store.put({ id, title, text: input.text, updated: Date.now() }, dispatch);
+      // Only if the note is still what the person reviewed.
+      const result = await store.put({ id, title, text: input.text, updated: Date.now() }, dispatch, before?.text ?? null);
       if (!result.ok) throw new Error(`Not saved: ${result.reason}`);
       return { ok: true, id, outcome };
     },
   },
   files: {
     /** Each folder is its own capability: `files:exports` lets a plugin use `exports/...`. */
-    capability: (_method, args) => `files:${String(args[0] ?? "").split("/")[0]}`,
+    capability: (_method, args) => `files:${typeof args[0] === "string" ? args[0].split("/")[0] : ""}`,
     call: async (plugin, method, args, dispatch) => {
       let path: string;
       try {
@@ -121,10 +124,11 @@ const services: Record<string, ServiceProvider> = {
       const text = args[1];
       if (typeof text !== "string") throw new Error("files.write takes (path, text, reason)");
       if (text.length > 5_000_000) throw new Error("The file is too large");
-      const before = (await store.readText(path)) ?? "";
-      if (before === text) return { ok: true, unchanged: true };
-      const outcome = await reviewed(plugin, `files:${path.split("/")[0]}`, path, before, text, args[2], dispatch);
-      await store.writeText(path, text);
+      const existing = await store.readText(path);
+      if (existing === text) return { ok: true, unchanged: true };
+      const outcome = await reviewed(plugin, `files:${path.split("/")[0]}`, path, existing ?? "", text, args[2], dispatch);
+      // Written only if the file is still what the person reviewed (or still missing).
+      await store.writeText(path, text, existing ?? null);
       return { ok: true, path, outcome };
     },
   },
@@ -133,14 +137,19 @@ const services: Record<string, ServiceProvider> = {
     call: async (plugin, method, args) => {
       const id = base(plugin);
       const data = await dataOf(id);
-      const key = String(args[0] ?? "");
-      if (method === "get") return data[key] ?? null;
+      if (typeof args[0] !== "string") throw new Error("Storage keys are strings");
+      const key = args[0];
+      if (method === "get") return Object.hasOwn(data, key) ? data[key] : null;
       if (method !== "set") throw new Error(`storage.${method} is not a method`);
-      if (args[1] === undefined || args[1] === null) delete data[key];
-      else data[key] = JSON.parse(JSON.stringify(args[1]));
-      const text = JSON.stringify(data);
+      // Try the change on a copy first, so a refused write leaves the stored data as it was.
+      const next = record0(data);
+      if (args[1] === undefined || args[1] === null) delete next[key];
+      else Object.defineProperty(next, key, { value: JSON.parse(JSON.stringify(args[1])), enumerable: true, writable: true, configurable: true });
+      const text = JSON.stringify(next);
       if (text.length > 1_000_000) throw new Error("A plugin's own storage is limited to 1 MB");
       await store.writeText(`plugin-data/${id}.json`, text);
+      for (const k of Object.keys(data)) delete data[k];
+      Object.assign(data, next);
       return true;
     },
   },
@@ -156,6 +165,7 @@ const services: Record<string, ServiceProvider> = {
 
 const remote = new RemotePlugins(root, hosts, services);
 const plugins = catalog(remote, store, hosts, log, reviews);
+remote.onDispose = (instance) => reviews.cancelInstance(instance);
 services.settings = plugins.service;
 
 const BUILT_IN = [wordCount, editTimes, noShouting, tone, bars, tidy, pinger, sneaky, fetcher, offline];

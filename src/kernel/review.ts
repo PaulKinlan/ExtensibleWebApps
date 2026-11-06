@@ -25,6 +25,8 @@ export const allowed = (outcome: Outcome) => outcome === "allowed-once" || outco
 
 export interface Request {
   plugin: string; // plugin id
+  /** The plugin instance that asked; its request is cancelled if that instance stops. */
+  instance: string;
   name: string; // plugin's display name
   /** What a grant covers: `notes`, or `files:<folder>`. */
   place: string;
@@ -40,7 +42,8 @@ type Pending = { request: Request; resolve: (o: Outcome) => void; timer: ReturnT
 export const placeLabel = (place: string) => (place.startsWith("files:") ? `${place.slice(6)}/` : place);
 
 export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
-  let grants: Record<string, string[]> = {};
+  // No prototype, so a plugin id such as `constructor` finds nothing it shouldn't.
+  const grants: Record<string, string[]> = Object.create(null);
   const loaded = store.readJson<unknown>(FILE, {}).then((saved) => {
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
     for (const [plugin, places] of Object.entries(saved)) if (Array.isArray(places)) grants[plugin] = places.filter((p): p is string => typeof p === "string");
@@ -113,9 +116,14 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
       else if (verb === "decline") settle(id, "rejected", trace);
     },
 
-    /** Cancels a plugin's open requests, when it stops. */
+    /** Cancels a plugin's open requests, when it is turned off or removed. */
     cancel(plugin: string) {
       for (const [id, p] of pending) if (p.request.plugin === plugin) settle(id, "cancelled");
+    },
+
+    /** Cancels one instance's open requests, whenever its worker goes (reload, replacement, handover, tab closed). */
+    cancelInstance(instance: string) {
+      for (const [id, p] of pending) if (p.request.instance === instance) settle(id, "cancelled");
     },
 
     grantsFor(plugin: string): string[] {
