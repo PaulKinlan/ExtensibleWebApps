@@ -33,7 +33,7 @@ export type Slot = "app.nav" | "app.main" | "app.side" | "statusbar" | "devtools
 export interface TraceEvent {
   at: number; // ms since kernel start
   trace?: string;
-  kind: "dispatch" | "remote" | "denied" | "lifecycle" | "bridge" | "error" | "note";
+  kind: "dispatch" | "remote" | "call" | "denied" | "lifecycle" | "bridge" | "error" | "note";
   name: string;
   plugin?: string;
   ms?: number;
