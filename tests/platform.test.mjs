@@ -53,6 +53,10 @@ try {
   // Manifests are read before any code runs.
   const refused = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'bad', name: 'Bad', permissions: ['ui'].concat(['network']) };\nexport default () => {};"));
   check("a manifest that isn't a plain literal is refused before running", refused.ok === false && /plain literal/.test(refused.error), refused.error);
+  const decoy = await a.evaluate(() => window.__host.command("install", "// export const manifest = { id: 'decoy', name: 'Decoy', permissions: [] };\nconst x = 1;\nexport const manifest = Object.assign({}, { id: 'decoy', name: 'Decoy', permissions: [] });\nexport default () => {};"));
+  check("a manifest in a comment can't stand in for the real one", decoy.ok === false && /must start with/.test(decoy.error), decoy.error);
+  const suffix = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'suffix', name: 'Suffix', permissions: [] }.valueOf();\nexport default () => {};"));
+  check("anything after the manifest literal is refused", suffix.ok === false && /after the manifest/.test(suffix.error), suffix.error);
   const liar = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'liar', name: 'Liar', permissions: [] };\nmanifest.permissions.push('audio');\nexport default () => {};"));
   await a.waitForFunction(() => window.__host.traces.some((e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"), null, { timeout: 3000 }).catch(() => {});
   check("a plugin whose manifest changes when it runs is stopped", liar.ok && !liar.started && (await traceHas(a, `(e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"`)), JSON.stringify(liar));
@@ -65,6 +69,10 @@ try {
   const net = await a.evaluate(() => Object.fromEntries(window.__host.traces.filter((e) => e.detail?.startsWith("network:")).map((e) => [e.plugin, e.detail])));
   check("a plugin with the network permission can fetch", /status 200/.test(net.fetcher ?? ""), net.fetcher);
   check("a plugin without it is blocked by its worker's CSP", /refused/.test(net.offline ?? ""), net.offline);
+  // offline also tries to start a network-enabled worker of its own.
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "offline" && e.detail?.startsWith("escape:")), null, { timeout: 5000 }).catch(() => {});
+  const escape = await a.evaluate(() => window.__host.traces.filter((e) => e.plugin === "offline" && e.detail?.startsWith("escape:")).map((e) => e.detail).join(", "));
+  check("a plugin can't start a worker of its own", /blocked/.test(escape), escape);
   check("the kernel runs in a shared worker", (await a.textContent("#mode")).includes("shared worker"));
 
   // Editor extensions, unchanged, through the shim.

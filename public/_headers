@@ -1,7 +1,7 @@
 # Plugin workers: no network unless the plugin has the `network` permission,
-# and no scripts other than the plugin's own module. Mirrors vite.config.ts.
+# no scripts other than the plugin's own module, and no workers of its own. Mirrors vite.config.ts.
 /assets/runtime-*
-  Content-Security-Policy: default-src 'none'; script-src 'self' blob:; connect-src 'none'
+  Content-Security-Policy: default-src 'none'; script-src 'self' blob:; worker-src 'none'; connect-src 'none'
 
 /assets/net-runtime-*
-  Content-Security-Policy: default-src 'none'; script-src 'self' blob:; connect-src 'self' https: wss:
+  Content-Security-Policy: default-src 'none'; script-src 'self' blob:; worker-src 'none'; connect-src 'self' https: wss:

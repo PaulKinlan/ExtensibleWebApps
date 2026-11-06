@@ -2,9 +2,10 @@ import { defineConfig, type Plugin } from "vite";
 
 // Plugin workers get their content security policy from the response that
 // serves their script. No plugin may load scripts other than its own module
-// (a blob: URL); only plugins with the `network` permission may connect out.
-export const WORKER_CSP = "default-src 'none'; script-src 'self' blob:; connect-src 'none'";
-export const NETWORK_WORKER_CSP = "default-src 'none'; script-src 'self' blob:; connect-src 'self' https: wss:";
+// (a blob: URL), none may start workers of its own (which would get their own
+// policy), and only plugins with the `network` permission may connect out.
+export const WORKER_CSP = "default-src 'none'; script-src 'self' blob:; worker-src 'none'; connect-src 'none'";
+export const NETWORK_WORKER_CSP = "default-src 'none'; script-src 'self' blob:; worker-src 'none'; connect-src 'self' https: wss:";
 
 function workerPolicy(): Plugin {
   const header = (url = ""): string | undefined => {

@@ -1,8 +1,11 @@
 // Reads a plugin's manifest from its source without running it, so the
 // kernel knows what a plugin asks for before any of its code executes (the
-// Markdown editor does the same). The manifest must be a plain object
-// literal: strings, numbers, booleans, null, arrays and objects, with
-// optional comments and trailing commas. Anything else is refused.
+// Markdown editor does the same). `export const manifest = { ... }` must be
+// the module's first statement, with only comments before it, so a manifest
+// in a comment or a string can't stand in for the real one. Its value must be
+// a plain literal: strings, numbers, booleans, null, arrays and objects, with
+// optional comments and trailing commas, and nothing after it but the end of
+// the statement. Anything else is refused.
 
 import type { Manifest } from "../shared/protocol";
 
@@ -11,9 +14,10 @@ export class ManifestError extends Error {}
 const ID = /^[a-z][a-z0-9-]{0,63}$/;
 
 export function readManifest(source: string): Manifest {
-  const start = /export\s+const\s+manifest\s*=\s*/.exec(source);
-  if (!start) throw new ManifestError("The module has no `export const manifest = { ... }`");
-  const value = new LiteralParser(source, start.index + start[0].length).value();
+  const parser = new LiteralParser(source, 0);
+  parser.declaration();
+  const value = parser.value();
+  parser.statementEnd();
   return validate(value);
 }
 
@@ -62,6 +66,25 @@ class LiteralParser {
         this.i = end + 2;
       } else return;
     }
+  }
+
+  /** `export const manifest =`, as the first statement. */
+  declaration() {
+    this.space();
+    const m = /^export\s+const\s+manifest\s*=/.exec(this.s.slice(this.i, this.i + 200));
+    if (!m) throw new ManifestError("The module must start with `export const manifest = { ... }` (only comments may come before it)");
+    this.i += m[0].length;
+  }
+
+  /** The literal must end the statement: a `;`, the end of the file, or a new line that starts a new statement. */
+  statementEnd() {
+    const before = this.i;
+    this.space();
+    const c = this.s[this.i];
+    if (c === undefined || c === ";") return;
+    const newLine = /[\n\r]/.test(this.s.slice(before, this.i));
+    if (newLine && /[A-Za-z_$]/.test(c) && !/^(in|instanceof)\b/.test(this.s.slice(this.i, this.i + 11))) return;
+    this.fail(`${JSON.stringify(c)} after the manifest`);
   }
 
   value(): unknown {
