@@ -60,7 +60,17 @@ try {
   const liar = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'liar', name: 'Liar', permissions: [] };\nmanifest.permissions.push('audio');\nexport default () => {};"));
   await a.waitForFunction(() => window.__host.traces.some((e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"), null, { timeout: 3000 }).catch(() => {});
   check("a plugin whose manifest changes when it runs is stopped", liar.ok && !liar.started && (await traceHas(a, `(e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"`)), JSON.stringify(liar));
-  const installed = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'late', name: 'Late', permissions: ['ui'] };\nexport default (ctx) => ctx.ui.render('statusbar', 'late', { type: 'text', text: 'late plugin here' });"));
+  // `late` also has a button whose handler makes a call before and after an await.
+  const lateSource = `export const manifest = { id: 'late', name: 'Late', permissions: ['ui'] };
+export default (ctx) => {
+  ctx.ui.render('statusbar', 'late', { type: 'stack', direction: 'row', children: [{ type: 'text', text: 'late plugin here' }, { type: 'button', label: 'Ping twice', action: 'ping' }] });
+  ctx.ui.onEvent(async () => {
+    const here = ctx.traced();
+    await here.call('kernel', 'ping');
+    await here.call('kernel', 'ping');
+  });
+};`;
+  const installed = await a.evaluate((source) => window.__host.command("install", source), lateSource);
   await a.waitForSelector("footer >> text=late plugin here");
   check("a plugin installed at run time starts and renders", installed.ok && installed.started);
 
@@ -104,6 +114,16 @@ try {
   await a.click("text=Play 440 Hz");
   await a.waitForFunction(() => window.__host.audioStats.played > 0, null, { timeout: 5000 });
   check("tone.js plays through an AudioWorklet", true, `context ${await a.evaluate(() => window.__host.audioStats.state)}`);
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "tone" && e.detail === "played 1"), null, { timeout: 5000 });
+  const played = await a.evaluate(() => {
+    const log = window.__host.traces.find((e) => e.plugin === "tone" && e.detail === "played 1");
+    return { trace: log.trace, with: window.__host.traces.filter((e) => log.trace && e.trace === log.trace).map((e) => `${e.kind}:${e.name}`) };
+  });
+  check("a plugin's log after an await keeps the trace of the click it handles", Boolean(played.trace) && played.with.some((x) => x.startsWith("bridge:")), `#${played.trace}: ${played.with.join(", ")}`);
+  await a.click("text=Ping twice");
+  await a.waitForFunction(() => window.__host.traces.filter((e) => e.plugin === "late" && e.name === "kernel.ping").length >= 2, null, { timeout: 5000 });
+  const pings = await a.evaluate(() => window.__host.traces.filter((e) => e.plugin === "late" && e.name === "kernel.ping").map((e) => e.trace));
+  check("a plugin's service call after an await keeps the trace of the click it handles", pings.length === 2 && Boolean(pings[0]) && pings[0] === pings[1], pings.join(", "));
 
   // Drawing: an OffscreenCanvas animated in the plugin's worker.
   await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin?.startsWith("bars@") && /frames drawn: [1-9]/.test(e.detail ?? "")), null, { timeout: 5000 });

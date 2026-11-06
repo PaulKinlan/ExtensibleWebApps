@@ -36,8 +36,8 @@ registerProcessor("tone-sine", class extends AudioWorkletProcessor {
 export default async function (ctx) {
   await ctx.call("audio", "registerProcessor", "tone-sine", PROCESSOR);
   let played = 0;
-  const draw = () =>
-    ctx.ui.render("app.side", "tone", {
+  const draw = (api = ctx) =>
+    api.ui.render("app.side", "tone", {
       type: "stack",
       children: [
         { type: "heading", text: "Tone" },
@@ -47,9 +47,12 @@ export default async function (ctx) {
     });
   ctx.ui.onEvent(async (action) => {
     if (action !== "play") return;
-    await ctx.call("audio", "play", { processor: "tone-sine", ms: 300, options: { frequency: 440 } });
+    // Pinned to this click's trace, so what happens after the await is traced too.
+    const here = ctx.traced();
+    await here.call("audio", "play", { processor: "tone-sine", ms: 300, options: { frequency: 440 } });
     played++;
-    draw();
+    here.log(`played ${played}`);
+    draw(here);
   });
   draw();
 }
