@@ -1,0 +1,97 @@
+// The notes app: a trusted plugin in the kernel worker that draws its UI as
+// declarative views and turns the person's actions into hooks other plugins
+// can listen to. Its events match the Markdown editor's post events, so the
+// editor's extensions run against it through the shim in the sandbox.
+
+import type { Hosts } from "./hosts";
+import type { Note, Store } from "./store";
+import { withTrace } from "./trace";
+
+export function notesApp(ctx: any, store: Store, hosts: Hosts) {
+  let openId: string | undefined;
+  let draft = "";
+  let status = "";
+
+  const snapshot = (unsaved: boolean) => {
+    const note = openId ? store.get(openId) : undefined;
+    return note
+      ? { path: `notes/${note.id}.md`, url: `/notes/${note.id}/`, title: note.title, siteName: "Notes", text: draft, bodyStart: 0, selection: { from: 0, to: 0 }, unsaved }
+      : null;
+  };
+
+  const titleOf = (text: string) => text.split("\n")[0].replace(/^#+\s*/, "").trim().slice(0, 60) || "Untitled";
+
+  const render = () => {
+    hosts.render("notes", "app.nav", "notes:list", {
+      type: "stack",
+      children: [
+        { type: "heading", text: "Notes" },
+        { type: "button", label: "New note", action: "new", primary: true },
+        { type: "list", items: store.list().map((n) => ({ label: n.title, action: `open:${n.id}`, selected: n.id === openId })) },
+      ],
+    }, 10);
+    hosts.render("notes", "app.main", "notes:editor", openId
+      ? {
+          type: "stack",
+          children: [
+            { type: "textarea", name: "text", value: draft, action: "edit", placeholder: "Write something" },
+            { type: "stack", direction: "row", children: [
+              { type: "button", label: "Save", action: "save", primary: true },
+              { type: "text", text: status, tone: status.startsWith("Not saved") ? "error" : "muted" },
+            ] },
+          ],
+        }
+      : { type: "text", text: "Pick a note, or make a new one.", tone: "muted" }, 10);
+  };
+
+  const open = (id: string) => {
+    if (openId) ctx.emit("note:close", null);
+    openId = id;
+    draft = store.get(id)?.text ?? "";
+    status = "";
+    render();
+    ctx.emit("note:open", snapshot(false));
+  };
+
+  const save = async () => {
+    const note = openId ? store.get(openId) : undefined;
+    if (!note) return;
+    const next: Note = { ...note, text: draft, title: titleOf(draft), updated: Date.now() };
+    const result = await store.put(next);
+    status = result.ok ? "Saved" : `Not saved: ${result.reason}`;
+    render();
+    if (result.ok) ctx.emit("note:save", snapshot(false));
+  };
+
+  const handle = async (action: string, value: unknown) => {
+    if (action === "new") {
+      const id = Math.random().toString(36).slice(2, 8);
+      await store.put({ id, title: "Untitled", text: "", updated: Date.now() });
+      return open(id);
+    }
+    if (action.startsWith("open:")) return open(action.slice(5));
+    if (action === "edit") {
+      draft = String(value ?? "");
+      status = "Unsaved changes";
+      ctx.emit("note:change", snapshot(true));
+      return;
+    }
+    if (action === "save") return save();
+  };
+
+  return {
+    async start() {
+      await store.ready;
+      if (!store.list().length) {
+        await store.put({ id: "welcome", title: "Welcome", text: "Welcome\n\nEvery feature you see here is a plugin running in a worker.", updated: Date.now() });
+      }
+      render();
+    },
+    event(action: string, value: unknown, trace: string) {
+      return withTrace(trace, () => handle(action, value));
+    },
+    get openId() {
+      return openId;
+    },
+  };
+}

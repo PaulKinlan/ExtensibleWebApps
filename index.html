@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Extensible Web Apps: spike</title>
+    <link rel="stylesheet" href="/src/host/styles.css" />
+  </head>
+  <body>
+    <header>
+      <strong>Extensible Web Apps</strong>
+      <span id="mode" class="muted"></span>
+    </header>
+    <main>
+      <nav data-slot="app.nav"></nav>
+      <section data-slot="app.main"></section>
+      <aside data-slot="app.side"></aside>
+    </main>
+    <footer data-slot="statusbar"></footer>
+    <details id="devtools" open>
+      <summary>Trace</summary>
+      <div class="row">
+        <button id="bench">Measure hook round trip</button>
+        <button id="reload-test">Reload a plugin 50 times</button>
+        <span id="result" class="muted"></span>
+      </div>
+      <ol id="trace"></ol>
+    </details>
+    <div id="notice" role="status"></div>
+    <script type="module" src="/src/host/main.ts"></script>
+  </body>
+</html>
