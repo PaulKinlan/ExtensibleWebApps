@@ -21,58 +21,94 @@ const settingsHandlers = new Set<(values: Record<string, unknown>) => void>();
 let activeTrace: string | undefined;
 const send = (message: PluginToKernel) => port.postMessage(message);
 
-/** Runs a plugin handler with `trace` as the active trace for its synchronous part. */
-function traced<T>(trace: string | undefined, fn: () => T): T {
+/**
+ * Runs a plugin handler with `trace` as the active trace for its synchronous
+ * part, and with `this` set to an API bound to that trace for the rest.
+ */
+function traced<T>(trace: string | undefined, fn: (api: Api) => T): T {
   const previous = activeTrace;
   activeTrace = trace;
   try {
-    return fn();
+    return fn(trace === undefined ? ctx : api(() => trace));
   } finally {
     activeTrace = previous;
   }
 }
-const log = (text: string, level: "info" | "error" = "info") => send({ t: "log", level, text });
 
-/** The API a sandboxed plugin gets. */
-const ctx = {
-  on(name: string, handler: (...args: any[]) => unknown): () => void {
-    const listener = ++nextListener;
-    handlers.set(listener, handler);
-    send({ t: "on", listener, name });
-    return () => {
-      handlers.delete(listener);
-      send({ t: "off", listener });
-    };
-  },
-  call(service: string, method: string, ...args: unknown[]): Promise<unknown> {
+/**
+ * The API a sandboxed plugin gets. `trace` says which trace its calls carry:
+ * the plugin's own `ctx` uses whatever is active, so a call in the
+ * synchronous part of a handler is traced. Workers have no async context, so
+ * after an `await` nothing is active; `ctx.traced()` (or `this` in a
+ * `function` handler) returns a copy pinned to the trace being handled.
+ */
+interface Api {
+  on(name: string, handler: (...args: any[]) => unknown): () => void;
+  call(service: string, method: string, ...args: unknown[]): Promise<unknown>;
+  ui: {
+    render(slot: Slot, key: string, view: View | null, order?: number): void;
+    onEvent(handler: (action: string, value: unknown) => void): () => void;
+    onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void): void;
+  };
+  /** The plugin's own settings, from the form the shell builds out of its manifest. */
+  settings: {
+    get(): Promise<Record<string, unknown>>;
+    onChange(handler: (values: Record<string, unknown>) => void): () => void;
+  };
+  traced(): Api;
+  log(text: string, level?: "info" | "error"): void;
+}
+
+function api(trace: () => string | undefined): Api {
+  const log = (text: string, level: "info" | "error" = "info") => send({ t: "log", level, text, trace: trace() });
+  const call = (service: string, method: string, ...args: unknown[]): Promise<unknown> => {
     const id = ++nextCall;
     return new Promise((resolve, reject) => {
       calls.set(id, { resolve, reject });
-      send({ t: "call", id, service, method, args, trace: activeTrace });
+      send({ t: "call", id, service, method, args, trace: trace() });
     });
-  },
-  ui: {
-    render(slot: Slot, key: string, view: View | null, order?: number) {
-      send({ t: "render", slot, key, view, order, trace: activeTrace });
+  };
+  return {
+    on(name: string, handler: (...args: any[]) => unknown): () => void {
+      const listener = ++nextListener;
+      handlers.set(listener, handler);
+      send({ t: "on", listener, name });
+      return () => {
+        handlers.delete(listener);
+        send({ t: "off", listener });
+      };
     },
-    onEvent(handler: (action: string, value: unknown) => void) {
-      eventHandlers.add(handler);
-      return () => eventHandlers.delete(handler);
+    call,
+    ui: {
+      render(slot: Slot, key: string, view: View | null, order?: number) {
+        send({ t: "render", slot, key, view, order, trace: trace() });
+      },
+      onEvent(handler: (action: string, value: unknown) => void) {
+        eventHandlers.add(handler);
+        return () => void eventHandlers.delete(handler);
+      },
+      onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void) {
+        canvasHandlers.set(id, handler);
+      },
     },
-    onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void) {
-      canvasHandlers.set(id, handler);
+    settings: {
+      get: () => call("settings", "get") as Promise<Record<string, unknown>>,
+      onChange(handler: (values: Record<string, unknown>) => void) {
+        settingsHandlers.add(handler);
+        return () => void settingsHandlers.delete(handler);
+      },
     },
-  },
-  /** The plugin's own settings, from the form the shell builds out of its manifest. */
-  settings: {
-    get: () => ctx.call("settings", "get") as Promise<Record<string, unknown>>,
-    onChange(handler: (values: Record<string, unknown>) => void) {
-      settingsHandlers.add(handler);
-      return () => settingsHandlers.delete(handler);
+    /** A copy of this API whose calls carry the trace active now, even after an `await`. */
+    traced(): Api {
+      const pinned = trace();
+      return api(() => pinned);
     },
-  },
-  log,
-};
+    log,
+  };
+}
+
+const ctx = api(() => activeTrace);
+const log = ctx.log;
 
 /** The Markdown editor's `editor` API, on top of `ctx`, for the parts these demo notes support. */
 function editorShim() {
@@ -144,14 +180,14 @@ async function receive(message: KernelToPlugin) {
       const handler = handlers.get(message.listener);
       if (message.id === undefined) {
         try {
-          traced(message.trace, () => handler?.(...message.args));
+          traced(message.trace, (bound) => handler?.apply(bound, message.args));
         } catch (error) {
           log(String(error), "error");
         }
         return;
       }
       try {
-        const value = await traced(message.trace, () => handler?.(...message.args));
+        const value = await traced(message.trace, (bound) => handler?.apply(bound, message.args));
         send({ t: "hook:result", id: message.id, ok: true, value });
       } catch (error) {
         send({ t: "hook:result", id: message.id, ok: false, error: String(error) });
@@ -164,7 +200,7 @@ async function receive(message: KernelToPlugin) {
         return;
       }
       if (message.action === "kernel:denied") log(`Denied: ${message.value}`, "error");
-      for (const handler of eventHandlers) traced(message.trace, () => handler(message.action, message.value));
+      for (const handler of eventHandlers) traced(message.trace, (bound) => handler.call(bound, message.action, message.value));
       return;
     case "canvas":
       canvasHandlers.get(message.id)?.(message.canvas);

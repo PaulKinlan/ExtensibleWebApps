@@ -133,6 +133,12 @@ try {
   await a.click("text=Play 880 Hz");
   await a.waitForFunction(() => window.__host.audioStats.played > 0, null, { timeout: 5000 });
   check("tone.js plays through an AudioWorklet", true, `context ${await a.evaluate(() => window.__host.audioStats.state)}`);
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "tone" && e.detail === "played 1"), null, { timeout: 5000 });
+  const played = await a.evaluate(() => {
+    const log = window.__host.traces.find((e) => e.plugin === "tone" && e.detail === "played 1");
+    return { trace: log.trace, with: window.__host.traces.filter((e) => log.trace && e.trace === log.trace).map((e) => `${e.kind}:${e.name}`) };
+  });
+  check("a plugin's call after an await keeps the trace of the click it handles", Boolean(played.trace) && played.with.some((x) => x.startsWith("bridge:")), `#${played.trace}: ${played.with.join(", ")}`);
 
   // Drawing: an OffscreenCanvas animated in the plugin's worker.
   await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin?.startsWith("bars@") && /frames drawn: [1-9]/.test(e.detail ?? "")), null, { timeout: 5000 });

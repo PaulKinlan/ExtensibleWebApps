@@ -50,6 +50,7 @@ settings: {
 | `ctx.ui.onEvent(handler)`, `ctx.ui.onCanvas(id, handler)` | Nothing extra |
 | `ctx.settings.get()`, `ctx.settings.onChange(handler)` | Nothing: a plugin sees only its own settings |
 | `ctx.log(text)` | Nothing |
+| `ctx.traced()` | Nothing: returns a copy of `ctx` whose calls keep the current trace id after an `await` |
 
 Editor-style permissions map onto capabilities: `post:read` is `hook:listen:note:*`, `post:write` is `hook:intercept:data:beforeWrite`.
 
@@ -59,4 +60,14 @@ Every hook is defined with `defineHook(name, { mode, timeoutMs, onFailure })` in
 
 ## Trace ids
 
-Every action from a tab gets a trace id. The kernel passes `{ trace }` as Cordis's `thisArg` on every dispatch, which Cordis hands both to listeners and to the `internal/dispatch` tap, so the id survives awaits inside the kernel. It travels to plugin workers on every hook message, and calls or renders a plugin makes while handling it carry it back. In a plugin, that holds only for the synchronous part of a handler: a call made after an `await` goes out without the id, because workers have no async context to carry it. Fixing that means handing each handler its own traced API, which is planned with the settings and API reference work. The trace panel at the bottom of the page shows the events; `window.__host.traces` has them in the console.
+Every action from a tab gets a trace id. The kernel passes `{ trace }` as Cordis's `thisArg` on every dispatch, which Cordis hands both to listeners and to the `internal/dispatch` tap, so the id survives awaits inside the kernel. It travels to plugin workers on every hook message, and calls or renders a plugin makes while handling it carry it back. In a plugin, `ctx` carries the id only during the synchronous part of a handler, because workers have no async context to carry it past an `await`. For work after an `await`, a handler takes a copy of the API pinned to its trace:
+
+```js
+ctx.ui.onEvent(async (action) => {
+  const here = ctx.traced(); // pinned to this event's trace
+  await here.call("audio", "play", { processor: "tone-sine" });
+  here.log("played"); // still carries the click's trace
+});
+```
+
+A handler written as a `function` also gets the pinned copy as `this`. Logs carry the trace too. The trace panel at the bottom of the page shows the events; `window.__host.traces` has them in the console.
