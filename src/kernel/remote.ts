@@ -254,7 +254,7 @@ export class Remote {
       case "call":
         return this.call(message.id, message.service, message.method, message.args, message.trace);
       case "log":
-        record({ kind: message.level === "error" ? "error" : "note", name: "plugin:log", plugin: this.instance, detail: message.text });
+        record({ kind: message.level === "error" ? "error" : "note", name: "plugin:log", plugin: this.instance, trace: message.trace, detail: message.text });
         return;
     }
   }

@@ -65,7 +65,7 @@ export type PluginToKernel =
   | { t: "hook:result"; id: number; ok: boolean; value?: unknown; error?: string }
   | { t: "render"; slot: Slot; key: string; order?: number; view: View | null; trace?: string }
   | { t: "call"; id: number; service: string; method: string; args: unknown[]; trace?: string }
-  | { t: "log"; level: "info" | "error"; text: string };
+  | { t: "log"; level: "info" | "error"; text: string; trace?: string };
 
 export interface Manifest {
   id: string;
