@@ -23,14 +23,13 @@ The spike checks that the plan's riskiest choices hold up: Cordis as the kernel,
 ## Findings that change the plan
 
 1. **Tabs spawn plugin workers.** Because shared workers can't create workers, the kernel needs a spawner tab and a handover. Plugins restart on handover, so plugin state must live in the kernel's store, not in the plugin's memory.
-2. **Canvases can't cross tabs.** Handing an `OffscreenCanvas` from one tab to a plugin worker that another tab created crashed the renderer. Plugins that draw need `scope: "tab"`, a worker per tab, which the plan already lists for phase 1. For now, only the spawner tab draws.
+2. **Canvases can't cross tabs.** Handing an `OffscreenCanvas` from one tab to a plugin worker that another tab created crashed the renderer. Plugins that draw need `scope: "tab"`, a worker per tab. (Done in phase 1: see [kernel.md](kernel.md).)
 3. **Cordis's `apply` must return nothing.** Cordis awaits whatever `apply` returns, and a `Context` looks like a promise, so `apply: (ctx) => (x = ctx)` hangs the plugin forever.
-4. **Trace ids only follow synchronous paths.** The kernel links a dispatch to the remote answer when they happen in the same turn. Work after an `await` loses the id. Phase 1 needs the id carried explicitly in every message.
+4. **Trace ids only follow synchronous paths.** The kernel links a dispatch to the remote answer when they happen in the same turn. Work after an `await` loses the id. Phase 1 needs the id carried explicitly in every message. (Done in phase 1: the id rides as Cordis's `thisArg`.)
 
 ## Not covered yet
 
-- A content security policy on plugin workers to block network access (needs response headers per worker).
-- Reading the manifest without running the module. The runtime imports the module first and then reports the manifest.
+- ~~A content security policy on plugin workers~~ and ~~reading the manifest without running the module~~: done in phase 1.
 - An approval prompt. Built-in plugins are trusted with what they ask for.
 - Plugins defining their own hooks from a worker, and `waterfall` hooks across workers (the code path exists but no plugin uses it).
 - Plugin storage and settings in the editor shim (they are stubs).

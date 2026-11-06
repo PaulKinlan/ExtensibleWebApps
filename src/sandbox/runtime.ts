@@ -16,7 +16,20 @@ const calls = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error
 const eventHandlers = new Set<(action: string, value: unknown) => void>();
 const canvasHandlers = new Map<string, (canvas: OffscreenCanvas) => void>();
 
+/** The trace id of the hook or event being handled; calls made while handling it carry it. */
+let activeTrace: string | undefined;
 const send = (message: PluginToKernel) => port.postMessage(message);
+
+/** Runs a plugin handler with `trace` as the active trace for its synchronous part. */
+function traced<T>(trace: string | undefined, fn: () => T): T {
+  const previous = activeTrace;
+  activeTrace = trace;
+  try {
+    return fn();
+  } finally {
+    activeTrace = previous;
+  }
+}
 const log = (text: string, level: "info" | "error" = "info") => send({ t: "log", level, text });
 
 /** The API a sandboxed plugin gets. */
@@ -34,12 +47,12 @@ const ctx = {
     const id = ++nextCall;
     return new Promise((resolve, reject) => {
       calls.set(id, { resolve, reject });
-      send({ t: "call", id, service, method, args });
+      send({ t: "call", id, service, method, args, trace: activeTrace });
     });
   },
   ui: {
     render(slot: Slot, key: string, view: View | null, order?: number) {
-      send({ t: "render", slot, key, view, order });
+      send({ t: "render", slot, key, view, order, trace: activeTrace });
     },
     onEvent(handler: (action: string, value: unknown) => void) {
       eventHandlers.add(handler);
@@ -122,14 +135,14 @@ async function receive(message: KernelToPlugin) {
       const handler = handlers.get(message.listener);
       if (message.id === undefined) {
         try {
-          handler?.(...message.args);
+          traced(message.trace, () => handler?.(...message.args));
         } catch (error) {
           log(String(error), "error");
         }
         return;
       }
       try {
-        const value = await handler?.(...message.args);
+        const value = await traced(message.trace, () => handler?.(...message.args));
         send({ t: "hook:result", id: message.id, ok: true, value });
       } catch (error) {
         send({ t: "hook:result", id: message.id, ok: false, error: String(error) });
@@ -138,7 +151,7 @@ async function receive(message: KernelToPlugin) {
     }
     case "event":
       if (message.action === "kernel:denied") log(`Denied: ${message.value}`, "error");
-      for (const handler of eventHandlers) handler(message.action, message.value);
+      for (const handler of eventHandlers) traced(message.trace, () => handler(message.action, message.value));
       return;
     case "canvas":
       canvasHandlers.get(message.id)?.(message.canvas);

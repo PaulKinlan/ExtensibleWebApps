@@ -7,6 +7,7 @@ export const manifest = {
   description: "Bars for the length of each note, drawn on a canvas in a worker.",
   version: "1.0.0",
   permissions: ["ui", "hook:listen:data:changed", "data:read:notes"],
+  scope: "tab",
   order: 30,
 };
 

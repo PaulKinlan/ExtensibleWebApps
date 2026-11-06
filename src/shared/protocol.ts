@@ -43,7 +43,7 @@ export type HostToKernel =
 export type KernelToHost =
   | { t: "welcome"; tab: string; spawner: boolean; mode: "shared" | "dedicated" }
   | { t: "render"; slot: Slot; key: string; owner: string; order: number; view: View | null }
-  | { t: "spawn"; plugin: string; source: string }
+  | { t: "spawn"; plugin: string; source: string; network: boolean }
   | { t: "terminate"; plugin: string }
   | { t: "bridge"; id: number; service: string; method: string; args: unknown[] }
   | { t: "trace"; events: TraceEvent[] }
@@ -63,7 +63,7 @@ export type PluginToKernel =
   | { t: "on"; listener: number; name: string }
   | { t: "off"; listener: number }
   | { t: "hook:result"; id: number; ok: boolean; value?: unknown; error?: string }
-  | { t: "render"; slot: Slot; key: string; order?: number; view: View | null }
+  | { t: "render"; slot: Slot; key: string; order?: number; view: View | null; trace?: string }
   | { t: "call"; id: number; service: string; method: string; args: unknown[]; trace?: string }
   | { t: "log"; level: "info" | "error"; text: string };
 
@@ -75,4 +75,13 @@ export interface Manifest {
   /** New-style capabilities (`hook:listen:data:changed`, `ui`, `audio`, ...) or editor-style permissions (`post:read`, `ui`). */
   permissions: string[];
   order?: number;
+  /** "shared" (default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or hold view state. */
+  scope?: "shared" | "tab";
+  /** Settings the person can change; the shell builds the form from these. */
+  settings?: Record<string, { type: "string" | "number" | "boolean"; title?: string; description?: string; default?: unknown; enum?: string[] }>;
+}
+
+/** Carried as Cordis's `thisArg` on every kernel dispatch, so listeners in any worker know which action they serve. */
+export interface Dispatch {
+  trace?: string;
 }
