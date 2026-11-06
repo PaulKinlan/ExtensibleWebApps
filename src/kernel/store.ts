@@ -84,8 +84,43 @@ export class Store extends Service {
   }
 
   async writeJson(name: string, value: unknown): Promise<void> {
+    await this.writeText(name, JSON.stringify(value, null, 2));
+  }
+
+  /** Reads a text file at a `/`-separated path in the data folder, or undefined if there is none. Callers check the path. */
+  async readText(path: string): Promise<string | undefined> {
     await this.ready;
-    await write(await this.dir!.getFileHandle(name, { create: true }), JSON.stringify(value, null, 2));
+    try {
+      const { folder, name } = await this.locate(path, false);
+      return await (await (await folder.getFileHandle(name)).getFile()).text();
+    } catch {
+      return undefined;
+    }
+  }
+
+  /**
+   * Writes a text file at a `/`-separated path in the data folder, creating
+   * folders on the way. Writes run one at a time, in the order they were
+   * asked for, so an older write never lands after a newer one.
+   */
+  writeText(path: string, text: string): Promise<void> {
+    const run = this.writes.then(async () => {
+      await this.ready;
+      const { folder, name } = await this.locate(path, true);
+      await write(await folder.getFileHandle(name, { create: true }), text);
+    });
+    this.writes = run.catch(() => {});
+    return run;
+  }
+
+  private writes: Promise<void> = Promise.resolve();
+
+  private async locate(path: string, create: boolean): Promise<{ folder: FileSystemDirectoryHandle; name: string }> {
+    const parts = path.split("/");
+    const name = parts.pop()!;
+    let folder = this.dir!;
+    for (const part of parts) folder = await folder.getDirectoryHandle(part, { create });
+    return { folder, name };
   }
 
   /** The sources of the plugins kept in the data folder. */

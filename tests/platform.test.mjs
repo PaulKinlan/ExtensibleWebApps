@@ -47,8 +47,8 @@ const status = (page) => page.textContent("footer");
 try {
   // ---- One tab ----
   const a = await openTab();
-  await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "plugin:ready").length >= 9, null, { timeout: 10000 });
-  check("all nine sandboxed plugins start in their own workers", (await a.evaluate(() => window.__host.workers.size)) === 9);
+  await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "plugin:ready").length >= 10, null, { timeout: 10000 });
+  check("all ten sandboxed plugins start in their own workers", (await a.evaluate(() => window.__host.workers.size)) === 10);
 
   // Manifests are read before any code runs.
   const refused = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'bad', name: 'Bad', permissions: ['ui'].concat(['network']) };\nexport default () => {};"));
@@ -181,6 +181,83 @@ export default (ctx) => {
   });
   check("the trace id survives the awaits between a write's check and its change event", afterAwait.includes("dispatch:data:beforeWrite") && afterAwait.includes("dispatch:data:changed") && afterAwait.includes("dispatch:note:save"), afterAwait.join(", "));
 
+  // Change review: a plugin's write outside its own data shows a diff first.
+  const messy = "Hello there   \n\n\n\nOne two three four five six seven eight nine ten.";
+  const tidied = "Hello there\n\nOne two three four five six seven eight nine ten.";
+  const card = 'main [data-key^="review:"]';
+  const textarea = () => a.inputValue("textarea");
+  const saveText = async (text) => {
+    await a.fill("textarea", text);
+    await a.waitForTimeout(400);
+    await a.click("main >> text=Save");
+    await a.waitForSelector("main >> text=Saved");
+  };
+  await saveText(messy);
+  await a.click("text=Tidy this note");
+  await a.waitForSelector(card);
+  const shown = await a.$eval(card, (el) => ({ text: el.textContent, del: el.querySelectorAll("pre.diff .del").length, add: el.querySelectorAll("pre.diff .add").length }));
+  check("a plugin's write to a note shows the person a diff and a reason first", shown.text.includes("Tidy wants to change") && shown.text.includes("Reason: Trim trailing spaces") && shown.del > 0 && shown.add > 0, `${shown.del} removed, ${shown.add} added`);
+  check("nothing changes while the review is open", (await textarea()) === messy);
+  await a.click(`${card} >> text=Decline`);
+  await a.waitForSelector("aside >> text=The person declined the change");
+  check("declining leaves the note as it was", (await textarea()) === messy && !(await a.$(card)));
+  await a.click("text=Tidy this note");
+  await a.waitForSelector(card);
+  await a.click(`${card} >> text=Accept`);
+  await a.waitForFunction((t) => document.querySelector("textarea").value === t, tidied, { timeout: 5000 });
+  check("accepting applies the change, and the notes app shows it", (await a.textContent("main")).includes("Changed by a plugin"));
+
+  await saveText(messy);
+  await a.click("text=Tidy this note");
+  await a.waitForSelector(card);
+  await a.click(`${card} >> text=Always allow in notes`);
+  await a.waitForFunction((t) => document.querySelector("textarea").value === t, tidied, { timeout: 5000 });
+  await saveText(messy);
+  const asked = await a.evaluate(() => window.__host.traces.filter((e) => e.name === "review:asked").length);
+  await a.click("text=Tidy this note");
+  await a.waitForFunction((t) => document.querySelector("textarea").value === t, tidied, { timeout: 5000 });
+  const askedAfter = await a.evaluate(() => window.__host.traces.filter((e) => e.name === "review:asked").length);
+  check("“always allow” is remembered, so the next change goes through without asking", askedAfter === asked && !(await a.$(card)));
+  await a.waitForSelector('aside [data-key="plugins:tidy"] >> text=Changes notes without asking');
+  await a.click('aside [data-key="plugins:tidy"] >> text=Forget');
+  await a.waitForFunction(() => !document.querySelector('aside [data-key="plugins:tidy"]').textContent.includes("without asking"));
+  check("the plugins panel lists the grant, and forgetting it takes it away", true);
+
+  await a.click("text=Export as Markdown");
+  await a.waitForSelector(`${card} >> text=exports/hello-there.md`);
+  await a.click(`${card} >> text=Accept`);
+  await a.waitForSelector("aside >> text=Exported to exports/hello-there.md");
+  const exported = await a.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    const file = await (await (await root.getDirectoryHandle("exports")).getFileHandle("hello-there.md")).getFile();
+    return file.text();
+  });
+  check("a reviewed file write lands in the data folder", exported === tidied);
+  check("a plugin's own storage needs no review", (await a.textContent('aside [data-key="tidy:tidy"]')).includes("Tidied 3 · exported 1"));
+
+  // Path checks: sneaky may write files anywhere (files:*) but not into the platform's folders, outside the data folder, or hidden files.
+  const refusedPaths = await a.evaluate(() => window.__host.traces.filter((e) => e.kind === "denied" && e.name === "files:path" && e.plugin === "sneaky").map((e) => e.detail));
+  const evil = await a.evaluate(async () => {
+    const root = await navigator.storage.getDirectory();
+    try {
+      await (await root.getDirectoryHandle("plugins")).getFileHandle("evil.js");
+      return true;
+    } catch {
+      return false;
+    }
+  });
+  // sneaky tries once each time it starts, and the panel test turned it off and on again.
+  const distinct = [...new Set(refusedPaths)];
+  check("path checks refuse platform folders, .. and hidden files, whatever the capability", distinct.length === 3 && !evil, distinct.join("; "));
+
+  const changes = await a.evaluate(() => window.__host.command("changes"));
+  const kinds = changes.map((c) => `${c.kind}${c.outcome ? `:${c.outcome}` : ""}`);
+  check(
+    "the change log records installs, settings, grants and every reviewed write",
+    ["install", "settings", "write:rejected", "write:allowed-once", "grant", "write:allowed-always", "write:granted", "revoke"].every((k) => kinds.includes(k)),
+    [...new Set(kinds)].join(", "),
+  );
+
   // Measurements.
   const bench = await a.evaluate(() => window.__host.command("bench", 500));
   measurements.hookRoundTrip = bench;
@@ -206,7 +283,7 @@ export default (ctx) => {
 
   // Hand over: close the spawner tab; the second tab starts the plugins again.
   await a.close({ runBeforeUnload: true });
-  await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 10, null, { timeout: 10000 });
+  await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 11, null, { timeout: 10000 });
   check("closing the spawner tab moves the plugin workers to the other tab", true);
   await b.click("nav >> text=Hello there");
   await b.waitForFunction(() => /\d+ words/.test(document.querySelector("footer").textContent), null, { timeout: 5000 });
@@ -229,7 +306,7 @@ export default (ctx) => {
   const c = await isolated.newPage();
   c.on("pageerror", (e) => errors.push(e.message));
   await c.goto(`${URL}?kernel=dedicated`);
-  await c.waitForFunction(() => window.__host && window.__host.workers.size === 9, null, { timeout: 10000 });
+  await c.waitForFunction(() => window.__host && window.__host.workers.size === 10, null, { timeout: 10000 });
   check("the kernel also runs in a dedicated worker", (await c.textContent("#mode")).includes("dedicated worker"));
   await isolated.close();
 

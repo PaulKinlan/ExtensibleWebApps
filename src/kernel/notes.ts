@@ -79,6 +79,16 @@ export function notesApp(ctx: any, store: Store, hosts: Hosts) {
     if (action === "save") return save(d);
   };
 
+  // A note can also change from elsewhere: a plugin's reviewed write. Show
+  // it, unless the person has unsaved edits of their own.
+  ctx.on("data:changed", (change: { id: string; after: Note }) => {
+    if (change.id === openId && status !== "Unsaved changes" && draft !== change.after.text) {
+      draft = change.after.text;
+      status = "Changed by a plugin";
+    }
+    render();
+  });
+
   return {
     async start() {
       await store.ready;

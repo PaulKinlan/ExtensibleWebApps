@@ -85,6 +85,17 @@ function element(view: View, owner: string): HTMLElement {
       };
       return el;
     }
+    case "diff": {
+      const el = document.createElement("pre");
+      el.className = "diff";
+      for (const line of view.lines) {
+        const row = document.createElement("span");
+        row.className = line.op;
+        row.textContent = `${line.op === "add" ? "+" : line.op === "del" ? "−" : " "} ${line.text}\n`;
+        el.append(row);
+      }
+      return el;
+    }
     case "field": {
       const label = document.createElement("label");
       label.className = `field ${view.kind}`;

@@ -13,7 +13,7 @@ export class ManifestError extends Error {}
 
 const ID = /^[a-z][a-z0-9-]{0,63}$/;
 /** Owners of the kernel's own views and services; a plugin with one of these ids could pass for them. */
-const RESERVED = new Set(["kernel", "host", "notes", "plugins", "store", "settings", "audio"]);
+const RESERVED = new Set(["kernel", "host", "notes", "plugins", "review", "store", "settings", "storage", "files", "audio"]);
 
 export function readManifest(source: string): Manifest {
   const parser = new LiteralParser(source, 0);

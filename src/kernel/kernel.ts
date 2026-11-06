@@ -9,6 +9,9 @@ import { Context } from "cordis";
 import { defineHook, hooks } from "./hooks";
 import { Hosts } from "./hosts";
 import { catalog } from "./catalog";
+import { changeLog } from "./changes";
+import { checkPath, PathError } from "./paths";
+import { allowed, reviews as makeReviews } from "./review";
 import { notesApp } from "./notes";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { Store } from "./store";
@@ -23,6 +26,7 @@ import pinger from "../../plugins/pinger.js?raw";
 import sneaky from "../../plugins/sneaky.js?raw";
 import fetcher from "../../plugins/fetcher.js?raw";
 import offline from "../../plugins/offline.js?raw";
+import tidy from "../../plugins/tidy.js?raw";
 
 declare const SharedWorkerGlobalScope: { new (): unknown } | undefined;
 const shared = typeof SharedWorkerGlobalScope !== "undefined" && self instanceof SharedWorkerGlobalScope;
@@ -56,6 +60,28 @@ if (shared) {
 const store = new Store(root);
 
 const notes = notesApp(root, store, hosts);
+const log = changeLog(store);
+const reviews = makeReviews(store, hosts, log);
+const base = (instance: string) => instance.split("@")[0];
+const titleOf = (text: string) => text.split("\n")[0].replace(/^#+\s*/, "").trim().slice(0, 60) || "Untitled";
+
+/** Asks the person to review a write by `instance`; throws unless they allow it. */
+async function reviewed(instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: { trace?: string }) {
+  const id = base(instance);
+  const outcome = await reviews.ask(
+    { plugin: id, name: remote.installed.get(id)?.manifest.name ?? id, place, target, before, after, reason: String(reason ?? "").slice(0, 300) },
+    dispatch,
+  );
+  if (!allowed(outcome)) throw new Error(outcome === "rejected" ? "The person declined the change" : "Nobody answered the review, so nothing changed");
+  return outcome;
+}
+
+/** Each plugin's own data: `plugin-data/<id>.json`. No review, since it is the plugin's own. */
+const ownData = new Map<string, Promise<Record<string, unknown>>>();
+const dataOf = (id: string) => {
+  if (!ownData.has(id)) ownData.set(id, store.readJson<Record<string, unknown>>(`plugin-data/${id}.json`, {}).then((v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {})));
+  return ownData.get(id)!;
+};
 
 const services: Record<string, ServiceProvider> = {
   audio: {
@@ -64,9 +90,58 @@ const services: Record<string, ServiceProvider> = {
   },
   store: {
     capability: (method) => (method === "list" ? "data:read:notes" : "data:write:notes"),
-    call: (_plugin, method) => {
+    /** `put({ id?, text }, reason)`: notes belong to the notes app, so a plugin's write is reviewed first. */
+    call: async (plugin, method, args, dispatch) => {
       if (method === "list") return store.list();
-      throw new Error(`store.${method} is not available to plugins yet`);
+      if (method !== "put") throw new Error(`store.${method} is not a method`);
+      const [input, reason] = args as [{ id?: unknown; text?: unknown }, unknown];
+      if (!input || typeof input.text !== "string") throw new Error("store.put takes { id?, text }");
+      const id = typeof input.id === "string" && /^[\w-]{1,64}$/.test(input.id) ? input.id : Math.random().toString(36).slice(2, 8);
+      const before = store.get(id);
+      const title = titleOf(input.text);
+      const outcome = await reviewed(plugin, "notes", `the note “${before?.title ?? title}”`, before?.text ?? "", input.text, reason, dispatch);
+      const result = await store.put({ id, title, text: input.text, updated: Date.now() }, dispatch);
+      if (!result.ok) throw new Error(`Not saved: ${result.reason}`);
+      return { ok: true, id, outcome };
+    },
+  },
+  files: {
+    /** Each folder is its own capability: `files:exports` lets a plugin use `exports/...`. */
+    capability: (_method, args) => `files:${String(args[0] ?? "").split("/")[0]}`,
+    call: async (plugin, method, args, dispatch) => {
+      let path: string;
+      try {
+        path = checkPath(args[0]).join("/");
+      } catch (error) {
+        if (error instanceof PathError) record({ kind: "denied", name: "files:path", plugin, trace: dispatch.trace, detail: error.message });
+        throw error;
+      }
+      if (method === "read") return (await store.readText(path)) ?? null;
+      if (method !== "write") throw new Error(`files.${method} is not a method`);
+      const text = args[1];
+      if (typeof text !== "string") throw new Error("files.write takes (path, text, reason)");
+      if (text.length > 5_000_000) throw new Error("The file is too large");
+      const before = (await store.readText(path)) ?? "";
+      if (before === text) return { ok: true, unchanged: true };
+      const outcome = await reviewed(plugin, `files:${path.split("/")[0]}`, path, before, text, args[2], dispatch);
+      await store.writeText(path, text);
+      return { ok: true, path, outcome };
+    },
+  },
+  storage: {
+    capability: () => undefined,
+    call: async (plugin, method, args) => {
+      const id = base(plugin);
+      const data = await dataOf(id);
+      const key = String(args[0] ?? "");
+      if (method === "get") return data[key] ?? null;
+      if (method !== "set") throw new Error(`storage.${method} is not a method`);
+      if (args[1] === undefined || args[1] === null) delete data[key];
+      else data[key] = JSON.parse(JSON.stringify(args[1]));
+      const text = JSON.stringify(data);
+      if (text.length > 1_000_000) throw new Error("A plugin's own storage is limited to 1 MB");
+      await store.writeText(`plugin-data/${id}.json`, text);
+      return true;
     },
   },
   kernel: {
@@ -80,10 +155,10 @@ const services: Record<string, ServiceProvider> = {
 };
 
 const remote = new RemotePlugins(root, hosts, services);
-const plugins = catalog(remote, store, hosts);
+const plugins = catalog(remote, store, hosts, log, reviews);
 services.settings = plugins.service;
 
-const BUILT_IN = [wordCount, editTimes, noShouting, tone, bars, pinger, sneaky, fetcher, offline];
+const BUILT_IN = [wordCount, editTimes, noShouting, tone, bars, tidy, pinger, sneaky, fetcher, offline];
 
 let started = false;
 let loaded = false;
@@ -114,6 +189,7 @@ hosts.onMessage = async (host, message) => {
   switch (message.t) {
     case "event":
       if (message.owner === "notes") return void notes.event(message.action, message.value, message.trace);
+      if (message.owner === "review") return reviews.event(message.action, message.trace);
       if (message.owner === "plugins") return void plugins.event(message.action, message.value, message.trace);
       return remote.deliver(message.owner, { t: "event", action: message.action, value: message.value, trace: message.trace });
     case "spawned":
@@ -134,6 +210,7 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "install") return plugins.install(String(arg));
   if (name === "uninstall") return plugins.remove(String(arg));
   if (name === "trace") return recent();
+  if (name === "changes") return log.list();
   return undefined;
 }
 

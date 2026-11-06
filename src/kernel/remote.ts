@@ -24,7 +24,7 @@ import { record } from "./trace";
 
 export interface ServiceProvider {
   /** Capability a plugin needs to call this method. */
-  capability(method: string): string | undefined;
+  capability(method: string, args: unknown[]): string | undefined;
   call(plugin: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown> | unknown;
 }
 
@@ -361,7 +361,7 @@ export class Remote {
     const provider = this.manager.services[service];
     const reply = (ok: boolean, value?: unknown, error?: string) => this.post({ t: "result", id, ok, value, error });
     if (!provider) return reply(false, undefined, `No service named ${service}`);
-    const needed = provider.capability(method);
+    const needed = provider.capability(method, args);
     if (needed && !check(this.instance, this.caps, needed)) return reply(false, undefined, `Missing capability ${needed}`);
     const started = performance.now();
     try {
