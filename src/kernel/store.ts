@@ -113,8 +113,9 @@ export class Store extends Service {
     await this.ready;
     try {
       await (await this.dir!.getDirectoryHandle(PLUGINS)).removeEntry(`${id}.js`);
-    } catch {
-      // Already gone.
+    } catch (error) {
+      // Already gone is fine; anything else is reported.
+      if ((error as DOMException)?.name !== "NotFoundError") throw error;
     }
   }
 

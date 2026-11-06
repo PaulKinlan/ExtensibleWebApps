@@ -37,26 +37,58 @@ interface Saved {
   settings: Record<string, Values>;
 }
 
+/** The saved state, or empty state for anything that isn't the right shape. */
+function valid(value: unknown): Saved {
+  const v = (value && typeof value === "object" ? value : {}) as Partial<Saved>;
+  const off = Array.isArray(v.off) ? v.off.filter((x): x is string => typeof x === "string") : [];
+  const settings: Record<string, Values> = {};
+  if (v.settings && typeof v.settings === "object" && !Array.isArray(v.settings)) {
+    for (const [id, values] of Object.entries(v.settings)) if (values && typeof values === "object" && !Array.isArray(values)) settings[id] = values as Values;
+  }
+  return { off, settings };
+}
+
 export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
   let saved: Saved = { off: [], settings: {} };
   let loaded = false;
   const errors = new Map<string, string>();
 
-  const persist = () => store.writeJson(FILE, saved);
+  // Every write to the data folder goes through one queue, in order, so an
+  // older write can't land after a newer one. Failures are traced, not lost.
+  let queue: Promise<void> = Promise.resolve();
+  const enqueue = (what: string, task: () => Promise<void>): Promise<void> => {
+    const run = queue.then(task);
+    queue = run.catch((error) => record({ kind: "error", name: "plugins:write-failed", detail: `${what}: ${error instanceof Error ? error.message : error}` }));
+    return run;
+  };
+  const persist = () => {
+    const snapshot = JSON.parse(JSON.stringify(saved)) as Saved;
+    return enqueue(FILE, () => store.writeJson(FILE, snapshot));
+  };
 
-  /** A plugin's settings: its saved values over the manifest's defaults. */
+  /**
+   * A plugin's settings: its saved values over the manifest's defaults. Both
+   * are checked against the current manifest, since a replacement plugin may
+   * have changed a setting's type or choices; a value that no longer fits
+   * falls back to the default, then to the type's empty value.
+   */
   const settingsFor = (id: string): Values => {
-    const spec = remote.installed.get(id)?.manifest.settings ?? {};
+    const manifest = remote.installed.get(id)?.manifest;
     const values: Values = {};
-    for (const [key, s] of Object.entries(spec)) {
-      const value = saved.settings[id]?.[key] ?? s.default ?? (s.type === "boolean" ? false : s.type === "number" ? 0 : (s.enum?.[0] ?? ""));
-      values[key] = value as string | number | boolean;
+    for (const [key, s] of Object.entries(manifest?.settings ?? {})) {
+      const empty = s.type === "boolean" ? false : s.type === "number" ? 0 : (s.enum?.[0] ?? "");
+      const fits = (value: unknown) => {
+        if (value === undefined) return undefined;
+        const result = coerce(manifest!, key, value);
+        return "value" in result && (s.type !== "boolean" || typeof value === "boolean") ? result.value : undefined;
+      };
+      values[key] = fits(saved.settings[id]?.[key]) ?? fits(s.default) ?? empty;
     }
     return values;
   };
 
   /** Checks a value against the manifest; returns the value to keep, or an error. */
-  const coerce = (manifest: Manifest, key: string, value: unknown): { value: string | number | boolean } | { error: string } => {
+  function coerce(manifest: Manifest, key: string, value: unknown): { value: string | number | boolean } | { error: string } {
     const spec = manifest.settings?.[key];
     if (!spec) return { error: `${manifest.id} has no setting ${key}` };
     if (spec.type === "boolean") return typeof value === "boolean" ? { value } : { error: `${key} must be on or off` };
@@ -67,7 +99,7 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
     const text = String(value ?? "");
     if (spec.enum && !spec.enum.includes(text)) return { error: `${key} must be one of ${spec.enum.join(", ")}` };
     return { value: text.slice(0, 2000) };
-  };
+  }
 
   const view = (id: string): View | null => {
     const plugin = remote.installed.get(id);
@@ -121,13 +153,13 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
     if (change === "uninstall") {
       hosts.render("plugins", "app.side", `plugins:${id}`, null, ORDER + 1);
       // A plugin that leaves (removed, or stopped for lying about its manifest) leaves the data folder too.
-      void store.removePlugin(id);
+      void enqueue(`remove ${id}`, () => store.removePlugin(id)).catch(() => {});
       return;
     }
     if (loaded && (change === "enable" || change === "disable")) {
       saved.off = saved.off.filter((x) => x !== id);
       if (change === "disable") saved.off.push(id);
-      void persist();
+      void persist().catch(() => {});
     }
     draw(id);
   };
@@ -136,17 +168,28 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
   const install = async (source: string) => {
     const result = await remote.install(source, { origin: "data" });
     // Saved only if it is still installed: one stopped for changing its manifest is not kept.
-    if (result.ok && remote.installed.get(result.id)?.origin === "data") await store.savePlugin(result.id, source);
+    if (result.ok && remote.installed.get(result.id)?.origin === "data") {
+      try {
+        await enqueue(`save ${result.id}`, () => store.savePlugin(result.id, source));
+      } catch (error) {
+        return { ...result, error: `Installed, but not kept with the data: ${error instanceof Error ? error.message : error}` };
+      }
+    }
     return result;
   };
 
-  const remove = (id: string) => {
+  /** Removes a plugin kept with the data. Resolves once its file is gone. */
+  const remove = async (id: string): Promise<boolean> => {
     if (remote.installed.get(id)?.origin !== "data") return false;
-    remote.uninstall(id);
+    remote.uninstall(id); // queues the file's removal (see onChange)
     delete saved.settings[id];
     saved.off = saved.off.filter((x) => x !== id);
-    void persist();
-    return true;
+    try {
+      await persist();
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const set = (id: string, key: string, value: unknown, d: Dispatch) => {
@@ -159,7 +202,7 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
     } else {
       errors.delete(id);
       saved.settings[id] = { ...saved.settings[id], [key]: result.value };
-      void persist();
+      void persist().catch(() => {});
       record({ kind: "note", name: "settings:changed", plugin: id, trace: d.trace, detail: `${key} = ${JSON.stringify(result.value)}` });
       const values = settingsFor(id);
       for (const instance of remote.instances(id)) remote.deliver(instance, { t: "event", action: "settings:changed", value: values, trace: d.trace });
@@ -181,9 +224,9 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
     remove,
     /** Installs the built-in plugins and the ones in the data folder, then draws the panel. */
     async load(builtIn: string[]) {
-      saved = await store.readJson<Saved>(FILE, { off: [], settings: {} });
-      saved.off ??= [];
-      saved.settings ??= {};
+      saved = valid(await store.readJson<unknown>(FILE, null));
+      // From here on, turning a plugin on or off is saved, even while others are still starting.
+      loaded = true;
       const stored = await store.pluginSources();
       const off = new Set(saved.off);
       const storedIds = new Set(stored.map(idOf));
@@ -193,15 +236,15 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
         ...builtIn.filter((source) => !storedIds.has(idOf(source))).map((source) => remote.install(source, { origin: "built-in", enabled: !off.has(idOf(source)) })),
         ...stored.map((source) => remote.install(source, { origin: "data", enabled: !off.has(idOf(source)) })),
       ]);
-      loaded = true;
       record({ kind: "lifecycle", name: "plugins:loaded", detail: `${builtIn.length} built in, ${stored.length} with the data, ${off.size} off` });
     },
     event(action: string, value: unknown, trace: string) {
       const d = { trace };
-      const [verb, id, key] = action.split(":");
+      // `set:<id>:<key>`: ids have no colons, but setting keys may.
+      const [verb, id] = action.split(":", 2);
       if (verb === "toggle") return void remote.setEnabled(id, !remote.installed.get(id)?.enabled);
       if (verb === "remove") return void remove(id);
-      if (verb === "set" && key) return set(id, key, value, d);
+      if (verb === "set") return set(id, action.slice(verb.length + id.length + 2), value, d);
     },
   };
 }

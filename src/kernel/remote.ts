@@ -116,7 +116,13 @@ export class RemotePlugins {
   attach(instance: string, host: Host, port: MessagePort): void {
     const id = instance.split("@")[0];
     const plugin = this.installed.get(id);
-    if (!plugin) return port.close();
+    if (!plugin?.enabled) {
+      // Removed or turned off while its worker was starting: don't keep it.
+      port.close();
+      this.hosts.send(host, { t: "terminate", plugin: instance });
+      this.settle(instance, false);
+      return;
+    }
     this.live.get(instance)?.dispose();
     this.live.set(instance, new Remote(instance, plugin, host, port, this));
   }

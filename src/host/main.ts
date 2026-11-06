@@ -150,13 +150,15 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
   const el = document.createElement("div");
   el.dataset.key = key;
   el.append(element(view, owner));
-  // Keep the text field the person is typing in.
-  const focused = old?.el.querySelector("textarea");
-  if (focused && document.activeElement === focused) {
-    const replacement = el.querySelector(`textarea[name="${focused.name}"]`);
-    replacement?.replaceWith(focused);
-  }
+  // Keep the text field the person is typing in, and keep focus on any other
+  // named control they were on, so keyboard use carries on after a redraw.
+  const active = document.activeElement as (HTMLElement & { name?: string }) | null;
+  const hadFocus = old && active && old.el.contains(active) && typeof active.name === "string" ? active : undefined;
+  const sameName = (root: HTMLElement) =>
+    hadFocus ? [...root.querySelectorAll<HTMLElement & { name: string }>(hadFocus.tagName)].find((x) => x.name === hadFocus.name) : undefined;
+  if (hadFocus instanceof HTMLTextAreaElement) sameName(el)?.replaceWith(hadFocus);
   if (old) old.el.replaceWith(el);
+  if (hadFocus && !(hadFocus instanceof HTMLTextAreaElement)) sameName(el)?.focus();
   entries.set(key, { owner, order, el });
   if (!old) {
     const sorted = [...entries.values()].sort((a, b) => a.order - b.order);

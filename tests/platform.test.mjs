@@ -61,7 +61,7 @@ try {
   await a.waitForFunction(() => window.__host.traces.some((e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"), null, { timeout: 3000 }).catch(() => {});
   check("a plugin whose manifest changes when it runs is stopped", liar.ok && !liar.started && (await traceHas(a, `(e) => e.name === "plugin:manifest-changed" && e.plugin === "liar"`)), JSON.stringify(liar));
   // `late` also has a button whose handler makes a call before and after an await.
-  const lateSource = `export const manifest = { id: 'late', name: 'Late', permissions: ['ui'] };
+  const lateSource = `export const manifest = { id: 'late', name: 'Late', permissions: ['ui'], settings: { "mode:loud": { type: "boolean", title: "Loud" } } };
 export default (ctx) => {
   ctx.ui.render('statusbar', 'late', { type: 'stack', direction: 'row', children: [{ type: 'text', text: 'late plugin here' }, { type: 'button', label: 'Ping twice', action: 'ping' }] });
   ctx.ui.onEvent(async () => {
@@ -139,6 +139,11 @@ export default (ctx) => {
   await a.selectOption(`${panel("tone")} select[name=wave]`, "square");
   await a.waitForFunction(() => window.__host.traces.some((e) => e.name === "settings:changed" && e.detail === 'wave = "square"'));
   check("a select field takes its options from the manifest's enum", (await a.$$eval(`${panel("tone")} select[name=wave] option`, (o) => o.map((x) => x.value))).join() === "sine,square");
+  check("focus stays on the field after the panel redraws", await a.evaluate(() => document.activeElement?.getAttribute("name") === "wave"));
+  await a.check(`${panel("late")} input[name="mode:loud"]`);
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "late" && e.name === "settings:changed" && e.detail === "mode:loud = true"), null, { timeout: 5000 }).catch(() => {});
+  const colon = await a.evaluate(() => window.__host.traces.filter((e) => e.plugin === "late" && e.name.startsWith("settings:")).map((e) => `${e.name} ${e.detail}`).join("; "));
+  check("a setting whose key has a colon saves", /settings:changed mode:loud = true/.test(colon), colon);
 
   await a.click("text=Play 880 Hz");
   await a.waitForFunction(() => window.__host.audioStats.played > 0, null, { timeout: 5000 });

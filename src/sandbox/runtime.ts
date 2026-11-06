@@ -196,7 +196,7 @@ async function receive(message: KernelToPlugin) {
     }
     case "event":
       if (message.action === "settings:changed") {
-        for (const handler of settingsHandlers) traced(message.trace, () => handler(message.value as Record<string, unknown>));
+        for (const handler of settingsHandlers) traced(message.trace, (bound) => handler.call(bound, message.value as Record<string, unknown>));
         return;
       }
       if (message.action === "kernel:denied") log(`Denied: ${message.value}`, "error");
