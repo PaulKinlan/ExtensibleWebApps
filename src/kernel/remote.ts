@@ -326,10 +326,14 @@ export class Remote {
     if (!provider) return reply(false, undefined, `No service named ${service}`);
     const needed = provider.capability(method);
     if (needed && !check(this.instance, this.caps, needed)) return reply(false, undefined, `Missing capability ${needed}`);
+    const started = performance.now();
     try {
       reply(true, await provider.call(this.instance, method, args, { trace }));
+      record({ kind: "call", name: `${service}.${method}`, plugin: this.instance, trace, ms: ms(started) });
     } catch (error) {
-      reply(false, undefined, String(error instanceof Error ? error.message : error));
+      const message = String(error instanceof Error ? error.message : error);
+      reply(false, undefined, message);
+      record({ kind: "call", name: `${service}.${method}`, plugin: this.instance, trace, ms: ms(started), detail: `failed: ${message}` });
     }
   }
 
