@@ -15,6 +15,7 @@ const handlers = new Map<number, (...args: any[]) => unknown>();
 const calls = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 const eventHandlers = new Set<(action: string, value: unknown) => void>();
 const canvasHandlers = new Map<string, (canvas: OffscreenCanvas) => void>();
+const settingsHandlers = new Set<(values: Record<string, unknown>) => void>();
 
 /** The trace id of the hook or event being handled; calls made while handling it carry it. */
 let activeTrace: string | undefined;
@@ -60,6 +61,14 @@ const ctx = {
     },
     onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void) {
       canvasHandlers.set(id, handler);
+    },
+  },
+  /** The plugin's own settings, from the form the shell builds out of its manifest. */
+  settings: {
+    get: () => ctx.call("settings", "get") as Promise<Record<string, unknown>>,
+    onChange(handler: (values: Record<string, unknown>) => void) {
+      settingsHandlers.add(handler);
+      return () => settingsHandlers.delete(handler);
     },
   },
   log,
@@ -108,7 +117,7 @@ function editorShim() {
       return () => commands.delete(`command:${id}`);
     },
     storage: { get: async () => undefined, set: async () => {} },
-    settings: { get: async () => ({}) },
+    settings: { get: () => ctx.settings.get() },
   };
 }
 
@@ -150,6 +159,10 @@ async function receive(message: KernelToPlugin) {
       return;
     }
     case "event":
+      if (message.action === "settings:changed") {
+        for (const handler of settingsHandlers) traced(message.trace, () => handler(message.value as Record<string, unknown>));
+        return;
+      }
       if (message.action === "kernel:denied") log(`Denied: ${message.value}`, "error");
       for (const handler of eventHandlers) traced(message.trace, () => handler(message.action, message.value));
       return;

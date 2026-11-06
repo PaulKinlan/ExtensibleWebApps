@@ -3,7 +3,7 @@
 // workers when it is the spawner tab, and bridges APIs that only exist in a
 // page (Web Audio here). It runs no plugin code.
 
-import type { HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
+import type { Command, HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
 
 const tab = Math.random().toString(36).slice(2, 8);
 const params = new URLSearchParams(location.search);
@@ -84,6 +84,32 @@ function element(view: View, owner: string): HTMLElement {
         timer = setTimeout(() => event(view.action, el.value), 300);
       };
       return el;
+    }
+    case "field": {
+      const label = document.createElement("label");
+      label.className = `field ${view.kind}`;
+      const caption = document.createElement("span");
+      caption.textContent = view.label;
+      if (view.description) caption.title = view.description;
+      let input: HTMLInputElement | HTMLSelectElement;
+      if (view.kind === "select") {
+        input = document.createElement("select");
+        for (const option of view.options ?? []) input.append(new Option(option, option, false, option === view.value));
+      } else {
+        input = document.createElement("input");
+        input.type = view.kind;
+        if (view.kind === "checkbox") input.checked = Boolean(view.value);
+        else input.value = String(view.value);
+      }
+      input.name = view.name;
+      // Sent when the change is committed (blur, Enter, or a click), not on every key.
+      input.onchange = () => {
+        const el = input as HTMLInputElement;
+        event(view.action, view.kind === "checkbox" ? el.checked : view.kind === "number" ? el.valueAsNumber : el.value);
+      };
+      if (view.kind === "checkbox") label.append(input, caption);
+      else label.append(caption, input);
+      return label;
     }
     case "canvas": {
       // A canvas can only go to a worker this tab created: handing an
@@ -212,7 +238,7 @@ function notice(text: string) {
 
 let commandId = 0;
 const waiting = new Map<number, (value: unknown) => void>();
-function command(name: "bench" | "reload-test" | "reload" | "install", arg?: unknown): Promise<unknown> {
+function command(name: Command, arg?: unknown): Promise<unknown> {
   const id = ++commandId;
   return new Promise((resolve) => {
     waiting.set(id, resolve);

@@ -12,6 +12,8 @@ import type { Manifest } from "../shared/protocol";
 export class ManifestError extends Error {}
 
 const ID = /^[a-z][a-z0-9-]{0,63}$/;
+/** Owners of the kernel's own views and services; a plugin with one of these ids could pass for them. */
+const RESERVED = new Set(["kernel", "host", "notes", "plugins", "store", "settings", "audio"]);
 
 export function readManifest(source: string): Manifest {
   const parser = new LiteralParser(source, 0);
@@ -25,6 +27,7 @@ function validate(value: unknown): Manifest {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new ManifestError("The manifest must be an object");
   const m = value as Record<string, unknown>;
   if (typeof m.id !== "string" || !ID.test(m.id)) throw new ManifestError("`id` must be lowercase letters, digits and dashes, starting with a letter");
+  if (RESERVED.has(m.id)) throw new ManifestError(`\`${m.id}\` is reserved for the kernel`);
   if (typeof m.name !== "string" || !m.name) throw new ManifestError("`name` must be a string");
   if (!Array.isArray(m.permissions) || m.permissions.some((p) => typeof p !== "string")) throw new ManifestError("`permissions` must be a list of strings");
   if (m.scope !== undefined && m.scope !== "shared" && m.scope !== "tab") throw new ManifestError('`scope` must be "shared" or "tab"');

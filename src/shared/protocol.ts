@@ -15,7 +15,18 @@ export type View =
   | { type: "button"; label: string; action: string; primary?: boolean }
   | { type: "list"; items: { label: string; action: string; selected?: boolean }[] }
   | { type: "textarea"; name: string; value: string; action: string; placeholder?: string }
-  | { type: "canvas"; id: string; width: number; height: number };
+  | { type: "canvas"; id: string; width: number; height: number }
+  /** A form field. The host sends `action` with the new value when the person changes it. */
+  | {
+      type: "field";
+      name: string;
+      label: string;
+      kind: "text" | "number" | "checkbox" | "select";
+      value: string | number | boolean;
+      action: string;
+      options?: string[];
+      description?: string;
+    };
 
 export type Slot = "app.nav" | "app.main" | "app.side" | "statusbar" | "devtools";
 
@@ -37,7 +48,9 @@ export type HostToKernel =
   | { t: "spawned"; plugin: string; port: MessagePort }
   | { t: "canvas"; owner: string; id: string; canvas: OffscreenCanvas }
   | { t: "bridge:result"; id: number; ok: boolean; value?: unknown; error?: string }
-  | { t: "command"; name: "bench" | "reload-test" | "reload" | "install"; arg?: unknown; id: number };
+  | { t: "command"; name: Command; arg?: unknown; id: number };
+
+export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace";
 
 // kernel -> host
 export type KernelToHost =

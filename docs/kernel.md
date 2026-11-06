@@ -23,6 +23,23 @@ export default function (ctx) { ... }
 - **Scope.** A `shared` plugin runs once, in the spawner tab, for every tab. A `tab` plugin runs once in every open tab; its views go only to that tab, and it is the only kind that can draw on a canvas (a canvas cannot be handed to another tab's worker).
 - **Workers and network.** Each plugin instance gets its own dedicated worker. The worker's content security policy allows only its own module (`script-src 'self' blob:`), no workers of its own (`worker-src 'none'`, or a plugin could start the network runtime as a child) and no network (`connect-src 'none'`). Plugins with the `network` permission get a second copy of the runtime served with `connect-src 'self' https: wss:`. The policies are set in `vite.config.ts` for development and in `public/_headers` for Cloudflare.
 
+## Where plugins come from, and settings
+
+Built-in plugins ship with the app. A plugin installed at run time is kept in the data folder as `plugins/<id>.js`, so it travels with the data, and the next kernel to open that folder loads it again. A plugin in the data folder replaces the built-in one with the same id. Ids the kernel uses for its own views and services (`kernel`, `host`, `notes`, `plugins`, `store`, `settings`, `audio`) are refused, so a plugin can't pass for the kernel's own panels.
+
+The plugins panel (`src/kernel/catalog.ts`, in the side bar) lists every plugin and where it came from. Any plugin can be turned off, which stops its workers but keeps it installed. Plugins kept with the data can also be removed, which deletes their file. A plugin stopped for changing its manifest is removed the same way.
+
+A manifest's `settings` become a form in the panel:
+
+```js
+settings: {
+  frequency: { type: "number", title: "Pitch (Hz)", default: 440 },
+  wave: { type: "string", title: "Wave", enum: ["sine", "square"], default: "sine" },
+},
+```
+
+`boolean` becomes a checkbox, `number` a number field, and `string` a text field, or a menu when it has an `enum`. The kernel checks each value against its spec before keeping it. Which plugins are off, and every plugin's settings, are kept in `plugins.json` in the data folder. A plugin reads its own settings with `await ctx.settings.get()` and hears changes through `ctx.settings.onChange(handler)`. No capability is needed, because a plugin can only read its own. Editor extensions get the same values from `editor.settings.get()`.
+
 ## The `ctx` a plugin gets
 
 | Call | Needs |
@@ -31,6 +48,7 @@ export default function (ctx) { ... }
 | `ctx.call(service, method, ...args)` | Whatever the service asks for: `audio` for `audio.*`, `data:read:notes` for `store.list` |
 | `ctx.ui.render(slot, key, view)` | `ui` |
 | `ctx.ui.onEvent(handler)`, `ctx.ui.onCanvas(id, handler)` | Nothing extra |
+| `ctx.settings.get()`, `ctx.settings.onChange(handler)` | Nothing: a plugin sees only its own settings |
 | `ctx.log(text)` | Nothing |
 
 Editor-style permissions map onto capabilities: `post:read` is `hook:listen:note:*`, `post:write` is `hook:intercept:data:beforeWrite`.
