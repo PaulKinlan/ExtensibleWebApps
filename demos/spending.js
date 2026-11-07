@@ -40,7 +40,11 @@ const money = (n) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, 
 
 export default async function (ctx) {
   const html = ctx.ui.html;
-  if (!(await ctx.call("data", "list", "expenses")).length) for (const e of SAMPLE) await ctx.call("data", "put", "expenses", e);
+  // The samples go in once; a flag in the plugin's own storage keeps deleted expenses deleted.
+  if (!(await ctx.storage.get("seeded"))) {
+    for (const e of SAMPLE) await ctx.call("data", "put", "expenses", e);
+    await ctx.storage.set("seeded", true);
+  }
   let error = "";
 
   const draw = async () => {

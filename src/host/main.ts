@@ -355,7 +355,12 @@ const DEMOS = import.meta.glob("../../demos/*.js", { query: "?raw", import: "def
 const demoName = (path: string) => path.split("/").pop()!.replace(/\.js$/, "");
 const picker = document.getElementById("demo") as HTMLSelectElement;
 for (const path of Object.keys(DEMOS).sort()) picker.append(new Option(demoName(path), demoName(path)));
+/** Resolves once the kernel has said hello to this tab. */
+let welcomed: () => void;
+const kernelReady = new Promise<void>((resolve) => (welcomed = resolve));
 const installDemo = async (name: string) => {
+  // Commands sent before the kernel has said hello are dropped, so wait for it.
+  await kernelReady;
   const path = Object.keys(DEMOS).find((p) => demoName(p) === name);
   if (!path) return;
   const outcome = (await command("install", DEMOS[path])) as { ok: boolean; error?: string };
@@ -366,14 +371,12 @@ const installDemo = async (name: string) => {
   return outcome;
 };
 picker.onchange = () => {
-  if (picker.value) void installDemo(picker.value);
+  const name = picker.value;
+  if (name) void installDemo(name);
 };
-/** Resolves once the kernel has said hello to this tab. */
-let welcomed: () => void;
-const kernelReady = new Promise<void>((resolve) => (welcomed = resolve));
 if (params.get("demo")) {
   picker.value = params.get("demo")!;
-  void kernelReady.then(() => installDemo(params.get("demo")!));
+  void installDemo(params.get("demo")!);
 }
 
 const result = document.getElementById("result")!;

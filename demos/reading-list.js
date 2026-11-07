@@ -37,8 +37,12 @@ const SAMPLE = [
 
 export default async function (ctx) {
   const html = ctx.ui.html;
-  // The plugin owns `library`, so it reads and writes it without asking.
-  if (!(await ctx.call("data", "list", "library")).length) for (const book of SAMPLE) await ctx.call("data", "put", "library", book);
+  // The plugin owns `library`, so it reads and writes it without asking. The
+  // samples go in once; a flag in the plugin's own storage keeps deleted books deleted.
+  if (!(await ctx.storage.get("seeded"))) {
+    for (const book of SAMPLE) await ctx.call("data", "put", "library", book);
+    await ctx.storage.set("seeded", true);
+  }
 
   let open = null; // the id of the book being edited, if any
 
@@ -62,6 +66,13 @@ export default async function (ctx) {
     if (action === "open") open = value;
     if (action === "close" || action === "saved") open = null;
     draw();
+  });
+  // If the open book is deleted (from the table, or by another plugin), go back to adding.
+  ctx.on("data:changed:library", (change) => {
+    if (change.id === open && !change.after) {
+      open = null;
+      draw();
+    }
   });
   draw();
 }
