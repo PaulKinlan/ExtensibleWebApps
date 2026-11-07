@@ -307,6 +307,27 @@ export default async (ctx) => {
       proof.noContacts = await page.waitForSelector('[data-key="agenda:agenda"] >> text=Open the Contacts app once', { timeout: 5000 }).then(() => true, () => false);
       // The month grid is two nested template loops: a row per week, seven days each.
       proof.grid = await page.evaluate(() => [...document.querySelectorAll('[data-key="month:grid"] tbody tr')].map((tr) => tr.children.length));
+      // month.html's own <style> lays out its grid, and reaches nothing outside the month plugin's views.
+      proof.styled = await page.evaluate(() => {
+        const grid = document.querySelector('[data-key="month:grid"]');
+        const outside = document.body.appendChild(Object.assign(document.createElement("table"), { className: "month", innerHTML: "<tr><td>x</td></tr>" }));
+        const style = (el) => el && getComputedStyle(el);
+        const result = {
+          plugin: grid?.dataset.plugin,
+          layout: style(grid?.querySelector(".month"))?.tableLayout,
+          other: style(grid?.querySelector("td[data-other]"))?.opacity,
+          own: style(grid?.querySelector("td:not([data-other])"))?.opacity,
+          outside: style(outside)?.tableLayout,
+        };
+        // A plugin's CSS can't reach the entry that holds the containment, even with :scope.
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync('@layer plugins { @scope ([data-plugin="month"] > *) { :scope { position: fixed; } } }');
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+        result.entry = [style(grid).position, style(grid).contain];
+        document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== sheet);
+        outside.remove();
+        return result;
+      });
     }
     if (name === "contacts") {
       const people = '[data-key="people:people"]';
@@ -349,9 +370,24 @@ export default async (ctx) => {
     return { html: html.slice(0, 120), ms: Math.round(performance.now() - started) };
   });
   check("a template that would make too many nodes stops early instead of freezing the page", /wasn't drawn/.test(tooBig.html), `${tooBig.ms}ms: ${tooBig.html}`);
+  // An attribute that is one whole hole comes and goes with its value; a hole inside other text is just text.
+  const conditional = await a.evaluate(() => {
+    const file = new DOMParser().parseFromString('<template id="t"><input type="checkbox" checked="{{on}}"><i data-x="{{off}}" data-y="{{missing}}" data-n="{{n}}" title="is {{on}}"></i></template>', "text/html");
+    return window.__host.fill(file, "t", { on: true, off: false, n: 0 });
+  });
+  check("an attribute that is one whole hole is left out when false or missing, and bare when true", conditional === '<input type="checkbox" checked=""><i data-n="0" title="is true"></i>', conditional);
+  // A plugin's CSS keeps its rules but loses anything that loads, any @import or @font-face, and !important.
+  const cleanCss = await a.evaluate(() => window.__host.cleanCss(`@import "https://example.com/x.css";
+    @font-face { font-family: x; src: url(https://example.com/x.woff2); }
+    .a { color: red !important; background: url(https://example.com/x.png); --y: \\75 rl(https://example.com/y.png); padding: 4px; }
+    @media (min-width: 1px) { .b { cursor: url(https://example.com/c.cur), auto; margin: 1px; } }
+    @keyframes spin { to { rotate: 1turn; } }
+    .n { color: red; & .m { color: blue; } padding: 2px; }`));
+  check("a plugin's CSS is cleaned: no url(), @import, @font-face or !important", !/url|import|font-face|important|keyframes|example/i.test(cleanCss) && /\.a \{[^}]*padding: 4px;[^}]*color: red;/.test(cleanCss) && /@media .*\.b \{ margin: 1px; \}/s.test(cleanCss) && /\.n \{[^]*padding: 2px/.test(cleanCss), cleanCss);
   check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
   check("a plugin in an app writing another plugin's collection is reviewed in that app, then lands", importedBook);
   check("a month grid from nested template loops has seven days in every week", proof.grid?.length >= 4 && proof.grid.every((n) => n === 7), JSON.stringify(proof.grid));
+  check("a plugin's own stylesheet styles its views, by class, and nothing else on the page", proof.styled?.plugin === "month" && proof.styled.layout === "fixed" && proof.styled.other === "0.6" && proof.styled.own === "1" && proof.styled.outside !== "fixed" && proof.styled.entry[0] !== "fixed" && proof.styled.entry[1] === "layout paint", JSON.stringify(proof.styled));
   check("a search box with data-live redraws the plugin's own list", proof.search);
   check("a vCard import writes a contact after review", proof.vcard);
   check("a recipe scales its ingredients to the servings typed in", JSON.stringify(proof.scaled) === JSON.stringify(["300 g flour", "3 eggs", "450 ml milk", "1.5 pinch salt"]), JSON.stringify(proof.scaled));

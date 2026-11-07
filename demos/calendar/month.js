@@ -5,7 +5,7 @@
 //
 // The grid is a table: a row per week, Monday first, with the days from the
 // months either side to fill it. The template is two nested loops
-// (weeks, then days); the page styles it through aria-current and data-other.
+// (weeks, then days), and month.html's own <style> lays it out.
 
 export const manifest = {
   id: "month",
@@ -26,7 +26,7 @@ export function weeks(first, today = new Date()) {
   for (const d = new Date(start); out.length < 6; ) {
     const week = [];
     for (let i = 0; i < 7; i++, d.setDate(d.getDate() + 1)) {
-      week.push({ date: iso(d), day: d.getDate(), other: d.getMonth() !== first.getMonth(), current: iso(d) === iso(today) ? "date" : "false" });
+      week.push({ date: iso(d), day: d.getDate(), other: d.getMonth() !== first.getMonth(), current: iso(d) === iso(today) && "date" });
     }
     out.push(week);
     // Stop once the month is over, so a month uses 4 to 6 rows.
