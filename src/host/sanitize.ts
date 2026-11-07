@@ -31,7 +31,19 @@ function allowedAttribute(tag: string, name: string): boolean {
   return GLOBAL_ATTRIBUTES.includes(name) || (ELEMENT_ATTRIBUTES[tag] ?? []).includes(name);
 }
 
-function copy(source: Node, into: Node, owner: string, remote: boolean): void {
+/**
+ * An image next to a template file (`<img src="tram.png">` in countdown.html) is the plugin's own file,
+ * so it may load without the network permission. Anything that climbs out of the template's folder or
+ * leaves the site doesn't count.
+ */
+function ownFile(value: string, base: string | undefined): string | undefined {
+  if (!base || /^[a-z][\w+.-]*:/i.test(value.trim()) || value.trim().startsWith("//")) return undefined;
+  const url = new URL(value.trim(), base);
+  const folder = new URL(".", base);
+  return url.origin === folder.origin && url.pathname.startsWith(folder.pathname) && !url.search ? url.href : undefined;
+}
+
+function copy(source: Node, into: Node, owner: string, remote: boolean, base?: string): void {
   for (const child of [...source.childNodes]) {
     if (child.nodeType === Node.TEXT_NODE) {
       into.appendChild(document.createTextNode(child.textContent ?? ""));
@@ -42,15 +54,19 @@ function copy(source: Node, into: Node, owner: string, remote: boolean): void {
     const tag = el.localName;
     if (DROPPED_WITH_CONTENT.has(tag)) continue;
     if (!(tag in ELEMENTS) && !(tag in COMPONENTS)) {
-      copy(el, into, owner, remote); // unwrap: keep the text, lose the element
+      copy(el, into, owner, remote, base); // unwrap: keep the text, lose the element
       continue;
     }
     const out = document.createElement(tag);
     for (const { name, value } of [...el.attributes]) {
       if (!allowedAttribute(tag, name)) continue;
       if (name === "href" && !SAFE_HREF.test(value.trim())) continue;
-      // An https image is a request: only plugins allowed on the network may make one.
-      if (name === "src" && !(remote ? SAFE_SRC : DATA_SRC).test(value.trim())) continue;
+      // An https image is a request: only plugins allowed on the network may make one. A file next to the template is the plugin's own.
+      if (name === "src" && !(remote ? SAFE_SRC : DATA_SRC).test(value.trim())) {
+        const own = tag === "img" ? ownFile(value, base) : undefined;
+        if (own) out.setAttribute("src", own);
+        continue;
+      }
       if (tag === "input" && name === "type" && !INPUT_TYPES.includes(value.toLowerCase())) continue;
       out.setAttribute(name, scopedValue(owner, name, value));
     }
@@ -59,16 +75,16 @@ function copy(source: Node, into: Node, owner: string, remote: boolean): void {
       out.setAttribute("rel", "noopener noreferrer");
     }
     if (tag === "img") out.setAttribute("referrerpolicy", "no-referrer");
-    copy(el, out, owner, remote);
+    copy(el, out, owner, remote, base);
     into.appendChild(out);
   }
 }
 
 /** A plugin's HTML as a fragment of allowed DOM. */
-export function sanitize(html: string, owner: string, { remote = false } = {}): DocumentFragment {
+export function sanitize(html: string, owner: string, { remote = false, base }: { remote?: boolean; base?: string } = {}): DocumentFragment {
   const template = document.createElement("template");
   template.innerHTML = html;
   const out = document.createDocumentFragment();
-  copy(template.content, out, owner, remote);
+  copy(template.content, out, owner, remote, base);
   return out;
 }

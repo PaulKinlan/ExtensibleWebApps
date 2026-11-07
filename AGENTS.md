@@ -5,6 +5,7 @@ Instructions for AI agents (and people) building apps and plugins on this platfo
 ## What you are building
 
 - An **app** is a folder in `demos/` (or anywhere served) with an `app.html`: a plain page that loads the platform with two lines, lays out `<slot name="…">` elements, and lists plugins with `<link rel="plugin" href="x.js">`.
+- A plugin for a page with **no slot** for it names a place in its manifest instead, `places: { name: { at: "<css selector>", put: "after" } }`, and renders to that name. Pick selectors the author chose (`#id`, `[data-part=…]`, landmarks), not positions, and respect `data-extend="review"` and `"locked"`: [places](docs/guide/places.md).
 - A **plugin** is one ES module, run in its own worker. It has a manifest and a default export that gets `ctx`. Its views are `<template id>` elements in an `.html` file next to it.
 - **No build step.** Write plain JavaScript (JSDoc and `// @ts-check` are welcome), HTML and CSS. The browser runs the files as written. Don't add bundlers, frameworks or npm dependencies to apps or plugins.
 
@@ -25,6 +26,7 @@ Copy [`demos/habits/`](demos/habits/) to start: it is the smallest complete app,
 - An attribute that is a single `{{hole}}` is left out when the value is false or missing: `checked="{{done}}"`.
 - Use `ui-form` and `ui-table` bound to a collection instead of hand-writing forms and tables, unless you need something they can't do. Schemas drive the form, including lists (`type: "array"`) and groups (`type: "object"`).
 - Get the person's actions with `data-action` on buttons, inputs and forms, and `ctx.ui.onEvent((action, value) => …)`. Put an id in the action (`tick:{{i.id}}`) for repeated controls, and a `key="{{i.id}}"` on repeated elements.
+- To let a link, a form or a fetch reach the plugin, add a route: `ctx.routes.add("POST", "add-book", handler)` with the `routes` permission. See [Routes](docs/guide/routes.md).
 - Style with the design tokens (`var(--space-2)`, `var(--fg-2)`, `var(--accent)`…). The page's own CSS overrides any plugin's.
 - Give every file a comment at the top saying what it shows. The code is read as documentation.
 

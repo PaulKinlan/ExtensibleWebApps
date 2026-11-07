@@ -35,6 +35,11 @@ const CTX: Record<ApiMember<Api>, Doc> = {
     needs: "What the method needs (see Services)",
     description: "Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses.",
   },
+  "routes.add": {
+    signature: "ctx.routes.add(method, path, (request) => response) → off()",
+    needs: "`routes`",
+    description: "Answers requests for a path inside the plugin's own folder (only for plugins an app links), so a link or a form can reach the plugin. The platform's service worker sends a matching request to the kernel through an open tab. `request` is `{ method, path, query, form }`; the handler returns `{ redirect }` (a 303 to a page on this site), `{ html }` (a page in which no script runs), `{ json }` or `{ text }`, each with an optional `status`. Returning nothing lets another plugin answer, and then 404.",
+  },
   "ui.render": {
     signature: "ctx.ui.render(slot, key, view, order?)",
     needs: "`ui`",
@@ -145,6 +150,7 @@ export const COMMANDS: Record<Command, string> = {
   "place:ask": "({ app, plugin, place, target, what }) Asks the person, on a review card, to let a plugin change a place the author marked review.",
   "place:unlock": "({ app, plugin, place }) Lets a plugin into a place the author locked, because the person said so.",
   "place:lock": "({ app, plugin, place }) Takes that back.",
+  route: "({ method, path, query, form }) Answers a request with the plugin route for it, or null. The service worker sends these through a tab.",
 };
 
 export interface Reference {
@@ -185,6 +191,7 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
   for (const s of serviceList) for (const m of s.methods) if (m.needs) needs.set(m.needs, [...(needs.get(m.needs) ?? []), `${s.name}.${m.name}`]);
   const capabilities = [
     { name: "ui", about: "Draw views with ctx.ui.render." },
+    { name: "routes", about: "Answer requests for paths in the plugin's own folder with ctx.routes.add." },
     { name: "network", about: "Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere." },
     { name: "hook:listen:<hook>", about: "Listen to an emit or parallel hook." },
     { name: "hook:intercept:<hook>", about: "Listen to a hook that can change or stop an action (serial, bail, waterfall)." },

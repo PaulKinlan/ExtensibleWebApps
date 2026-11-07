@@ -8,6 +8,7 @@ Printed by the kernel from its own registries (`npm run reference` writes this f
 | --- | --- | --- |
 | `ctx.on(hook, handler) → off()` | `hook:listen:<hook>` (emit, parallel) or `hook:intercept:<hook>` (serial, bail, waterfall) | Listens to a hook. In a `function` handler, `this` is a copy of ctx pinned to the action's trace. What it returns matters only for hooks that can change or stop an action. |
 | `ctx.call(service, method, ...args) → Promise` | What the method needs (see Services) | Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses. |
+| `ctx.routes.add(method, path, (request) => response) → off()` | `routes` | Answers requests for a path inside the plugin's own folder (only for plugins an app links), so a link or a form can reach the plugin. The platform's service worker sends a matching request to the kernel through an open tab. `request` is `{ method, path, query, form }`; the handler returns `{ redirect }` (a 303 to a page on this site), `{ html }` (a page in which no script runs), `{ json }` or `{ text }`, each with an optional `status`. Returning nothing lets another plugin answer, and then 404. |
 | `ctx.ui.render(slot, key, view, order?)` | `ui` | Draws a view in a slot, under a key of the plugin's own: an HTML string (see HTML views), a JSON view, or null to remove it. Drawing again updates it in place. Plugins never touch the DOM. |
 | `ctx.ui.html`…${value}…` → view` | Nothing | Builds an HTML view from a template, escaping every value (arrays are joined, nested html results go in as they are). Use it whenever text comes from data. |
 | `ctx.ui.live(slot, key, (ctx) => view, order?) → { refresh(), stop() }` | `ui` | Draws what the function returns, like `ui.render`, and draws it again whenever a collection it read (with `data.list` or `data.get` on the ctx it is given) or the plugin's settings change. Call `refresh()` after the plugin's own state changes. A collection that doesn't exist yet is followed too, so the view fills in when it appears. |
@@ -70,6 +71,14 @@ The trace: everything the kernel, the pages and plugins did, and every error. Fo
 | `debug.recent()` | { startedAt, events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? } | `debug:read` | The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one. |
 | `debug.app()` | { tab?, app? } | `debug:read` | For a tab-scoped caller: its `tab`, and the ids of the plugins the app open there links, or no `app` if the tab hasn't opened one yet. The trace's `app:open` event says when to ask again. |
 
+### page
+
+The app's own page, as far as a plugin's places reach into it.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `page.matches(place)` | [{ text, data }] | `ui` | What one of the plugin's places matches in the page: each element's text (up to 500 characters) and its data-* attributes, in page order. A plugin with `each: true` draws a view per match by rendering to `<place>#<index>`. |
+
 ### kernel
 
 The kernel itself.
@@ -130,6 +139,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | Capability | Lets a plugin |
 | --- | --- |
 | `ui` | Draw views with ctx.ui.render. |
+| `routes` | Answer requests for paths in the plugin's own folder with ctx.routes.add. |
 | `network` | Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
@@ -138,6 +148,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:notes` | Call store.put. |
 | `files:<folder>` | Call files.read, files.write. |
 | `debug:read` | Call debug.recent, debug.app. |
+| `ui` | Call page.matches. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 
@@ -164,10 +175,12 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
 | `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
+| `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin's view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
+| `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
 Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`.
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`.
 
 ## Collections
 
@@ -248,7 +261,7 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<hr>` |  |  |
 | `<blockquote>` |  |  |
 | `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto: or # |
-| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: or a data: image |
+| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: (with the network permission), a data: image, or a file next to the plugin's template file |
 | `<figure>` |  |  |
 | `<figcaption>` |  |  |
 | `<ul>` |  | Lists |
@@ -325,3 +338,12 @@ For devtools and tests, from the page: `window.__host.command(name, arg)`.
 | `trace` | () The most recent trace events. |
 | `changes` | () The change log. |
 | `reference` | () This reference, as { data, markdown }. |
+| `user:list` | ({ app }) The person's own plugins for an app: each file, its manifest's id, name, permissions and places, and whether it is on. |
+| `user:add` | ({ app, files: [{ name, data }] } or { app, url }) Adds plugins (.js) and the files they bring to an app's user folder; from a URL on this site, the files its manifest lists come too. They start off. |
+| `user:on` | ({ app, id }) Turns a user plugin on, and opens the app again in every tab that has it open. |
+| `user:off` | ({ app, id }) Turns a user plugin off, and opens the app again in every tab that has it open. |
+| `user:remove` | ({ app, id }) Removes a user plugin and the files it lists. |
+| `place:ask` | ({ app, plugin, place, target, what }) Asks the person, on a review card, to let a plugin change a place the author marked review. |
+| `place:unlock` | ({ app, plugin, place }) Lets a plugin into a place the author locked, because the person said so. |
+| `place:lock` | ({ app, plugin, place }) Takes that back. |
+| `route` | ({ method, path, query, form }) Answers a request with the plugin route for it, or null. The service worker sends these through a tab. |

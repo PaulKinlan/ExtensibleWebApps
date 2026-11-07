@@ -200,7 +200,9 @@ export function customize(host: CustomizeHost) {
     const running = host.running();
     const close = h("button", { type: "button", class: "customize-close" }, "Close");
     close.addEventListener("click", () => dialog.close());
-    dialog.replaceChildren(
+    dialog.replaceChildren();
+    dialog.append(
+      ...[
       h("h2", { id: "customize-title" }, "Customize this app"),
       h("p", { class: "muted" }, "Your plugins are kept on this device. They can add to this page, replace parts of it or hide them, except where the app's author locked it."),
       message ? h("p", { role: "status" }, message) : null,
@@ -211,6 +213,7 @@ export function customize(host: CustomizeHost) {
       h("h3", {}, "Add a plugin"),
       adder(),
       close,
+      ].filter((n): n is HTMLElement => !!n),
     );
   }
 

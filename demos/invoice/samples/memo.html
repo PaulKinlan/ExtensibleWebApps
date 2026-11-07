@@ -1,0 +1,11 @@
+<!-- The memo: one field, saved when the person presses Save. -->
+<style>
+  .memo { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); }
+  .memo input { flex: 1; }
+</style>
+<template id="memo">
+  <form class="memo" data-action="save">
+    <input name="text" value="{{text}}" placeholder="A note to yourself" aria-label="Memo">
+    <button type="submit">Save</button>
+  </form>
+</template>

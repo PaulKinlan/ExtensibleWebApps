@@ -136,7 +136,9 @@ export default async (ctx) => {
   ctx.ui.render('devtools', 'reader', { type: 'text', text: 'reader sees ' + ref.services.length + ' services' });
   ctx.log('reader: ' + JSON.stringify(refused));
 };`));
-  await a.waitForSelector('#devtools slot[name="devtools"] >> text=reader sees 8 services', { timeout: 5000 });
+  // As many as the kernel's own reference lists, so a new service doesn't need this line changed.
+  const serviceCount = (await a.evaluate(() => window.__host.command("reference"))).data.services.length;
+  await a.waitForSelector(`#devtools slot[name="devtools"] >> text=reader sees ${serviceCount} services`, { timeout: 5000 });
   check("a plugin can read the reference, and draw in the devtools slot", true);
   await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")), null, { timeout: 5000 });
   const refusedCalls = await a.evaluate(() => JSON.parse(window.__host.traces.find((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")).detail.slice(8)));

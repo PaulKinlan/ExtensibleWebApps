@@ -1,0 +1,62 @@
+<!doctype html>
+<!--
+  An invoice: a plain page with no slots, where the author marked how much
+  each part may change, with data-extend:
+
+  (no mark)               open: any plugin may add, replace or hide
+  #lines  "review"        the person allows each plugin once, on a card
+  #pay    "locked"        no plugin may change it, unless the person unlocks it
+
+  Open Customize (bottom left) and add the samples to see all three:
+
+  samples/memo.js       a private note after the header: open, so it is drawn
+  samples/tip.js        a tip line added to the items: a review card first
+  samples/pay-later.js  tries to replace the pay button: refused, until the
+                        person unlocks it for that plugin in Customize
+
+  See docs/guide/places.md.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Invoice 2027-014</title>
+  <meta name="description" content="An invoice whose author marked parts open, review and locked.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin-sample" href="samples/memo.js" title="Private memo">
+  <link rel="plugin-sample" href="samples/tip.js" title="Add a tip">
+  <link rel="plugin-sample" href="samples/pay-later.js" title="Pay later">
+  <style>
+    body { max-width: 560px; margin: 0 auto; padding: 16px 16px 72px; }
+    header p { color: var(--fg-2); margin-top: 0; }
+    #lines ul { list-style: none; padding: 0; }
+    #lines li { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .total { text-align: right; font-weight: 600; }
+    #pay { padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius); }
+    #pay button { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Invoice 2027-014</h1>
+    <p>From Azulejo Catering to Rosa Lima · due 30 May 2027</p>
+  </header>
+  <main>
+    <section id="lines" data-extend="review" aria-labelledby="items">
+      <h2 id="items">Items</h2>
+      <ul>
+        <li><span>Pastries for 40</span> <span>€56.00</span></li>
+        <li><span>Coffee service</span> <span>€32.00</span></li>
+        <li><span>Delivery</span> <span>€8.00</span></li>
+      </ul>
+    </section>
+    <p class="total">Total €96.00</p>
+    <section id="pay" data-extend="locked" aria-label="Payment">
+      <button type="button">Pay €96.00</button>
+      <p>Payments go to Azulejo Catering, IBAN PT50 0000 0000 0000 0000 0000 0.</p>
+    </section>
+  </main>
+  <footer><p><a href="/">Workbench</a></p></footer>
+</body>
+</html>

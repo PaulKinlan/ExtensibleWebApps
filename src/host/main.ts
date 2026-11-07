@@ -18,6 +18,7 @@ import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn, onElementError } from "./elements";
 import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
+import { serviceWorker } from "./service-worker";
 import { cleanCss, installPluginStyle } from "./plugin-styles";
 import { fill, loadedFile, loadFile, styleOf } from "./templates";
 import { workbench } from "./workbench";
@@ -94,7 +95,7 @@ function element(view: View, owner: string): HTMLElement {
       installPluginStyle(pluginOf(owner), view.src, styleOf(file));
       const el = document.createElement("div");
       el.className = "html-view";
-      el.append(sanitize(fill(file, view.id, view.data), owner, { remote: view.remote === true }));
+      el.append(sanitize(fill(file, view.id, view.data), owner, { remote: view.remote === true, base: view.src }));
       return el;
     }
     case "stack": {
@@ -565,10 +566,12 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
 
 /** The trace, benchmarks and demo links, on the platform's own page only. */
 const bench = document.getElementById("devtools") ? workbench(command) : undefined;
+serviceWorker(command, report);
 const traces: TraceEvent[] = [];
 function showTrace(events: TraceEvent[]) {
   traces.push(...events);
-  if (traces.length > 1000) traces.splice(0, traces.length - 1000);
+  // Kept generously: the tests look back to events from the first seconds after a long run.
+  if (traces.length > 5000) traces.splice(0, traces.length - 5000);
   bench?.trace(events);
 }
 

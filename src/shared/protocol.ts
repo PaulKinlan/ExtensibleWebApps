@@ -80,6 +80,7 @@ export type Command =
   | "trace"
   | "changes"
   | "reference"
+  | "route"
   | "user:list"
   | "user:add"
   | "user:on"
