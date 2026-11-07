@@ -32,9 +32,11 @@
   <link rel="plugin" href="home/chapter-1-core.js">
   <link rel="plugin" href="home/chapter-2-plugins.js">
   <link rel="plugin" href="home/chapter-3-hooks.js">
+  <link rel="plugin" href="home/chapter-4-make.js">
   <link rel="plugin" href="/std/switchboard.js">
   <link rel="plugin" href="/std/reset.js">
   <link rel="plugin" href="/std/debug-console.js">
+  <link rel="plugin" href="/std/plugin-editor.js">
   <style>
     /* The page's own layout: the guided view, chapters beside the playground. One column on phones. */
     body { display: block; }
@@ -50,6 +52,8 @@
     .chapters { grid-area: chapters; display: flex; flex-direction: column; gap: 16px; }
     .side { grid-area: playground; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
     .empty { padding: 16px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--fg-2); }
+    /* The debug console's bug sits bottom left, so the platform's Customize button goes bottom right. */
+    .customize-button { left: auto; right: 16px; }
     body > footer { padding: 16px; border-top: 1px solid var(--border); color: var(--fg-2); font-size: var(--text-sm); }
     @media (max-width: 800px) {
       .home { grid-template-columns: minmax(0, 1fr); grid-template-areas: "playground" "chapters"; }
@@ -77,6 +81,9 @@
   <div class="home">
     <section class="chapters" aria-label="How it works">
       <slot name="chapters"><p class="empty">This is where the chapters go. They're plugins, and they're either loading or switched off. <a href="?reset">Turn everything back on</a>.</p></slot>
+      <slot name="editor"></slot>
+      <!-- Reviews, such as saving a plugin from the editor, show here, next to what asked for them. -->
+      <slot name="main"></slot>
     </section>
     <aside class="side">
       <slot name="playground"><p class="empty">Your learning notes go here, once their plugin is running.</p></slot>

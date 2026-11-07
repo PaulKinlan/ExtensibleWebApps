@@ -15,10 +15,11 @@ off, what's left is the page's own HTML and the kernel.
 | [`chapter-1-core.js`](chapter-1-core.js) | A tiny core. Can turn every plugin on the page off. |
 | [`chapter-2-plugins.js`](chapter-2-plugins.js) | Everything is a plugin, with a switch for Note stats. |
 | [`chapter-3-hooks.js`](chapter-3-hooks.js) | Hooks, with a switch for Quiet please. |
+| [`chapter-4-make.js`](chapter-4-make.js) | Make your own: how to write a plugin, above the plugin editor ([`/std/plugin-editor.js`](../std/plugin-editor.js)). |
 
 Each chapter's words are in the `.html` file next to it, so a chapter is
-edited like any view. The page also links three standard plugins from
-[`std/`](../std/): the switchboard, reset and the debug console.
+edited like any view. The page also links four standard plugins from
+[`std/`](../std/): the switchboard, reset, the debug console and the plugin editor.
 
 **The way back.** A visitor can switch off anything, the switchboard and
 reset included. Opening the page with `?reset` turns all of its plugins back

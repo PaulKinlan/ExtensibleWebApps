@@ -42,7 +42,7 @@ export interface Request {
 type Pending = { request: Request; resolve: (o: Outcome) => void; timer: ReturnType<typeof setTimeout>; dispatch: Dispatch };
 
 export const placeLabel = (place: string) =>
-  place.startsWith("files:") ? `${place.slice(6)}/` : place.startsWith("place:") || place.startsWith("unlock:") ? `${place.split("#")[1]}` : place;
+  place.startsWith("author:") ? "your plugins" : place.startsWith("files:") ? `${place.slice(6)}/` : place.startsWith("place:") || place.startsWith("unlock:") ? `${place.split("#")[1]}` : place;
 
 export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
   // No prototype, so a plugin id such as `constructor` finds nothing it shouldn't.

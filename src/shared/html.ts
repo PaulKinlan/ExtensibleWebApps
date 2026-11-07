@@ -124,5 +124,6 @@ export const ACTIONS = [
   "A click on an element with `data-action` sends that action, with `data-value` as the value if it has one.",
   "An `input`, `select` or `textarea` with `data-action` sends it when the change is committed, with the new value (a boolean for a checkbox, a number for a number). Add `data-live` to send it as the person types, after a 300 ms pause.",
   "A `form` with `data-action` sends it on submit, with `{ name: value }` for every named field.",
+  "A submit button with `data-action` of its own, in such a form, sends its action instead, with the same fields.",
   "Give repeated elements a `key` attribute so an update moves them instead of redrawing them; focus, typing and scroll survive updates either way.",
 ];

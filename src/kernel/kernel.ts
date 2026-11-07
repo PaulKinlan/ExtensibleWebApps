@@ -271,6 +271,13 @@ const userAdded = userPlugins(store, self.location.origin);
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
+services.authoring = authoring(remote, apps, {
+  store,
+  userAdded,
+  appIn: (tab) => openApps.get(tab)?.app,
+  ask: (request, dispatch) => reviews.ask(request, dispatch),
+  reopen: (app) => reopen(app),
+});
 
 /**
  * Opens an app in a tab: the plugins its app.html links, and the person's own plugins for it that are
@@ -332,7 +339,6 @@ remote.collectionOwner = (name) => records.registry.get(name)?.owner;
 services.data = records.service;
 const pluginSwitches = switches(root, remote, apps);
 services.plugins = pluginSwitches.service;
-services.authoring = authoring(remote, apps);
 
 /** The kernel's API reference, built from the registries above as they are now. */
 const describe = () => reference(services, remote);

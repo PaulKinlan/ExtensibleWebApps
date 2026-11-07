@@ -4,13 +4,30 @@
 // editor, and checks a draft's manifest, saying in plain words what each
 // permission it asks for would let it do.
 //
-// Nothing here runs or saves code. Saving a person's plugin is the user
-// plugins' job, and it is reviewed there.
+// Saving puts the draft with the person's own plugins for the app
+// (user-plugins.ts), and turns it on. The person sees the code and what it
+// asks for first, on a review card, every time; a plugin can't save one
+// without them.
 
 import { readManifest } from "./manifest";
+import type { Dispatch } from "../shared/protocol";
 import type { RemotePlugins, ServiceProvider } from "./remote";
+import { allowed, type Outcome, type Request } from "./review";
+import type { Store } from "./store";
+import type { UserPlugins } from "./user-plugins";
 
 type Apps = { linkedBy(tab: string): string[] | undefined };
+
+/** What saving needs from the kernel: the person's plugins, the app open in each tab, and the review. */
+export interface Saving {
+  store: Store;
+  userAdded: UserPlugins;
+  /** The folder of the app open in a tab, if it has one. */
+  appIn(tab: string): string | undefined;
+  ask(request: Request, dispatch: Dispatch): Promise<Outcome>;
+  /** Starts the app again in every tab that has it open, so a saved plugin runs. */
+  reopen(app: string): Promise<void>;
+}
 
 /** The longest file `file()` reads, and the longest draft `check()` takes. */
 const MAX = 100_000;
@@ -32,22 +49,46 @@ export function explain(permission: string): string {
   return `Use ${permission}.`;
 }
 
-export function authoring(remote: RemotePlugins, apps: Apps): ServiceProvider {
+export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): ServiceProvider {
   /** The caller's tab, or an error: the editor works on the app open in one tab. */
   const tabOf = (instance: string): string => {
     const tab = instance.split("@")[1];
     if (!tab) throw new Error('The authoring service needs scope: "tab", so it knows which app it is in');
     return tab;
   };
+  const appOf = (tab: string): string => {
+    const app = saving.appIn(tab);
+    if (!app) throw new Error("This page has no app folder, so it can't keep plugins of your own");
+    return app;
+  };
+  const words = (permissions: string[]) => (permissions.length ? permissions.map(explain).join(" ") : "Nothing: it can't draw, read or change anything.");
 
   return {
-    description: "Helps a plugin editor: reads the code of the plugins in the caller's app and files next to the caller, and checks a draft's manifest. The caller must be tab-scoped.",
+    description: "Helps a plugin editor: reads the code of the plugins in the caller's app and files next to the caller, checks a draft's manifest, and saves the person's own plugins, after they review each one. The caller must be tab-scoped.",
     methods: {
       source: {
         args: "(id)",
         returns: "{ id, name, code }",
         needs: "plugins:author",
-        description: "The code of a plugin the caller's app links.",
+        description: "The code of a plugin the caller's app links, or of one of the person's own for it, on or off.",
+      },
+      mine: {
+        args: "()",
+        returns: "[{ id, name, on, error? }]",
+        needs: "plugins:author",
+        description: "The person's own plugins for the caller's app.",
+      },
+      save: {
+        args: "(code)",
+        returns: "{ ok: true, id } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins.",
+      },
+      remove: {
+        args: "(id)",
+        returns: "{ ok: true } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Removes one of the person's own plugins for the caller's app, once they accept a review.",
       },
       file: {
         args: "(path)",
@@ -63,10 +104,13 @@ export function authoring(remote: RemotePlugins, apps: Apps): ServiceProvider {
       },
     },
     capability: () => "plugins:author",
-    call: async (instance, method, args) => {
+    call: async (instance, method, args, dispatch) => {
       const tab = tabOf(instance);
       if (method === "source") {
         const [id] = args;
+        const app = saving.appIn(tab);
+        const own = app && typeof id === "string" ? (await saving.userAdded.list(app)).find((p) => p.id === id) : undefined;
+        if (app && own) return { id, name: own.name ?? id, code: (await saving.store.readText(`user/${app}/${own.file}`)) ?? "" };
         if (typeof id !== "string" || !(apps.linkedBy(tab) ?? []).includes(id)) throw new Error(`${String(id)} isn't a plugin in this app`);
         const plugin = remote.installed.get(id);
         if (!plugin) throw new Error(`${id} hasn't loaded yet`);
@@ -102,6 +146,48 @@ export function authoring(remote: RemotePlugins, apps: Apps): ServiceProvider {
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
+      }
+      if (method === "mine") {
+        const app = saving.appIn(tab);
+        if (!app) return [];
+        return (await saving.userAdded.list(app)).map((p) => ({ id: p.id ?? p.file, name: p.name ?? p.file, on: p.on, ...(p.error ? { error: p.error } : {}) }));
+      }
+      if (method === "save" || method === "remove") {
+        const app = appOf(tab);
+        const caller = instance.split("@")[0];
+        const mine = await saving.userAdded.list(app);
+        const ask = async (target: string, before: string, after: string, reason: string) =>
+          allowed(await saving.ask({ plugin: caller, instance, name: remote.installed.get(caller)?.manifest.name ?? caller, place: `author:${app}`, target, before, after, reason }, dispatch));
+
+        if (method === "remove") {
+          const [id] = args;
+          const own = mine.find((p) => p.id === id);
+          if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
+          const code = (await saving.store.readText(`user/${app}/${own.file}`)) ?? "";
+          if (!(await ask(`your plugins: removes ${own.name ?? id}`, code, "", "It stops, and its file is deleted. Your data is kept."))) return { ok: false, error: "Not removed" };
+          await saving.userAdded.remove(app, id);
+          await saving.reopen(app);
+          return { ok: true };
+        }
+
+        const [code] = args;
+        if (typeof code !== "string" || code.length > MAX) return { ok: false, error: `A plugin is code, at most ${MAX} characters` };
+        let m;
+        try {
+          m = readManifest(code);
+        } catch (error) {
+          return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        }
+        const own = mine.find((p) => p.id === m.id);
+        // Changing one of the app's own plugins in place comes later; until then a copy needs an id of its own.
+        if (!own && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page. Give yours a new id.` };
+        const before = own ? ((await saving.store.readText(`user/${app}/${own.file}`)) ?? "") : "";
+        if (!(await ask(`your plugins: ${own ? "changes" : "adds"} ${m.name}`, before, code, `Once it is on, it can: ${words(m.permissions)}`))) return { ok: false, error: "Not saved" };
+        const added = await saving.userAdded.add(app, [{ name: `${m.id}.js`, data: code }]);
+        if (!added.ok) return added;
+        await saving.userAdded.on(app, m.id);
+        await saving.reopen(app);
+        return { ok: true, id: m.id };
       }
       throw new Error(`authoring.${method} is not a method`);
     },

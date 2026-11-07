@@ -248,6 +248,8 @@ function listen(entry: Entry) {
   el.addEventListener("click", (e) => {
     const target = (e.target as Element).closest("[data-action]");
     if (!target || !el.contains(target) || target.matches(`${CONTROLS}, form`)) return;
+    // A submit button in a form sends its action with the form's fields, on submit.
+    if (target.matches('button[type="submit"]') && (target as HTMLButtonElement).form?.hasAttribute("data-action")) return;
     event(target.getAttribute("data-action")!, target.getAttribute("data-value") ?? undefined);
   });
   el.addEventListener("change", (e) => {
@@ -273,8 +275,10 @@ function listen(entry: Entry) {
     // Never let a plugin's form navigate the page.
     e.preventDefault();
     const form = e.target as HTMLFormElement;
-    const action = form.getAttribute("data-action");
-    if (action) event(action, formValues(form));
+    // The button that sent it may name its own action, so one form can be checked or saved.
+    if (!form.hasAttribute("data-action")) return;
+    const action = (e as SubmitEvent).submitter?.getAttribute("data-action") ?? form.getAttribute("data-action")!;
+    event(action, formValues(form));
   });
 }
 

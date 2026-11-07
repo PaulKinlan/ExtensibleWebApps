@@ -1,11 +1,14 @@
 <!--
   The plugin editor. plugin-editor.js sends:
-    { rev, code, from, starts, check, trace }
+    { rev, code, from, starts, check, trace, status, own }
   starts is every starting point, the templates and then a copy of each
   plugin on the page, each { value, label }; check is
   { ok, manifest?, permissions?, error? } from authoring.check(); trace is
   the draft's recent trace lines, each { key, kind, text }.
-  The picker sends "start" with a value; the form sends "check" with { code }.
+  status is what the last save said; own is set when the draft is one of
+  the person's saved plugins. The picker sends "start" with a value; the
+  form sends "check" or "save" (its submit buttons) with { code }, and
+  Remove sends "remove".
 -->
 <style>
   .editor-head { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; justify-content: space-between; margin-bottom: var(--space-2); }
@@ -16,6 +19,7 @@
   .asks code { font-size: var(--text-sm); }
   .asks span { display: block; color: var(--fg-2); font-size: var(--text-sm); }
   .problem { color: var(--danger); margin: 0; }
+  .status { margin: var(--space-2) 0 0; color: var(--fg-2); }
   .trace { margin: 0; max-height: 14rem; overflow: auto; font: var(--text-sm)/1.5 var(--mono); white-space: pre-wrap; }
   .trace .error, .trace .denied { color: var(--danger); }
 </style>
@@ -30,12 +34,15 @@
         </select>
       </label>
     </div>
-    <form data-action="check">
+    <form data-action="save">
       <ui-code name="code" label="Plugin code" rows="22" revision="{{rev}}">{{code}}</ui-code>
       <div class="editor-actions">
-        <button type="submit">Check</button>
+        <button type="submit">Save and run</button>
+        <button type="submit" data-action="check" class="secondary">Check</button>
+        <template if="own"><button type="button" data-action="remove" class="secondary">Remove it</button></template>
       </div>
     </form>
+    <template if="status"><p class="status" role="status">{{status}}</p></template>
   </ui-card>
 </template>
 
@@ -59,7 +66,9 @@
   <ui-card>
     <h3>What it did</h3>
     <template if="!trace.length"><p>Nothing yet. Its logs, errors and refused permissions show here once it runs.</p></template>
-    <pre class="trace"><template for="t of trace"><span key="{{t.key}}" class="{{t.kind}}">{{t.text}}
+    <template if="trace.length">
+      <pre class="trace"><template for="t of trace"><span key="{{t.key}}" class="{{t.kind}}">{{t.text}}
 </span></template></pre>
+    </template>
   </ui-card>
 </template>
