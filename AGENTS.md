@@ -44,7 +44,7 @@ A new app in `demos/` is picked up by the tests automatically. Put checks for wh
 
 Many people and agents work on this repo, and on the sites built with it, at once. Every change should leave everyone else's work merging cleanly and every demo working.
 
-- **Add, don't edit.** A new element, plugin, service, hook, doc page or test is a new file wherever the core can find it. Elements already work this way: `ui-table` is `elements/ui-table.html`, and no list names it.
+- **Add, don't edit.** A new element, plugin, service, hook, doc page or test is a new file wherever the core can find it. Elements already work this way: `ui-table` is `elements/ui-table.html`, and no list names it. A new top-level folder is served as written without touching `vite.config.ts` (unless it is build-only: then add it to `NOT_SERVED` there).
 - **Keep shared lists merge-friendly.** When a change has to add to a list (a JS array or object, `<link>` lines in HTML, imports, a docs table), put one entry per line with a trailing comma, and sorted where order doesn't matter. Then two changes that each add an entry touch different lines.
 - **No running totals in prose.** Don't write counts that every change bumps, like the number of checks; the test run prints it.
 - **Keep old APIs working.** Add a new call beside the old one, so a demo only has to change when the change is about that demo. When a demo does need to change for the tests to pass, change it in the same PR.
