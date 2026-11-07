@@ -26,8 +26,6 @@ function workerPolicy(): Plugin {
 }
 
 export default defineConfig({
-  // GitHub Pages serves the site from /<repo>/; the Pages workflow sets BASE.
-  base: process.env.BASE ?? "/",
   plugins: [workerPolicy()],
   worker: { format: "es" },
   build: { target: "es2022" },

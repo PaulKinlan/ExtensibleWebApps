@@ -1,0 +1,15 @@
+// Cloudflare hosting: the built app served as Workers static assets. There is
+// no Worker code yet; the servers in phase 2b will add it. Cloudflare applies
+// public/_headers (copied into dist/), so plugin workers get their content
+// security policy here as they do under `vite preview`.
+//
+// Deploys come from Cloudflare's Git integration (Workers Builds): build
+// command `npm run build`, deploy command `npx wrangler deploy`.
+{
+  "name": "extensible-web-apps",
+  "compatibility_date": "2025-09-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
