@@ -13,6 +13,16 @@ const DATA_SRC = /^data:image\/(png|jpeg|gif|webp|avif);/i;
 /** Ids are prefixed with the owner, so one plugin's `for` can't point at another's control. */
 const scoped = (owner: string, id: string) => `${owner.replace(/[^\w-]/g, "_")}--${id}`;
 
+/** ARIA attributes that hold id references, scoped the same way as ids. */
+const ID_REFERENCES = new Set(["aria-labelledby", "aria-describedby", "aria-controls", "aria-owns", "aria-activedescendant", "aria-details", "aria-errormessage", "aria-flowto"]);
+
+function scopedValue(owner: string, name: string, value: string): string {
+  if (name === "id" || name === "for") return scoped(owner, value);
+  if (ID_REFERENCES.has(name)) return value.split(/\s+/).filter(Boolean).map((id) => scoped(owner, id)).join(" ");
+  if (name === "href" && value.trim().startsWith("#") && value.trim().length > 1) return `#${scoped(owner, value.trim().slice(1))}`;
+  return value;
+}
+
 function allowedAttribute(tag: string, name: string): boolean {
   if (name.startsWith("on") || name === "style" || name === "class" || name === "slot" || name === "is") return false;
   if (tag in COMPONENTS) return true;
@@ -41,7 +51,7 @@ function copy(source: Node, into: Node, owner: string, remote: boolean): void {
       // An https image is a request: only plugins allowed on the network may make one.
       if (name === "src" && !(remote ? SAFE_SRC : DATA_SRC).test(value.trim())) continue;
       if (tag === "input" && name === "type" && !INPUT_TYPES.includes(value.toLowerCase())) continue;
-      out.setAttribute(name, name === "id" || name === "for" ? scoped(owner, value) : value);
+      out.setAttribute(name, scopedValue(owner, name, value));
     }
     if (tag === "a") {
       out.setAttribute("target", "_blank");

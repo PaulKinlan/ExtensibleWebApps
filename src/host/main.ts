@@ -173,13 +173,14 @@ function valueOf(control: Element): unknown {
 }
 
 function formValues(form: HTMLFormElement): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
+  // No prototype, so a field named __proto__ or constructor is just a field.
+  const out: Record<string, unknown> = Object.create(null);
   for (const control of form.elements) {
     const name = (control as HTMLInputElement).name;
     if (!name || control instanceof HTMLButtonElement || control instanceof HTMLFieldSetElement) continue;
     if (control instanceof HTMLInputElement && control.type === "radio") {
       if (control.checked) out[name] = control.value;
-      else if (!(name in out)) out[name] = null;
+      else if (!Object.hasOwn(out, name)) out[name] = null;
       continue;
     }
     out[name] = valueOf(control);
@@ -207,8 +208,11 @@ function listen(entry: Entry) {
   el.addEventListener("input", (e) => {
     const target = e.target as Element;
     if (!target.matches(CONTROLS) || !target.hasAttribute("data-action") || !target.hasAttribute("data-live")) return;
+    // Read the action and value now: a redraw may change the control before the timer fires.
+    const action = target.getAttribute("data-action")!;
+    const value = valueOf(target);
     clearTimeout(timers.get(target));
-    timers.set(target, setTimeout(() => event(target.getAttribute("data-action")!, valueOf(target)), 300));
+    timers.set(target, setTimeout(() => event(action, value), 300));
   });
   el.addEventListener("submit", (e) => {
     // Never let a plugin's form navigate the page.

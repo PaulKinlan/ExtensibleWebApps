@@ -26,7 +26,7 @@ page (host)  <-- port -->  kernel (shared worker)  <-- port -->  plugin (dedicat
 ```sh
 npm install
 npm run dev        # http://localhost:5173 ; add ?kernel=dedicated to run the kernel in a dedicated worker
-npm test           # build, then 64 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm test           # build, then 65 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```
