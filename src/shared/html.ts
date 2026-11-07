@@ -71,8 +71,11 @@ export const ELEMENTS: Record<string, string> = {
   abbr: "",
 };
 
-/** Attributes allowed on every element. `aria-*` and `data-*` are allowed too. */
-export const GLOBAL_ATTRIBUTES = ["title", "role", "hidden", "lang", "dir", "tabindex", "key"];
+/**
+ * Attributes allowed on every element. `aria-*` and `data-*` are allowed too.
+ * `class` is for the plugin's own stylesheet, which only reaches its own views.
+ */
+export const GLOBAL_ATTRIBUTES = ["title", "role", "hidden", "lang", "dir", "tabindex", "key", "class"];
 
 /** Attributes allowed on particular elements. */
 export const ELEMENT_ATTRIBUTES: Record<string, string[]> = {
@@ -98,7 +101,7 @@ export const ELEMENT_ATTRIBUTES: Record<string, string[]> = {
 /** Input types a plugin may use. */
 export const INPUT_TYPES = ["text", "search", "email", "url", "tel", "number", "range", "date", "time", "datetime-local", "month", "week", "color", "checkbox", "radio", "hidden"];
 
-/** The host's own components. Any attribute is allowed on these except event handlers and `style`. */
+/** The host's own components. Any attribute is allowed on these except event handlers, `style` and `data-plugin`. */
 export const COMPONENTS: Record<string, { attributes: string; about: string }> = {
   "ui-stack": { attributes: "direction=\"row\", gap=\"1\"…\"6\", align=\"start|center|end|stretch\", justify=\"start|center|end|between\", wrap", about: "Lays its children out in a column (or a row) with even spacing." },
   "ui-grid": { attributes: "min=\"12rem\", gap=\"1\"…\"6\"", about: "As many columns as fit, each at least `min` wide." },
