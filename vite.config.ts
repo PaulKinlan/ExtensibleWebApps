@@ -73,7 +73,11 @@ function asWritten(): Plugin {
           return res.end();
         }
         if (path === "/platform/host.css") return serve(res, resolve(root, HOST_CSS));
-        const top = asWrittenPaths(root).find((d) => statSync(join(root, d)).isDirectory() && path.startsWith(`/${d}/`));
+        const paths = asWrittenPaths(root);
+        // A top-level file is served only by its exact name ("/" is index.html); a folder serves what is inside it.
+        const name = path === "/" ? "index.html" : path.slice(1);
+        if (paths.includes(name) && statSync(join(root, name)).isFile()) return serve(res, resolve(root, name));
+        const top = paths.find((d) => statSync(join(root, d)).isDirectory() && path.startsWith(`/${d}/`));
         const file = resolve(root, `.${path}`);
         if (!top || !file.startsWith(resolve(root, top) + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
         return serve(res, file);
