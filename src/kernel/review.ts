@@ -35,11 +35,14 @@ export interface Request {
   before: string;
   after: string;
   reason: string;
+  /** A place in the page rather than data: the card says what will appear or disappear, with no diff. */
+  kind?: "place";
 }
 
 type Pending = { request: Request; resolve: (o: Outcome) => void; timer: ReturnType<typeof setTimeout>; dispatch: Dispatch };
 
-export const placeLabel = (place: string) => (place.startsWith("files:") ? `${place.slice(6)}/` : place);
+export const placeLabel = (place: string) =>
+  place.startsWith("files:") ? `${place.slice(6)}/` : place.startsWith("place:") || place.startsWith("unlock:") ? `${place.split("#")[1]}` : place;
 
 export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
   // No prototype, so a plugin id such as `constructor` finds nothing it shouldn't.
@@ -57,23 +60,44 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
 
   const persist = () => store.writeJson(FILE, grants).catch((error) => record({ kind: "error", name: "grants:write-failed", detail: String(error) }));
 
-  const card = (id: string, r: Request): View => ({
+  /** A change to a place in the page: what will appear or disappear there, with no diff. */
+  const placeCard = (id: string, r: Request): View => ({
     type: "stack",
     children: [
       { type: "heading", text: `${r.name} wants to change ${r.target}` },
-      { type: "text", text: r.reason ? `Reason: ${r.reason}` : "No reason given.", tone: "muted" },
-      { type: "diff", lines: trim(diffLines(r.before, r.after)) },
+      { type: "text", text: `${r.reason} The app's author asked to review changes here.`, tone: "muted" },
       {
         type: "stack",
         direction: "row",
         children: [
-          { type: "button", label: "Accept", action: `accept:${id}`, primary: true },
-          { type: "button", label: `Always allow in ${placeLabel(r.place)}`, action: `always:${id}` },
+          { type: "button", label: "Allow", action: `accept:${id}`, primary: true },
+          { type: "button", label: "Always allow here", action: `always:${id}` },
           { type: "button", label: "Decline", action: `decline:${id}` },
         ],
       },
     ],
   });
+
+  const card = (id: string, r: Request): View =>
+    r.kind === "place"
+      ? placeCard(id, r)
+      : {
+          type: "stack",
+          children: [
+            { type: "heading", text: `${r.name} wants to change ${r.target}` },
+            { type: "text", text: r.reason ? `Reason: ${r.reason}` : "No reason given.", tone: "muted" },
+            { type: "diff", lines: trim(diffLines(r.before, r.after)) },
+            {
+              type: "stack",
+              direction: "row",
+              children: [
+                { type: "button", label: "Accept", action: `accept:${id}`, primary: true },
+                { type: "button", label: `Always allow in ${placeLabel(r.place)}`, action: `always:${id}` },
+                { type: "button", label: "Decline", action: `decline:${id}` },
+              ],
+            },
+          ],
+        };
 
   const settle = (id: string, outcome: Outcome, trace?: string) => {
     const p = pending.get(id);
@@ -124,6 +148,17 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     /** Cancels one instance's open requests, whenever its worker goes (reload, replacement, handover, tab closed). */
     cancelInstance(instance: string) {
       for (const [id, p] of pending) if (p.request.instance === instance) settle(id, "cancelled");
+    },
+
+    /** Grants a plugin a place without a card: the person did it in a panel, such as unlocking an area. */
+    async grant(plugin: string, place: string, trace?: string) {
+      await loaded;
+      const list = (grants[plugin] ??= []);
+      if (list.includes(place)) return;
+      list.push(place);
+      void persist();
+      void log.append({ kind: "grant", plugin, detail: placeLabel(place), trace });
+      api.onGrants?.(plugin);
     },
 
     grantsFor(plugin: string): string[] {

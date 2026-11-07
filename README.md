@@ -20,6 +20,8 @@ A platform for malleable web apps: a small kernel, and everything else is a plug
 
 An app is a folder with an `app.html`: an ordinary page that lays out `<slot name>` elements and lists its plugins with `<link rel="plugin" href="…">`. Each plugin is one file. The page loads the platform with two lines (`/platform/host.css` and `/platform/host.js`); the host fetches the linked plugins, the kernel runs each in its own worker, and their views appear in the slots they name.
 
+A person can extend any app, even one with no slots. **Customize**, on every app page, adds their own plugins, kept on their device. A plugin that has no slot names a *place*: a CSS selector on the page and what to do there (add before or after, replace, hide). The author can mark parts of the page `review` or `locked`. See [places](docs/guide/places.md) and the [trip](demos/trip/), [menu](demos/menu/) and [invoice](demos/invoice/) demos.
+
 ### How a view and its data move
 
 A plugin never touches the page. It sends messages, the kernel checks each one against the plugin's manifest, and the page draws what's left. Each arrow below is a message between workers.

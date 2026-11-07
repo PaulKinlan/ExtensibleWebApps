@@ -28,7 +28,14 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   scope: '"shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state.',
   collections: "Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking.",
   settings: "Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form.",
+  places:
+    'Optional. Up to 20 places in the app\'s page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin\'s view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md.',
+  files:
+    "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app.",
 };
+
+export const PUTS = ["before", "after", "prepend", "append", "replace", "hide"] as const;
+const FILE_NAME = /^[\w-][\w.-]{0,63}$/;
 
 export function readManifest(source: string): Manifest {
   const parser = new LiteralParser(source, 0);
@@ -48,6 +55,9 @@ function validate(value: unknown): Manifest {
   if (m.scope !== undefined && m.scope !== "shared" && m.scope !== "tab") throw new ManifestError('`scope` must be "shared" or "tab"');
   if (m.order !== undefined && typeof m.order !== "number") throw new ManifestError("`order` must be a number");
   if (m.settings !== undefined) validateSettings(m.settings);
+  if (m.places !== undefined) validatePlaces(m.places, m.permissions as string[]);
+  if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 20 || m.files.some((f) => typeof f !== "string" || !FILE_NAME.test(f))))
+    throw new ManifestError("`files` must be a list of up to 20 file names, with no folders");
   if (m.collections !== undefined) {
     try {
       checkCollections(m.collections, checkSchema);
@@ -66,6 +76,21 @@ function validateSettings(settings: unknown) {
     const s = spec as Record<string, unknown>;
     if (!s || !["string", "number", "boolean"].includes(s.type as string)) throw new ManifestError(`Setting ${key} needs a type of string, number or boolean`);
     if (s.enum !== undefined && (!Array.isArray(s.enum) || s.type !== "string")) throw new ManifestError(`Setting ${key}: enum is a list, for string settings`);
+  }
+}
+
+function validatePlaces(places: unknown, permissions: string[]) {
+  if (!places || typeof places !== "object" || Array.isArray(places)) throw new ManifestError("`places` must be an object");
+  const entries = Object.entries(places as Record<string, unknown>);
+  if (entries.length > 20) throw new ManifestError("At most 20 places");
+  if (entries.length && !permissions.includes("ui")) throw new ManifestError("`places` needs the ui permission");
+  for (const [name, spec] of entries) {
+    if (!/^[a-z][\w-]{0,63}$/.test(name)) throw new ManifestError(`Place ${name}: names are lowercase letters, digits, - and _`);
+    const p = spec as Record<string, unknown>;
+    if (!p || typeof p !== "object" || Array.isArray(p)) throw new ManifestError(`Place ${name} must be { at, put, each? }`);
+    if (typeof p.at !== "string" || !p.at.trim() || p.at.length > 300) throw new ManifestError(`Place ${name} needs \`at\`, a CSS selector of up to 300 characters`);
+    if (!PUTS.includes(p.put as (typeof PUTS)[number])) throw new ManifestError(`Place ${name}: \`put\` is one of ${PUTS.join(", ")}`);
+    if (p.each !== undefined && typeof p.each !== "boolean") throw new ManifestError(`Place ${name}: \`each\` is true or false`);
   }
 }
 

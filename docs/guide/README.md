@@ -9,6 +9,7 @@ How to build apps on this platform, from the first page to sharing data between 
 5. [Styling](styling.md): design tokens, a plugin's own stylesheet, and how the page has the last word.
 6. [Sharing data between apps](sharing-data-between-apps.md): one app reading another's collection, even before it exists.
 7. [Routes and the service worker](routes.md): a plugin answering links, forms and fetches, and what the service worker does.
+8. [Places](places.md): adding to, replacing or hiding part of an app that left no slot; the author's open, review and locked marks; and a person's own plugins.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 

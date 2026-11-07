@@ -142,6 +142,14 @@ export const COMMANDS: Record<Command, string> = {
   trace: "() The most recent trace events.",
   changes: "() The change log.",
   reference: "() This reference, as { data, markdown }.",
+  "user:list": "({ app }) The person's own plugins for an app: each file, its manifest's id, name, permissions and places, and whether it is on.",
+  "user:add": "({ app, files: [{ name, data }] } or { app, url }) Adds plugins (.js) and the files they bring to an app's user folder; from a URL on this site, the files its manifest lists come too. They start off.",
+  "user:on": "({ app, id }) Turns a user plugin on, and opens the app again in every tab that has it open.",
+  "user:off": "({ app, id }) Turns a user plugin off, and opens the app again in every tab that has it open.",
+  "user:remove": "({ app, id }) Removes a user plugin and the files it lists.",
+  "place:ask": "({ app, plugin, place, target, what }) Asks the person, on a review card, to let a plugin change a place the author marked review.",
+  "place:unlock": "({ app, plugin, place }) Lets a plugin into a place the author locked, because the person said so.",
+  "place:lock": "({ app, plugin, place }) Takes that back.",
   route: "({ method, path, query, form }) Answers a request with the plugin route for it, or null. The service worker sends these through a tab.",
 };
 

@@ -7,9 +7,11 @@
 import apps from "./apps.js";
 import headers from "./headers.js";
 import plugins from "./plugins.js";
+import user from "./user.js";
 
 export default [
   headers,
   plugins,
   apps,
+  user,
 ];

@@ -5,6 +5,7 @@ Instructions for AI agents (and people) building apps and plugins on this platfo
 ## What you are building
 
 - An **app** is a folder in `demos/` (or anywhere served) with an `app.html`: a plain page that loads the platform with two lines, lays out `<slot name="…">` elements, and lists plugins with `<link rel="plugin" href="x.js">`.
+- A plugin for a page with **no slot** for it names a place in its manifest instead, `places: { name: { at: "<css selector>", put: "after" } }`, and renders to that name. Pick selectors the author chose (`#id`, `[data-part=…]`, landmarks), not positions, and respect `data-extend="review"` and `"locked"`: [places](docs/guide/places.md).
 - A **plugin** is one ES module, run in its own worker. It has a manifest and a default export that gets `ctx`. Its views are `<template id>` elements in an `.html` file next to it.
 - **No build step.** Write plain JavaScript (JSDoc and `// @ts-check` are welcome), HTML and CSS. The browser runs the files as written. Don't add bundlers, frameworks or npm dependencies to apps or plugins.
 

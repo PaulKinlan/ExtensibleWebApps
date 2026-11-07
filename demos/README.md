@@ -9,6 +9,9 @@ Each folder here is an app. An app is an `app.html` page plus its plugins: one `
 | [`recipes/`](recipes/) | `cookbook` owns the recipes and scales the open one; `shopping` owns a list it fills from them; `quick` reads them, drawn in code | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/recipes/app.html) |
 | [`contacts/`](contacts/) | `people` owns the contacts, with a live search; `birthdays` reads them; `vcard-import` adds to them, with review | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/contacts/app.html) |
 | [`habits/`](habits/) | `habits` owns the habits and draws them live; the app the [developer guide](../docs/guide/writing-a-plugin.md) builds | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/habits/app.html) |
+| [`trip/`](trip/) | No slots and no plugins: a plain itinerary. Customize adds `countdown` after the heading (with an image) and `packing`, a list it owns, to the footer | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/trip/app.html) |
+| [`menu/`](menu/) | No slots: a café menu. Customize adds `currency`, which replaces every price, and `quiet`, which hides the newsletter box | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/menu/app.html) |
+| [`invoice/`](invoice/) | No slots, with parts marked `review` and `locked`: `memo` is drawn, `tip` asks first, `pay-later` is refused until the person unlocks it | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/invoice/app.html) |
 | [`calendar/`](calendar/) | `events` owns the events; `month` draws a month grid from nested template loops; `agenda` reads the events and the contacts app's birthdays | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/calendar/app.html) |
 
 Locally, run `npm run dev` and open `http://localhost:5173/demos/reading-list/app.html`.
@@ -35,6 +38,7 @@ Locally, run `npm run dev` and open `http://localhost:5173/demos/reading-list/ap
 
 - **`link rel="plugin"`** names a plugin. The host fetches it, the kernel reads its manifest and runs it in its own worker for as long as a tab has the app open.
 - **`slot name`** is where plugins draw. What's inside a slot shows until a plugin draws there. The page's layout is yours: plain HTML and CSS.
+- **No slot? A place.** A plugin can name a CSS selector in the page and put its view before, after, inside or instead of what matches, or hide it. That is how a person's own plugins, added with **Customize**, reach an app that never planned for them. The trip, menu and invoice apps have no slots at all. See [places](../docs/guide/places.md).
 - The page shows only its own plugins' views. Review cards, where the person allows or declines a change, always show.
 
 ## A plugin is a script and its templates
