@@ -71,7 +71,7 @@ export type HostToKernel =
   /** Something went wrong in the page: a file that didn't load, an uncaught error. The kernel puts it in the trace. */
   | { t: "report"; source: string; text: string };
 
-export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace" | "changes" | "reference";
+export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace" | "changes" | "reference" | "route";
 
 // kernel -> host
 export type KernelToHost =

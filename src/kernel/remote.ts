@@ -79,6 +79,15 @@ export class RemotePlugins {
   collectionOwner?: (collection: string) => string | undefined;
   /** Told whenever an instance's worker goes, for any reason. */
   onDispose?: (instance: string) => void;
+  /** Told when a running plugin adds or drops a route, or stops: `routes` has changed. */
+  onRoutes?: () => void;
+
+  /** Every route the running plugins answer, as "GET /demos/app/path". */
+  get routes(): string[] {
+    const all = new Set<string>();
+    for (const remote of this.live.values()) for (const name of remote.heard) if (name.startsWith("route:")) all.add(name.slice(6));
+    return [...all].sort();
+  }
 
   constructor(
     readonly root: any,
@@ -337,10 +346,13 @@ export class Remote {
         return;
       case "on":
         return this.listen(message.listener, message.name);
-      case "off":
+      case "off": {
+        const name = this.listeners.get(message.listener)?.name;
         this.listeners.get(message.listener)?.off();
         this.listeners.delete(message.listener);
+        if (name?.startsWith("route:")) this.manager.onRoutes?.();
         return;
+      }
       case "hook:result": {
         const waiting = this.pending.get(message.id);
         if (!waiting) return;
@@ -369,6 +381,8 @@ export class Remote {
   }
 
   private listen(listener: number, name: string): void {
+    const route = /^route:(GET|HEAD|POST|PUT|PATCH|DELETE) (\S+)$/.exec(name);
+    if (route) return this.route(listener, route[1], route[2]);
     // A collection's change hook is made when its owner first runs. A reader may listen
     // before that (the contacts app hasn't been opened yet), and hears changes once it exists.
     const spec = hooks.get(name) ?? (name.startsWith("data:changed:") ? ({ mode: "emit" } as HookSpec) : undefined);
@@ -392,6 +406,31 @@ export class Remote {
       return;
     }
     this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
+  }
+
+  /**
+   * A route: requests for a path inside the plugin's own folder, which the
+   * service worker sends here (sw/routes/plugins.js). `path` is relative to
+   * the plugin's file. Each route is a bail hook named for its method and
+   * absolute path, so the kernel answers a request with one dispatch.
+   */
+  private route(listener: number, method: string, path: string): void {
+    const refuse = (why: string) => {
+      record({ kind: "error", name: "route:refused", plugin: this.instance, detail: why });
+      this.post({ t: "event", action: "kernel:error", value: why });
+    };
+    if (!check(this.instance, this.caps, "routes")) return void this.post({ t: "event", action: "kernel:denied", value: "routes" });
+    const base = this.plugin.href;
+    if (!base) return refuse("Only a plugin an app links can add routes");
+    const folder = new URL("./", base);
+    // The service worker only sees this site's paths, so a plugin from another site has no folder here to answer for.
+    if (folder.origin !== self.location.origin) return refuse("Only a plugin on this site can add routes");
+    const at = new URL(path, base);
+    if (at.origin !== folder.origin || !at.pathname.startsWith(folder.pathname) || at.pathname === folder.pathname || at.search || at.hash) return refuse(`${path} isn't a path inside the plugin's own folder, ${folder.pathname}`);
+    const name = `route:${method} ${at.pathname}`;
+    const spec: HookSpec = { mode: "bail", timeoutMs: 10_000, onFailure: "open" };
+    this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
+    this.manager.onRoutes?.();
   }
 
   private forwarder(listener: number, name: string, spec: HookSpec) {
@@ -474,7 +513,9 @@ export class Remote {
       resolve({ failed: "plugin stopped" });
     }
     this.pending.clear();
+    const routed = this.heard.some((name) => name.startsWith("route:"));
     this.listeners.clear();
+    if (routed) this.manager.onRoutes?.();
     void this.fiber?.dispose?.();
     this.port.close();
   }

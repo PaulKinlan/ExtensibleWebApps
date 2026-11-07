@@ -9,6 +9,7 @@ import { Context } from "cordis";
 import { defineHook, hooks } from "./hooks";
 import { Hosts } from "./hosts";
 import { apps as makeApps } from "./apps";
+import { makeRoutes } from "./routes";
 import { catalog } from "./catalog";
 import { changeLog } from "./changes";
 import { checkPath, PathError } from "./paths";
@@ -240,6 +241,7 @@ remote.onDispose = (instance) => reviews.cancelInstance(instance);
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
+const routes = makeRoutes(root, remote, shared);
 remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;
@@ -351,6 +353,7 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "install") return plugins.install(String(arg));
   if (name === "uninstall") return plugins.remove(String(arg));
   if (name === "trace") return recent();
+  if (name === "route") return routes.answer(arg);
   if (name === "changes") return log.list();
   if (name === "reference") {
     const data = describe();

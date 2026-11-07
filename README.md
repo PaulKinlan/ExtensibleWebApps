@@ -49,7 +49,7 @@ sequenceDiagram
 
 Bound elements update on their own. A plugin's own views update the same way when it draws them with `live`: `views.live(slot, id, (ctx) => data)` notes which collections and settings the function reads, and runs it again when any of them changes. A plugin can also listen to `data:changed:<collection>` itself and draw again.
 
-Three kinds of code, each in its own place:
+Each kind of code has its own place:
 
 - **The host** (`src/host/`) is the page. It draws what plugins render, turns clicks and typing into events, and runs no plugin code. Read [`main.ts`](src/host/main.ts) first, then:
   - [`sanitize.ts`](src/host/sanitize.ts) keeps only the HTML listed in [`src/shared/html.ts`](src/shared/html.ts)
@@ -58,6 +58,7 @@ Three kinds of code, each in its own place:
   - [`workbench.ts`](src/host/workbench.ts) is the trace and benchmarks on the workbench page (`workbench/index.html`)
   - [`elements.ts`](src/host/elements.ts) loads the `ui-*` elements from [`elements/`](elements/)
   - [`bindings.ts`](src/host/bindings.ts) connects `<ui-form>` and `<ui-table>` to collections
+  - [`service-worker.ts`](src/host/service-worker.ts) starts the service worker and passes its questions to the kernel
 - **The elements** ([`elements/`](elements/)) are the `ui-*` custom elements views are built from, one `.html` file each, run as written with no build. See [`elements/README.md`](elements/README.md).
 - **The kernel** (`src/kernel/`) is a shared worker that every tab talks to. [`kernel.ts`](src/kernel/kernel.ts) wires everything together and is the place to start. The other files, by job:
   - **Talking to plugins:**
@@ -66,6 +67,7 @@ Three kinds of code, each in its own place:
     - [`gate.ts`](src/kernel/gate.ts) checks every call against the manifest
     - [`hooks.ts`](src/kernel/hooks.ts) defines the events plugins can listen to
     - [`apps.ts`](src/kernel/apps.ts) runs the plugins an open app links, while a tab has it open
+    - [`routes.ts`](src/kernel/routes.ts) answers requests for plugin routes, which the service worker passes on
   - **Data:**
     - [`store.ts`](src/kernel/store.ts) is the data folder
     - [`records.ts`](src/kernel/records.ts) and [`schema.ts`](src/kernel/schema.ts) hold collections
@@ -79,6 +81,7 @@ Three kinds of code, each in its own place:
     - [`notes.ts`](src/kernel/notes.ts) is the notes app
     - [`reference.ts`](src/kernel/reference.ts) is the API reference
     - [`trace.ts`](src/kernel/trace.ts) is the trace you see at the bottom of the page
+- **The service worker** ([`sw.js`](sw.js)) sits between pages and the network. It serves an app's folder address, keeps what it served for offline use, and sends requests for plugin routes to the kernel through a tab. Each job is a file in [`sw/routes/`](sw/routes/); see [Routes and the service worker](docs/guide/routes.md).
 - **The sandbox** ([`src/sandbox/runtime.ts`](src/sandbox/runtime.ts)) runs inside each plugin's worker. It builds the `ctx` a plugin is given, and every call on `ctx` becomes a message to the kernel.
 
 [`src/shared/`](src/shared/) holds what both sides agree on:

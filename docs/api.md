@@ -28,6 +28,14 @@ Needs: `hook:listen:<hook>` (emit, parallel) or `hook:intercept:<hook>` (serial,
 
 Listens to a hook. In a `function` handler, `this` is a copy of ctx pinned to the action's trace. What it returns matters only for hooks that can change or stop an action.
 
+### ctx.routes.add
+
+`ctx.routes.add(method, path, (request) => response) → off()`
+
+Needs: `routes`.
+
+Answers requests for a path inside the plugin's own folder (only for plugins an app links), so a link or a form can reach the plugin. The platform's service worker sends a matching request to the kernel through an open tab. `request` is `{ method, path, query, form }`; the handler returns `{ redirect }` (a 303 to a page on this site), `{ html }` (a page in which no script runs), `{ json }` or `{ text }`, each with an optional `status`. Returning nothing lets another plugin answer, and then 404.
+
 ### ctx.settings.get
 
 `ctx.settings.get() → Promise<values>`
@@ -415,6 +423,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | Capability | Lets a plugin |
 | --- | --- |
 | `ui` | Draw views with ctx.ui.render. |
+| `routes` | Answer requests for paths in the plugin's own folder with ctx.routes.add. |
 | `network` | Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
@@ -612,3 +621,4 @@ For devtools and tests, from the page: `window.__host.command(name, arg)`.
 | `trace` | () The most recent trace events. |
 | `changes` | () The change log. |
 | `reference` | () This reference, as { data, markdown }. |
+| `route` | ({ method, path, query, form }) Answers a request with the plugin route for it, or null. The service worker sends these through a tab. |

@@ -481,6 +481,11 @@ export default async (ctx) => {
   check("a plugin's own storage needs no review", (await a.textContent('aside [data-key="tidy:tidy"]')).includes("Tidied 3 · exported 1"));
 
   // Path checks: sneaky may write files anywhere (files:*) but not into the platform's folders, outside the data folder, or hidden files.
+  // The page keeps only the last 1000 trace events, and sneaky tries once each time it starts, so start it again here.
+  await a.click(`${panel("sneaky")} >> text=Turn off`);
+  await a.waitForSelector(`${panel("sneaky")} >> text=Turn on`);
+  await a.click(`${panel("sneaky")} >> text=Turn on`);
+  await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "files:path" && e.plugin === "sneaky").length >= 3, null, { timeout: 5000 }).catch(() => {});
   const refusedPaths = await a.evaluate(() => window.__host.traces.filter((e) => e.kind === "denied" && e.name === "files:path" && e.plugin === "sneaky").map((e) => e.detail));
   const evil = await a.evaluate(async () => {
     const root = await navigator.storage.getDirectory();

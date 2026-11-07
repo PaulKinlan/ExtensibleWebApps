@@ -29,7 +29,16 @@ function workerPolicy(): Plugin {
 
 // Files the browser runs as written: served untouched in development (no
 // transforms, no injected scripts) and copied unchanged into the build.
-const AS_WRITTEN = ["elements", "demos", "home", "std", "workbench", "index.html"];
+const AS_WRITTEN = [
+  "demos",
+  "elements",
+  "home",
+  "index.html",
+  "std",
+  "sw",
+  "sw.js",
+  "workbench",
+];
 // Two stable URLs every page uses: the platform's stylesheet and its host
 // script. In development the script redirects to the TypeScript source (so
 // its relative worker URLs resolve); in the build it is emitted at this path.
@@ -55,6 +64,8 @@ function asWritten(): Plugin {
           return res.end();
         }
         if (path === "/platform/host.css") return serve(res, resolve(root, HOST_CSS));
+        // The service worker sits at the root, as written, so its scope is the whole site.
+        if (path === "/sw.js") return serve(res, resolve(root, "sw.js"));
         const top = AS_WRITTEN.find((d) => statSync(join(root, d)).isDirectory() && path.startsWith(`/${d}/`));
         const file = resolve(root, `.${path}`);
         if (!top || !file.startsWith(resolve(root, top) + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
