@@ -319,6 +319,12 @@ export default async (ctx) => {
           own: style(grid?.querySelector("td:not([data-other])"))?.opacity,
           outside: style(outside)?.tableLayout,
         };
+        // A plugin's CSS can't reach the entry that holds the containment, even with :scope.
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync('@layer plugins { @scope ([data-plugin="month"] > *) { :scope { position: fixed; } } }');
+        document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+        result.entry = [style(grid).position, style(grid).contain];
+        document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== sheet);
         outside.remove();
         return result;
       });
@@ -375,12 +381,13 @@ export default async (ctx) => {
     @font-face { font-family: x; src: url(https://example.com/x.woff2); }
     .a { color: red !important; background: url(https://example.com/x.png); --y: \\75 rl(https://example.com/y.png); padding: 4px; }
     @media (min-width: 1px) { .b { cursor: url(https://example.com/c.cur), auto; margin: 1px; } }
-    @keyframes spin { to { rotate: 1turn; } }`));
-  check("a plugin's CSS is cleaned: no url(), @import, @font-face or !important", !/url|import|font-face|important|keyframes|example/i.test(cleanCss) && /\.a \{[^}]*padding: 4px;[^}]*color: red;/.test(cleanCss) && /@media .*\.b \{ margin: 1px; \}/s.test(cleanCss), cleanCss);
+    @keyframes spin { to { rotate: 1turn; } }
+    .n { color: red; & .m { color: blue; } padding: 2px; }`));
+  check("a plugin's CSS is cleaned: no url(), @import, @font-face or !important", !/url|import|font-face|important|keyframes|example/i.test(cleanCss) && /\.a \{[^}]*padding: 4px;[^}]*color: red;/.test(cleanCss) && /@media .*\.b \{ margin: 1px; \}/s.test(cleanCss) && /\.n \{[^]*padding: 2px/.test(cleanCss), cleanCss);
   check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
   check("a plugin in an app writing another plugin's collection is reviewed in that app, then lands", importedBook);
   check("a month grid from nested template loops has seven days in every week", proof.grid?.length >= 4 && proof.grid.every((n) => n === 7), JSON.stringify(proof.grid));
-  check("a plugin's own stylesheet styles its views, by class, and nothing else on the page", proof.styled?.plugin === "month" && proof.styled.layout === "fixed" && proof.styled.other === "0.6" && proof.styled.own === "1" && proof.styled.outside !== "fixed", JSON.stringify(proof.styled));
+  check("a plugin's own stylesheet styles its views, by class, and nothing else on the page", proof.styled?.plugin === "month" && proof.styled.layout === "fixed" && proof.styled.other === "0.6" && proof.styled.own === "1" && proof.styled.outside !== "fixed" && proof.styled.entry[0] !== "fixed" && proof.styled.entry[1] === "layout paint", JSON.stringify(proof.styled));
   check("a search box with data-live redraws the plugin's own list", proof.search);
   check("a vCard import writes a contact after review", proof.vcard);
   check("a recipe scales its ingredients to the servings typed in", JSON.stringify(proof.scaled) === JSON.stringify(["300 g flour", "3 eggs", "450 ml milk", "1.5 pinch salt"]), JSON.stringify(proof.scaled));

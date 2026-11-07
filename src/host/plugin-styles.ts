@@ -4,7 +4,7 @@
 //
 //   @layer platform, plugins;              styles.css declares the order
 //   @layer plugins {
-//     @scope ([data-plugin="month"]) {     only inside this plugin's views
+//     @scope ([data-plugin="month"] > *) { only inside this plugin's views
 //       .month td { height: 5.5rem }
 //     }
 //   }
@@ -13,7 +13,9 @@
 // author has the last word on how every plugin looks. Each view entry gets
 // data-plugin from the host (the sanitiser drops it from plugin HTML), and is
 // contained (contain: layout paint), so nothing a plugin styles can be drawn
-// over the rest of the page, even with position: fixed.
+// over the rest of the page, even with position: fixed. The scope starts at
+// the entry's children, not the entry: a plugin's CSS can't match the element
+// that holds the containment (not even with :scope), so it can't undo it.
 //
 // The CSS is parsed by the browser, then rebuilt from what is allowed:
 //   - style rules, and the @media, @supports, @container and @layer blocks
@@ -33,7 +35,7 @@ export function installPluginStyle(plugin: string, src: string, css: string): vo
   const rules = cleanCss(css);
   if (!rules) return;
   const sheet = new CSSStyleSheet();
-  sheet.replaceSync(`@layer plugins { @scope ([data-plugin="${CSS.escape(plugin)}"]) {\n${rules}\n} }`);
+  sheet.replaceSync(`@layer plugins { @scope ([data-plugin="${CSS.escape(plugin)}"] > *) {\n${rules}\n} }`);
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 }
 
@@ -51,19 +53,25 @@ export function cleanCss(css: string): string {
   return [...sheet.cssRules].map(cleanRule).filter(Boolean).join("\n");
 }
 
+/** Drops declarations that load something, and !important, in place. */
+function cleanDeclarations(style: CSSStyleDeclaration): string {
+  for (const name of [...style]) {
+    const value = style.getPropertyValue(name);
+    if (LOADS.test(value)) style.removeProperty(name);
+    else if (style.getPropertyPriority(name)) style.setProperty(name, value);
+  }
+  return style.cssText;
+}
+
 function cleanRule(rule: CSSRule): string {
   if (rule instanceof CSSStyleRule) {
-    const style = rule.style;
-    for (const name of [...style]) {
-      const value = style.getPropertyValue(name);
-      if (LOADS.test(value)) style.removeProperty(name);
-      else if (style.getPropertyPriority(name)) style.setProperty(name, value);
-    }
     // Nested rules (CSS nesting) are checked the same way.
     const nested = [...rule.cssRules].map(cleanRule).filter(Boolean).join("\n");
-    const body = [style.cssText, nested].filter(Boolean).join(" ");
+    const body = [cleanDeclarations(rule.style), nested].filter(Boolean).join(" ");
     return body ? `${rule.selectorText} { ${body} }` : "";
   }
+  // Declarations after a nested rule, or directly inside a nested @media, come as their own block.
+  if (rule.constructor.name === "CSSNestedDeclarations") return cleanDeclarations((rule as CSSRule & { style: CSSStyleDeclaration }).style);
   const block = (prelude: string) => {
     const inner = [...(rule as CSSGroupingRule).cssRules].map(cleanRule).filter(Boolean).join("\n");
     return inner ? `${prelude} { ${inner} }` : "";
