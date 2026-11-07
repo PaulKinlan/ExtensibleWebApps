@@ -41,6 +41,8 @@ export type View =
 export type Slot = string;
 
 export interface TraceEvent {
+  /** Counts up from 1 with each event, so a reader can tell which events it already has. */
+  seq: number;
   at: number; // ms since kernel start
   trace?: string;
   kind: "dispatch" | "remote" | "call" | "denied" | "lifecycle" | "bridge" | "error" | "note";
@@ -65,7 +67,9 @@ export type HostToKernel =
   /** A bound form or table saves (fields) or deletes (null) a record for `owner`. */
   | { t: "record"; id: string; owner: string; collection: string; recordId?: string; fields: Record<string, unknown> | null; trace: string }
   /** The tab opened an app: the plugins its app.html links, fetched by the tab. */
-  | { t: "open"; plugins: { href: string; source: string }[] };
+  | { t: "open"; plugins: { href: string; source: string }[] }
+  /** Something went wrong in the page: a file that didn't load, an uncaught error. The kernel puts it in the trace. */
+  | { t: "report"; source: string; text: string };
 
 export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace" | "changes" | "reference";
 
