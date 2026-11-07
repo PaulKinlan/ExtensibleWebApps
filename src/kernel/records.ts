@@ -217,7 +217,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     description: "Collections: typed records plugins share. A plugin declares its own in its manifest; reading or writing another's needs a capability, and writes to another's are reviewed.",
     methods: {
       collections: { args: "()", returns: "[{ name, owner, title, schema }]", description: "Every collection, with its schema." },
-      list: { args: "(collection)", returns: "[record], most recently changed first", needs: "data:read:<collection>", description: "Every record in a collection. Each record has its fields plus id, createdAt and updatedAt." },
+      list: { args: "(collection)", returns: "[record], most recently changed first", needs: "data:read:<collection>", description: "Every record in a collection. Each record has its fields plus id, createdAt and updatedAt. A collection no plugin has made yet reads as empty." },
       get: { args: "(collection, id)", returns: "record or null", needs: "data:read:<collection>", description: "One record." },
       put: { args: "(collection, { id?, ...fields }, reason?)", returns: "{ ok, id, outcome? } or { ok: false, errors }", needs: "data:write:<collection>", reviewed: true, description: "Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection." },
       delete: { args: "(collection, id, reason?)", returns: "{ ok, id }", needs: "data:write:<collection>", reviewed: true, description: "Deletes a record. Reviewed unless the plugin owns the collection." },
@@ -228,6 +228,12 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       await ready;
       if (method === "collections") return [...registry.values()];
       const name = String(args[0]);
+      // A collection no plugin has made yet holds nothing. A plugin that may read it gets
+      // an empty answer rather than an error, and can listen for its first write.
+      if (!registry.has(name) && (method === "list" || method === "get")) {
+        const plugin = remote.installed.get(base(instance));
+        if (plugin && grants(plugin.caps, `data:read:${name}`)) return method === "list" ? [] : null;
+      }
       known(name);
       const what = method === "list" || method === "get" ? "read" : "write";
       if (!may(instance, name, what)) {

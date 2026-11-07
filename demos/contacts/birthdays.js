@@ -1,6 +1,7 @@
-// Birthdays: reads the contacts (`data:read:contacts`) and hears every change
-// to them (`hook:listen:data:changed:contacts`), and lists the birthdays in
-// the next few weeks. How far ahead to look is a setting, so the plugins
+// Birthdays: reads the contacts (`data:read:contacts`) and lists the
+// birthdays in the next few weeks. It is a live view: the function it gives
+// views.live reads the contacts and the settings, and runs again whenever
+// either changes. How far ahead to look is a setting, so the plugins
 // panel draws a field for it.
 
 export const manifest = {
@@ -8,7 +9,7 @@ export const manifest = {
   name: "Birthdays",
   description: "Birthdays coming up, and how old each person will be.",
   version: "1.0.0",
-  permissions: ["ui", "data:read:contacts", "hook:listen:data:changed:contacts"],
+  permissions: ["ui", "data:read:contacts"],
   settings: {
     days: { type: "number", title: "Look ahead (days)", default: 60 },
   },
@@ -29,7 +30,7 @@ export function next(birthday, today = new Date()) {
 export default async function (ctx) {
   const views = ctx.ui.views("birthdays.html");
 
-  const draw = async () => {
+  views.live("side", "soon", async (ctx) => {
     const people = await ctx.call("data", "list", "contacts");
     const ahead = Number((await ctx.settings.get()).days ?? 60);
     const soon = people
@@ -38,10 +39,6 @@ export default async function (ctx) {
       .filter((b) => b.days <= ahead)
       .sort((a, b) => a.days - b.days)
       .map((b) => ({ ...b, when: b.days === 0 ? "today" : b.days === 1 ? "tomorrow" : `in ${b.days} days`, tone: b.days <= 7 ? "warn" : "neutral" }));
-    views.render("side", "soon", { soon, ahead });
-  };
-
-  ctx.on("data:changed:contacts", () => draw());
-  ctx.settings.onChange(() => draw());
-  draw();
+    return { soon, ahead };
+  });
 }

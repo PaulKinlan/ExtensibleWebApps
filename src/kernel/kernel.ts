@@ -242,7 +242,8 @@ remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;
   const plugin = remote.installed.get(base(instance));
-  return !!plugin && !!owner && (owner === plugin.id || grants(plugin.caps, `data:read:${name}`));
+  // A collection no plugin has made yet is readable by a plugin that may read it, so it can listen ahead.
+  return !!plugin && (owner === plugin.id || grants(plugin.caps, `data:read:${name}`));
 };
 remote.collectionOwner = (name) => records.registry.get(name)?.owner;
 services.data = records.service;

@@ -45,10 +45,15 @@ const CTX: Record<ApiMember<Api>, Doc> = {
     needs: "",
     description: "Builds an HTML view from a template, escaping every value (arrays are joined, nested html results go in as they are). Use it whenever text comes from data.",
   },
+  "ui.live": {
+    signature: "ctx.ui.live(slot, key, (ctx) => view, order?) → { refresh(), stop() }",
+    needs: "`ui`",
+    description: "Draws what the function returns, like `ui.render`, and draws it again whenever a collection it read (with `data.list` or `data.get` on the ctx it is given) or the plugin's settings change. Call `refresh()` after the plugin's own state changes. A collection that doesn't exist yet is followed too, so the view fills in when it appears.",
+  },
   "ui.views": {
-    signature: "ctx.ui.views(file) → { render(slot, id, data?, { key?, order? }?) }",
+    signature: "ctx.ui.views(file) → { render(slot, id, data?, { key?, order? }?), live(slot, id, (ctx) => data, { key?, order? }?) }",
     needs: "`ui` (to render)",
-    description: "The `<template id>` elements in an .html file next to the plugin (only for plugins an app links). `render` draws one, filled with `data`: `{{path}}` holes in text and attribute values (an attribute that is one whole hole is left out when its value is false or missing, and bare when true), `<template for=\"x of path\">` and `<template if=\"path\">`. Values go in as text, and the result is checked like any HTML view. A `<style>` in the file styles only this plugin's views, below the page's own styles.",
+    description: "The `<template id>` elements in an .html file next to the plugin (only for plugins an app links). `render` draws one, filled with `data`: `{{path}}` holes in text and attribute values (an attribute that is one whole hole is left out when its value is false or missing, and bare when true), `<template for=\"x of path\">` and `<template if=\"path\">`. Values go in as text, and the result is checked like any HTML view. A `<style>` in the file styles only this plugin's views, below the page's own styles. `live` fills it with what the function returns, again whenever what it read changes (see `ui.live`).",
   },
   "ui.onEvent": {
     signature: "ctx.ui.onEvent((action, value) => …) → off()",
