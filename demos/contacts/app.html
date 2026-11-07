@@ -21,6 +21,8 @@
   <link rel="plugin" href="people.js">
   <link rel="plugin" href="birthdays.js">
   <link rel="plugin" href="vcard-import.js">
+  <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
+  <link rel="plugin" href="/std/debug-console.js">
 </head>
 <body>
   <header>
@@ -33,5 +35,6 @@
   <aside>
     <slot name="side"></slot>
   </aside>
+  <slot name="debug"></slot>
 </body>
 </html>

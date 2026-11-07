@@ -105,7 +105,7 @@ export default (ctx) => {
   const onDisk = readFileSync(new globalThis.URL("../docs/api.md", import.meta.url), "utf8");
   check("docs/api.md is what the kernel prints about itself", reference.markdown === onDisk, reference.markdown === onDisk ? "" : "run npm run reference");
   const hookNames = await a.evaluate(() => window.__host.command("reference").then((r) => r.data.hooks.map((h) => h.name)));
-  check("the reference lists every hook and service the kernel has", ["data:changed", "data:beforeWrite", "note:open"].every((h) => hookNames.includes(h)) && ["audio", "store", "files", "storage", "kernel", "settings", "data"].every((s) => reference.data.services.some((x) => x.name === s)));
+  check("the reference lists every hook and service the kernel has", ["data:changed", "data:beforeWrite", "note:open", "debug:trace"].every((h) => hookNames.includes(h)) && ["audio", "store", "files", "storage", "kernel", "settings", "data", "debug"].every((s) => reference.data.services.some((x) => x.name === s)));
   const wordCount = reference.data.plugins.find((p) => p.id === "word-count");
   check("the live reference says which hooks each running plugin listens to", wordCount?.hooks.includes("note:open") && /## Installed now/.test(reference.live), wordCount?.hooks.join(" "));
   await a.evaluate(() => window.__host.command("install", `export const manifest = { id: 'reader', name: 'Reader', permissions: ['ui'] };
@@ -121,7 +121,7 @@ export default async (ctx) => {
   ctx.ui.render('devtools', 'reader', { type: 'text', text: 'reader sees ' + ref.services.length + ' services' });
   ctx.log('reader: ' + JSON.stringify(refused));
 };`));
-  await a.waitForSelector('#devtools slot[name="devtools"] >> text=reader sees 7 services', { timeout: 5000 });
+  await a.waitForSelector('#devtools slot[name="devtools"] >> text=reader sees 8 services', { timeout: 5000 });
   check("a plugin can read the reference, and draw in the devtools slot", true);
   await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")), null, { timeout: 5000 });
   const refusedCalls = await a.evaluate(() => JSON.parse(window.__host.traces.find((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")).detail.slice(8)));
@@ -216,6 +216,23 @@ export default (ctx) => {
   check("saving a bound form adds the record and the bound table updates", /^books-event added "\w+"$/.test(added), added);
   const cleared = await a.evaluate((sel) => document.querySelector(sel).querySelector("ui-form").shadowRoot.querySelector('input[name="title"]').value, books);
   check("after adding a record the bound form starts a fresh one", cleared === "", cleared);
+  // Editing a record with groups keeps what the form doesn't show: a false checkbox, keys outside the schema, and no empty optional group.
+  await plugin(`export const manifest = { id: 'kit', name: 'Kit', permissions: ['ui'], collections: { kit: { schema: { type: 'object', properties: {
+  name: { type: 'string' }, parts: { type: 'array', items: { type: 'object', title: 'Part', required: ['label'], properties: { label: { type: 'string' }, on: { type: 'boolean' }, qty: { type: 'integer', default: 1 } } } },
+  address: { type: 'object', required: ['city'], properties: { city: { type: 'string' } } } } } } } };
+export default async (ctx) => {
+  const { id } = await ctx.call('data', 'put', 'kit', { name: 'a', parts: [{ label: 'x', on: false, extra: 'keep' }] });
+  ctx.ui.render('main', 'kit', '<ui-form collection="kit" record="' + id + '" action="saved"></ui-form>');
+  ctx.ui.onEvent(async () => ctx.log('kit-saved ' + JSON.stringify(await ctx.call('data', 'get', 'kit', id))));
+};`);
+  const kit = 'main [data-key="kit:kit"] ui-form';
+  await a.waitForSelector(`${kit} input[name="parts[0].label"]`, { timeout: 5000 });
+  await a.click(`${kit} button.add`);
+  const qty = await a.evaluate((sel) => document.querySelector(sel).shadowRoot.querySelector('input[name="parts[1].qty"]')?.value, kit);
+  await a.click(`${kit} button[type="submit"]`);
+  const kitSaved = JSON.parse((await pluginLog("kit", "kit-saved")).slice(10));
+  check("a form keeps a group's false values and unknown keys, drops an empty optional group and an untouched new row, and fills nested defaults", qty === "1" && kitSaved.parts.length === 1 && kitSaved.parts[0].on === false && kitSaved.parts[0].extra === "keep" && !("address" in kitSaved), JSON.stringify({ qty, kitSaved }));
+  await a.evaluate(() => window.__host.command("uninstall", "kit"));
   // A plugin that declares a collection someone else owns doesn't own it, and can't intercept its writes.
   await plugin(`export const manifest = { id: 'squatter', name: 'Squatter', permissions: ['data:read:books'], collections: { books: { schema: { type: 'object' } } } };
 export default (ctx) => {
@@ -265,7 +282,8 @@ export default async (ctx) => {
   const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort(); // sorted: calendar runs before contacts
   const linkedIds = (name) => {
     const page = readFileSync(new globalThis.URL(`../demos/${name}/app.html`, import.meta.url), "utf8");
-    return [...page.matchAll(/<link rel="plugin" href="([^"]+)">/g)].map(([, href]) => readFileSync(new globalThis.URL(`../demos/${name}/${href}`, import.meta.url), "utf8").match(/id: "([^"]+)"/)[1]);
+    // An href is relative to the app's folder, or (for standard plugins) to the site: /std/debug-console.js.
+    return [...page.matchAll(/<link rel="plugin" href="([^"]+)">/g)].map(([, href]) => readFileSync(new globalThis.URL(href.startsWith("/") ? `..${href}` : `../demos/${name}/${href}`, import.meta.url), "utf8").match(/id: "([^"]+)"/)[1]);
   };
   const drawn = [];
   const leaks = [];
@@ -274,7 +292,8 @@ export default async (ctx) => {
     const page = await openTab(`${URL}demos/${name}/app.html`);
     const ids = linkedIds(name);
     const missing = [];
-    for (const id of ids) if (!(await page.waitForSelector(`slot [data-key^="${id}:"]`, { timeout: 8000 }).then(() => true, () => false))) missing.push(id);
+    // A tab-scoped plugin's keys start with its instance, `debug-console@<tab>:`.
+    for (const id of ids) if (!(await page.waitForSelector(`slot :is([data-key^="${id}:"], [data-key^="${id}@"])`, { state: "attached", timeout: 8000 }).then(() => true, () => false))) missing.push(id);
     drawn.push(`${name}: ${missing.length ? `missing ${missing.join(", ")}` : `${ids.length} plugins drawn`}`);
     // An app shows only its own plugins' views, not the workbench's notes or panel.
     if (await page.$('[data-key^="notes:"], [data-key^="plugins:"]')) leaks.push(name);
@@ -363,9 +382,73 @@ export default async (ctx) => {
       await page.waitForFunction((sel) => document.querySelectorAll(`${sel} input[type=checkbox]`).length === 4, list, { timeout: 5000 }).catch(() => {});
       await page.check(`${list} input[type=checkbox] >> nth=0`);
       proof.ticked = await page.waitForSelector(`${list} s`, { timeout: 5000 }).then(() => true, () => false);
+      // ui-form edits a list of groups: add two ingredients, remove one, see an error beside the field it is about, then save.
+      await page.click(`${book} button >> text=All recipes`);
+      const form = `${book} ui-form`;
+      await page.fill(`${form} input[name=title]`, "Toast");
+      await page.click(`${form} button.add`);
+      await page.click(`${form} button.add`);
+      // Add moves focus to the new row's first field.
+      proof.focusAfterAdd = await page.evaluate((sel) => document.querySelector(sel).shadowRoot.activeElement?.getAttribute("name"), `${book} ui-form`);
+      await page.fill(`${form} input[name="ingredients[1].amount"]`, "2");
+      await page.fill(`${form} input[name="ingredients[1].unit"]`, "slices");
+      await page.click(`${form} button.add`);
+      await page.fill(`${form} input[name="ingredients[2].item"]`, "butter");
+      await page.click(`${form} button.remove >> nth=2`);
+      proof.rows = await page.locator(`${form} li`).count();
+      // Row 0 is blank and left out, so the kernel's error is about ingredients[0]; it shows in row 1, where it came from.
+      await page.click(`${form} button[type=submit]`);
+      proof.nestedError = await page.waitForSelector(`${form} li[data-row="ingredients[1]"] >> text=item is required`, { timeout: 5000 }).then(() => true, () => false);
+      await page.fill(`${form} input[name="ingredients[1].item"]`, "bread");
+      await page.click(`${form} button[type=submit]`);
+      await page.click(`${book} ui-table >> text=Toast`, { timeout: 5000 });
+      await page.waitForSelector(`${book} input[data-action=serves]`, { timeout: 5000 });
+      proof.toast = await page.locator(`${book} ul li`).allTextContents();
     }
     await page.close({ runBeforeUnload: true });
   }
+  // The debug console (std/debug-console.js): a bug that counts problems, opens a log, and copies it.
+  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: URL });
+  const debugPage = await openTab(`${URL}demos/spending/app.html`);
+  await debugPage.waitForSelector("ui-debug .bug", { timeout: 8000 });
+  // An uncaught error in the page is reported to the kernel, and reaches the console through the trace.
+  await debugPage.evaluate(() => setTimeout(() => { throw new Error("debug-test boom"); }));
+  const counted = await debugPage.waitForFunction(() => Number(document.querySelector("ui-debug")?.getAttribute("problems")) > 0, null, { timeout: 5000 }).then(() => true, () => false);
+  check("the debug console counts an uncaught page error on its bug", counted, await debugPage.evaluate(() => document.querySelector("ui-debug")?.getAttribute("problems")));
+  await debugPage.click("ui-debug .bug");
+  const logged = await debugPage.waitForSelector('ui-debug pre[data-copy-source="log"] >> text=debug-test boom', { timeout: 5000 }).then(() => true, () => false);
+  await debugPage.click('ui-debug button[data-value="all"]');
+  const everything = await debugPage.waitForSelector('ui-debug pre[data-copy-source="log"] >> text=plugin:ready', { timeout: 5000 }).then(() => true, () => false);
+  check("opening it shows the problems, and Everything shows the whole trace", logged && everything);
+  await debugPage.click("ui-debug button[data-copy]");
+  await debugPage.waitForFunction(() => /Copied/.test(document.querySelector("ui-debug")?.shadowRoot?.getElementById("status")?.textContent ?? ""), null, { timeout: 3000 }).catch(() => {});
+  const clipboard = await debugPage.evaluate(() => navigator.clipboard.readText()).catch((e) => String(e));
+  check("Copy puts the log on the clipboard, headed with the page's address", clipboard.includes("/demos/spending/app.html") && clipboard.includes("debug-test boom") && clipboard.includes("plugin:ready"), clipboard.slice(0, 200));
+  const lines = clipboard.split("\n").filter((l) => /^\d\d:\d\d:\d\d\.\d{3}  /.test(l));
+  check("each trace event is in the log once, though the snapshot and the first batches overlap", lines.length > 5 && new Set(lines).size === lines.length, `${lines.length} lines, ${new Set(lines).size} different`);
+  // A second tab on the same app: its console starts before the tab has said which plugins its app links.
+  const debugPage2 = await openTab(`${URL}demos/spending/app.html`);
+  await debugPage2.waitForSelector("ui-debug .bug", { state: "attached", timeout: 8000 });
+  await debugPage2.click("ui-debug .bug");
+  const knowsApp = await debugPage2.waitForSelector('ui-debug input[data-action="only-this-app"]', { timeout: 5000 }).then(() => true, () => false);
+  check("a console that starts before its tab opens the app learns the app's plugins once it does", knowsApp);
+  await debugPage2.close({ runBeforeUnload: true });
+  await debugPage.keyboard.press("Escape");
+  check("Escape closes the panel", await debugPage.evaluate(() => !document.querySelector("ui-debug")?.shadowRoot?.getElementById("panel")?.matches(":popover-open")));
+  await debugPage.close({ runBeforeUnload: true });
+  // That error was thrown on purpose.
+  for (let i = errors.length - 1; i >= 0; i--) if (errors[i].includes("debug-test boom")) errors.splice(i, 1);
+  // Without debug:read a plugin can neither read the trace nor hear it.
+  await plugin(`export const manifest = { id: 'peeker', name: 'Peeker', permissions: [] };
+export default async (ctx) => {
+  ctx.on('debug:trace', () => ctx.log('peeker heard'));
+  try { await ctx.call('debug', 'recent'); ctx.log('peeker read'); } catch (e) { ctx.log('peeker refused: ' + e.message); }
+};`);
+  const peeked = await pluginLog("peeker", "peeker");
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.kind === "denied" && e.plugin === "peeker" && e.name === "debug:read"), null, { timeout: 3000 }).catch(() => {});
+  const peekDenied = await traceHas(a, `(e) => e.kind === "denied" && e.plugin === "peeker" && e.name === "debug:read"`);
+  check("without debug:read a plugin can neither read the trace nor hear it", peeked === "peeker refused: Missing capability debug:read" && peekDenied, peeked);
+  await a.evaluate(() => window.__host.command("uninstall", "peeker"));
   check("every demo app draws a view from each plugin it links", demoNames.length >= 2 && drawn.every((d) => d.endsWith("drawn")), drawn.join("; "));
   check("an app page shows only its own plugins' views", leaks.length === 0, leaks.join(", "));
   check("a plugin that reads another's collection hears its changes and redraws", spentItems);
@@ -404,6 +487,7 @@ export default async (ctx) => {
   check("a vCard import writes a contact after review", proof.vcard);
   check("a recipe scales its ingredients to the servings typed in", JSON.stringify(proof.scaled) === JSON.stringify(["300 g flour", "3 eggs", "450 ml milk", "1.5 pinch salt"]), JSON.stringify(proof.scaled));
   check("a shopping list fills from a recipe and ticks an item off", proof.ticked);
+  check("a form edits a list of ingredients: add, remove, an error beside the field, save", proof.focusAfterAdd === "ingredients[1].amount" && proof.rows === 2 && proof.nestedError && JSON.stringify(proof.toast) === JSON.stringify(["2 slices bread"]), JSON.stringify({ focus: proof.focusAfterAdd, rows: proof.rows, error: proof.nestedError, toast: proof.toast }));
   // The calendar reads the contacts app's collection, though no contacts plugin is running now.
   const calendar = await openTab(`${URL}demos/calendar/app.html`);
   const birthday = await calendar.waitForSelector('[data-key="agenda:agenda"] >> text=Priya Shah', { timeout: 8000 }).then(() => true, () => false);

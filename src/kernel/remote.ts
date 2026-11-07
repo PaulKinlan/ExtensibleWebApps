@@ -385,7 +385,8 @@ export class Remote {
       this.post({ t: "event", action: "kernel:denied", value: `data:read:${scoped[1]}` });
       return;
     }
-    const needs = spec.mode === "emit" || spec.mode === "parallel" ? `hook:listen:${name}` : capabilityFor(name);
+    // A hook that names its own capability (debug:trace needs debug:read) keeps it; a change hook not made yet needs hook:listen.
+    const needs = hooks.has(name) ? capabilityFor(name) : `hook:listen:${name}`;
     if (!owns && !check(this.instance, this.caps, needs)) {
       this.post({ t: "event", action: "kernel:denied", value: needs });
       return;

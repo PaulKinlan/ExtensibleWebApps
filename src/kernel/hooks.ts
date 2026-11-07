@@ -12,6 +12,8 @@ export interface HookSpec {
   description?: string;
   /** What listeners receive, as a reader should see it. */
   args?: string;
+  /** The capability listening needs, when it isn't the usual `hook:listen:<name>` or `hook:intercept:<name>`. */
+  needs?: string;
 }
 
 export const hooks = new Map<string, HookSpec>();
@@ -24,6 +26,8 @@ export function defineHook(name: string, spec: HookSpec): () => void {
 
 /** Listening to a hook that can change or stop an action needs the intercept capability. */
 export function capabilityFor(name: string): string {
-  const mode = hooks.get(name)?.mode;
+  const spec = hooks.get(name);
+  if (spec?.needs) return spec.needs;
+  const mode = spec?.mode;
   return mode === "emit" || mode === "parallel" ? `hook:listen:${name}` : `hook:intercept:${name}`;
 }
