@@ -206,6 +206,7 @@ remote.readable = (instance, name) => {
   const plugin = remote.installed.get(base(instance));
   return !!plugin && !!owner && (owner === plugin.id || grants(plugin.caps, `data:read:${name}`));
 };
+remote.collectionOwner = (name) => records.registry.get(name)?.owner;
 services.data = records.service;
 
 /** The kernel's API reference, built from the registries above as they are now. */

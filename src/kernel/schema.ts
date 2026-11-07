@@ -57,7 +57,7 @@ export function checkSchema(schema: unknown, path = "schema", depth = 0): assert
   const s = schema as Record<string, unknown>;
   for (const key of Object.keys(s)) if (!KEYS.has(key)) throw new Error(`${path}: ${key} isn't supported`);
   if (s.type !== undefined && !TYPES.has(s.type as string)) throw new Error(`${path}: type must be one of ${[...TYPES].join(", ")}`);
-  if (s.format !== undefined && !(String(s.format) in FORMATS)) throw new Error(`${path}: format must be one of ${Object.keys(FORMATS).join(", ")}`);
+  if (s.format !== undefined && (typeof s.format !== "string" || !Object.hasOwn(FORMATS, s.format))) throw new Error(`${path}: format must be one of ${Object.keys(FORMATS).join(", ")}`);
   if (s.enum !== undefined && (!Array.isArray(s.enum) || s.enum.length > 200)) throw new Error(`${path}: enum must be a list of at most 200`);
   if (s.required !== undefined && (!Array.isArray(s.required) || s.required.some((r) => typeof r !== "string"))) throw new Error(`${path}: required must be a list of names`);
   if (s.properties !== undefined) {
@@ -97,9 +97,10 @@ export function validate(schema: Schema, value: unknown, path = ""): { path: str
   if (Array.isArray(value) && schema.items) value.forEach((item, i) => errors.push(...validate(schema.items!, item, `${path}[${i}]`)));
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
-    for (const name of schema.required ?? []) if (record[name] === undefined || record[name] === null || record[name] === "") errors.push({ path: name, message: `${schema.properties?.[name]?.title ?? name} is required` });
+    for (const name of schema.required ?? []) if (!Object.hasOwn(record, name) || record[name] === undefined || record[name] === null || record[name] === "") errors.push({ path: name, message: `${schema.properties?.[name]?.title ?? name} is required` });
     for (const [name, child] of Object.entries(schema.properties ?? {})) {
-      if (record[name] === undefined || record[name] === null || (record[name] === "" && !schema.required?.includes(name))) continue;
+      // Only absent fields skip their schema; the kernel drops cleared ones (null or "") before validating.
+      if (!Object.hasOwn(record, name) || record[name] === undefined) continue;
       errors.push(...validate(child, record[name], path ? `${path}.${name}` : name));
     }
   }

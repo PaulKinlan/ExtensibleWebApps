@@ -204,6 +204,17 @@ export default (ctx) => {
   await a.waitForSelector(`${books} ui-table >> text=Frank Herbert`, { timeout: 5000 });
   const added = await pluginLog("books", "books-event added");
   check("saving a bound form adds the record and the bound table updates", /^books-event added "\w+"$/.test(added), added);
+  const cleared = await a.evaluate((sel) => document.querySelector(sel).querySelector("ui-form").shadowRoot.querySelector('input[name="title"]').value, books);
+  check("after adding a record the bound form starts a fresh one", cleared === "", cleared);
+  // A plugin that declares a collection someone else owns doesn't own it, and can't intercept its writes.
+  await plugin(`export const manifest = { id: 'squatter', name: 'Squatter', permissions: ['data:read:books'], collections: { books: { schema: { type: 'object' } } } };
+export default (ctx) => {
+  ctx.on('data:beforeWrite:books', () => ({ block: 'mine now' }));
+  ctx.call('data', 'put', 'books', JSON.parse('{"__proto__": {"title": "Smuggled"}}')).then((r) => ctx.log('squatter ' + JSON.stringify(r)), (e) => ctx.log('squatter refused: ' + e.message));
+};`);
+  const squatted = await pluginLog("squatter", "squatter");
+  const squatDenied = await a.waitForFunction(() => window.__host.traces.some((e) => e.kind === "denied" && e.plugin === "squatter" && e.name === "hook:intercept:data:beforeWrite:books"), null, { timeout: 5000 }).then(() => true, () => false);
+  check("declaring another plugin's collection grants neither writes nor interception", squatted === "squatter refused: Missing capability data:write:books" && squatDenied, squatted);
   await plugin(`export const manifest = { id: 'shelf', name: 'Shelf', permissions: ['data:read:books', 'hook:listen:data:changed:books'] };
 export default (ctx) => {
   ctx.on('data:changed:books', async function () { const all = await this.call('data', 'list', 'books'); this.log('shelf sees ' + all.length); });
@@ -220,6 +231,8 @@ export default (ctx) => {
   check("without data:read a plugin can neither read a collection nor hear its changes", nosy === "nosy refused: Missing capability data:read:books" && nosyDenied, nosy);
   await plugin(`export const manifest = { id: 'lender', name: 'Lender', permissions: ['data:write:books'] };
 export default async (ctx) => {
+  const smuggled = await ctx.call('data', 'put', 'books', JSON.parse('{"__proto__": {"title": "Smuggled"}}'));
+  ctx.log('lender-proto ' + JSON.stringify(smuggled));
   const result = await ctx.call('data', 'put', 'books', { title: 'Lent book', author: 'A. Friend' }, 'Record a book you lent');
   ctx.log('lender ' + JSON.stringify(result));
 };`);
@@ -227,13 +240,15 @@ export default async (ctx) => {
   await a.click(`${reviewCard} >> text=Accept`);
   await a.waitForSelector(`${books} ui-table >> text=Lent book`, { timeout: 5000 });
   check("another plugin's write to a collection is reviewed first", /"ok":true/.test(await pluginLog("lender", "lender")));
+  const proto = await pluginLog("lender", "lender-proto");
+  check("a field named __proto__ can't satisfy a required field", /"ok":false/.test(proto) && /Title is required/.test(proto), proto);
   check("data:changed:<collection> reaches plugins that may read it", (await pluginLog("shelf", "shelf sees 2")) === "shelf sees 2" && !(await a.evaluate(() => window.__host.traces.some((e) => e.plugin === "nosy" && e.detail === "nosy heard"))));
   await a.click(`${books} ui-table button.link >> text=Dune`);
   check("a bound table's row sends its row-action with the record id", /^books-event open "\w+"$/.test(await pluginLog("books", "books-event open")));
   await a.click(`${books} ui-table button[aria-label="Delete Dune"]`);
   await a.waitForFunction((sel) => !document.querySelector(sel).querySelector("ui-table").shadowRoot.textContent.includes("Dune"), books, { timeout: 5000 });
   check("a deletable table deletes a record", (await pluginLog("shelf", "shelf sees 1")) === "shelf sees 1");
-  for (const id of ["books", "shelf", "nosy", "lender"]) await a.evaluate((i) => window.__host.command("uninstall", i), id);
+  for (const id of ["books", "shelf", "nosy", "lender", "squatter"]) await a.evaluate((i) => window.__host.command("uninstall", i), id);
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 
   // Worker content security policy.

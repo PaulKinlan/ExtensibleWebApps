@@ -54,6 +54,14 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
   /** Bindings from views, by `<tab>/<id>`. */
   const bindings = new Map<string, { host: Host; id: string; owner: string; collection: string }>();
 
+  /** One commit at a time per collection, so a failed save's rollback can't undo another write. */
+  const queues = new Map<string, Promise<unknown>>();
+  const serially = <T>(name: string, work: () => Promise<T>): Promise<T> => {
+    const run = (queues.get(name) ?? Promise.resolve()).then(work, work);
+    queues.set(name, run.catch(() => {}));
+    return run;
+  };
+
   const load = (name: string) => {
     if (!data.has(name)) {
       data.set(
@@ -70,7 +78,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
 
   const save = async (name: string, records: Map<string, StoredRecord>) => {
     const text = JSON.stringify(Object.fromEntries(records), null, 1);
-    if (text.length > MAX_BYTES) throw new Error(`The ${name} collection is limited to ${MAX_BYTES / 1_000_000} MB`);
+    if (new TextEncoder().encode(text).length > MAX_BYTES) throw new Error(`The ${name} collection is limited to ${MAX_BYTES / 1_000_000} MB`);
     await store.writeText(`collections/${name}.json`, text);
   };
 
@@ -116,8 +124,9 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     if (fields === null && !before) return { ok: true, id: recordId, unchanged: true };
     let after: StoredRecord | undefined;
     if (fields) {
-      const clean: Fields = {};
-      for (const [key, value] of Object.entries(fields)) if (!RECORD_FIELDS.includes(key) && value !== undefined) clean[key] = value;
+      // No prototype, so a field named __proto__ stays a field. Cleared fields (null or "") are left out.
+      const clean: Fields = Object.create(null);
+      for (const [key, value] of Object.entries(fields)) if (!RECORD_FIELDS.includes(key) && value !== undefined && value !== null && value !== "") clean[key] = value;
       const errors = validate({ ...collection.schema, type: "object" }, clean);
       if (errors.length) return { ok: false, id: recordId, errors };
       const now = new Date().toISOString();
@@ -132,17 +141,22 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     const change = { collection: name, id: recordId, before, after };
     const verdict = await root.serial(dispatch, `data:beforeWrite:${name}`, change);
     if (verdict && typeof verdict === "object" && "block" in verdict) return { ok: false, id: recordId, error: String(verdict.block) };
-    // Checked again after the awaits: the record must still be what was reviewed.
-    if (JSON.stringify(records.get(recordId)) !== JSON.stringify(before)) return { ok: false, id: recordId, error: "The record changed while the review was open" };
-    if (after) records.set(recordId, after);
-    else records.delete(recordId);
-    try {
-      await save(name, records);
-    } catch (error) {
-      if (before) records.set(recordId, before);
+    const committed = await serially(name, async () => {
+      // Checked again after the awaits: the record must still be what was reviewed, and there must still be room.
+      if (JSON.stringify(records.get(recordId)) !== JSON.stringify(before)) return { ok: false, id: recordId, error: "The record changed while the review was open" };
+      if (after && !before && records.size >= MAX_RECORDS) throw new Error(`The ${name} collection is limited to ${MAX_RECORDS} records`);
+      if (after) records.set(recordId, after);
       else records.delete(recordId);
-      throw error;
-    }
+      try {
+        await save(name, records);
+      } catch (error) {
+        if (before) records.set(recordId, before);
+        else records.delete(recordId);
+        throw error;
+      }
+      return undefined;
+    });
+    if (committed) return committed;
     root.emit(dispatch, `data:changed:${name}`, change);
     return { ok: true, id: recordId, ...(outcome ? { outcome } : {}) };
   }

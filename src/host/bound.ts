@@ -83,6 +83,10 @@ abstract class BoundElement extends HTMLElement {
     const owner = ownerOf(this);
     if (!owner || this.bound === `${owner}/${collection}`) return;
     this.unbind?.();
+    // A new binding starts clean: nothing from the last collection (an error, records, a schema) carries over.
+    this.state = undefined;
+    this.root.replaceChildren();
+    this.reset();
     this.bound = `${owner}/${collection}`;
     this.unbind = bind(owner, collection, (message) => {
       this.state = { ...this.state, ...message };
@@ -100,7 +104,21 @@ abstract class BoundElement extends HTMLElement {
     if (action) this.dispatchEvent(new CustomEvent("ui-action", { bubbles: true, composed: true, detail: { action, value } }));
   }
   abstract draw(): void;
+  /** Forgets anything kept for the last binding. */
+  protected reset(): void {}
 }
+
+/** `datetime-local` has no time zone: show stored UTC times in local time, and store what is entered as UTC. */
+const pad = (n: number) => String(n).padStart(2, "0");
+function toLocalInput(value: unknown): string {
+  const date = typeof value === "string" ? new Date(value) : undefined;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+const fromLocalInput = (value: string) => {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+};
 
 class UiTable extends BoundElement {
   static get observedAttributes() {
@@ -169,22 +187,39 @@ class UiForm extends BoundElement {
   private errors: Record<string, string> = {};
   private status = "";
   private busy = false;
+  /** Which record the form's typed values belong to; a different one starts from its saved values. */
+  private draftFor?: string;
+
+  protected reset() {
+    this.errors = {};
+    this.status = "";
+    this.draftFor = undefined;
+  }
 
   draw() {
     const style = h("style", {}, STYLES);
     if (this.state?.error) return this.root.replaceChildren(style, h("p", { class: "error", role: "alert" }, this.state.error));
     if (!this.state?.schema) return this.root.replaceChildren(style);
     if (!this.state.writable) return this.root.replaceChildren(style, h("p", { class: "error", role: "alert" }, `This plugin can't write ${this.state.title ?? "this collection"}.`));
-    // Keep what the person has typed across redraws.
-    const typed = this.values();
+    const editing = this.getAttribute("record");
+    // Keep what the person has typed across redraws, but only for the same record.
+    const identity = `${this.getAttribute("collection")}/${editing ?? ""}`;
+    if (this.draftFor !== undefined && this.draftFor !== identity) {
+      this.errors = {};
+      this.status = "";
+    }
+    const typed = this.draftFor === identity ? this.values() : undefined;
+    this.draftFor = identity;
     const props = this.schema.properties ?? {};
     const required = new Set(this.schema.required ?? []);
-    const names = list(this.getAttribute("fields")) ?? Object.keys(props);
-    const editing = this.getAttribute("record");
+    // Lists and objects have no form control yet; they are left out and keep their saved values.
+    const editable = (s: Schema) => s.type !== "array" && s.type !== "object";
+    const names = (list(this.getAttribute("fields")) ?? Object.keys(props)).filter((n) => props[n] && editable(props[n]));
     const current = editing ? (this.state.records as Row[] | undefined)?.find((r) => r.id === editing) : undefined;
-    const fields = names.filter((n) => props[n]).map((name) => {
+    const fields = names.map((name) => {
       const s = props[name];
-      const value = typed?.[name] ?? current?.[name] ?? s.default;
+      // A field the person cleared stays cleared.
+      const value = typed && Object.hasOwn(typed, name) ? typed[name] : (current?.[name] ?? s.default);
       const id = `f-${name}`;
       const error = this.errors[name];
       const common: Record<string, string | undefined> = { id, name, "aria-invalid": error ? "true" : undefined, "aria-describedby": error ? `${id}-error` : undefined, required: required.has(name) ? "" : undefined };
@@ -192,7 +227,7 @@ class UiForm extends BoundElement {
       if (s.type === "boolean") {
         control = h("input", { ...common, type: "checkbox", required: undefined });
         (control as HTMLInputElement).checked = Boolean(value);
-        return h("label", { class: "check" }, control, label(s, name));
+        return h("label", { class: "check" }, control, label(s, name), ...(error ? [h("span", { class: "error", id: `${id}-error` }, error)] : []));
       }
       if (s.enum) {
         control = h("select", common, ...(required.has(name) ? [] : [h("option", { value: "" }, "")]), ...s.enum.map((o) => h("option", { value: String(o) }, String(o))));
@@ -203,7 +238,7 @@ class UiForm extends BoundElement {
       } else {
         const type = s.type === "number" || s.type === "integer" ? "number" : s.format === "date" ? "date" : s.format === "date-time" ? "datetime-local" : s.format === "email" ? "email" : s.format === "uri" ? "url" : "text";
         control = h("input", { ...common, type, min: s.minimum?.toString(), max: s.maximum?.toString(), step: s.type === "integer" ? "1" : s.type === "number" ? "any" : undefined, maxlength: s.maxLength?.toString() });
-        (control as HTMLInputElement).value = value === undefined ? "" : String(value);
+        (control as HTMLInputElement).value = value === undefined ? "" : type === "datetime-local" ? toLocalInput(value) : String(value);
       }
       return h("label", { for: id, class: control.localName === "textarea" ? "wide" : undefined }, label(s, name) + (required.has(name) ? " *" : ""), control, ...(error ? [h("span", { class: "error", id: `${id}-error` }, error)] : []));
     });
@@ -223,18 +258,19 @@ class UiForm extends BoundElement {
   private values(form = this.root.querySelector("form")): Record<string, unknown> | undefined {
     if (!form) return undefined;
     const props = this.schema.properties ?? {};
-    const out: Record<string, unknown> = {};
+    const out: Record<string, unknown> = Object.create(null);
     for (const el of form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>("[name]")) {
       const s = props[el.name];
       if (el instanceof HTMLInputElement && el.type === "checkbox") out[el.name] = el.checked;
       else if (s?.type === "number" || s?.type === "integer") out[el.name] = el.value === "" ? undefined : Number(el.value);
+      else if (el instanceof HTMLInputElement && el.type === "datetime-local") out[el.name] = el.value === "" ? undefined : fromLocalInput(el.value);
       else out[el.name] = el.value === "" ? undefined : el.value;
     }
     return out;
   }
 
   private async save(form: HTMLFormElement) {
-    const fields = this.values(form)!;
+    const fields = { ...this.values(form)! };
     const editing = this.getAttribute("record") ?? undefined;
     const current = editing ? (this.state?.records as Row[] | undefined)?.find((r) => r.id === editing) : undefined;
     this.busy = true;
@@ -246,7 +282,8 @@ class UiForm extends BoundElement {
     this.busy = false;
     if (result.ok) {
       this.status = "Saved";
-      if (!editing) form.reset();
+      // A new record was added: the next draw starts a fresh one from the schema's defaults.
+      if (!editing) this.draftFor = undefined;
       this.draw();
       this.act(this.getAttribute("action"), result.recordId);
     } else {

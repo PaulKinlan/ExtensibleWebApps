@@ -73,6 +73,8 @@ export class RemotePlugins {
   onManifest?: (manifest: Manifest) => void;
   /** Whether an instance may read a collection; listening to its hooks needs that too. */
   readable?: (instance: string, collection: string) => boolean;
+  /** The plugin that owns a collection, from the registry rather than any manifest's claim. */
+  collectionOwner?: (collection: string) => string | undefined;
   /** Told whenever an instance's worker goes, for any reason. */
   onDispose?: (instance: string) => void;
 
@@ -355,7 +357,8 @@ export class Remote {
       return;
     }
     const scoped = /^data:(?:changed|beforeWrite):(.+)$/.exec(name);
-    const owns = scoped && this.plugin.manifest.collections && Object.hasOwn(this.plugin.manifest.collections, scoped[1]);
+    // Ownership comes from the registry: a manifest can declare a collection another plugin already owns.
+    const owns = !!scoped && this.manager.collectionOwner?.(scoped[1]) === this.plugin.id;
     if (scoped && !this.manager.readable?.(this.instance, scoped[1])) {
       record({ kind: "denied", name: `data:read:${scoped[1]}`, plugin: this.instance, detail: `listening to ${name}` });
       this.post({ t: "event", action: "kernel:denied", value: `data:read:${scoped[1]}` });
