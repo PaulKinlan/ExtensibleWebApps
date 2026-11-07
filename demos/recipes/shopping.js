@@ -3,15 +3,16 @@
 // item (a checkbox whose data-action names the item) marks it bought.
 //
 // It writes only its own collection, so nothing here needs a review. It
-// reads the recipes (`data:read:recipes`) and hears when they change, to
-// keep its menu of recipes current.
+// reads the recipes (`data:read:recipes`) for its menu. The list is a live
+// view: it reads the shopping list and the recipes, so a change to either,
+// from this plugin or the cookbook, draws it again.
 
 export const manifest = {
   id: "shopping",
   name: "Shopping list",
   description: "A shopping list you can fill from a recipe.",
   version: "1.0.0",
-  permissions: ["ui", "data:read:recipes", "hook:listen:data:changed:recipes"],
+  permissions: ["ui", "data:read:recipes"],
   order: 10,
   collections: {
     shopping: {
@@ -32,11 +33,11 @@ export const manifest = {
 export default async function (ctx) {
   const views = ctx.ui.views("shopping.html");
 
-  const draw = async () => {
+  views.live("side", "list", async (ctx) => {
     const items = (await ctx.call("data", "list", "shopping")).sort((a, b) => Number(!!a.done) - Number(!!b.done) || a.createdAt.localeCompare(b.createdAt));
     const recipes = (await ctx.call("data", "list", "recipes")).sort((a, b) => a.title.localeCompare(b.title));
-    views.render("side", "list", { items, recipes, ticked: items.some((i) => i.done) });
-  };
+    return { items, recipes, ticked: items.some((i) => i.done) };
+  });
 
   ctx.ui.onEvent(async (action, value) => {
     // "tick:<id>" with true or false from the checkbox.
@@ -55,7 +56,4 @@ export default async function (ctx) {
       for (const item of await ctx.call("data", "list", "shopping")) if (item.done) await ctx.call("data", "delete", "shopping", item.id);
     }
   });
-  ctx.on("data:changed:shopping", () => draw());
-  ctx.on("data:changed:recipes", () => draw());
-  draw();
 }

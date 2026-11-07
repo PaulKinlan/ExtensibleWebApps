@@ -6,7 +6,7 @@
 // use editor-style permissions such as `post:read`) get a shim instead, so
 // they run unchanged.
 
-import type { Api } from "../shared/api";
+import type { Api, Live } from "../shared/api";
 import type { KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
 
 let port: MessagePort;
@@ -45,7 +45,7 @@ function api(trace: () => string | undefined): Api {
       send({ t: "call", id, service, method, args, trace: trace() });
     });
   };
-  return {
+  const self: Api = {
     on(name: string, handler: (...args: any[]) => unknown): () => void {
       const listener = ++nextListener;
       handlers.set(listener, handler);
@@ -61,12 +61,19 @@ function api(trace: () => string | undefined): Api {
         send({ t: "render", slot, key, view: typeof view === "string" ? { type: "html", html: view } : view, order, trace: trace() });
       },
       html,
+      live(slot: Slot, key: string, compute: (ctx: Api) => unknown, order?: number) {
+        return live(self, compute, (view) => self.ui.render(slot, key, view as View | string | null, order));
+      },
       views(file: string) {
-        return {
+        const views = {
           render(slot: Slot, id: string, data?: unknown, options: { key?: string; order?: number } = {}) {
             send({ t: "render", slot, key: options.key ?? id, view: { type: "template", src: file, id, data }, order: options.order, trace: trace() });
           },
+          live(slot: Slot, id: string, compute: (ctx: Api) => unknown, options: { key?: string; order?: number } = {}) {
+            return live(self, compute, (data) => views.render(slot, id, data, options));
+          },
         };
+        return views;
       },
       onEvent(handler: (action: string, value: unknown) => void) {
         eventHandlers.add(handler);
@@ -93,6 +100,72 @@ function api(trace: () => string | undefined): Api {
       return api(() => pinned);
     },
     log,
+  };
+  return self;
+}
+
+/**
+ * A live view. `compute` gets a copy of ctx that notes what it reads: each
+ * collection it lists or gets, and the settings. Once it has drawn, a change
+ * to any of them computes and draws again. Changes that arrive while it is
+ * computing are folded into one more run, so a burst of writes draws twice
+ * at most. A read that fails (a collection no app has made yet) is still
+ * followed, so the view fills in when it appears.
+ */
+function live(base: Api, compute: (ctx: Api) => unknown, draw: (value: unknown) => void): Live {
+  const followed = new Map<string, () => void>();
+  let stopped = false;
+  let running = false;
+  let again = false;
+
+  const follow = (what: string) => {
+    if (stopped || followed.has(what)) return;
+    followed.set(what, what === "settings" ? base.settings.onChange(changed) : base.on(`data:changed:${what}`, changed));
+  };
+  const reader: Api = {
+    ...base,
+    call(service: string, method: string, ...args: unknown[]) {
+      if (service === "data" && (method === "list" || method === "get")) follow(String(args[0]));
+      if (service === "settings" && method === "get") follow("settings");
+      return base.call(service, method, ...args);
+    },
+    settings: {
+      ...base.settings,
+      get() {
+        follow("settings");
+        return base.settings.get();
+      },
+    },
+  };
+
+  async function run() {
+    if (running) return void (again = true);
+    running = true;
+    try {
+      do {
+        again = false;
+        const value = await compute(reader);
+        if (!stopped) draw(value);
+      } while (again && !stopped);
+    } catch (error) {
+      // The view keeps what it last drew; the error goes to the trace.
+      base.log(`A live view failed: ${error instanceof Error ? error.message : error}`, "error");
+    } finally {
+      running = false;
+    }
+  }
+  function changed() {
+    void run();
+  }
+
+  void run();
+  return {
+    refresh: () => void run(),
+    stop() {
+      stopped = true;
+      for (const off of followed.values()) off();
+      followed.clear();
+    },
   };
 }
 

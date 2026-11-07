@@ -15,6 +15,9 @@ export function capabilities(manifest: Manifest): Set<string> {
   const out = new Set<string>();
   for (const permission of manifest.permissions ?? []) {
     for (const cap of EDITOR_PERMISSIONS[permission] ?? [permission]) out.add(cap);
+    // Reading a collection includes hearing that it changed: data:read:x grants hook:listen:data:changed:x.
+    const read = /^data:read:(.+)$/.exec(permission);
+    if (read) out.add(`hook:listen:data:changed:${read[1]}`);
   }
   return out;
 }

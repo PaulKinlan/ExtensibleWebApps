@@ -15,6 +15,19 @@ import type { Slot, View } from "./protocol";
 export interface Views {
   /** Draws the template `<template id>` from the file in a slot, filled with `data`. The key is the id unless given. */
   render(slot: Slot, id: string, data?: unknown, options?: { key?: string; order?: number }): void;
+  /**
+   * Draws the template with the data `compute` returns, and draws it again
+   * whenever a collection or setting it read changes.
+   */
+  live(slot: Slot, id: string, compute: (ctx: Api) => unknown, options?: { key?: string; order?: number }): Live;
+}
+
+/** A view kept up to date by `live`. */
+export interface Live {
+  /** Computes and draws again now: after the plugin's own state changes. */
+  refresh(): void;
+  /** Stops following changes; the view stays as it is. */
+  stop(): void;
 }
 
 export interface Api {
@@ -25,6 +38,8 @@ export interface Api {
     render(slot: Slot, key: string, view: View | string | null, order?: number): void;
     /** A tagged template: `ctx.ui.html\`<p>${name}</p>\`` escapes every value, and nests other `html` results as they are. */
     html(strings: TemplateStringsArray, ...values: unknown[]): View;
+    /** Draws what `compute` returns (as `render` takes it), again whenever a collection or setting it read changes. */
+    live(slot: Slot, key: string, compute: (ctx: Api) => unknown, order?: number): Live;
     /** The templates in an .html file next to the plugin: `views.render(slot, id, data)` draws one, filled with data. */
     views(file: string): Views;
     onEvent(handler: (action: string, value: unknown) => void): () => void;

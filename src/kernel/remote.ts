@@ -369,7 +369,9 @@ export class Remote {
   }
 
   private listen(listener: number, name: string): void {
-    const spec = hooks.get(name);
+    // A collection's change hook is made when its owner first runs. A reader may listen
+    // before that (the contacts app hasn't been opened yet), and hears changes once it exists.
+    const spec = hooks.get(name) ?? (name.startsWith("data:changed:") ? ({ mode: "emit" } as HookSpec) : undefined);
     if (!spec) {
       record({ kind: "error", name: "hook:unknown", plugin: this.instance, detail: name });
       this.post({ t: "event", action: "kernel:error", value: `No hook named ${name}` });
@@ -383,8 +385,9 @@ export class Remote {
       this.post({ t: "event", action: "kernel:denied", value: `data:read:${scoped[1]}` });
       return;
     }
-    if (!owns && !check(this.instance, this.caps, capabilityFor(name))) {
-      this.post({ t: "event", action: "kernel:denied", value: capabilityFor(name) });
+    const needs = spec.mode === "emit" || spec.mode === "parallel" ? `hook:listen:${name}` : capabilityFor(name);
+    if (!owns && !check(this.instance, this.caps, needs)) {
+      this.post({ t: "event", action: "kernel:denied", value: needs });
       return;
     }
     this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });

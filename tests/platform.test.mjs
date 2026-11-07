@@ -307,6 +307,14 @@ export default async (ctx) => {
       proof.noContacts = await page.waitForSelector('[data-key="agenda:agenda"] >> text=Open the Contacts app once', { timeout: 5000 }).then(() => true, () => false);
       // The month grid is two nested template loops: a row per week, seven days each.
       proof.grid = await page.evaluate(() => [...document.querySelectorAll('[data-key="month:grid"] tbody tr')].map((tr) => tr.children.length));
+      // The agenda is a live view: when the contacts app first runs, in another tab, the birthdays appear here without a reload.
+      const contactsTab = await openTab(`${URL}demos/contacts/app.html`);
+      proof.liveBirthday = await page.waitForSelector('[data-key="agenda:agenda"] >> text=Priya Shah', { timeout: 8000 }).then(() => true, () => false);
+      await contactsTab.close({ runBeforeUnload: true });
+      // The month moves with its own state: refresh() draws it again.
+      const title = await page.textContent('[data-key="month:grid"] h2');
+      await page.click('[data-key="month:grid"] button[aria-label="Next month"]');
+      proof.nextMonth = await page.waitForFunction((t) => document.querySelector('[data-key="month:grid"] h2')?.textContent !== t, title, { timeout: 5000 }).then(() => true, () => false);
     }
     if (name === "contacts") {
       const people = '[data-key="people:people"]';
@@ -352,6 +360,8 @@ export default async (ctx) => {
   check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
   check("a plugin in an app writing another plugin's collection is reviewed in that app, then lands", importedBook);
   check("a month grid from nested template loops has seven days in every week", proof.grid?.length >= 4 && proof.grid.every((n) => n === 7), JSON.stringify(proof.grid));
+  check("a live view fills in when a collection it reads first appears, from another app's tab", proof.liveBirthday);
+  check("a live view draws again on refresh() after the plugin's own state changes", proof.nextMonth);
   check("a search box with data-live redraws the plugin's own list", proof.search);
   check("a vCard import writes a contact after review", proof.vcard);
   check("a recipe scales its ingredients to the servings typed in", JSON.stringify(proof.scaled) === JSON.stringify(["300 g flour", "3 eggs", "450 ml milk", "1.5 pinch salt"]), JSON.stringify(proof.scaled));

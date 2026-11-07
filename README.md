@@ -46,7 +46,7 @@ sequenceDiagram
     K-->>H: new records, pushed to bound ui-table and ui-form
 ```
 
-Bound elements update on their own. A plugin's own views update when it hears `data:changed` and draws again.
+Bound elements update on their own. A plugin's own views update the same way when it draws them with `live`: `views.live(slot, id, (ctx) => data)` notes which collections and settings the function reads, and runs it again when any of them changes. A plugin can also listen to `data:changed` itself and draw again.
 
 Three kinds of code, each in its own place:
 
@@ -96,7 +96,7 @@ Plugins live in two places:
 ```sh
 npm install
 npm run dev        # http://localhost:5173 is the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
-npm test           # build, then 91 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm test           # build, then 93 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```

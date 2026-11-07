@@ -7,13 +7,18 @@
 // plugin owns each collection with the data, so once the contacts app has
 // run, any plugin with `data:read:contacts` can read them. Until then the
 // collection doesn't exist, and the agenda says so instead of failing.
+//
+// The agenda is a live view. Its function reads both collections, so a
+// change to either draws it again; and because the read of the contacts is
+// followed even when it fails, the birthdays appear as soon as the contacts
+// app first runs, in any tab.
 
 export const manifest = {
   id: "agenda",
   name: "Agenda",
   description: "The next two weeks: events, and birthdays from your contacts.",
   version: "1.0.0",
-  permissions: ["ui", "data:read:events", "hook:listen:data:changed:events", "data:read:contacts", "hook:listen:data:changed:contacts"],
+  permissions: ["ui", "data:read:events", "data:read:contacts"],
 };
 
 const DAYS = 14;
@@ -22,7 +27,7 @@ const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0
 export default async function (ctx) {
   const views = ctx.ui.views("agenda.html");
 
-  const draw = async () => {
+  views.live("side", "agenda", async (ctx) => {
     const events = await ctx.call("data", "list", "events");
     // The contacts app may never have run here: then there's no collection yet.
     const contacts = await ctx.call("data", "list", "contacts").catch(() => null);
@@ -38,12 +43,6 @@ export default async function (ctx) {
       ].sort((a, b) => a.time.localeCompare(b.time));
       if (items.length) days.push({ label: i === 0 ? "Today" : i === 1 ? "Tomorrow" : d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "short" }), items });
     }
-    views.render("side", "agenda", { days, contacts: contacts !== null });
-  };
-
-  ctx.on("data:changed:events", () => draw());
-  // If the contacts don't exist yet, the kernel refuses this listener (the
-  // trace shows it); the agenda still draws the events.
-  ctx.on("data:changed:contacts", () => draw());
-  draw();
+    return { days, contacts: contacts !== null };
+  });
 }

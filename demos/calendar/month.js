@@ -1,7 +1,9 @@
 // Month: draws one month of events as a grid. It reads the events
 // (`data:read:events`) and hears changes to them. Which month is showing is
 // this plugin's own state, kept in ctx.storage so it survives a reload; the
-// buttons send "prev", "next" and "today".
+// buttons send "prev", "next" and "today". The grid is a live view: it draws
+// again when an event changes, and grid.refresh() draws it again when the
+// month changes, since that is state the kernel doesn't see.
 //
 // The grid is a table: a row per week, Monday first, with the days from the
 // months either side to fill it. The template is two nested loops
@@ -12,7 +14,7 @@ export const manifest = {
   name: "Month",
   description: "A month of events as a grid.",
   version: "1.0.0",
-  permissions: ["ui", "data:read:events", "hook:listen:data:changed:events"],
+  permissions: ["ui", "data:read:events"],
   order: 10,
 };
 
@@ -41,7 +43,7 @@ export default async function (ctx) {
   // Months are counted from now: 0 is this month, -1 last month.
   let offset = Number(await ctx.storage.get("offset")) || 0;
 
-  const draw = async () => {
+  const grid = views.live("main", "grid", async (ctx) => {
     const first = new Date(now.getFullYear(), now.getMonth() + offset, 1);
     const byDate = new Map();
     for (const e of await ctx.call("data", "list", "events")) {
@@ -49,22 +51,19 @@ export default async function (ctx) {
       byDate.get(e.date).push(e);
     }
     for (const list of byDate.values()) list.sort((a, b) => (a.start ?? "").localeCompare(b.start ?? ""));
-    const grid = weeks(first, now).map((week) => week.map((d) => ({ ...d, events: byDate.get(d.date) ?? [] })));
-    views.render("main", "grid", {
+    return {
       title: first.toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
       days: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
-      weeks: grid,
+      weeks: weeks(first, now).map((week) => week.map((d) => ({ ...d, events: byDate.get(d.date) ?? [] }))),
       away: offset !== 0,
-    });
-  };
+    };
+  });
 
   ctx.ui.onEvent(async (action) => {
     if (action === "prev") offset--;
     if (action === "next") offset++;
     if (action === "today") offset = 0;
     await ctx.storage.set("offset", offset);
-    draw();
+    grid.refresh();
   });
-  ctx.on("data:changed:events", () => draw());
-  draw();
 }

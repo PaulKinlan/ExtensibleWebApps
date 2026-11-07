@@ -76,6 +76,9 @@ export default async function (ctx) {
   // Or build HTML in code, for views computed from data (categories.js does this):
   // ctx.ui.render("side", "chart", ctx.ui.html`<meter value="${n}"></meter>`);
 
+  // Or draw it live: the function runs again whenever what it read changes.
+  // views.live("side", "list", async (ctx) => ({ books: await ctx.call("data", "list", "library") }));
+
   ctx.ui.onEvent((action, value) => { /* data-action clicks and form submits */ });
   ctx.on("data:changed:library", () => { /* any write to the collection */ });
   await ctx.call("data", "put", "library", { title: "Dune" }); // services
@@ -87,7 +90,7 @@ export default async function (ctx) {
 The plugins in an app never call each other. They meet in shared data:
 
 - **One plugin owns a collection.** `library.js` declares `library` in its manifest; the kernel checks every write against its schema.
-- **Others ask to read it.** `due-soon.js` lists `data:read:library` in its permissions, to list the books, and `hook:listen:data:changed:library`, to hear whenever any plugin changes one.
+- **Others ask to read it.** `due-soon.js` lists `data:read:library` in its permissions, which lets it list the books and hear whenever any plugin changes one. It draws with `views.live`, so its list follows the library on its own.
 - **Writing someone else's data is reviewed.** `book-import.js` has `data:write:library`, but the library isn't its own, so the person sees each change as a card with Accept and Decline before anything is written.
 
 A few more ideas carry the rest:
