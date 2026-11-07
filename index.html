@@ -41,9 +41,10 @@
     body > header { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
     body > header h1 { margin: 0; font-size: var(--text-lg); }
     body > header nav { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-left: auto; }
-    .intro { max-width: 70ch; padding: 24px 16px 8px; }
+    .intro { max-width: 75ch; padding: 24px 16px 8px; }
     .intro h2 { font-size: var(--text-2xl); line-height: 1.2; margin: 0 0 8px; }
-    .intro p { margin: 0 0 8px; color: var(--fg-2); font-size: var(--text-lg); }
+    .intro p { margin: 0 0 12px; color: var(--fg-2); font-size: var(--text-lg); }
+    .intro p:first-of-type { color: var(--fg); }
     .home { display: grid; gap: 16px; padding: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); grid-template-areas: "chapters playground"; align-items: start; }
     .chapters { grid-area: chapters; display: flex; flex-direction: column; gap: 16px; }
     .side { grid-area: playground; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
@@ -66,12 +67,14 @@
     </nav>
   </header>
   <section class="intro">
-    <h2>This page is made of plugins.</h2>
-    <p>A tiny kernel runs them, each in its own worker, and they can only do what they ask permission for. Switch any of them off, and it's gone. Switch them all off, and you're left with the kernel and an empty page.</p>
+    <h2>Web apps that the people using them can change.</h2>
+    <p>Extensible Web Apps is an experiment in malleable software. Most web apps are fixed: you get the features the developer shipped, and if you need something else, you wait or you leave. Here, an app is a small kernel plus plugins, and anyone can add, remove or rewrite a plugin. That could be the developer who built the app, a person using it, or an LLM agent working for them.</p>
+    <p>To make that safe, each plugin is one JavaScript file that declares what it needs, runs in its own Web Worker, and can't do anything it didn't ask for. Changes to data it doesn't own wait for the person to approve them. It's plain HTML, CSS and JavaScript, with no build step.</p>
+    <p>This page is an app built that way. Each section below is a plugin: read how it works, then switch parts off and watch the page change.</p>
   </section>
   <div class="home">
     <section class="chapters" aria-label="How it works">
-      <slot name="chapters"><p class="empty">The chapters are plugins, and they're loading or switched off. <a href="?reset">Turn everything back on</a>.</p></slot>
+      <slot name="chapters"><p class="empty">This is where the chapters go. They're plugins, and they're either loading or switched off. <a href="?reset">Turn everything back on</a>.</p></slot>
     </section>
     <aside class="side">
       <slot name="playground"><p class="empty">Your learning notes go here, once their plugin is running.</p></slot>

@@ -6,14 +6,29 @@
   .chapter h2 { margin-top: 0; }
   .chapter .try { padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); }
   .chapter .try p { margin-top: 0; }
+  .chapter pre { overflow-x: auto; padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); font-size: var(--text-sm); }
+  .chapter ul { padding-left: var(--space-5); }
 </style>
 <template id="chapter">
   <ui-card class="chapter">
-    <h2><ui-badge tone="accent">1</ui-badge> A tiny core</h2>
-    <p>Underneath this page is a kernel of about 3,000 lines. It starts plugins, each in its own worker. It checks every message a plugin sends against the permissions that plugin asked for. It passes hooks between plugins, keeps their data, and writes down everything that happens in a trace.</p>
-    <p>The kernel draws nothing itself. The page is plain HTML with empty <code>&lt;slot&gt;</code> elements, and plugins draw into them. That includes this chapter.</p>
+    <h2><ui-badge tone="accent">1</ui-badge> The kernel is small, and draws nothing</h2>
+    <p>The kernel is about 3,000 lines of TypeScript in a shared worker that every open tab talks to. It does five things:</p>
+    <ul>
+      <li>runs each plugin in its own Web Worker;</li>
+      <li>checks every call a plugin makes against the permissions in its manifest;</li>
+      <li>dispatches hooks between plugins;</li>
+      <li>stores data in typed collections, in the browser's private file system;</li>
+      <li>records all of it in a trace you can read.</li>
+    </ul>
+    <p>It has no UI of its own. An app is an HTML page that lists its plugins and leaves <code>&lt;slot&gt;</code> elements for them to draw into. This page starts like this:</p>
+    <pre><code>&lt;script type="module" src="/platform/host.js"&gt;&lt;/script&gt;
+&lt;link rel="plugin" href="home/learning-notes.js"&gt;
+&lt;link rel="plugin" href="home/chapter-1-core.js"&gt;
+…
+&lt;slot name="chapters"&gt;&lt;/slot&gt;
+&lt;slot name="playground"&gt;&lt;/slot&gt;</code></pre>
     <div class="try">
-      <p><strong>Try it.</strong> Turn every plugin on this page off, this chapter too. You'll see the page as the kernel leaves it: the header, a line of text and empty slots. Each empty slot has a link to bring everything back.</p>
+      <p><strong>Try it.</strong> Turn every plugin off, including this chapter. What's left is the page's own HTML, because the kernel has nothing to show. Each empty slot links back.</p>
       <button type="button" data-action="all-off">Turn every plugin off</button>
     </div>
   </ui-card>

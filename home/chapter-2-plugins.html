@@ -10,16 +10,24 @@
 </style>
 <template id="chapter">
   <ui-card class="chapter">
-    <h2><ui-badge tone="accent">2</ui-badge> Everything is a plugin</h2>
-    <p>A plugin is one JavaScript file. It starts with a manifest that says what it is and what it needs, and the kernel reads that before it runs any of the code. The counts above your notes come from this one:</p>
+    <h2><ui-badge tone="accent">2</ui-badge> A plugin is one file with a manifest</h2>
+    <p>The note and word counts beside your notes come from <code>home/note-stats.js</code>. This is all of it:</p>
     <pre><code>export const manifest = {
   id: "note-stats",
   name: "Note stats",
   permissions: ["ui", "data:read:learning"],
-};</code></pre>
-    <p>Note stats can draw (<code>ui</code>) and read your notes (<code>data:read:learning</code>), and that's all. It can't touch the page, reach the network, or change your notes. It runs in a worker, so it couldn't even if it tried: anything it wasn't given is refused and written in the trace.</p>
+};
+
+export default function (ctx) {
+  ctx.ui.live("playground", "stats", async (ctx) =&gt; {
+    const notes = await ctx.call("data", "list", "learning");
+    return ctx.ui.html`&lt;ui-stat label="Notes" value="${notes.length}"&gt;…`;
+  });
+}</code></pre>
+    <p>The kernel reads the manifest before it runs any code. Note stats may draw (<code>ui</code>) and read the <code>learning</code> collection (<code>data:read:learning</code>), and nothing else. A call it didn't declare is refused and shows up as <code>denied</code> in the trace. It runs in a worker, so it can't reach the DOM either: it sends HTML, and the page draws it.</p>
+    <p>It never calls <code>learning-notes.js</code>, which owns the notes. Both use the same collection, and <code>ui.live</code> redraws the counts whenever the collection changes. Either plugin can go without breaking the other.</p>
     <div class="try">
-      <p><strong>Try it.</strong> Switch Note stats off. The counts go, and your notes carry on, because the two plugins never talk to each other.</p>
+      <p><strong>Try it.</strong> Switch Note stats off. The counts disappear, and the notes carry on without noticing.</p>
       <label><input type="checkbox" data-action="toggle" checked="{{on}}"> Note stats is on</label>
     </div>
   </ui-card>
