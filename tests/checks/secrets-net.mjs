@@ -5,12 +5,14 @@
 import { createServer } from "node:http";
 
 export default async function ({ a, check, plugin, pluginLog, traceHas }) {
+  // What the server was sent, checked here rather than by the plugin, which must never see the key.
+  const received = [];
   const server = createServer((req, res) => {
     const cors = { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Headers": "*", "Access-Control-Allow-Methods": "*" };
     if (req.method === "OPTIONS") return res.writeHead(204, cors).end();
     let body = "";
     req.on("data", (d) => (body += d));
-    req.on("end", () => res.writeHead(200, { ...cors, "Content-Type": "application/json" }).end(JSON.stringify({ method: req.method, authorization: req.headers.authorization ?? null, body })));
+    req.on("end", () => received.push({ authorization: req.headers.authorization, body }) && res.writeHead(200, { ...cors, "Content-Type": "application/json" }).end(JSON.stringify({ method: req.method, authorization: req.headers.authorization ?? null, body })));
   });
   await new Promise((resolve) => server.listen(4175, "localhost", resolve));
   try {
@@ -31,7 +33,8 @@ export default async (ctx) => {
     await a.click('[data-key^="secrets:"] button:has-text("Save")').catch(() => {});
     check("saving the card answers the plugin's request", (await pluginLog("keyed", "keyed-asked")) === 'keyed-asked {"set":true}');
     const fetched = await pluginLog("keyed", "keyed-fetch").catch(() => "");
-    check("net.fetch reaches the host the plugin names, with the secret filled into the header", fetched.includes('"authorization":"Bearer s3cret"') && fetched.includes('"body":"hi"') && fetched.startsWith("keyed-fetch 200"), fetched);
+    check("net.fetch reaches the host the plugin names, with the secret filled into the header", received.some((r) => r.authorization === "Bearer s3cret" && r.body === "hi") && fetched.startsWith("keyed-fetch 200"), JSON.stringify(received));
+    check("an answer that echoes the secret back reaches the plugin with the secret taken out", fetched.includes('"authorization":"Bearer [secret]"') && !fetched.includes("s3cret"), fetched);
     check("net.fetch refuses a host the plugin's manifest doesn't name", /keyed-other refused/.test(await pluginLog("keyed", "keyed-other").catch(() => "")));
     check("the trace records the request and that it used the secret, not the secret itself", await traceHas(a, (e) => e.name === "net:POST localhost:4175" && /with echo/.test(e.detail ?? "") && !/s3cret/.test(e.detail ?? "")));
 
@@ -48,11 +51,18 @@ export default async (ctx) => {
     const thief = await pluginLog("thief", "thief").catch(() => "");
     const mover = await pluginLog("mover", "mover").catch(() => "");
     check("a secret is only filled in for a plugin with secret:<name>, and only to its own hosts", /needs secret:echo/.test(thief) && /only for localhost:4175/.test(mover), `${thief} | ${mover}`);
+    // A plugin's worker can't open the site's storage, where secrets.json is kept, by itself.
+    await plugin(`export const manifest = { id: 'digger', name: 'Digger', permissions: [] };
+export default async (ctx) => {
+  ctx.log('digger ' + JSON.stringify({ storage: typeof navigator.storage, indexedDB: typeof indexedDB, caches: typeof caches, channel: typeof BroadcastChannel, proto: typeof Object.getOwnPropertyDescriptor(Object.getPrototypeOf(navigator), 'storage') }));
+};`);
+    const digger = await pluginLog("digger", "digger").catch(() => "");
+    check("a plugin's worker has no navigator.storage, indexedDB, caches or BroadcastChannel", digger === 'digger {"storage":"undefined","indexedDB":"undefined","caches":"undefined","channel":"undefined","proto":"undefined"}', digger);
     await plugin(`export const manifest = { id: 'forgetter', name: 'Forgetter', permissions: ['secret:echo'] };
 export default async (ctx) => { await ctx.call('secrets', 'forget', 'echo'); ctx.log('forgetter ' + JSON.stringify(await ctx.call('secrets', 'has', 'echo'))); };`);
     check("a secret can be forgotten", (await pluginLog("forgetter", "forgetter").catch(() => "")) === 'forgetter {"set":false,"hosts":[]}');
   } finally {
-    for (const id of ["keyed", "thief", "mover", "forgetter"]) await a.evaluate((id) => window.__host.command("uninstall", id), id).catch(() => {});
+    for (const id of ["keyed", "thief", "mover", "digger", "forgetter"]) await a.evaluate((id) => window.__host.command("uninstall", id), id).catch(() => {});
     server.close();
   }
 }

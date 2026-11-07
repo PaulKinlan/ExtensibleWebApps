@@ -96,8 +96,13 @@ export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => 
       if (!NAME.test(name)) throw new Error("A secret's name is lowercase letters, digits and dashes");
       if (method === "has") return { set: name in kept, hosts: kept[name]?.hosts ?? [] };
       if (method === "forget") {
+        const was = kept[name];
         delete kept[name];
-        await persist();
+        // Only say it's forgotten once it's gone from the disk too.
+        await store.writeJson(FILE, kept).catch((error) => {
+          if (was) kept[name] = was;
+          throw new Error(`Couldn't forget ${name}: ${error instanceof Error ? error.message : error}`);
+        });
         record({ kind: "note", name: "secret:forgotten", plugin, detail: name });
         return true;
       }

@@ -46,6 +46,31 @@ function parse(input: unknown): URL {
   throw new Error("net.fetch only reaches https: addresses, or http: on this computer");
 }
 
+/** The body as text, read a chunk at a time and stopped as soon as it passes MAX bytes. */
+async function readText(response: Response): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX) {
+      await reader.cancel().catch(() => {});
+      throw new Error("The answer is over 4 MB");
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return new TextDecoder().decode(all);
+}
+
 export function net(secrets: Secrets, capsOf: (plugin: string) => Set<string>): ServiceProvider {
   return {
     description: "Web requests the kernel makes for a plugin, to the hosts its manifest names. A header can hold a secret the plugin never sees.",
@@ -95,10 +120,11 @@ export function net(secrets: Secrets, capsOf: (plugin: string) => Set<string>): 
       const response = await fetch(url, { method: verb, headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(TIMEOUT) }).catch((error) => {
         throw new Error(`Couldn't reach ${host}: ${error instanceof Error ? error.message : error}`);
       });
-      const text = await response.text();
+      const text = await readText(response);
+      // An API that echoes the request back would hand the plugin its secret: take every secret used out of the answer.
+      const hide = (value: string) => used.reduce((out, name) => out.split(secrets.get(name)!.value).join("[secret]"), value);
       record({ kind: "call", name: `net:${verb} ${host}`, plugin, trace: dispatch.trace, ms: Math.round(performance.now() - started), detail: `${response.status}${used.length ? `, with ${used.join(", ")}` : ""}` });
-      if (text.length > MAX) throw new Error("The answer is over 4 MB");
-      return { ok: response.ok, status: response.status, headers: Object.fromEntries(response.headers), text };
+      return { ok: response.ok, status: response.status, headers: Object.fromEntries([...response.headers].map(([k, v]) => [k, hide(v)])), text: hide(text) };
     },
   };
 }
