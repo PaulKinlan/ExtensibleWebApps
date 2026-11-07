@@ -77,6 +77,18 @@ The plugin's own settings, from the form the plugins panel builds out of its man
 | --- | --- | --- | --- |
 | `settings.get()` | { [key]: value } | Nothing | The plugin's settings: saved values over the manifest's defaults. |
 
+### data
+
+Collections: typed records plugins share. A plugin declares its own in its manifest; reading or writing another's needs a capability, and writes to another's are reviewed.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `data.collections()` | [{ name, owner, title, schema }] | Nothing | Every collection, with its schema. |
+| `data.list(collection)` | [record], most recently changed first | `data:read:<collection>` | Every record in a collection. Each record has its fields plus id, createdAt and updatedAt. |
+| `data.get(collection, id)` | record or null | `data:read:<collection>` | One record. |
+| `data.put(collection, { id?, ...fields }, reason?)` | { ok, id, outcome? } or { ok: false, errors } | `data:write:<collection>`, and the person's review | Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection. |
+| `data.delete(collection, id, reason?)` | { ok, id } | `data:write:<collection>`, and the person's review | Deletes a record. Reviewed unless the plugin owns the collection. |
+
 ## Hooks
 
 | Hook | Mode | Listening needs | Listeners get | What it means |
@@ -113,6 +125,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:read:notes` | Call store.list. |
 | `data:write:notes` | Call store.put. |
 | `files:<folder>` | Call files.read, files.write. |
+| `data:read:<collection>` | Call data.list, data.get. |
+| `data:write:<collection>` | Call data.put, data.delete. |
 
 Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
 
@@ -135,11 +149,37 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `permissions` | Required, may be empty. Capabilities, or editor-style permissions that stand for them (see Capabilities). |
 | `order` | Optional. Where the plugin's views go among others in the same slot; lower comes first. |
 | `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
+| `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 
-Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`.
+Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`.
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`.
+
+## Collections
+
+A plugin declares the collections it owns in its manifest, each with a schema, and reads and writes them through the `data` service without asking. Another plugin needs `data:read:<collection>` or `data:write:<collection>`, and its writes are reviewed. Every write runs `data:beforeWrite:<collection>` (a listener can block it) and then `data:changed:<collection>`; listening to either also needs `data:read:<collection>`. The kernel keeps `id`, `createdAt`, `updatedAt` on every record. Records are kept with the app's data in `collections/<name>.json`.
+
+Schemas are a JSON Schema subset:
+
+| Keyword | Notes |
+| --- | --- |
+| `type` | string, number, integer, boolean, array or object |
+| `title` | The label forms and tables show |
+| `description` |  |
+| `default` | What a new record's form starts with |
+| `enum` | A fixed set of choices; forms show a menu |
+| `properties` | The fields of an object |
+| `required` | Fields that must be filled in |
+| `items` | The schema of each item in an array |
+| `minimum` | Numbers |
+| `maximum` |  |
+| `minLength` | Strings |
+| `maxLength` | Over 200 makes a form show a text area |
+| `format` | date, date-time, email or uri; forms use the matching input |
+| `x-multiline` | true makes a form show a text area |
+
+Views bind to a collection with `<ui-table collection="…">` and `<ui-form collection="…">` (see Components), acting with the rights of the plugin that drew them.
 
 ## HTML views
 
@@ -155,6 +195,8 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-badge>` | tone="neutral\|accent\|ok\|warn\|danger" | A short status word. |
 | `<ui-stat>` | label, value, delta, tone | A number with its label, and an optional change. |
 | `<ui-empty>` | heading | What to show when there is nothing yet; put a sentence and a button inside. |
+| `<ui-table>` | collection, columns="title,author", sort="title\|-title", empty, row-action, deletable | A sortable table of a collection's records, kept up to date. The first column becomes a button that sends `row-action` with the record's id; `deletable` adds a Delete button. Acts with the rights of the plugin that drew it. |
+| `<ui-form>` | collection, fields="title,author", record, submit, action | A form built from the collection's schema: labels, input types, required fields and errors from the kernel's checks. Saves a new record, or edits `record`; sends `action` with the saved record's id. |
 | `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
 | `<ui-spacer>` |  | Takes up the free space in a row. |
 

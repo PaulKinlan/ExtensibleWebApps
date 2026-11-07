@@ -69,6 +69,10 @@ export class RemotePlugins {
   private waiting = new Map<string, Waiter[]>();
   /** Told when plugins are installed, removed, or turned on or off. */
   onChange?: (change: "install" | "uninstall" | "enable" | "disable", id: string) => void;
+  /** Told about each manifest as it is installed, before the plugin starts. */
+  onManifest?: (manifest: Manifest) => void;
+  /** Whether an instance may read a collection; listening to its hooks needs that too. */
+  readable?: (instance: string, collection: string) => boolean;
   /** Told whenever an instance's worker goes, for any reason. */
   onDispose?: (instance: string) => void;
 
@@ -92,6 +96,7 @@ export class RemotePlugins {
     this.stop(manifest.id);
     const enabled = options.enabled ?? previous?.enabled ?? true;
     this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest), origin: options.origin ?? "data", enabled });
+    this.onManifest?.(manifest);
     record({ kind: "lifecycle", name: "plugin:install", plugin: manifest.id, detail: `${manifest.scope ?? "shared"}: ${manifest.permissions.join(" ")}${enabled ? "" : " (off)"}` });
     this.onChange?.("install", manifest.id);
     return { ok: true, id: manifest.id, started: enabled && (await this.start(manifest.id)) };
@@ -349,7 +354,14 @@ export class Remote {
       this.post({ t: "event", action: "kernel:error", value: `No hook named ${name}` });
       return;
     }
-    if (!check(this.instance, this.caps, capabilityFor(name))) {
+    const scoped = /^data:(?:changed|beforeWrite):(.+)$/.exec(name);
+    const owns = scoped && this.plugin.manifest.collections && Object.hasOwn(this.plugin.manifest.collections, scoped[1]);
+    if (scoped && !this.manager.readable?.(this.instance, scoped[1])) {
+      record({ kind: "denied", name: `data:read:${scoped[1]}`, plugin: this.instance, detail: `listening to ${name}` });
+      this.post({ t: "event", action: "kernel:denied", value: `data:read:${scoped[1]}` });
+      return;
+    }
+    if (!owns && !check(this.instance, this.caps, capabilityFor(name))) {
       this.post({ t: "event", action: "kernel:denied", value: capabilityFor(name) });
       return;
     }
