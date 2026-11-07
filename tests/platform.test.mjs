@@ -16,6 +16,8 @@ const { chromium } = require("playwright");
 
 const PORT = 4173;
 const URL = `http://localhost:${PORT}/`;
+// The workbench: every plugin's views, the plugins panel and the trace. The homepage at / is an app.
+const WORKBENCH = `${URL}workbench/`;
 const results = [];
 const measurements = {};
 
@@ -36,7 +38,7 @@ const context = await browser.newContext();
 const errors = [];
 const proof = {};
 
-async function openTab(url = URL) {
+async function openTab(url = WORKBENCH) {
   const page = await context.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(url);
@@ -48,7 +50,7 @@ const traceHas = (page, fn) => page.evaluate(`window.__host.traces.some(${fn})`)
 const status = (page) => page.textContent("footer");
 
 // What every test file gets. The workbench tab (`a`) and its plugin helpers are added once they exist.
-const t = { check, openTab, context, URL, errors, proof, measurements, traceHas, status };
+const t = { check, openTab, context, URL, WORKBENCH, errors, proof, measurements, traceHas, status };
 
 // Checks for a feature are a file in tests/checks/, and checks for a demo are
 // tests/demos/<demo>.mjs, so adding checks means adding a file, not editing this one.
@@ -481,6 +483,11 @@ export default async (ctx) => {
   check("a plugin's own storage needs no review", (await a.textContent('aside [data-key="tidy:tidy"]')).includes("Tidied 3 · exported 1"));
 
   // Path checks: sneaky may write files anywhere (files:*) but not into the platform's folders, outside the data folder, or hidden files.
+  // The page keeps only the last 1000 trace events, and sneaky tries once each time it starts, so start it again here.
+  await a.click(`${panel("sneaky")} >> text=Turn off`);
+  await a.waitForSelector(`${panel("sneaky")} >> text=Turn on`);
+  await a.click(`${panel("sneaky")} >> text=Turn on`);
+  await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "files:path" && e.plugin === "sneaky").length >= 3, null, { timeout: 5000 }).catch(() => {});
   const refusedPaths = await a.evaluate(() => window.__host.traces.filter((e) => e.kind === "denied" && e.name === "files:path" && e.plugin === "sneaky").map((e) => e.detail));
   const evil = await a.evaluate(async () => {
     const root = await navigator.storage.getDirectory();
@@ -535,7 +542,7 @@ export default async (ctx) => {
   check("plugins work again after the handover", true, await status(b));
 
   // A second kernel on the same data folder loads what the first one kept there.
-  const d = await openTab(`${URL}?kernel=dedicated`);
+  const d = await openTab(`${WORKBENCH}?kernel=dedicated`);
   await d.waitForSelector("footer >> text=late plugin here", { timeout: 10000 });
   await d.waitForSelector("text=Play 880 Hz", { timeout: 5000 });
   const dPlugins = await d.$$eval('aside [data-key^="plugins:"]', (els) => els.map((e) => e.dataset.key.slice(8)));
@@ -552,7 +559,7 @@ export default async (ctx) => {
   const isolated = await browser.newContext();
   const c = await isolated.newPage();
   c.on("pageerror", (e) => errors.push(e.message));
-  await c.goto(`${URL}?kernel=dedicated`);
+  await c.goto(`${WORKBENCH}?kernel=dedicated`);
   await c.waitForFunction(() => window.__host && window.__host.workers.size === 10, null, { timeout: 10000 });
   check("the kernel also runs in a dedicated worker", (await c.textContent("#mode")).includes("dedicated worker"));
   await isolated.close();

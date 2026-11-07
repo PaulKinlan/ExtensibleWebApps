@@ -6,6 +6,8 @@ written, and asks only for the permissions in its manifest.
 | Plugin | What it does | Add it with |
 | --- | --- | --- |
 | [`debug-console.js`](debug-console.js) | A bug button in a corner of the page. It counts problems (errors, refused permissions, failed calls) and opens a log of them, or of everything the kernel traced, with a Copy button that puts the log on the clipboard, headed with the page's address, browser and time, ready for a bug report. | `<link rel="plugin" href="/std/debug-console.js">` in the head, and `<slot name="debug"></slot>` anywhere in the body |
+| [`reset.js`](reset.js) | When any of the app's plugins is off, a card that names them and turns them all back on. If it is switched off itself, opening the page with `?reset` does the same. | `<link rel="plugin" href="/std/reset.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
+| [`switchboard.js`](switchboard.js) | A switch for each plugin the app links, with its name and description, so people can see what the page is made of and turn parts of it off. | `<link rel="plugin" href="/std/switchboard.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
 
 ## The debug console
 
@@ -26,3 +28,15 @@ written, and asks only for the permissions in its manifest.
 - **The element.** The bug and its panel are
   [`<ui-debug>`](../elements/ui-debug.html). The plugin only decides what goes
   in the panel, so another debug plugin can reuse it.
+
+## The switchboard and reset
+
+- **What they use.** The `plugins` service: `plugins.app()` lists the plugins
+  the app links (`plugins:read`), and `plugins.setEnabled(id, on)` switches
+  one (`plugins:manage`). Both reach only plugins in the caller's own app, so
+  both plugins are tab-scoped. They hear `plugins:changed` to stay current.
+- **Switching is saved.** It is the same switch as the workbench's plugins
+  panel: it is kept with the data, and it applies in every tab.
+- **The way back.** Both can be switched off like anything else. The host
+  handles `?reset` in the page's address before any plugin runs, turning the
+  app's plugins back on, so a page can always be recovered.

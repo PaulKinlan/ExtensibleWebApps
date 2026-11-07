@@ -32,10 +32,12 @@ function workerPolicy(): Plugin {
 const AS_WRITTEN = [
   "demos",
   "elements",
+  "home",
   "index.html",
   "std",
   "sw",
   "sw.js",
+  "workbench",
 ];
 // Two stable URLs every page uses: the platform's stylesheet and its host
 // script. In development the script redirects to the TypeScript source (so

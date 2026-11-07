@@ -8,7 +8,7 @@
 // kernel to run it, along with the plugins the person added to this app
 // themselves, and shows only the views those plugins draw: in the page's
 // slots, or in places their manifests name (places.ts). The platform's own
-// workbench (index.html, the page with the trace) shows every view along
+// workbench (workbench/index.html, the page with the trace) shows every view along
 // with the trace and the plugins panel.
 
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
@@ -304,7 +304,15 @@ async function openApp() {
     }),
   );
   for (const { href, source, why } of plugins) if (!source) notice(`Couldn't load the plugin at ${href}: ${why}`);
-  send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })), app });
+  // ?reset turns this app's plugins back on, for when a person has switched off the very plugin that would do it.
+  // It works once: the address loses it, so reloading doesn't reset again.
+  const reset = params.has("reset");
+  if (reset) {
+    const url = new URL(location.href);
+    url.searchParams.delete("reset");
+    history.replaceState(history.state, "", url);
+  }
+  send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })), reset, app });
 }
 
 /** The plugins running for this app, as the kernel last said: the Customize panel lists them. */
@@ -581,7 +589,7 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
   });
 }
 
-/** The trace, benchmarks and demo links, on the platform's own page only. */
+/** The trace, benchmarks and demo links, on the workbench page only. */
 const bench = document.getElementById("devtools") ? workbench(command) : undefined;
 serviceWorker(command, report);
 const traces: TraceEvent[] = [];

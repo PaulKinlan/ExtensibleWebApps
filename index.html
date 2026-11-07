@@ -1,47 +1,89 @@
 <!doctype html>
+<!--
+  The homepage: a page that explains the platform by being built on it.
+
+  Everything you see below the header is drawn by a plugin, including the
+  chapters you read. The switchboard turns each one off and on; with every
+  plugin off, what is left is this file: the kernel, and empty slots.
+
+  home/learning-notes.js  owns your `learning` notes, the playground every chapter acts on
+  home/note-stats.js      reads your notes and counts them (it doesn't own them)
+  home/quiet-please.js    a hook: stops a note written all in capitals
+  home/chapter-*.js       the chapters, one plugin each, their words in a .html file beside them
+  /std/switchboard.js     a switch for each plugin on this page
+  /std/reset.js           turns everything back on
+  /std/debug-console.js   the bug button: errors and the trace
+
+  If a plugin breaks the page, or you switch off the switchboard itself,
+  add ?reset to the address: the host turns this page's plugins back on.
+-->
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
-    <title>Extensible Web Apps</title>
-    <!-- The platform: its stylesheet and the host. Every app.html starts with the same two lines. -->
-    <link rel="stylesheet" href="/platform/host.css" />
-    <script type="module" src="/platform/host.js"></script>
-  </head>
-  <body class="workbench">
-    <!-- The workbench: this page links no plugins, so it shows every running plugin's views. -->
-    <header>
-      <strong>Extensible Web Apps</strong>
-      <span id="mode" class="muted"></span>
-      <span class="spacer"></span>
-      <nav class="demos" aria-label="Demo apps">
-        <a href="/demos/reading-list/app.html">Reading list</a>
-        <a href="/demos/spending/app.html">Spending</a>
-        <a href="/demos/recipes/app.html">Recipes</a>
-        <a href="/demos/contacts/app.html">Contacts</a>
-        <a href="/demos/calendar/app.html">Calendar</a>
-        <a href="/demos/habits/app.html">Habits</a>
-      </nav>
-    </header>
-    <main>
-      <nav><slot name="nav"></slot></nav>
-      <section><slot name="main"></slot></section>
-      <aside><slot name="side"></slot></aside>
-    </main>
-    <footer><slot name="status"></slot></footer>
-    <details id="devtools" open>
-      <summary>Trace</summary>
-      <div class="row">
-        <button id="bench">Measure hook round trip</button>
-        <button id="reload-test">Reload a plugin 50 times</button>
-        <button id="reference">API reference</button>
-        <span id="result" class="muted"></span>
-      </div>
-      <pre id="reference-text" hidden></pre>
-      <slot name="devtools"></slot>
-      <ol id="trace"></ol>
-    </details>
-    <div id="notice" role="status"></div>
-  </body>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Extensible Web Apps</title>
+  <meta name="description" content="A web app platform where everything is a plugin, explained by a page made of plugins you can switch off, read and change.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="home/learning-notes.js">
+  <link rel="plugin" href="home/note-stats.js">
+  <link rel="plugin" href="home/quiet-please.js">
+  <link rel="plugin" href="home/chapter-1-core.js">
+  <link rel="plugin" href="home/chapter-2-plugins.js">
+  <link rel="plugin" href="home/chapter-3-hooks.js">
+  <link rel="plugin" href="/std/switchboard.js">
+  <link rel="plugin" href="/std/reset.js">
+  <link rel="plugin" href="/std/debug-console.js">
+  <style>
+    /* The page's own layout: the guided view, chapters beside the playground. One column on phones. */
+    body { display: block; }
+    body > header { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+    body > header h1 { margin: 0; font-size: var(--text-lg); }
+    body > header nav { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-left: auto; }
+    .intro { max-width: 75ch; padding: 24px 16px 8px; }
+    .intro h2 { font-size: var(--text-2xl); line-height: 1.2; margin: 0 0 8px; }
+    .intro p { margin: 0 0 12px; color: var(--fg-2); font-size: var(--text-lg); }
+    .intro p:first-of-type { color: var(--fg); }
+    .intro .inspiration { font-size: var(--text-md); }
+    .home { display: grid; gap: 16px; padding: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); grid-template-areas: "chapters playground"; align-items: start; }
+    .chapters { grid-area: chapters; display: flex; flex-direction: column; gap: 16px; }
+    .side { grid-area: playground; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+    .empty { padding: 16px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--fg-2); }
+    body > footer { padding: 16px; border-top: 1px solid var(--border); color: var(--fg-2); font-size: var(--text-sm); }
+    @media (max-width: 800px) {
+      .home { grid-template-columns: minmax(0, 1fr); grid-template-areas: "playground" "chapters"; }
+      .side { position: static; max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Extensible Web Apps</h1>
+    <nav aria-label="Elsewhere">
+      <a href="/demos/habits/app.html">Demo apps</a>
+      <a href="/workbench/">Workbench</a>
+      <a href="https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/docs/guide">Developer guide</a>
+      <a href="https://github.com/PaulKinlan/ExtensibleWebApps">Code</a>
+    </nav>
+  </header>
+  <section class="intro">
+    <h2>Web apps that the people using them can change.</h2>
+    <p>Extensible Web Apps is an experiment in <a href="https://www.inkandswitch.com/essay/malleable-software/">malleable software</a>. Most web apps are fixed: you get the features the developer shipped, and if you need something else, you wait or you leave. Here, an app is a small kernel plus plugins, and anyone can add, remove or rewrite a plugin. That could be the developer who built the app, a person using it, or an LLM agent working for them.</p>
+    <p>To make that safe, each plugin is one JavaScript file that declares what it needs, runs in its own Web Worker, and can't do anything it didn't ask for. Changes to data it doesn't own wait for the person to approve them. It's plain HTML, CSS and JavaScript, with no build step.</p>
+    <p>This page is an app built that way. Each section below is a plugin: read how it works, then switch parts off and watch the page change.</p>
+    <p class="inspiration">Built on ideas from Ink &amp; Switch's essay <a href="https://www.inkandswitch.com/essay/malleable-software/">Malleable software</a>, the <a href="https://github.com/deepseek-ai/DeepSeek-Harness">DeepSeek Harness</a>, where every part of the agent is an extension, the <a href="https://github.com/cordiverse/cordis">Cordis</a> plugin framework that the kernel runs on, and the extensions of the <a href="https://github.com/badlogic/pi-mono">Pi</a> coding agent.</p>
+  </section>
+  <div class="home">
+    <section class="chapters" aria-label="How it works">
+      <slot name="chapters"><p class="empty">This is where the chapters go. They're plugins, and they're either loading or switched off. <a href="?reset">Turn everything back on</a>.</p></slot>
+    </section>
+    <aside class="side">
+      <slot name="playground"><p class="empty">Your learning notes go here, once their plugin is running.</p></slot>
+      <slot name="switchboard"><p class="empty">The switchboard is a plugin too. If it's off, <a href="?reset">turn everything back on</a>.</p></slot>
+    </aside>
+  </div>
+  <footer>Your notes and switches are kept in this browser only. <a href="?reset">Reset this page</a>.</footer>
+  <slot name="debug"></slot>
+</body>
 </html>

@@ -66,8 +66,12 @@ export type HostToKernel =
   | { t: "unbind"; id: string }
   /** A bound form or table saves (fields) or deletes (null) a record for `owner`. */
   | { t: "record"; id: string; owner: string; collection: string; recordId?: string; fields: Record<string, unknown> | null; trace: string }
-  /** The tab opened an app: the plugins its app.html links, fetched by the tab, and the app's folder (`demos/trip`), whose user plugins also run. */
-  | { t: "open"; plugins: { href: string; source: string }[]; app?: string }
+  /**
+   * The tab opened an app: the plugins its app.html links, fetched by the tab, and the app's folder
+   * (`demos/trip`), whose user plugins also run. `reset` (the page's ?reset) turns any of them the
+   * person turned off back on.
+   */
+  | { t: "open"; plugins: { href: string; source: string }[]; app?: string; reset?: boolean }
   /** Something went wrong in the page: a file that didn't load, an uncaught error. The kernel puts it in the trace. */
   | { t: "report"; source: string; text: string };
 

@@ -16,10 +16,12 @@ import { checkPath, PathError } from "./paths";
 import { allowed, reviews as makeReviews } from "./review";
 import { notesApp } from "./notes";
 import { grants } from "./gate";
+import { readManifest } from "./manifest";
 import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { Store } from "./store";
+import { switches } from "./switches";
 import { record, recent, setSink, startedAt, tap } from "./trace";
 import { checkApp, userPlugins } from "./user-plugins";
 import type { Opened } from "../shared/protocol";
@@ -310,7 +312,7 @@ async function reopen(app: string) {
 const notify = remote.onChange;
 remote.onChange = (change, id) => {
   notify?.(change, id);
-  if (change === "install") return;
+  if (change !== "enable" && change !== "disable") return;
   for (const host of hosts.list) {
     const open = openApps.get(host.tab);
     if (open && apps.linkedBy(host.tab)?.includes(id)) void openApp(host, open.links, open.app);
@@ -327,6 +329,8 @@ remote.readable = (instance, name) => {
 };
 remote.collectionOwner = (name) => records.registry.get(name)?.owner;
 services.data = records.service;
+const pluginSwitches = switches(root, remote, apps);
+services.plugins = pluginSwitches.service;
 
 /** The kernel's API reference, built from the registries above as they are now. */
 const describe = () => reference(services, remote);
@@ -394,8 +398,22 @@ hosts.onMessage = async (host, message) => {
       return records.fromView(host, message.id, message.owner, message.collection, message.recordId, message.fields, message.trace);
     case "open":
       // An app's plugins may read collections whose owners aren't running: know those first.
-      // The tab may have closed while waiting; then there's nothing to open.
-      return records.ready.then(() => openApp(host, message.plugins, message.app));
+      // Opened with ?reset: the app's plugins the person turned off come back on first.
+      // Only plugins this app may load: not one whose id belongs to a different running plugin.
+      if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ source }) => {
+        try {
+          const id = readManifest(source).id;
+          const running = remote.installed.get(id);
+          return !running || running.source === source ? [id] : [];
+        } catch {
+          return [];
+        }
+      }));
+      await records.ready;
+      // openApp checks the tab is still open: it may have closed while waiting.
+      await openApp(host, message.plugins, message.app);
+      // Its tab-scoped plugins may have started before the app said what it links: tell them it has.
+      return pluginSwitches.opened(host.tab);
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
     case "command": {

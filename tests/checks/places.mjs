@@ -79,6 +79,12 @@ export default async function ({ a, check, openTab, URL }) {
   await invoice.evaluate(() => window.__host.command("place:unlock", { app: "demos/invoice", plugin: "pay-later", place: "pay" }));
   const unlocked = await invoice.waitForSelector('.place[data-place="pay-later/pay"] >> text=Pay on 30 May', { timeout: 5000 }).then(() => true, () => false);
   check("the person can unlock a locked area for one plugin", unlocked && (await invoice.$eval("#pay", (el) => el.hidden)) && (await state(invoice, "pay-later", "pay")) === "drawn");
+  // Hiding the whole page would hide the locked pay button with it: the marks inside count.
+  const greedy = 'export const manifest = { id: "greedy", name: "Greedy", permissions: ["ui"], places: { all: { at: "main", put: "hide" } } };\nexport default () => {};';
+  await invoice.evaluate((data) => window.__host.command("user:add", { app: "demos/invoice", files: [{ name: "greedy.js", data }] }), greedy);
+  await turn(invoice, "demos/invoice", "greedy", true);
+  const greedyLocked = await invoice.waitForFunction(() => window.__host.places().find((p) => p.plugin === "greedy")?.state === "locked", null, { timeout: 5000 }).then(() => true, () => false);
+  check("hiding an element counts the author's marks inside it", greedyLocked && !(await invoice.$eval("main", (el) => el.hidden)));
   await invoice.close({ runBeforeUnload: true });
 
   // The reading list: slots for its own plugins, a place for the person's.
