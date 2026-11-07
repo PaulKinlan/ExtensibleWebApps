@@ -41,7 +41,7 @@ export function streak(days, today = new Date()) {
 export default async function (ctx) {
   const views = ctx.ui.views("habits.html");
 
-  views.live("main", "habits", async (ctx) => {
+  const list = views.live("main", "habits", async (ctx) => {
     const today = iso(new Date());
     const habits = (await ctx.call("data", "list", "habits")).sort((a, b) => a.name.localeCompare(b.name));
     return {
@@ -51,6 +51,17 @@ export default async function (ctx) {
       }),
     };
   });
+
+  // The list also depends on the date, which no collection change tells it about: draw again at each local midnight.
+  const atMidnight = () => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    setTimeout(() => {
+      list.refresh();
+      atMidnight();
+    }, next.getTime() - now.getTime() + 1000);
+  };
+  atMidnight();
 
   // "tick:<id>" comes from a habit's checkbox, with true or false.
   ctx.ui.onEvent(async (action, value) => {

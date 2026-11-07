@@ -121,6 +121,8 @@ export default async function (ctx) {
 
 Notice what isn't there: no redraw after the write. The write changes `habits`, the kernel tells every plugin that reads it, and the live view runs its function again. Any other plugin reading `habits`, in any tab, would redraw the same way.
 
+The view also depends on something no collection reports: the date. `views.live` returns a handle, and the real `habits.js` calls its `refresh()` at each local midnight, so a tab left open overnight shows the new day. Use `refresh()` for anything a live view reads that isn't a collection or a setting.
+
 (`streak()` is plain JavaScript; see [`habits.js`](../../demos/habits/habits.js).)
 
 ## 5. Style it
