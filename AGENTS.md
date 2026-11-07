@@ -40,6 +40,17 @@ npm run reference    # after changing the kernel's API: rewrites docs/api.md (th
 
 A new app in `demos/` is picked up by the tests automatically. Add a check for what it does to [`tests/platform.test.mjs`](tests/platform.test.mjs), next to the other demo checks.
 
+## Changing the platform without getting in anyone's way
+
+Many people and agents work on this repo, and on the sites built with it, at once. Every change should leave everyone else's work merging cleanly and every demo working.
+
+- **Add, don't edit.** A new element, plugin, service, hook, doc page or test is a new file wherever the core can find it. Elements already work this way: `ui-table` is `elements/ui-table.html`, and no list names it.
+- **Keep shared lists merge-friendly.** When a change has to add to a list (a JS array or object, `<link>` lines in HTML, imports, a docs table), put one entry per line with a trailing comma, and sorted where order doesn't matter. Then two changes that each add an entry touch different lines.
+- **No running totals in prose.** Don't write counts that every change bumps, like the number of checks; the test run prints it.
+- **Keep old APIs working.** Add a new call beside the old one, so a demo only has to change when the change is about that demo. When a demo does need to change for the tests to pass, change it in the same PR.
+- **Generated files are regenerated, not hand-merged.** If `docs/api.md` conflicts, take either side and run `npm run reference`.
+- **Base each PR on `main`.** If a PR has to stack on another, merge the parent with a merge commit, not a squash, so the child still merges cleanly.
+
 ## Where to look
 
 | For | Read |
