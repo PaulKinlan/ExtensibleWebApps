@@ -35,7 +35,8 @@
     attributeChangedCallback() {
       const min = this.getAttribute("min");
       const style = this.shadowRoot?.getElementById("min");
-      if (style) style.textContent = min && LENGTH.test(min) ? `:host { --min: ${min} }` : "";
+      // Always set it, so a nested grid never inherits its parent's minimum.
+      if (style) style.textContent = `:host { --min: ${min && LENGTH.test(min) ? min : "12rem"} }`;
     }
   }
 </script>
