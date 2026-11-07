@@ -8,7 +8,7 @@
 
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -250,6 +250,19 @@ export default async (ctx) => {
   check("a deletable table deletes a record", (await pluginLog("shelf", "shelf sees 1")) === "shelf sees 1");
   for (const id of ["books", "shelf", "nosy", "lender", "squatter"]) await a.evaluate((i) => window.__host.command("uninstall", i), id);
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
+
+  // The demos in demos/ install and draw.
+  const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => f.slice(0, -3));
+  const drawn = [];
+  for (const name of demoNames) {
+    const source = readFileSync(new globalThis.URL(`../demos/${name}.js`, import.meta.url), "utf8");
+    const outcome = await plugin(source);
+    const ok = outcome?.ok && (await a.waitForSelector(`main [data-key="${name}:${name}"] h2`, { timeout: 5000 }).then(() => true, () => false));
+    drawn.push(`${name}: ${ok ? "drawn" : JSON.stringify(outcome)}`);
+    await a.evaluate((i) => window.__host.command("uninstall", i), name);
+  }
+  await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
+  check("every demo installs and draws", demoNames.length >= 2 && drawn.every((d) => d.endsWith("drawn")), drawn.join(", "));
 
   // Worker content security policy.
   await a.waitForFunction(() => window.__host.traces.filter((e) => e.detail?.startsWith("network:")).length >= 2, null, { timeout: 5000 });
