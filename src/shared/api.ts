@@ -11,6 +11,12 @@ import type { Slot, View } from "./protocol";
  * after an `await` nothing is active; `ctx.traced()` (or `this` in a
  * `function` handler) returns a copy pinned to the trace being handled.
  */
+/** What `ctx.ui.views(file)` returns. */
+export interface Views {
+  /** Draws the template `<template id>` from the file in a slot, filled with `data`. The key is the id unless given. */
+  render(slot: Slot, id: string, data?: unknown, options?: { key?: string; order?: number }): void;
+}
+
 export interface Api {
   on(name: string, handler: (...args: any[]) => unknown): () => void;
   call(service: string, method: string, ...args: unknown[]): Promise<unknown>;
@@ -19,6 +25,8 @@ export interface Api {
     render(slot: Slot, key: string, view: View | string | null, order?: number): void;
     /** A tagged template: `ctx.ui.html\`<p>${name}</p>\`` escapes every value, and nests other `html` results as they are. */
     html(strings: TemplateStringsArray, ...values: unknown[]): View;
+    /** The templates in an .html file next to the plugin: `views.render(slot, id, data)` draws one, filled with data. */
+    views(file: string): Views;
     onEvent(handler: (action: string, value: unknown) => void): () => void;
     onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void): void;
   };

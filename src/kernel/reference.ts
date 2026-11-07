@@ -45,6 +45,11 @@ const CTX: Record<ApiMember<Api>, Doc> = {
     needs: "",
     description: "Builds an HTML view from a template, escaping every value (arrays are joined, nested html results go in as they are). Use it whenever text comes from data.",
   },
+  "ui.views": {
+    signature: "ctx.ui.views(file) → { render(slot, id, data?, { key?, order? }?) }",
+    needs: "`ui` (to render)",
+    description: "The `<template id>` elements in an .html file next to the plugin (only for plugins an app links). `render` draws one, filled with `data`: `{{path}}` holes in text and attribute values, `<template for=\"x of path\">` and `<template if=\"path\">`. Values go in as text, and the result is checked like any HTML view.",
+  },
   "ui.onEvent": {
     signature: "ctx.ui.onEvent((action, value) => …) → off()",
     needs: "",
@@ -89,6 +94,7 @@ const CTX: Record<ApiMember<Api>, Doc> = {
 
 const VIEWS: Record<View["type"], string> = {
   html: "{ html }: plain HTML (see HTML views). The usual way to build UI; a string passed to ctx.ui.render becomes one.",
+  template: "{ src, id, data? }: a template from an .html file next to the plugin, filled with data. Made by ctx.ui.views(file).render().",
   stack: "{ children, direction? }: views in a column, or a row.",
   heading: "{ text }",
   text: "{ text, title?, tone? }: tone is muted, error or ok.",

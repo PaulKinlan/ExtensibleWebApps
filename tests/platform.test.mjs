@@ -36,6 +36,7 @@ const context = await browser.newContext();
 const errors = [];
 let importedBook = false;
 let spentItems = false;
+let templateText = {};
 
 async function openTab(url = URL) {
   const page = await context.newPage();
@@ -278,24 +279,43 @@ export default async (ctx) => {
     if (await page.$('[data-key^="notes:"], [data-key^="plugins:"]')) leaks.push(name);
     // Readers redraw once the owner has added its samples: the budget counts every expense.
     if (name === "spending") {
-      spentItems = await page.waitForSelector('[data-key="budget:budget"] ui-stat[delta="4 items"]', { timeout: 8000 }).then(() => true, () => false);
+      // expenses.html fills {{e.item}} as text: markup typed into the form shows as written.
+      await page.fill('[data-key="expenses:list"] input[name="item"]', "<b>Tea</b>");
+      await page.fill('[data-key="expenses:list"] input[name="amount"]', "3");
+      await page.click('[data-key="expenses:list"] button[type="submit"]');
+      await page.waitForSelector('[data-key="expenses:list"] td >> text=<b>Tea</b>', { timeout: 8000 }).catch(() => {});
+      templateText = await page.evaluate(() => {
+        const cells = [...document.querySelectorAll('[data-key="expenses:list"] tbody td:first-child')];
+        return { shown: cells.some((td) => td.textContent.includes("<b>Tea</b>")), bold: !!document.querySelector('[data-key="expenses:list"] tbody b'), rows: cells.length };
+      });
+      spentItems = await page.waitForSelector('[data-key="budget:month"] ui-stat[delta="5 items"]', { timeout: 8000 }).then(() => true, () => false);
       // ui-grid's behaviour is a script inline in elements/ui-grid.html.
-      await page.waitForFunction(() => document.querySelector('[data-key="budget:budget"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent, null, { timeout: 5000 }).catch(() => {});
-      gridMin = await page.evaluate(() => document.querySelector('[data-key="budget:budget"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent);
+      await page.waitForFunction(() => document.querySelector('[data-key="budget:month"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent, null, { timeout: 5000 }).catch(() => {});
+      gridMin = await page.evaluate(() => document.querySelector('[data-key="budget:month"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent);
     }
     if (name === "reading-list") {
       // book-import writes to a collection it doesn't own: the review card shows in the app, and the book lands once accepted.
-      await page.fill('[data-key="book-import:book-import"] textarea[name="list"]', "Middlemarch by George Eliot");
-      await page.click('[data-key="book-import:book-import"] button[type="submit"]');
+      await page.fill('[data-key="book-import:form"] textarea[name="list"]', "Middlemarch by George Eliot");
+      await page.click('[data-key="book-import:form"] button[type="submit"]');
       await page.waitForSelector('[data-key^="review:"] >> text=Accept', { timeout: 8000 });
       await page.click('[data-key^="review:"] >> text=Accept');
-      importedBook = await page.waitForSelector('[data-key="library:library"] ui-table >> text=Middlemarch', { timeout: 8000 }).then(() => true, () => false);
+      importedBook = await page.waitForSelector('[data-key="library:books"] ui-table >> text=Middlemarch', { timeout: 8000 }).then(() => true, () => false);
     }
     await page.close({ runBeforeUnload: true });
   }
   check("every demo app draws a view from each plugin it links", demoNames.length >= 2 && drawn.every((d) => d.endsWith("drawn")), drawn.join("; "));
   check("an app page shows only its own plugins' views", leaks.length === 0, leaks.join(", "));
   check("a plugin that reads another's collection hears its changes and redraws", spentItems);
+  check("a view template from an .html file repeats rows and fills holes as text", templateText.shown && !templateText.bold && templateText.rows === 5, JSON.stringify(templateText));
+  // Nested loops multiply: 300 × 300 items would make 90,000 rows, so filling stops at its node budget.
+  const tooBig = await a.evaluate(() => {
+    const file = new DOMParser().parseFromString('<template id="grid"><template for="r of rows"><template for="c of rows"><i>{{c}}</i></template></template></template>', "text/html");
+    const rows = Array.from({ length: 300 }, (_, i) => i);
+    const started = performance.now();
+    const html = window.__host.fill(file, "grid", { rows });
+    return { html: html.slice(0, 120), ms: Math.round(performance.now() - started) };
+  });
+  check("a template that would make too many nodes stops early instead of freezing the page", /wasn't drawn/.test(tooBig.html), `${tooBig.ms}ms: ${tooBig.html}`);
   check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
   check("a plugin in an app writing another plugin's collection is reviewed in that app, then lands", importedBook);
   // Closing an app's last tab stops its plugins.

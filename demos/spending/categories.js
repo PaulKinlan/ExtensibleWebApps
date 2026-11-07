@@ -1,5 +1,7 @@
-// Categories: where the money goes. Another reader of the expenses, drawn as
-// plain HTML: a <meter> per category shows its share of the total.
+// Categories: where the money goes. Another reader of the expenses. Its view
+// is built in JavaScript with ctx.ui.html rather than a template file, which
+// is still fine for views computed from code: a <meter> per category shows
+// its share of the total. ctx.ui.html escapes every value.
 
 export const manifest = {
   id: "categories",

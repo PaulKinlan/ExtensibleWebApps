@@ -61,6 +61,13 @@ function api(trace: () => string | undefined): Api {
         send({ t: "render", slot, key, view: typeof view === "string" ? { type: "html", html: view } : view, order, trace: trace() });
       },
       html,
+      views(file: string) {
+        return {
+          render(slot: Slot, id: string, data?: unknown, options: { key?: string; order?: number } = {}) {
+            send({ t: "render", slot, key: options.key ?? id, view: { type: "template", src: file, id, data }, order: options.order, trace: trace() });
+          },
+        };
+      },
       onEvent(handler: (action: string, value: unknown) => void) {
         eventHandlers.add(handler);
         return () => void eventHandlers.delete(handler);

@@ -1,0 +1,16 @@
+<!--
+  This month against the budget. budget.js works out the numbers and the
+  words; the template lays them out with ui-stat and ui-grid.
+-->
+<template id="month">
+  <ui-toolbar>
+    <h2>This month</h2>
+    <ui-spacer></ui-spacer>
+    <ui-badge tone="{{tone}}">{{verdict}}</ui-badge>
+  </ui-toolbar>
+  <ui-grid min="10rem">
+    <ui-stat label="Spent" value="{{spent}}" delta="{{count}} items"></ui-stat>
+    <ui-stat label="{{leftLabel}}" value="{{left}}" delta="of {{budget}}" tone="{{tone}}"></ui-stat>
+    <ui-stat label="Biggest" value="{{biggest}}" delta="{{biggestShare}}"></ui-stat>
+  </ui-grid>
+</template>

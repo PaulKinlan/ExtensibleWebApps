@@ -14,6 +14,7 @@ import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn } from "./elements";
 import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
+import { fill, loadedFile, loadFile } from "./templates";
 import { workbench } from "./workbench";
 
 const tab = Math.random().toString(36).slice(2, 8);
@@ -55,6 +56,13 @@ function element(view: View, owner: string): HTMLElement {
       const el = document.createElement("div");
       el.className = "html-view";
       el.append(sanitize(view.html, owner, { remote: view.remote === true }));
+      return el;
+    }
+    case "template": {
+      // render() has made sure the file is loaded. Filled, it is HTML like any other view.
+      const el = document.createElement("div");
+      el.className = "html-view";
+      el.append(sanitize(fill(loadedFile(view.src)!, view.id, view.data), owner, { remote: view.remote === true }));
       return el;
     }
     case "stack": {
@@ -291,6 +299,15 @@ function slotFor(name: Slot, owner: string): HTMLElement | null {
   return slot;
 }
 
+/** Every template file a view uses, including inside stacks. */
+function templateFiles(view: View): string[] {
+  if (view.type === "template") return [view.src];
+  if (view.type === "stack") return view.children.flatMap(templateFiles);
+  return [];
+}
+
+const waitingForFile = new Map<string, [Slot, string, string, number, View]>();
+
 function render(slot: Slot, key: string, owner: string, order: number, view: View | null) {
   const id = `${slot}/${key}`;
   if (!showing(owner)) {
@@ -298,6 +315,28 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     else held.delete(id);
     return;
   }
+  // A template view (or a stack holding one) waits for its files; the latest view for this slot and key is drawn once they load.
+  const missing = view ? templateFiles(view).filter((src) => !loadedFile(src)) : [];
+  if (missing.length) {
+    waitingForFile.set(id, [slot, key, owner, order, view!]);
+    Promise.all(missing.map(loadFile)).then(
+      () => {
+        const latest = waitingForFile.get(id);
+        waitingForFile.delete(id);
+        if (latest) render(...latest);
+      },
+      (error) => {
+        // Only if this view is still the one waiting: the key may since have been removed or redrawn.
+        const latest = waitingForFile.get(id);
+        if (latest?.[4] !== view) return;
+        waitingForFile.delete(id);
+        const [s, k, o, n] = latest;
+        render(s, k, o, n, { type: "text", text: `Couldn't load ${missing.join(", ")}: ${error instanceof Error ? error.message : error}`, tone: "error" });
+      },
+    );
+    return;
+  }
+  waitingForFile.delete(id);
   const container = slotFor(slot, owner);
   if (!container) return;
   const entries = slots.get(slot) ?? new Map<string, Entry>();
@@ -466,4 +505,5 @@ send({ t: "hello", tab, folder });
 if (links.length) await openApp();
 
 // For tests and poking around in the console.
-Object.assign(window, { __host: { tab, command, traces, audioStats, workers, get spawner() { return spawner; } } });
+// Tests reach the template filler here, to check its limits without a plugin.
+Object.assign(window, { __host: { tab, command, traces, audioStats, workers, fill, get spawner() { return spawner; } } });

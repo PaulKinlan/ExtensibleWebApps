@@ -31,10 +31,10 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
   }
 
   /** Installs and starts an app plugin; resolves to an error, or undefined if it runs (or is off by choice). */
-  async function start(id: string, source: string): Promise<string | undefined> {
+  async function start(id: string, source: string, href: string): Promise<string | undefined> {
     // Turning a plugin off in the workbench is saved; reopening its app keeps it off.
     const enabled = !(await isOff(id));
-    const result = await remote.install(source, { origin: "app", enabled });
+    const result = await remote.install(source, { origin: "app", href, enabled });
     if (!result.ok) return result.error;
     if (enabled && !result.started) return "It didn't start; the trace says why";
     return undefined;
@@ -57,7 +57,7 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
 
     let pending = installing.get(id);
     if (!pending) {
-      pending = start(id, source).finally(() => installing.delete(id));
+      pending = start(id, source, href).finally(() => installing.delete(id));
       installing.set(id, pending);
     }
     const error = await pending;

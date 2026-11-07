@@ -29,6 +29,7 @@ Three kinds of code, each in its own place:
 - **The host** (`src/host/`) is the page. It draws what plugins render, turns clicks and typing into events, and runs no plugin code. Read [`main.ts`](src/host/main.ts) first, then:
   - [`sanitize.ts`](src/host/sanitize.ts) keeps only the HTML listed in [`src/shared/html.ts`](src/shared/html.ts)
   - [`morph.ts`](src/host/morph.ts) updates a view in place
+  - [`templates.ts`](src/host/templates.ts) fills a plugin's view templates with its data
   - [`workbench.ts`](src/host/workbench.ts) is the trace and benchmarks on the platform's own page
   - [`elements.ts`](src/host/elements.ts) loads the `ui-*` elements from [`elements/`](elements/)
   - [`bindings.ts`](src/host/bindings.ts) connects `<ui-form>` and `<ui-table>` to collections
@@ -71,7 +72,7 @@ Plugins live in two places:
 ```sh
 npm install
 npm run dev        # http://localhost:5173 is the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
-npm test           # build, then 83 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm test           # build, then 85 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```

@@ -1,8 +1,9 @@
 // The library: the plugin that owns the books. Its manifest declares a
-// collection with a schema, and its view is one string of HTML: <ui-form>
-// builds its fields, labels and errors from the schema, <ui-table> lists the
-// records and stays up to date, and the kernel checks every write against the
-// schema. The plugin only handles what is specific to it: which book is open.
+// collection with a schema, and its view is a template in library.html:
+// <ui-form> builds its fields, labels and errors from the schema, <ui-table>
+// lists the records and stays up to date, and the kernel checks every write
+// against the schema. The plugin only handles what is specific to it: which
+// book is open.
 
 export const manifest = {
   id: "library",
@@ -37,7 +38,8 @@ const SAMPLE = [
 ];
 
 export default async function (ctx) {
-  const html = ctx.ui.html;
+  // The templates in library.html, next to this file.
+  const views = ctx.ui.views("library.html");
   // The plugin owns `library`, so it reads and writes it without asking. The
   // samples go in once; a flag in the plugin's own storage keeps deleted books deleted.
   if (!(await ctx.storage.get("seeded"))) {
@@ -47,20 +49,8 @@ export default async function (ctx) {
 
   let open = null; // the id of the book being edited, if any
 
-  const draw = () =>
-    ctx.ui.render(
-      "main",
-      "library",
-      html`
-        <ui-toolbar><h2>Books</h2><ui-spacer></ui-spacer>${open ? html`<button data-action="close">Add a book instead</button>` : ""}</ui-toolbar>
-        <ui-card>
-          <h3>${open ? "Edit book" : "Add a book"}</h3>
-          ${open
-            ? html`<ui-form collection="library" record="${open}" submit="Save changes" action="saved"></ui-form>`
-            : html`<ui-form collection="library" fields="title,author,year,shelf,due" submit="Add book"></ui-form>`}
-        </ui-card>
-        <ui-table collection="library" columns="title,author,year,shelf,due" sort="title" row-action="open" deletable empty="No books yet."></ui-table>`,
-    );
+  // Draws <template id="books"> in the main slot, filled with the plugin's state.
+  const draw = () => views.render("main", "books", { open });
 
   // Clicks in the view come back as actions; <ui-table>'s row-action sends the record id.
   ctx.ui.onEvent((action, value) => {

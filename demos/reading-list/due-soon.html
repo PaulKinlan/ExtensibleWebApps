@@ -1,0 +1,17 @@
+<!--
+  The due-soon list. due-soon.js sends { books: [{ title, when, tone }] },
+  already sorted and worded; the template only lays it out.
+-->
+<template id="list">
+  <h3>Due back soon</h3>
+  <template if="books.length">
+    <ul>
+      <template for="book of books">
+        <li><strong>{{book.title}}</strong> <ui-badge tone="{{book.tone}}">{{book.when}}</ui-badge></li>
+      </template>
+    </ul>
+  </template>
+  <template if="!books.length">
+    <p><small>Nothing due in the next two weeks.</small></p>
+  </template>
+</template>

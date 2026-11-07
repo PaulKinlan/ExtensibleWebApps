@@ -1,0 +1,43 @@
+<!--
+  The expenses table and the form to add one. expenses.js sends
+  { expenses: [{ id, item, category, amount, repeats }], categories, error },
+  with amounts already formatted as money.
+-->
+<template id="list">
+  <ui-card>
+    <h2>Expenses</h2>
+    <table>
+      <thead><tr><th>Item</th><th>Category</th><th>Amount</th><th></th></tr></thead>
+      <tbody>
+        <template for="e of expenses">
+          <tr key="{{e.id}}">
+            <td>{{e.item}} <template if="e.repeats"><small>monthly</small></template></td>
+            <td><ui-badge>{{e.category}}</ui-badge></td>
+            <td>{{e.amount}}</td>
+            <td><button data-action="remove" data-value="{{e.id}}" aria-label="Remove {{e.item}}">Remove</button></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </ui-card>
+  <ui-card>
+    <h3>Add an expense</h3>
+    <form data-action="add">
+      <ui-grid min="12rem">
+        <label>Item <input name="item" placeholder="Coffee" required></label>
+        <label>Amount <input type="number" name="amount" step="0.01" min="0" required></label>
+        <label>Category
+          <select name="category">
+            <template for="c of categories"><option>{{c}}</option></template>
+          </select>
+        </label>
+      </ui-grid>
+      <label><input type="checkbox" name="repeats"> Repeats monthly</label>
+      <ui-toolbar>
+        <template if="error"><span role="alert">{{error}}</span></template>
+        <ui-spacer></ui-spacer>
+        <button type="submit">Add</button>
+      </ui-toolbar>
+    </form>
+  </ui-card>
+</template>

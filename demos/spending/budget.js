@@ -1,7 +1,7 @@
 // Budget: a monthly budget, and how spending compares with it. The budget is
 // a setting, so the plugins panel draws a field for it from the manifest; the
 // plugin reads it with ctx.settings.get() and hears changes with onChange.
-// It reads the expenses (`data:read:expenses`) and hears when they change
+// Its view is a template in budget.html. It reads the expenses (`data:read:expenses`) and hears when they change
 // (`hook:listen:data:changed:expenses`), but doesn't own them.
 
 export const manifest = {
@@ -19,7 +19,7 @@ export const manifest = {
 const money = (n) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function (ctx) {
-  const html = ctx.ui.html;
+  const views = ctx.ui.views("budget.html");
 
   const draw = async () => {
     const expenses = await ctx.call("data", "list", "expenses");
@@ -27,17 +27,17 @@ export default async function (ctx) {
     const spent = expenses.reduce((sum, e) => sum + e.amount, 0);
     const biggest = expenses.reduce((top, e) => (!top || e.amount > top.amount ? e : top), null);
     const over = spent > budget;
-    ctx.ui.render(
-      "main",
-      "budget",
-      html`
-        <ui-toolbar><h2>This month</h2><ui-spacer></ui-spacer><ui-badge tone="${over ? "danger" : "ok"}">${over ? "Over budget" : "On budget"}</ui-badge></ui-toolbar>
-        <ui-grid min="10rem">
-          <ui-stat label="Spent" value="${money(spent)}" delta="${expenses.length} items"></ui-stat>
-          <ui-stat label="${over ? "Over by" : "Budget left"}" value="${money(Math.abs(budget - spent))}" delta="of ${money(budget)}" tone="${over ? "danger" : "ok"}"></ui-stat>
-          <ui-stat label="Biggest" value="${biggest?.item ?? "None"}" delta="${biggest ? `${Math.round((biggest.amount / (spent || 1)) * 100)}% of spend` : ""}"></ui-stat>
-        </ui-grid>`,
-    );
+    views.render("main", "month", {
+      verdict: over ? "Over budget" : "On budget",
+      tone: over ? "danger" : "ok",
+      spent: money(spent),
+      count: expenses.length,
+      leftLabel: over ? "Over by" : "Budget left",
+      left: money(Math.abs(budget - spent)),
+      budget: money(budget),
+      biggest: biggest?.item ?? "None",
+      biggestShare: biggest ? `${Math.round((biggest.amount / (spent || 1)) * 100)}% of spend` : "",
+    });
   };
 
   ctx.on("data:changed:expenses", () => draw());

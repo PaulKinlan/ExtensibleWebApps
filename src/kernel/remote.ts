@@ -55,6 +55,8 @@ export interface Installed {
   origin: Origin;
   /** A plugin that is turned off stays installed but runs no instances. */
   enabled: boolean;
+  /** Where an app's plugin was loaded from; its view templates are files next to it. */
+  href?: string;
 }
 
 export type InstallResult = { ok: true; id: string; started: boolean } | { ok: false; error: string };
@@ -85,7 +87,7 @@ export class RemotePlugins {
   ) {}
 
   /** Installs (or replaces) a plugin from its source and starts it. The manifest is read without running the code. */
-  async install(source: string, options: { origin?: Origin; enabled?: boolean } = {}): Promise<InstallResult> {
+  async install(source: string, options: { origin?: Origin; enabled?: boolean; href?: string } = {}): Promise<InstallResult> {
     let manifest: Manifest;
     try {
       manifest = readManifest(source);
@@ -97,7 +99,7 @@ export class RemotePlugins {
     const previous = this.installed.get(manifest.id);
     this.stop(manifest.id);
     const enabled = options.enabled ?? previous?.enabled ?? true;
-    this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest), origin: options.origin ?? "data", enabled });
+    this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest), origin: options.origin ?? "data", enabled, href: options.href });
     this.onManifest?.(manifest);
     record({ kind: "lifecycle", name: "plugin:install", plugin: manifest.id, detail: `${manifest.scope ?? "shared"}: ${manifest.permissions.join(" ")}${enabled ? "" : " (off)"}` });
     this.onChange?.("install", manifest.id);
@@ -236,15 +238,32 @@ export class RemotePlugins {
  * with whether its plugin may load remote images. The mark is the kernel's,
  * so a plugin can't set it for itself.
  */
-function stamp(view: View, remote: boolean, depth = 0): View {
+function stamp(view: View, remote: boolean, base: string | undefined, depth = 0): View {
   if (!view || typeof view !== "object" || depth > 64) throw new Error("A view must be an object, nested at most 64 deep");
   if (view.type === "html") {
     if (typeof view.html !== "string") throw new Error("An html view needs html");
     if (view.html.length > HTML_MAX) throw new Error(`An html view is limited to ${HTML_MAX} characters`);
     return { type: "html", html: view.html, remote };
   }
-  if (view.type === "stack") return { ...view, children: (Array.isArray(view.children) ? view.children : []).map((child) => stamp(child, remote, depth + 1)) };
+  if (view.type === "template") return template(view, remote, base);
+  if (view.type === "stack") return { ...view, children: (Array.isArray(view.children) ? view.children : []).map((child) => stamp(child, remote, base, depth + 1)) };
   return view;
+}
+
+/**
+ * A template view names an .html file relative to the plugin's own URL. The
+ * kernel makes it absolute, and only allows a file from the same place the
+ * plugin came from, so a plugin can't make the host fetch anything else.
+ */
+function template(view: Extract<View, { type: "template" }>, remote: boolean, base: string | undefined): View {
+  if (!base) throw new Error("Only a plugin an app links has template files; use ctx.ui.html instead");
+  if (typeof view.src !== "string" || typeof view.id !== "string" || !/^[\w-]{1,64}$/.test(view.id)) throw new Error("A template view needs a file and an id of letters, digits, - and _");
+  const from = new URL(base);
+  const src = new URL(view.src, from);
+  if (src.origin !== from.origin || !src.pathname.endsWith(".html") || src.search || src.hash) throw new Error(`${view.src} isn't an .html file next to the plugin`);
+  const data = view.data === undefined ? undefined : JSON.parse(JSON.stringify(view.data));
+  if (JSON.stringify(data ?? null).length > HTML_MAX) throw new Error(`A template's data is limited to ${HTML_MAX} characters`);
+  return { type: "template", src: src.href, id: view.id, data, remote };
 }
 
 export class Remote {
@@ -334,7 +353,7 @@ export class Remote {
         if (!check(this.instance, this.caps, "ui")) return;
         let view: View | null;
         try {
-          view = message.view && stamp(message.view, this.caps.has("network"));
+          view = message.view && stamp(message.view, this.caps.has("network"), this.plugin.href);
         } catch (error) {
           record({ kind: "error", name: "ui:refused", plugin: this.instance, trace: message.trace, detail: String(error instanceof Error ? error.message : error) });
           return;
