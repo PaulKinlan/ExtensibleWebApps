@@ -2,8 +2,8 @@
 
 Each file here is a complete plugin: an app you can install into the platform. They are written to be read, so each one starts with a comment saying what it shows. Try them on the hosted site with the **Demo** menu at the top right of the page, or with a link:
 
-- [Reading list](https://extensible-web-apps.paulkinlan.workers.dev/?demo=reading-list) (`reading-list.js`)
-- [Spending](https://extensible-web-apps.paulkinlan.workers.dev/?demo=spending) (`spending.js`)
+- [Reading list](https://extensiblewebapps.paulkinlan.workers.dev/?demo=reading-list) (`reading-list.js`)
+- [Spending](https://extensiblewebapps.paulkinlan.workers.dev/?demo=spending) (`spending.js`)
 
 Locally, run `npm run dev` and open `http://localhost:5173/?demo=reading-list`.
 

@@ -6,7 +6,7 @@
 // Deploys come from Cloudflare's Git integration (Workers Builds): build
 // command `npm run build`, deploy command `npx wrangler deploy`.
 {
-  "name": "extensible-web-apps",
+  "name": "extensiblewebapps",
   "compatibility_date": "2025-09-01",
   "assets": {
     "directory": "./dist",
