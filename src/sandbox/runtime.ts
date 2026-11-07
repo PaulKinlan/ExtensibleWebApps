@@ -118,41 +118,44 @@ function live(base: Api, compute: (ctx: Api) => unknown, draw: (value: unknown) 
   let running = false;
   let again = false;
 
+  // Keys are "data:<collection>" and "settings", so a collection named settings is its own dependency.
   const follow = (what: string) => {
     if (stopped || followed.has(what)) return;
-    followed.set(what, what === "settings" ? base.settings.onChange(changed) : base.on(`data:changed:${what}`, changed));
+    followed.set(what, what === "settings" ? base.settings.onChange(changed) : base.on(`data:changed:${what.slice(5)}`, changed));
   };
-  const reader: Api = {
-    ...base,
+  /** A copy of `api` that notes what it reads; its traced() copies do too. */
+  const tracking = (api: Api): Api => ({
+    ...api,
     call(service: string, method: string, ...args: unknown[]) {
-      if (service === "data" && (method === "list" || method === "get")) follow(String(args[0]));
+      if (service === "data" && (method === "list" || method === "get")) follow(`data:${String(args[0])}`);
       if (service === "settings" && method === "get") follow("settings");
-      return base.call(service, method, ...args);
+      return api.call(service, method, ...args);
     },
     settings: {
-      ...base.settings,
+      ...api.settings,
       get() {
         follow("settings");
-        return base.settings.get();
+        return api.settings.get();
       },
     },
-  };
+    traced: () => tracking(api.traced()),
+  });
+  const reader = tracking(base);
 
   async function run() {
     if (running) return void (again = true);
     running = true;
-    try {
-      do {
-        again = false;
+    do {
+      again = false;
+      try {
         const value = await compute(reader);
         if (!stopped) draw(value);
-      } while (again && !stopped);
-    } catch (error) {
-      // The view keeps what it last drew; the error goes to the trace.
-      base.log(`A live view failed: ${error instanceof Error ? error.message : error}`, "error");
-    } finally {
-      running = false;
-    }
+      } catch (error) {
+        // The view keeps what it last drew; the error goes to the trace, and a change that came meanwhile still runs.
+        base.log(`A live view failed: ${error instanceof Error ? error.message : error}`, "error");
+      }
+    } while (again && !stopped);
+    running = false;
   }
   function changed() {
     void run();
