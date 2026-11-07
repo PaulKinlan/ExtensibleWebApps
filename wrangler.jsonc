@@ -4,12 +4,15 @@
 // security policy here as they do under `vite preview`.
 //
 // Deploys come from Cloudflare's Git integration (Workers Builds): build
-// command `npm run build`, deploy command `npx wrangler deploy`.
+// command `npm run build`, deploy command `npx wrangler deploy`. Branches
+// other than main deploy with `npx wrangler preview`, which needs the
+// (empty) `previews` block below.
 {
   "name": "extensible-web-apps",
   "compatibility_date": "2025-09-01",
   "assets": {
     "directory": "./dist",
     "not_found_handling": "single-page-application"
-  }
+  },
+  "previews": {}
 }
