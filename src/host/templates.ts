@@ -59,6 +59,14 @@ export function loadFile(src: string): Promise<Document> {
   return pending;
 }
 
+/** Forgets the loaded files under a path (`/user/demos/trip/`), so the next view that needs one loads it again. */
+export function forgetFiles(path: string): void {
+  for (const src of [...files.keys()]) if (new URL(src, location.href).pathname.startsWith(path)) {
+    files.delete(src);
+    ready.delete(src);
+  }
+}
+
 type Scope = Record<string, unknown>;
 const HOLE = /\{\{\s*(!?[A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*\}\}/g;
 const WHOLE = /^\s*\{\{\s*(!?[A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*\}\}\s*$/;

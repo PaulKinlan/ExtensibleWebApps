@@ -17,7 +17,9 @@
 // changes its parent, so the parent's mark applies; prepend, append,
 // replace and hide change the element itself, so its own mark applies. A
 // review place asks the person once (they can always allow it); a locked
-// place is refused unless the person unlocked it for that plugin.
+// place is refused unless the person unlocked it for that plugin. Replace
+// and hide take everything inside the element with them, so a mark anywhere
+// inside it counts too: hiding <main> can't take a locked section with it.
 
 import type { Opened, Place } from "../shared/protocol";
 
@@ -32,23 +34,29 @@ interface Applied {
   state: PlaceState;
   targets: Element[];
   containers: HTMLElement[];
-  /** Elements this place hid, with whether they were hidden before. */
-  hidden: [Element, boolean][];
+  /** Elements this place hid. */
+  hidden: Element[];
 }
 
 /** Elements a place may never match: plugins' views, other places, and the platform's own panels. */
-const OFF_LIMITS = ".place, [data-plugin], #review, #notice, #customize, .customize";
+const OFF_LIMITS = ".place, [data-plugin], #review, #notice, #customize, .customize, .customize-button";
 const MAX_MATCHES = 200;
 const STRICTNESS = ["open", "review", "locked"];
 
 export interface PlacesHost {
   /** Asks the person about a review place; resolves true if they allow it. */
   ask(plugin: string, place: string, target: string, what: string): Promise<boolean>;
-  /** Told when a plugin's places were set up again, so its views can be drawn into them. */
-  changed(plugin: string): void;
+  /** Told when one of a plugin's places was set up again, so its views can be drawn into it. */
+  changed(plugin: string, name: string): void;
   /** Reports a problem, for the trace. */
   report(text: string): void;
 }
+
+/**
+ * Who hides each element, and whether it was hidden before the first of them. Two places may hide the
+ * same element; it shows again only when the last of them lets go, and only if it was showing before.
+ */
+const hiders = new Map<Element, { by: Set<object>; was: boolean }>();
 
 export function places(host: PlacesHost) {
   const applied = new Map<string, Applied>();
@@ -58,8 +66,18 @@ export function places(host: PlacesHost) {
   /** The author's mark that governs a change at `el`: the nearest data-extend, or open. */
   function markOf(el: Element, put: Place["put"]): string {
     const at = put === "before" || put === "after" ? el.parentElement : el;
-    const mark = at?.closest("[data-extend]")?.getAttribute("data-extend");
-    return mark && STRICTNESS.includes(mark) ? mark : "open";
+    const marks = [at?.closest("[data-extend]")?.getAttribute("data-extend")];
+    // Replace and hide hide the whole element, so the marks inside it count as well.
+    if (put === "replace" || put === "hide") for (const inner of el.querySelectorAll("[data-extend]")) marks.push(inner.getAttribute("data-extend"));
+    return strictest(marks.map((m) => (m && STRICTNESS.includes(m) ? m : "open")));
+  }
+  const strictest = (marks: string[]) => [...marks].sort((x, y) => STRICTNESS.indexOf(y) - STRICTNESS.indexOf(x))[0] ?? "open";
+
+  /** The page's own text in `el`: without plugins' views, places or the platform's panels, which a place may not read. */
+  function ownText(el: Element): string {
+    const copy = el.cloneNode(true) as Element;
+    for (const inner of copy.querySelectorAll(OFF_LIMITS)) inner.remove();
+    return (copy.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 500);
   }
 
   /** How a review card names an element: its label or heading, as the person sees it, then how the page names it. */
@@ -97,9 +115,24 @@ export function places(host: PlacesHost) {
   }
 
   function hide(a: Applied, el: Element) {
-    if (a.hidden.some(([e]) => e === el)) return;
-    a.hidden.push([el, el.hasAttribute("hidden")]);
+    if (a.hidden.includes(el)) return;
+    a.hidden.push(el);
+    const entry = hiders.get(el) ?? { by: new Set(), was: el.hasAttribute("hidden") };
+    entry.by.add(a);
+    hiders.set(el, entry);
     el.setAttribute("hidden", "");
+  }
+
+  function unhide(a: Applied, el: Element) {
+    const at = a.hidden.indexOf(el);
+    if (at < 0) return;
+    a.hidden.splice(at, 1);
+    const entry = hiders.get(el);
+    if (!entry) return;
+    entry.by.delete(a);
+    if (entry.by.size) return;
+    hiders.delete(el);
+    if (!entry.was) el.removeAttribute("hidden");
   }
 
   /** Puts the containers in the page, now that the place may be used. */
@@ -120,7 +153,7 @@ export function places(host: PlacesHost) {
       else el.append(container);
       a.containers.push(container);
     }
-    host.changed(a.plugin);
+    host.changed(a.plugin, a.name);
   }
 
   async function apply(a: Applied, unlocked: string[]) {
@@ -136,7 +169,7 @@ export function places(host: PlacesHost) {
       host.report(`${a.plugin}: the place ${a.name} matches nothing in this page (${a.place.at})`);
       return;
     }
-    const mark = found.map((el) => markOf(el, a.place.put)).sort((x, y) => STRICTNESS.indexOf(y) - STRICTNESS.indexOf(x))[0];
+    const mark = strictest(found.map((el) => markOf(el, a.place.put)));
     if (mark === "locked" && !unlocked.includes(a.name)) {
       a.state = "locked";
       host.report(`${a.plugin}: the place ${a.name} is in an area the app's author locked`);
@@ -159,11 +192,13 @@ export function places(host: PlacesHost) {
 
   function undo(a: Applied) {
     for (const container of a.containers) container.remove();
-    for (const [el, was] of a.hidden) if (!was) el.removeAttribute("hidden");
+    for (const el of [...a.hidden]) unhide(a, el);
     for (const el of a.targets) el.classList.remove("place-pending");
     a.containers = [];
-    a.hidden = [];
   }
+
+  /** Callers waiting for a plugin's place to be set up: a plugin may ask about it while the page is still opening. */
+  const waiting = new Set<() => void>();
 
   return {
     /** Sets up the places of the plugins this page shows, and takes down the places of any that stopped. */
@@ -184,6 +219,7 @@ export function places(host: PlacesHost) {
           void apply(a, p.unlocked ?? []);
         }
       }
+      for (const wake of [...waiting]) wake();
       for (const [k, a] of applied) {
         if (wanted.has(k)) continue;
         undo(a);
@@ -210,21 +246,33 @@ export function places(host: PlacesHost) {
         if (i < 0 || a.place.put !== "replace") continue;
         const el = a.targets[i];
         if (count) hide(a, el);
-        else {
-          const at = a.hidden.findIndex(([e]) => e === el);
-          if (at >= 0) {
-            if (!a.hidden[at][1]) el.removeAttribute("hidden");
-            a.hidden.splice(at, 1);
-          }
-        }
+        else unhide(a, el);
       }
     },
 
-    /** What a place matches, for `page.matches`: each element's text and data-* attributes. */
-    matches(plugin: string, name: string): { text: string; data: Record<string, string> }[] {
-      const a = applied.get(key(plugin, name));
+    /**
+     * What a place matches, for `page.matches`: each element's own text and data-* attributes. A plugin
+     * may ask as it starts, before the page has heard about its places, so this waits for them a while.
+     */
+    async matches(plugin: string, name: string): Promise<{ text: string; data: Record<string, string> }[]> {
+      const k = key(plugin, name);
+      if (!applied.has(k))
+        await new Promise<void>((resolve) => {
+          const wake = () => {
+            if (!applied.has(k)) return;
+            waiting.delete(wake);
+            clearTimeout(timer);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            waiting.delete(wake);
+            resolve();
+          }, 10_000);
+          waiting.add(wake);
+        });
+      const a = applied.get(k);
       if (!a) throw new Error(`${plugin} has no place named ${name} in this page`);
-      return a.targets.map((el) => ({ text: (el.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 500), data: { ...(el as HTMLElement).dataset } as Record<string, string> }));
+      return a.targets.map((el) => ({ text: ownText(el), data: { ...(el as HTMLElement).dataset } as Record<string, string> }));
     },
 
     /** Every place and how it went, for the Customize panel. */

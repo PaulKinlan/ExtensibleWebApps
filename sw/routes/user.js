@@ -36,8 +36,17 @@ export default {
       for (const part of parts.slice(0, -1)) folder = await folder.getDirectoryHandle(part);
       const file = await (await folder.getFileHandle(parts.at(-1))).getFile();
       const type = TYPES[/** @type {keyof typeof TYPES} */ (parts.at(-1).split(".").pop()?.toLowerCase() ?? "")] ?? "application/octet-stream";
-      // Never cached: the person may change or remove it at any moment.
-      return new Response(file, { headers: { "Content-Type": type, "Cache-Control": "no-store" } });
+      // Never cached: the person may change or remove it at any moment. And never a live page: a
+      // template or an SVG opened on its own would otherwise run its scripts as this site, outside any
+      // worker and its permissions. The host reads templates with fetch, which this doesn't touch.
+      return new Response(file, {
+        headers: {
+          "Content-Type": type,
+          "Cache-Control": "no-store",
+          "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
     } catch {
       return new Response("Not found", { status: 404 });
     }

@@ -20,7 +20,7 @@ import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
 import { serviceWorker } from "./service-worker";
 import { cleanCss, installPluginStyle } from "./plugin-styles";
-import { fill, loadedFile, loadFile, styleOf } from "./templates";
+import { fill, forgetFiles, loadedFile, loadFile, styleOf } from "./templates";
 import { workbench } from "./workbench";
 
 const tab = Math.random().toString(36).slice(2, 8);
@@ -285,7 +285,7 @@ const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"
 /** The platform's own page, with the trace. Every other page is an app, even one that links no plugins. */
 const isWorkbench = !!document.getElementById("devtools");
 /** The app's folder, which names where the person's own plugins for it are kept: `demos/trip` for /demos/trip/app.html. */
-const app = location.pathname.replace(/^\/+/, "").replace(/\/[^/]*$/, "") || "root";
+const app = location.pathname.replace(/\/[^/]*$/, "").replace(/^\/+/, "") || "root";
 /** Whose views this page shows: its app's plugins, or (on the workbench) everyone's. */
 let shown: Set<string> | "all" = isWorkbench ? "all" : new Set();
 /** Review cards always show: the person must see what a plugin wants to change. */
@@ -313,6 +313,8 @@ let running: Opened[] = [];
 function opened(plugins: Opened[]) {
   for (const p of plugins) if (p.error && !running.some((r) => r.href === p.href && r.error === p.error)) notice(`${p.href.split("/").pop()}: ${p.error}`);
   running = plugins;
+  // The person may have added a plugin again with new files: load its templates afresh.
+  forgetFiles(`/user/${app}/`);
   const before = shown;
   shown = new Set(plugins.flatMap((p) => (p.id && !p.error ? [p.id] : [])));
   // A plugin that is no longer shown (turned off) takes its views with it.
@@ -327,8 +329,16 @@ function opened(plugins: Opened[]) {
   panel?.refresh();
 }
 
-/** Removes everything a plugin drew in this page; the kernel still has it, if the plugin comes back. */
+/**
+ * Removes everything a plugin drew in this page. Its views are held, as if they had come while it was
+ * hidden: if another tab keeps the plugin running, it won't draw them again when it is shown here again.
+ * If it stops, the kernel takes its views away, and they go from what is held too.
+ */
 function clearOwner(plugin: string) {
+  for (const [id, message] of drawn) if (pluginOf(message.owner) === plugin) {
+    held.set(id, message);
+    drawn.delete(id);
+  }
   for (const [id, args] of placeRenders) if (pluginOf(args[2]) === plugin) placeRenders.delete(id);
   for (const [slot, entries] of slots)
     for (const [key, entry] of entries) {
@@ -380,10 +390,10 @@ const placeRenders = new Map<string, [Slot, string, string, number, View]>();
 const containerOf = new WeakMap<Entry, HTMLElement>();
 const pagePlaces = makePlaces({
   ask: (plugin, place, target, what) => command("place:ask", { app, plugin, place, target, what }).then(Boolean),
-  changed: (plugin) => {
-    // Its containers are new: forget the entries that were in the old ones, then draw again.
-    for (const id of [...slots.keys()]) if (id.startsWith(`${plugin}/`)) slots.delete(id);
-    for (const args of [...placeRenders.values()]) if (pluginOf(args[2]) === plugin) render(...args);
+  changed: (plugin, name) => {
+    // That place's containers are new: forget the entries that were in its old ones, then draw it again.
+    for (const id of [...slots.keys()]) if (id.startsWith(`${plugin}/${name}#`)) slots.delete(id);
+    for (const args of [...placeRenders.values()]) if (pluginOf(args[2]) === plugin && args[0].split("#")[0] === name) render(...args);
   },
   report: (text) => report("place", text),
 });
@@ -407,6 +417,8 @@ function templateFiles(view: View): string[] {
 }
 
 const waitingForFile = new Map<string, [Slot, string, string, number, View]>();
+/** The views drawn in this page, as they came, so a plugin turned off here can be shown again. */
+const drawn = new Map<string, Extract<KernelToHost, { t: "render" }>>();
 
 function render(slot: Slot, key: string, owner: string, order: number, view: View | null) {
   const id = `${slot}/${key}`;
@@ -439,16 +451,21 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     return;
   }
   waitingForFile.delete(id);
+  if (view) drawn.set(id, { t: "render", slot, key, owner, order, view });
+  else drawn.delete(id);
   const targets = slotFor(slot, owner);
   // Not a slot in this page: remember it, in case it is for a place that isn't ready yet.
   const isPlace = !document.querySelector(`slot[name="${CSS.escape(slot)}"]`) && !ALWAYS.has(owner);
   if (isPlace) {
+    // A view to every match replaces what was drawn to one of them, so drawing again later gives the same page.
+    if (!slot.includes("#")) for (const [other, args] of placeRenders) if (args[1] === key && pluginOf(args[2]) === pluginOf(owner) && args[0].startsWith(`${slot}#`)) placeRenders.delete(other);
+    // Latest last: it is drawn again in this order.
+    placeRenders.delete(id);
     if (view) placeRenders.set(id, [slot, key, owner, order, view]);
-    else placeRenders.delete(id);
   }
   // A view to `name` also clears what was drawn to `name#i`, and the other way round, so keys stay unique per container.
   for (const [slotId, container] of targets) drawIn(slotId, container, key, owner, order, view);
-  if (isPlace && !view) for (const [slotId, entries] of slots) if (slotId.startsWith(`${pluginOf(owner)}/${slot.split("#")[0]}#`) && entries.has(key)) {
+  if (isPlace && !view && !slot.includes("#")) for (const [slotId, entries] of slots) if (slotId.startsWith(`${pluginOf(owner)}/${slot.split("#")[0]}#`) && entries.has(key)) {
     const entry = entries.get(key)!;
     entry.el.remove();
     entries.delete(key);

@@ -288,10 +288,12 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
   }
   openApps.set(host.tab, { app, links });
   const describe = (o: Opened): Opened => {
-    const manifest = o.id ? remote.installed.get(o.id)?.manifest : undefined;
     if (!o.id) return o;
+    const installed = remote.installed.get(o.id);
+    // A plugin turned off (in the workbench, say) changes nothing in the page.
+    const manifest = installed?.enabled ? installed.manifest : undefined;
     const unlocked = app ? reviews.grantsFor(o.id).flatMap((g) => (g.startsWith(`unlock:${app}#`) ? [g.split("#")[1]] : [])) : [];
-    return { ...o, name: manifest?.name, places: manifest?.places, unlocked, user: ids.has(o.id) };
+    return { ...o, name: installed?.manifest.name, places: manifest?.places, unlocked, user: ids.has(o.id) };
   };
   await apps.open(host, [...links, ...mine], describe);
 }
@@ -303,6 +305,17 @@ async function reopen(app: string) {
     if (open?.app === app) await openApp(host, open.links, app);
   }
 }
+
+// A plugin turned on or off anywhere: the tabs whose apps use it hear again, so its places come or go.
+const notify = remote.onChange;
+remote.onChange = (change, id) => {
+  notify?.(change, id);
+  if (change === "install") return;
+  for (const host of hosts.list) {
+    const open = openApps.get(host.tab);
+    if (open && apps.linkedBy(host.tab)?.includes(id)) void openApp(host, open.links, open.app);
+  }
+};
 
 const routes = makeRoutes(root, remote, shared);
 remote.onManifest = records.register;
@@ -418,9 +431,12 @@ async function customize(name: string, arg: unknown): Promise<unknown> {
   switch (name) {
     case "user:list":
       return userAdded.list(app);
-    case "user:add":
-      if (typeof a.url === "string") return userAdded.addFromUrl(app, a.url);
-      return userAdded.add(app, a.files as { name: string; data: Blob | string }[]);
+    case "user:add": {
+      const added = typeof a.url === "string" ? await userAdded.addFromUrl(app, a.url) : await userAdded.add(app, a.files as { name: string; data: Blob | string }[]);
+      // Adding a plugin again turns it off: stop the copy that was running.
+      await reopen(app);
+      return added;
+    }
     case "user:on":
     case "user:off":
       await (name === "user:on" ? userAdded.on(app, id) : userAdded.off(app, id));
