@@ -16,4 +16,7 @@ export default async function (ctx) {
   await fetch("https://example.com/");
   ctx.on("debug:trace", () => {});
   ctx.ui.views("gone.html");
+  // "list" is in careless.html, but this one draws from other.html.
+  const other = ctx.ui.views("other.html");
+  other.render("main", "list", {});
 }

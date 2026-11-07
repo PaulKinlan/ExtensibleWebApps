@@ -2,7 +2,8 @@
 // every demo and the starter pass the check, the broken fixture fails it in
 // each way it should, a new app is named and passes, and the starter works
 // in a browser.
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkApps } from "../../scripts/check.mjs";
@@ -33,6 +34,7 @@ export default async function ({ check, openTab, URL }) {
     ["careless.js", /no <template id="nope">/],
     ["careless.js", /views\.render needs "ui"/],
     ["careless.js", /slot "side"/],
+    ["careless.js", /no <template id="list"> in other\.html/],
     ["careless.html", /<script> isn't allowed/],
     ["careless.html", /style= isn't allowed/],
     ["careless.html", /onclick= isn't allowed/],
@@ -43,6 +45,11 @@ export default async function ({ check, openTab, URL }) {
   const missed = expected.filter(([file, pattern]) => !found(file, pattern));
   const owned = broken.problems.some((p) => /jottings/.test(p.message));
   check("npm run check finds each kind of mistake in the broken fixture, and allows a plugin its own collection", !missed.length && !owned, missed.map(([f, p]) => `${f} ${p}`).join("; "));
+
+  // Valid but unusual HTML and JavaScript: quotes of any kind, a query on a link, a view file from
+  // the site's root, and calls written inside strings, which aren't calls.
+  const [quirky] = await checkApps(["tests/fixtures/quirky-app"]);
+  check("npm run check accepts any quoting, queries on links, root-relative views, and ignores calls inside strings", !quirky.problems.length, quirky.problems.map((p) => p.message).join("; "));
 
   // A new app outside the repo: named after its folder, and clean.
   const scratch = mkdtempSync(join(tmpdir(), "new-app-"));
@@ -59,6 +66,22 @@ export default async function ({ check, openTab, URL }) {
       refused = error.message;
     }
     check("npm run new-app won't overwrite a folder that exists", /already exists/.test(refused), refused);
+
+    // Its collection is its own, and its name is escaped for each file it goes in.
+    const odd = newApp(join(scratch, "odd-app"), 'Tom\\ & "Jerry" $& <b>');
+    const oddSource = readFileSync(join(odd, "main.js"), "utf8");
+    const [oddChecked] = await checkApps([odd]);
+    check("a new app owns a collection named after it, and its name is escaped in JavaScript and HTML", /"odd-app-items"/.test(oddSource) && !/"my-app/.test(oddSource) && /<h1>Tom\\ &amp; &quot;Jerry&quot; \$&amp; &lt;b&gt;<\/h1>/.test(readFileSync(join(odd, "app.html"), "utf8")) && !oddChecked.problems.length, oddChecked.problems.map((p) => p.message).join("; "));
+
+    // The command fails when what it made doesn't pass the check (kernel is a reserved id).
+    const reserved = spawnSync(process.execPath, ["scripts/new-app.mjs", join(scratch, "kernel")], { encoding: "utf8" });
+    check("npm run new-app exits with an error when the app it made has errors", reserved.status === 1 && /reserved/.test(reserved.stdout), `${reserved.status} ${reserved.stdout}`);
+
+    // The platform's script must be a module.
+    mkdirSync(join(scratch, "classic"));
+    writeFileSync(join(scratch, "classic", "app.html"), '<script src="/platform/host.js"></script>');
+    const [classic] = await checkApps([join(scratch, "classic")]);
+    check("npm run check says when the platform's script isn't a module", classic.problems.some((p) => /is a module/.test(p.message)), classic.problems.map((p) => p.message).join("; "));
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
