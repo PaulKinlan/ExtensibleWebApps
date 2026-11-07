@@ -1,0 +1,34 @@
+<!--
+  Chapter 2's words. chapter-2-plugins.js sends { on }: whether Note stats is
+  running. The checkbox sends "toggle" with true or false.
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter pre { overflow-x: auto; padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); font-size: var(--text-sm); }
+  .chapter .try { padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); }
+  .chapter .try p { margin-top: 0; }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">2</ui-badge> A plugin is one file with a manifest</h2>
+    <p>The note and word counts beside your notes come from <code>home/note-stats.js</code>. This is all of it:</p>
+    <pre><code>export const manifest = {
+  id: "note-stats",
+  name: "Note stats",
+  permissions: ["ui", "data:read:learning"],
+};
+
+export default function (ctx) {
+  ctx.ui.live("playground", "stats", async (ctx) =&gt; {
+    const notes = await ctx.call("data", "list", "learning");
+    return ctx.ui.html`&lt;ui-stat label="Notes" value="${notes.length}"&gt;…`;
+  });
+}</code></pre>
+    <p>The kernel reads the manifest before it runs any code. Note stats may draw (<code>ui</code>) and read the <code>learning</code> collection (<code>data:read:learning</code>), and nothing else. A call it didn't declare is refused and shows up as <code>denied</code> in the trace. It runs in a worker, so it can't reach the DOM either: it sends HTML, and the page draws it.</p>
+    <p>It never calls <code>learning-notes.js</code>, which owns the notes. Both use the same collection, and <code>ui.live</code> redraws the counts whenever the collection changes. Either plugin can go without breaking the other.</p>
+    <div class="try">
+      <p><strong>Try it.</strong> Switch Note stats off. The counts disappear, and the notes carry on without noticing.</p>
+      <label><input type="checkbox" data-action="toggle" checked="{{on}}"> Note stats is on</label>
+    </div>
+  </ui-card>
+</template>

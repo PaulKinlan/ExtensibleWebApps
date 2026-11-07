@@ -29,7 +29,7 @@ function workerPolicy(): Plugin {
 
 // Files the browser runs as written: served untouched in development (no
 // transforms, no injected scripts) and copied unchanged into the build.
-const AS_WRITTEN = ["elements", "demos", "std", "index.html"];
+const AS_WRITTEN = ["elements", "demos", "home", "std", "workbench", "index.html"];
 // Two stable URLs every page uses: the platform's stylesheet and its host
 // script. In development the script redirects to the TypeScript source (so
 // its relative worker URLs resolve); in the build it is emitted at this path.

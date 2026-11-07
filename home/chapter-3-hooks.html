@@ -1,0 +1,32 @@
+<!--
+  Chapter 3's words. chapter-3-hooks.js sends { on }: whether Quiet please is
+  running. The checkbox sends "toggle" with true or false.
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter pre { overflow-x: auto; padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); font-size: var(--text-sm); }
+  .chapter .try { padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); }
+  .chapter .try p { margin-top: 0; }
+  .chapter dt { font-weight: 600; }
+  .chapter dd { margin: 0 0 var(--space-2); }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">3</ui-badge> Plugins meet at hooks</h2>
+    <p>Plugins don't import or call each other. They listen to hooks: named events the kernel dispatches. For example, <code>data:beforeWrite:learning</code> runs before every write to your notes. How a hook runs its listeners is part of its contract:</p>
+    <dl>
+      <dt>emit</dt><dd>Every listener is told; none can change anything. <code>data:changed:learning</code> works this way.</dd>
+      <dt>serial</dt><dd>Listeners run in turn, and any of them can stop the action. <code>data:beforeWrite:learning</code> works this way.</dd>
+      <dt>waterfall, bail</dt><dd>Each listener passes on a changed value, or the first answer wins.</dd>
+    </dl>
+    <p><code>home/quiet-please.js</code> uses that serial hook to stop notes written in capitals:</p>
+    <pre><code>ctx.on("data:beforeWrite:learning", (change) =&gt; {
+  if (isShouting(change.after.text)) return { block: "…" };
+});</code></pre>
+    <p>A listener that can stop an action needs its own permission, <code>hook:intercept:data:beforeWrite:learning</code>. A plugin can only block writes it was given permission to block.</p>
+    <div class="try">
+      <p><strong>Try it.</strong> Write a note in capitals. Quiet please blocks it, and the notes show you why. Switch it off and the same note saves.</p>
+      <label><input type="checkbox" data-action="toggle" checked="{{on}}"> Quiet please is on</label>
+    </div>
+  </ui-card>
+</template>

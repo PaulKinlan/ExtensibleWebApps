@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Extensible Web Apps</title>
+    <!-- The platform: its stylesheet and the host. Every app.html starts with the same two lines. -->
+    <link rel="stylesheet" href="/platform/host.css" />
+    <script type="module" src="/platform/host.js"></script>
+  </head>
+  <body class="workbench">
+    <!-- The workbench: this page links no plugins, so it shows every running plugin's views. The homepage (/) explains the platform; this is where to test it. -->
+    <header>
+      <strong><a href="/">Extensible Web Apps</a></strong>
+      <span id="mode" class="muted"></span>
+      <span class="spacer"></span>
+      <nav class="demos" aria-label="Demo apps">
+        <a href="/demos/reading-list/app.html">Reading list</a>
+        <a href="/demos/spending/app.html">Spending</a>
+        <a href="/demos/recipes/app.html">Recipes</a>
+        <a href="/demos/contacts/app.html">Contacts</a>
+        <a href="/demos/calendar/app.html">Calendar</a>
+        <a href="/demos/habits/app.html">Habits</a>
+      </nav>
+    </header>
+    <main>
+      <nav><slot name="nav"></slot></nav>
+      <section><slot name="main"></slot></section>
+      <aside><slot name="side"></slot></aside>
+    </main>
+    <footer><slot name="status"></slot></footer>
+    <details id="devtools" open>
+      <summary>Trace</summary>
+      <div class="row">
+        <button id="bench">Measure hook round trip</button>
+        <button id="reload-test">Reload a plugin 50 times</button>
+        <button id="reference">API reference</button>
+        <span id="result" class="muted"></span>
+      </div>
+      <pre id="reference-text" hidden></pre>
+      <slot name="devtools"></slot>
+      <ol id="trace"></ol>
+    </details>
+    <div id="notice" role="status"></div>
+  </body>
+</html>
