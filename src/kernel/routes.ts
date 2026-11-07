@@ -28,7 +28,7 @@ export interface RouteResponse {
 
 const MAX = 1_000_000;
 
-export function makeRoutes(root: any, remote: RemotePlugins) {
+export function makeRoutes(root: any, remote: RemotePlugins, shared: boolean) {
   const channel = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel("platform:routes");
 
   /** Shares the table: a broadcast for a running service worker, and the cache for one that starts later. */
@@ -41,6 +41,10 @@ export function makeRoutes(root: any, remote: RemotePlugins) {
       .then((cache) => cache.put("/routes.json", new Response(JSON.stringify(table), { headers: { "Content-Type": "application/json" } })))
       .catch(() => {});
   }
+  // Only the shared kernel's table is the site's. A dedicated kernel (?kernel=dedicated, or a browser
+  // without shared workers) belongs to one tab, so it doesn't overwrite the table: its plugins' routes
+  // aren't served.
+  if (!shared) return { answer };
   remote.onRoutes = publish;
   // A new kernel has no routes yet: whatever an earlier one shared is gone.
   publish();

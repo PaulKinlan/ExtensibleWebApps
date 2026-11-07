@@ -22,8 +22,26 @@ new BroadcastChannel("platform:routes").onmessage = (e) => (table = new Set(e.da
 async function routes() {
   if (table) return table;
   const kept = await (await caches.open("platform-routes")).match(TABLE);
-  table = new Set(kept ? await kept.json() : []);
+  const list = kept ? await kept.json() : [];
+  // A broadcast that arrived while the cache was read is newer: keep it.
+  table ??= new Set(list);
   return table;
+}
+
+/**
+ * Whether a request that changes something came from a page on this site.
+ * Another site's form can post here, and the plugin owns its data, so no
+ * review would stop the write.
+ * @param {Request} request @param {URL} url
+ */
+function fromThisSite(request, url) {
+  const site = request.headers.get("Sec-Fetch-Site");
+  if (site) return site === "same-origin";
+  try {
+    return new URL(request.referrer).origin === url.origin;
+  } catch {
+    return false;
+  }
 }
 
 // A page a plugin returns may show forms and links, but runs no script and loads nothing from elsewhere.
@@ -35,7 +53,9 @@ export default {
   async handle(request, url, env) {
     const key = `${request.method} ${url.pathname}`;
     if (!(await routes()).has(key)) return undefined;
-    const form = request.method === "GET" || request.method === "HEAD" ? undefined : await fields(request);
+    const safe = request.method === "GET" || request.method === "HEAD";
+    if (!safe && !fromThisSite(request, url)) return new Response("Only a page on this site can send this", { status: 403 });
+    const form = safe ? undefined : await fields(request);
     let result;
     try {
       result = await env.kernel("route", { method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams), form });
@@ -52,7 +72,8 @@ async function fields(request) {
   if (type.includes("application/json")) return request.json().catch(() => undefined);
   if (!type.includes("form")) return undefined;
   const data = await request.formData();
-  const out = {};
+  // No prototype, so a field named constructor or __proto__ is just a field.
+  const out = Object.create(null);
   for (const [name, value] of data) if (typeof value === "string") out[name] = name in out ? [].concat(out[name], value) : value;
   return out;
 }
@@ -61,6 +82,8 @@ async function fields(request) {
 function respond(result, url) {
   if (!result || typeof result !== "object") return new Response("No plugin answered", { status: 404 });
   const status = Number.isInteger(result.status) && result.status >= 200 && result.status < 600 ? result.status : 200;
+  // These statuses can't have a body.
+  if (status === 204 || status === 205 || status === 304) return new Response(null, { status });
   if (typeof result.redirect === "string") {
     const to = new URL(result.redirect, url);
     if (to.origin !== url.origin) return new Response("A plugin can only send people to a page on this site", { status: 500 });

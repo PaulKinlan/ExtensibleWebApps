@@ -1,7 +1,8 @@
 // The service worker (sw.js): an app's folder address serves its app.html, and
 // a plugin's routes answer requests (the reading list's books.json and add-book).
 export default async function ({ a, check, openTab, URL, traceHas }) {
-  const ready = await a.evaluate(() => navigator.serviceWorker.ready.then((r) => !!r.active)).catch(() => false);
+  // ready never settles if the worker fails to install, so the wait is bounded.
+  const ready = await a.evaluate(() => Promise.race([navigator.serviceWorker.ready.then((r) => !!r.active), new Promise((resolve) => setTimeout(() => resolve(false), 8000))])).catch(() => false);
   check("the platform's service worker starts", ready);
 
   // The folder's own address is the app.
@@ -21,6 +22,26 @@ export default async function ({ a, check, openTab, URL, traceHas }) {
   // A refused write comes back as the plugin's error, not a redirect.
   const refused = await page.evaluate(() => fetch("add-book", { method: "POST", body: new URLSearchParams({ title: "" }) }).then((r) => r.status));
   check("a route's own error status reaches the page", refused === 400, String(refused));
+
+  // A field named like an Object method is just a field.
+  const odd = await page.evaluate(() => fetch("add-book", { method: "POST", body: new URLSearchParams({ title: "Parable of the Sower", constructor: "x", toString: "y" }) }).then((r) => r.url));
+  check("form fields named constructor or toString don't break a route", odd.endsWith("/demos/reading-list/"), odd);
+
+  // Another site's form can't post to a plugin's route: 127.0.0.1 is another origin than localhost.
+  const other = await openTab(URL.replace("localhost", "127.0.0.1"));
+  await other.evaluate((action) => {
+    const form = document.createElement("form");
+    form.method = "post";
+    form.action = action;
+    form.innerHTML = '<input name="title" value="Forged">';
+    document.body.append(form);
+    form.submit();
+  }, `${URL}demos/reading-list/add-book`);
+  await other.waitForURL(/add-book/, { timeout: 5000 }).catch(() => {});
+  const forged = await other.evaluate(() => document.body.innerText).catch((e) => String(e));
+  const kept = await page.evaluate(() => fetch("books.json").then((r) => r.json()));
+  check("another site's form posting to a plugin's route is refused", /Only a page on this site/.test(forged) && !kept.some((b) => b.title === "Forged"), forged.slice(0, 100));
+  await other.close();
 
   // A path no plugin answers goes on to the network as before.
   const plain = await page.evaluate(() => fetch("library.js").then((r) => r.ok && r.headers.get("Content-Type")));

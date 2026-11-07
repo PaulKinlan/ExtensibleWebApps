@@ -14,6 +14,10 @@ export default {
     // A development server answers a missing file with its index page: an app.html links plugins.
     const html = await page.text();
     if (!/<link\b[^>]*\brel=["']?plugin\b/i.test(html)) return undefined;
-    return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+    // The server's headers (its security policies, caching) stay; only those about the encoded body go, as it's decoded here.
+    const headers = new Headers(page.headers);
+    headers.delete("Content-Encoding");
+    headers.delete("Content-Length");
+    return new Response(html, { status: 200, headers });
   },
 };
