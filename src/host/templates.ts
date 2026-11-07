@@ -28,8 +28,12 @@ export const loadedFile = (src: string) => ready.get(src);
 export function loadFile(src: string): Promise<Document> {
   let pending = files.get(src);
   if (!pending) {
-    // No redirects: the kernel checked this URL's origin, and a redirect could leave it.
-    pending = fetch(src, { redirect: "error" }).then(async (response) => {
+    // Hosts redirect (Cloudflare sends /budget.html to /budget), so redirects are
+    // followed, but only a file that ends up on this page's origin is used: the
+    // kernel checked the plugin's URL, and the operator's own server decides
+    // where its redirects go, not the plugin.
+    pending = fetch(src, { credentials: "same-origin" }).then(async (response) => {
+      if (new URL(response.url).origin !== location.origin) throw new Error(`${src} redirected to another origin`);
       if (!response.ok) throw new Error(`${src} answered ${response.status}`);
       const file = new DOMParser().parseFromString(await response.text(), "text/html");
       ready.set(src, file);
