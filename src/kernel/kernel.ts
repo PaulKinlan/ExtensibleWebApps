@@ -19,7 +19,7 @@ import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { Store } from "./store";
-import { record, recent, setSink, tap } from "./trace";
+import { record, recent, setSink, startedAt, tap } from "./trace";
 
 import wordCount from "../../plugins/word-count.js?raw";
 import editTimes from "../../plugins/edit-times.js?raw";
@@ -47,10 +47,21 @@ defineHook("note:open", { mode: "emit", args: POST, description: "The person ope
 defineHook("note:change", { mode: "emit", args: POST, description: "The person typed in the open note (unsaved is true)." });
 defineHook("note:save", { mode: "emit", args: POST, description: "The open note was saved, by the person or by a reviewed write." });
 defineHook("note:close", { mode: "emit", args: "null", description: "The open note was closed." });
+defineHook("debug:trace", { mode: "emit", needs: "debug:read", args: "[{ at, kind, name, plugin?, trace?, ms?, detail? }]", description: "New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read." });
 defineHook("bench:ping", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "n", description: "Used by the round-trip benchmark; answer with anything." });
 
 const hosts = new Hosts(shared ? "shared" : "dedicated");
-setSink((events) => hosts.broadcast({ t: "trace", events }));
+setSink((events) => {
+  hosts.broadcast({ t: "trace", events });
+  root.emit("debug:trace", events);
+});
+
+// The kernel's own mistakes go in the trace too, so a debug console can show them.
+self.addEventListener("error", (e) => record({ kind: "error", name: "kernel:error", detail: String((e as ErrorEvent).message ?? e) }));
+self.addEventListener("unhandledrejection", (e) => {
+  const reason = (e as PromiseRejectionEvent).reason;
+  record({ kind: "error", name: "kernel:unhandled", detail: String(reason instanceof Error ? reason.message : reason) });
+});
 
 // Wire up connections first, so no tab's connect event is missed. Wiring: a shared worker gets a port per tab; a dedicated worker gets one port from its tab.
 if (shared) {
@@ -179,6 +190,23 @@ const services: Record<string, ServiceProvider> = {
       return true;
     },
   },
+  debug: {
+    description: "The trace: everything the kernel, the pages and plugins did, and every error. For developer tools such as std/debug-console.js; hear new events with the `debug:trace` hook.",
+    methods: {
+      recent: {
+        args: "()",
+        returns: "{ startedAt, events: [{ at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? }",
+        needs: "debug:read",
+        description: "The last 500 trace events, oldest first; `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links.",
+      },
+    },
+    capability: () => "debug:read",
+    call: (plugin, method) => {
+      if (method !== "recent") throw new Error(`debug.${method} is not a method`);
+      const tab = plugin.split("@")[1];
+      return { startedAt, events: recent(), ...(tab ? { tab, app: apps.linkedBy(tab) } : {}) };
+    },
+  },
   kernel: {
     description: "The kernel itself.",
     methods: {
@@ -264,6 +292,8 @@ hosts.onMessage = async (host, message) => {
       return records.fromView(host, message.id, message.owner, message.collection, message.recordId, message.fields, message.trace);
     case "open":
       return apps.open(host, message.plugins);
+    case "report":
+      return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
     case "command": {
       const value = await command(message.name, message.arg);
       return hosts.send(host, { t: "command:result", id: message.id, value });

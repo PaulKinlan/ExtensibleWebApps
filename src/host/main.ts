@@ -11,7 +11,7 @@
 
 import type { Command, HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
-import { defineElementsIn } from "./elements";
+import { defineElementsIn, onElementError } from "./elements";
 import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
 import { fill, loadedFile, loadFile } from "./templates";
@@ -33,6 +33,30 @@ if (useShared) {
 }
 
 const send = (message: HostToKernel, transfer: Transferable[] = []) => port.postMessage(message, transfer);
+
+// ---- Reporting problems ----
+//
+// What goes wrong in the page (a plugin file or template that didn't load,
+// an uncaught error) is reported to the kernel, which puts it in the trace
+// with everything else. A debug console plugin reads it from there. Reports
+// wait until the kernel knows this tab, and a page that throws in a loop is
+// cut off at 20 a second.
+
+let introduced = false;
+const unsent: Extract<HostToKernel, { t: "report" }>[] = [];
+let reportWindow = 0;
+let reportCount = 0;
+function report(source: string, text: string) {
+  const now = Math.floor(Date.now() / 1000);
+  if (now !== reportWindow) [reportWindow, reportCount] = [now, 0];
+  if (++reportCount > 20) return;
+  const message = { t: "report" as const, source, text: text.slice(0, 2000) };
+  if (introduced) send(message);
+  else unsent.push(message);
+}
+addEventListener("error", (e) => report("error", `${e.message}${e.filename ? ` (${e.filename}:${e.lineno})` : ""}`));
+addEventListener("unhandledrejection", (e) => report("unhandled", e.reason instanceof Error ? e.reason.message : String(e.reason)));
+onElementError((name, error) => report("element", `Couldn't load <${name}>: ${error instanceof Error ? error.message : error}`));
 let traceCounter = 0;
 const newTrace = () => `${tab}-${++traceCounter}`;
 
@@ -261,12 +285,13 @@ const held = new Map<string, Extract<KernelToHost, { t: "render" }>>();
 async function openApp() {
   const plugins = await Promise.all(
     links.map(async (href) => {
-      const response = await fetch(href).catch(() => undefined);
-      return { href, source: response?.ok ? await response.text() : "" };
+      const response = await fetch(href).catch((error: Error) => error);
+      if (response instanceof Response && response.ok) return { href, source: await response.text(), why: "" };
+      return { href, source: "", why: response instanceof Response ? `it answered ${response.status}` : response.message };
     }),
   );
-  for (const { href, source } of plugins) if (!source) notice(`Couldn't load the plugin at ${href}`);
-  send({ t: "open", plugins: plugins.filter((p) => p.source) });
+  for (const { href, source, why } of plugins) if (!source) notice(`Couldn't load the plugin at ${href}: ${why}`);
+  send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })) });
 }
 
 function opened(plugins: { href: string; id?: string; error?: string }[]) {
@@ -331,7 +356,9 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
         if (latest?.[4] !== view) return;
         waitingForFile.delete(id);
         const [s, k, o, n] = latest;
-        render(s, k, o, n, { type: "text", text: `Couldn't load ${missing.join(", ")}: ${error instanceof Error ? error.message : error}`, tone: "error" });
+        const text = `Couldn't load ${missing.join(", ")}: ${error instanceof Error ? error.message : error}`;
+        report("template", `${o}: ${text}`);
+        render(s, k, o, n, { type: "text", text, tone: "error" });
       },
     );
     return;
@@ -420,7 +447,8 @@ async function bridge(service: string, method: string, args: unknown[]): Promise
   throw new Error(`The host has no ${service}.${method}`);
 }
 
-function notice(text: string) {
+function notice(text: string, reported = true) {
+  if (reported) report("notice", text);
   const p = document.createElement("p");
   p.textContent = text;
   const area = document.getElementById("notice") ?? document.body.appendChild(Object.assign(document.createElement("div"), { id: "notice", role: "status" }));
@@ -482,7 +510,8 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
     case "trace":
       return showTrace(message.events);
     case "notice":
-      return notice(message.text);
+      // The kernel's own notices are in its trace already.
+      return notice(message.text, false);
     case "command:result":
       waiting.get(message.id)?.(message.value);
       waiting.delete(message.id);
@@ -502,8 +531,10 @@ await new Promise<void>((held) => {
 });
 const folder = await navigator.storage.getDirectory().catch(() => undefined);
 send({ t: "hello", tab, folder });
+introduced = true;
+for (const message of unsent.splice(0)) send(message);
 if (links.length) await openApp();
 
 // For tests and poking around in the console.
 // Tests reach the template filler here, to check its limits without a plugin.
-Object.assign(window, { __host: { tab, command, traces, audioStats, workers, fill, get spawner() { return spawner; } } });
+Object.assign(window, { __host: { tab, command, traces, audioStats, workers, fill, report, get spawner() { return spawner; } } });

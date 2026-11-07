@@ -62,6 +62,7 @@ Three kinds of code, each in its own place:
 
 Plugins live in two places:
 - [`demos/`](demos/) holds apps written to show the programming model, one folder per app.
+- [`std/`](std/) holds standard plugins any app can link, such as the [debug console](std/README.md): a bug button that shows errors and the trace, ready to copy into a bug report.
 - [`plugins/`](plugins/) holds the plugins built into the app:
   - `word-count.js` and `edit-times.js`, copied unchanged from the [Markdown editor](https://github.com/PaulKinlan/MarkdownEdiitor)
   - `tidy.js` (change review), `tone.js` (audio) and `bars.js` (canvas)
@@ -72,7 +73,7 @@ Plugins live in two places:
 ```sh
 npm install
 npm run dev        # http://localhost:5173 is the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
-npm test           # build, then 85 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm test           # build, then 90 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```

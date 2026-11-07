@@ -78,6 +78,11 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
       if (hosts.list.includes(host)) hosts.send(host, { t: "opened", plugins });
     },
 
+    /** The plugins the app open in `tab` links, by id. */
+    linkedBy(tab: string): string[] {
+      return [...users].flatMap(([id, tabs]) => (tabs.has(tab) ? [id] : []));
+    },
+
     /** A tab closed: stop the app plugins no open tab needs any more. */
     hostLeft(host: Host): void {
       for (const id of [...users.keys()]) release(id, host.tab);
