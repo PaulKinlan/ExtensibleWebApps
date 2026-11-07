@@ -1,8 +1,27 @@
 <!--
   The month grid. month.js sends { title, days, weeks, away }: weeks is a
   list of seven-day lists, and each day has { date, day, other, current,
-  events }. Two nested loops lay it out; app.html's <style> does the rest.
+  events }. Two nested loops lay it out.
+
+  The <style> below is this plugin's own. The host scopes it to the views
+  month.js draws, so `.month td` can't touch any other plugin's table, and
+  puts it under the page's styles, so an app can still restyle the grid.
+  data-other="{{d.other}}" is one whole hole, so the attribute is there
+  only on days from the months either side, and [data-other] finds them.
 -->
+<style>
+  .month { table-layout: fixed; }
+  .month td { height: 5.5rem; vertical-align: top; padding: var(--space-1); }
+  .month td[data-other] { color: var(--fg-2); opacity: 0.6; }
+  .month td[aria-current="date"] .day { background: var(--accent); color: var(--accent-fg); border-radius: 999px; padding: 0 0.4em; }
+  .events { list-style: none; margin: var(--space-1) 0 0; padding: 0; font-size: var(--text-sm); }
+  .events li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 40rem) {
+    .month td { height: 3.5rem; }
+    .events li { font-size: 0.7rem; }
+    .events time { display: none; }
+  }
+</style>
 <template id="grid">
   <ui-toolbar>
     <h2>{{title}}</h2>
@@ -11,7 +30,7 @@
     <template if="away"><button data-action="today">Today</button></template>
     <button data-action="next" aria-label="Next month">›</button>
   </ui-toolbar>
-  <table>
+  <table class="month">
     <thead>
       <tr><template for="name of days"><th scope="col">{{name}}</th></template></tr>
     </thead>
@@ -20,9 +39,9 @@
         <tr>
           <template for="d of week">
             <td data-other="{{d.other}}" aria-current="{{d.current}}">
-              <time datetime="{{d.date}}">{{d.day}}</time>
+              <time class="day" datetime="{{d.date}}">{{d.day}}</time>
               <template if="d.events.length">
-                <ul>
+                <ul class="events">
                   <template for="e of d.events"><li title="{{e.title}}"><time>{{e.start}}</time> {{e.title}}</li></template>
                 </ul>
               </template>

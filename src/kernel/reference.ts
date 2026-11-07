@@ -53,7 +53,7 @@ const CTX: Record<ApiMember<Api>, Doc> = {
   "ui.views": {
     signature: "ctx.ui.views(file) → { render(slot, id, data?, { key?, order? }?), live(slot, id, (ctx) => data, { key?, order? }?) }",
     needs: "`ui` (to render)",
-    description: "The `<template id>` elements in an .html file next to the plugin (only for plugins an app links). `render` draws one, filled with `data`: `{{path}}` holes in text and attribute values, `<template for=\"x of path\">` and `<template if=\"path\">`. Values go in as text, and the result is checked like any HTML view. `live` fills it with what the function returns, again whenever what it read changes (see `ui.live`).",
+    description: "The `<template id>` elements in an .html file next to the plugin (only for plugins an app links). `render` draws one, filled with `data`: `{{path}}` holes in text and attribute values (an attribute that is one whole hole is left out when its value is false or missing, and bare when true), `<template for=\"x of path\">` and `<template if=\"path\">`. Values go in as text, and the result is checked like any HTML view. A `<style>` in the file styles only this plugin's views, below the page's own styles. `live` fills it with what the function returns, again whenever what it read changes (see `ui.live`).",
   },
   "ui.onEvent": {
     signature: "ctx.ui.onEvent((action, value) => …) → off()",
@@ -288,7 +288,7 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     "",
     "## HTML views",
     "",
-    `Plugins describe UI as plain HTML, up to ${ref.html.maxLength.toLocaleString("en")} characters. The host parses it inertly and keeps only what is listed here: no script, no style or class attributes, no frames, no event attributes. Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app. Images load from https: only for plugins with the \`network\` capability; others can use data: images.`,
+    `Plugins describe UI as plain HTML, up to ${ref.html.maxLength.toLocaleString("en")} characters. The host parses it inertly and keeps only what is listed here: no script, no style attributes, no frames, no event attributes. Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app; \`class\` is for a template file's own \`<style>\`, which reaches only that plugin's views. Images load from https: only for plugins with the \`network\` capability; others can use data: images.`,
     "",
     "### Components",
     "",

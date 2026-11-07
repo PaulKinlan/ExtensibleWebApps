@@ -14,7 +14,8 @@ import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn } from "./elements";
 import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
-import { fill, loadedFile, loadFile } from "./templates";
+import { cleanCss, installPluginStyle } from "./plugin-styles";
+import { fill, loadedFile, loadFile, styleOf } from "./templates";
 import { workbench } from "./workbench";
 
 const tab = Math.random().toString(36).slice(2, 8);
@@ -60,9 +61,12 @@ function element(view: View, owner: string): HTMLElement {
     }
     case "template": {
       // render() has made sure the file is loaded. Filled, it is HTML like any other view.
+      // The file's <style>, if it has one, is scoped to this plugin's views (see plugin-styles.ts).
+      const file = loadedFile(view.src)!;
+      installPluginStyle(pluginOf(owner), view.src, styleOf(file));
       const el = document.createElement("div");
       el.className = "html-view";
-      el.append(sanitize(fill(loadedFile(view.src)!, view.id, view.data), owner, { remote: view.remote === true }));
+      el.append(sanitize(fill(file, view.id, view.data), owner, { remote: view.remote === true }));
       return el;
     }
     case "stack": {
@@ -299,6 +303,9 @@ function slotFor(name: Slot, owner: string): HTMLElement | null {
   return slot;
 }
 
+/** The plugin an owner is an instance of: "month@tab-1" is an instance of "month". */
+const pluginOf = (owner: string) => owner.split("@")[0];
+
 /** Every template file a view uses, including inside stacks. */
 function templateFiles(view: View): string[] {
   if (view.type === "template") return [view.src];
@@ -351,8 +358,11 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
   const next = document.createElement("div");
   next.append(element(view, owner));
   let entry = old;
+  // Which plugin's stylesheet applies here. Instances of one plugin share it.
+  next.dataset.plugin = pluginOf(owner);
   if (entry) {
     setOwner(entry.el, owner);
+    entry.el.dataset.plugin = next.dataset.plugin;
     morphChildren(entry.el, next);
     entry.owner = owner;
     entry.order = order;
@@ -505,5 +515,5 @@ send({ t: "hello", tab, folder });
 if (links.length) await openApp();
 
 // For tests and poking around in the console.
-// Tests reach the template filler here, to check its limits without a plugin.
-Object.assign(window, { __host: { tab, command, traces, audioStats, workers, fill, get spawner() { return spawner; } } });
+// Tests reach the template filler and the CSS cleaner here, to check them without a plugin.
+Object.assign(window, { __host: { tab, command, traces, audioStats, workers, fill, cleanCss, get spawner() { return spawner; } } });
