@@ -6,6 +6,7 @@
 // use editor-style permissions such as `post:read`) get a shim instead, so
 // they run unchanged.
 
+import type { Api } from "../shared/api";
 import type { KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
 
 let port: MessagePort;
@@ -33,35 +34,6 @@ function traced<T>(trace: string | undefined, fn: (api: Api) => T): T {
   } finally {
     activeTrace = previous;
   }
-}
-
-/**
- * The API a sandboxed plugin gets. `trace` says which trace its calls carry:
- * the plugin's own `ctx` uses whatever is active, so a call in the
- * synchronous part of a handler is traced. Workers have no async context, so
- * after an `await` nothing is active; `ctx.traced()` (or `this` in a
- * `function` handler) returns a copy pinned to the trace being handled.
- */
-interface Api {
-  on(name: string, handler: (...args: any[]) => unknown): () => void;
-  call(service: string, method: string, ...args: unknown[]): Promise<unknown>;
-  ui: {
-    render(slot: Slot, key: string, view: View | null, order?: number): void;
-    onEvent(handler: (action: string, value: unknown) => void): () => void;
-    onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void): void;
-  };
-  /** The plugin's own settings, from the form the shell builds out of its manifest. */
-  settings: {
-    get(): Promise<Record<string, unknown>>;
-    onChange(handler: (values: Record<string, unknown>) => void): () => void;
-  };
-  /** The plugin's own data, kept with the app's data. Writing it needs no review. */
-  storage: {
-    get(key: string): Promise<unknown>;
-    set(key: string, value: unknown): Promise<unknown>;
-  };
-  traced(): Api;
-  log(text: string, level?: "info" | "error"): void;
 }
 
 function api(trace: () => string | undefined): Api {

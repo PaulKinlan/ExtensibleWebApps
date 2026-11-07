@@ -271,6 +271,14 @@ document.getElementById("reload-test")!.onclick = async () => {
   result.textContent = `50 reloads: listeners ${r.before.hooks} → ${r.after.hooks}, workers ${r.before.workers} → ${r.after.workers}, ${r.failures} failed`;
 };
 
+document.getElementById("reference")!.onclick = async () => {
+  const pre = document.getElementById("reference-text")!;
+  if (!pre.hidden) return void (pre.hidden = true);
+  const r = (await command("reference")) as { live: string };
+  pre.textContent = r.live;
+  pre.hidden = false;
+};
+
 // ---- Kernel messages ----
 
 let spawner = false;

@@ -5,7 +5,7 @@ import type { Manifest } from "../shared/protocol";
 import { record } from "./trace";
 
 /** Editor-style permissions (from the Markdown editor) expressed as capabilities. */
-const EDITOR_PERMISSIONS: Record<string, string[]> = {
+export const EDITOR_PERMISSIONS: Record<string, string[]> = {
   "post:read": ["hook:listen:note:*"],
   "post:write": ["hook:intercept:data:beforeWrite"],
   ui: ["ui"],

@@ -52,7 +52,7 @@ export type HostToKernel =
   | { t: "bridge:result"; id: number; ok: boolean; value?: unknown; error?: string }
   | { t: "command"; name: Command; arg?: unknown; id: number };
 
-export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace" | "changes";
+export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace" | "changes" | "reference";
 
 // kernel -> host
 export type KernelToHost =
