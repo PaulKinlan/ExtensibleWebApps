@@ -9,7 +9,7 @@ type Schema = { type?: string; items?: Schema; title?: string; description?: str
 type Row = Record<string, unknown> & { id: string };
 
 const STYLES = `
-  :host{display:block;min-width:0}
+  :host{display:block;min-width:0;overflow-x:auto}
   table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
   th,td{text-align:left;padding:var(--space-2) var(--space-3);border-bottom:1px solid var(--border);vertical-align:top}
   th{font-size:var(--text-sm);color:var(--fg-2);font-weight:600;white-space:nowrap}
