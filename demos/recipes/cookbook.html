@@ -1,0 +1,43 @@
+<!--
+  The cookbook. cookbook.js sends { open, editing, recipe }: with a recipe
+  open, recipe has its fields plus people (who it's scaled for), lines (the
+  scaled ingredients) and steps.
+-->
+<template id="cookbook">
+  <template if="recipe">
+    <ui-toolbar>
+      <h2>{{recipe.title}}</h2>
+      <ui-spacer></ui-spacer>
+      <template if="!editing"><button data-action="edit">Edit</button></template>
+      <button data-action="close">All recipes</button>
+    </ui-toolbar>
+    <template if="editing">
+      <ui-card>
+        <ui-form collection="recipes" record="{{open}}" submit="Save changes" action="saved"></ui-form>
+      </ui-card>
+    </template>
+    <template if="!editing">
+      <ui-card>
+        <ui-toolbar>
+          <label>Serves <input type="number" min="1" max="100" value="{{recipe.people}}" data-action="serves"></label>
+          <ui-spacer></ui-spacer>
+          <template if="recipe.minutes"><ui-badge>{{recipe.minutes}} min</ui-badge></template>
+        </ui-toolbar>
+        <h3>Ingredients</h3>
+        <ul><template for="line of recipe.lines"><li>{{line}}</li></template></ul>
+        <template if="recipe.steps.length">
+          <h3>Method</h3>
+          <ol><template for="step of recipe.steps"><li>{{step}}</li></template></ol>
+        </template>
+      </ui-card>
+    </template>
+  </template>
+  <template if="!recipe">
+    <h2>Recipes</h2>
+    <ui-table collection="recipes" columns="title,serves,minutes" sort="title" row-action="open" deletable empty="No recipes yet."></ui-table>
+    <ui-card>
+      <h3>Add a recipe</h3>
+      <ui-form collection="recipes" fields="title,serves,minutes,ingredients,method" submit="Add recipe"></ui-form>
+    </ui-card>
+  </template>
+</template>

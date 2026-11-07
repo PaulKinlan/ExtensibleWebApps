@@ -1,0 +1,17 @@
+<!--
+  Birthdays coming up. birthdays.js sends { soon: [{ name, date, age, when,
+  tone }], ahead }, sorted and worded.
+-->
+<template id="soon">
+  <h3>Birthdays</h3>
+  <template if="soon.length">
+    <ul>
+      <template for="b of soon">
+        <li><strong>{{b.name}}</strong> turns {{b.age}} on {{b.date}} <ui-badge tone="{{b.tone}}">{{b.when}}</ui-badge></li>
+      </template>
+    </ul>
+  </template>
+  <template if="!soon.length">
+    <p><small>No birthdays in the next {{ahead}} days.</small></p>
+  </template>
+</template>

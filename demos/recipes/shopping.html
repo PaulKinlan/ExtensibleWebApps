@@ -1,0 +1,40 @@
+<!--
+  The shopping list. shopping.js sends { items, recipes, ticked }. Each
+  checkbox's data-action is "tick:" and the item's id, so one handler knows
+  which item changed. A template can't add an attribute only sometimes, so
+  ticked and unticked boxes are two small branches.
+-->
+<template id="list">
+  <h3>Shopping list</h3>
+  <template if="recipes.length">
+    <form data-action="from-recipe">
+      <ui-toolbar>
+        <select name="recipe" aria-label="Recipe">
+          <template for="r of recipes"><option value="{{r.id}}">{{r.title}}</option></template>
+        </select>
+        <button type="submit">Add its ingredients</button>
+      </ui-toolbar>
+    </form>
+  </template>
+  <template if="items.length">
+    <ul>
+      <template for="i of items">
+        <li>
+          <label>
+            <template if="i.done"><input type="checkbox" checked data-action="tick:{{i.id}}"> <s>{{i.item}}</s></template>
+            <template if="!i.done"><input type="checkbox" data-action="tick:{{i.id}}"> {{i.item}}</template>
+            <template if="i.from"> <small>· {{i.from}}</small></template>
+          </label>
+        </li>
+      </template>
+    </ul>
+  </template>
+  <template if="!items.length"><p><small>Nothing to buy.</small></p></template>
+  <form data-action="add">
+    <ui-toolbar>
+      <input name="item" placeholder="Something else" aria-label="Item">
+      <button type="submit">Add</button>
+      <template if="ticked"><button type="button" data-action="clear">Clear ticked</button></template>
+    </ui-toolbar>
+  </form>
+</template>

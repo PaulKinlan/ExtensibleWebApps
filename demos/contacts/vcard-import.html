@@ -1,0 +1,17 @@
+<!--
+  The import form. Submitting it sends "import" with { cards }; the plugin
+  sends back { status }.
+-->
+<template id="form">
+  <h3>Import vCards</h3>
+  <form data-action="import">
+    <label>Paste one or more vCards
+      <textarea name="cards" rows="5" placeholder="BEGIN:VCARD&#10;FN:Katherine Johnson&#10;EMAIL:katherine@example.com&#10;END:VCARD"></textarea>
+    </label>
+    <ui-toolbar>
+      <template if="status"><small role="status">{{status}}</small></template>
+      <ui-spacer></ui-spacer>
+      <button type="submit">Import</button>
+    </ui-toolbar>
+  </form>
+</template>

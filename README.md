@@ -2,7 +2,7 @@
 
 A platform for malleable web apps: a small kernel, and everything else is a plugin. That includes the UI shell, storage and, later, the AI app builder. Plugins run in their own workers, can only do what their manifest asks for, and draw their UI as plain HTML.
 
-**Try it:** https://extensible-web-apps.paulkinlan.workers.dev/ is the workbench. The demo apps are the [reading list](https://extensible-web-apps.paulkinlan.workers.dev/demos/reading-list/app.html) and [spending](https://extensible-web-apps.paulkinlan.workers.dev/demos/spending/app.html).
+**Try it:** https://extensible-web-apps.paulkinlan.workers.dev/ is the workbench. The demo apps are in [`demos/`](demos/): a reading list, spending, recipes, contacts and a calendar.
 
 ![The reading list demo](docs/images/collections.png)
 
@@ -72,7 +72,7 @@ Plugins live in two places:
 ```sh
 npm install
 npm run dev        # http://localhost:5173 is the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
-npm test           # build, then 85 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm test           # build, then 91 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```

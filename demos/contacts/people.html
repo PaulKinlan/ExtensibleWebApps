@@ -1,0 +1,38 @@
+<!--
+  The people view. people.js sends { open, search, searching, matches }.
+  A search shows its matches as a list of buttons that open the person;
+  otherwise <ui-table> lists everyone, bound to the collection.
+-->
+<template id="people">
+  <ui-toolbar>
+    <h2>People</h2>
+    <ui-spacer></ui-spacer>
+    <template if="open"><button data-action="close">Add someone instead</button></template>
+  </ui-toolbar>
+  <ui-card>
+    <template if="open">
+      <h3>Edit</h3>
+      <ui-form collection="contacts" record="{{open}}" submit="Save changes" action="saved"></ui-form>
+    </template>
+    <template if="!open">
+      <h3>Add someone</h3>
+      <ui-form collection="contacts" fields="name,email,phone,birthday,company" submit="Add"></ui-form>
+    </template>
+  </ui-card>
+  <label>Search
+    <input type="search" value="{{search}}" placeholder="Name, email, company or phone" data-action="search" data-live>
+  </label>
+  <template if="searching">
+    <template if="matches.length">
+      <ul>
+        <template for="person of matches">
+          <li><button data-action="open" data-value="{{person.id}}">{{person.name}}</button> <small>{{person.company}} {{person.email}}</small></li>
+        </template>
+      </ul>
+    </template>
+    <template if="!matches.length"><ui-empty>No one matches “{{search}}”.</ui-empty></template>
+  </template>
+  <template if="!searching">
+    <ui-table collection="contacts" columns="name,email,phone,company,birthday" sort="name" row-action="open" deletable empty="No one yet."></ui-table>
+  </template>
+</template>

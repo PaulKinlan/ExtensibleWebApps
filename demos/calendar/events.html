@@ -1,0 +1,20 @@
+<!--
+  The events view: a form to add (or edit) an event, and a table of them all,
+  under the month grid.
+-->
+<template id="events">
+  <ui-toolbar>
+    <h2>Events</h2>
+    <ui-spacer></ui-spacer>
+    <template if="open"><button data-action="close">Add an event instead</button></template>
+  </ui-toolbar>
+  <ui-card>
+    <template if="open">
+      <ui-form collection="events" record="{{open}}" submit="Save changes" action="saved"></ui-form>
+    </template>
+    <template if="!open">
+      <ui-form collection="events" fields="title,date,start,where" submit="Add event"></ui-form>
+    </template>
+  </ui-card>
+  <ui-table collection="events" columns="title,date,start,where" sort="date" row-action="open" deletable empty="No events yet."></ui-table>
+</template>

@@ -1,0 +1,19 @@
+<!--
+  The next two weeks. agenda.js sends { days: [{ label, items: [{ time,
+  text, where }] }], contacts } with only the days that have something on.
+-->
+<template id="agenda">
+  <h3>Next two weeks</h3>
+  <template if="days.length">
+    <template for="day of days">
+      <h4>{{day.label}}</h4>
+      <ul>
+        <template for="item of day.items">
+          <li><template if="item.time"><time>{{item.time}}</time> </template>{{item.text}}<template if="item.where"> <small>· {{item.where}}</small></template></li>
+        </template>
+      </ul>
+    </template>
+  </template>
+  <template if="!days.length"><p><small>Nothing in the next two weeks.</small></p></template>
+  <template if="!contacts"><p><small>Open the Contacts app once to see birthdays here.</small></p></template>
+</template>
