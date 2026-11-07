@@ -1,0 +1,29 @@
+<!--
+  ui-form: a form built from a collection's schema, with labels, input types,
+  required fields, and the errors from the kernel's checks.
+  Attributes: collection, fields="title,author" (which fields, in order),
+  record (edit this record; without it the form adds new ones), submit (the
+  button's text), action (sent with the saved record's id).
+
+  The behaviour is in ui-form.js, linked below.
+-->
+<template>
+  <style>
+    :host { display: block; min-width: 0; }
+    form { display: flex; flex-direction: column; gap: var(--space-3); }
+    .fields { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); }
+    label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-sm); color: var(--fg-2); }
+    label.check { flex-direction: row; align-items: center; gap: var(--space-2); color: var(--fg); font-size: var(--text-md); }
+    label.wide { grid-column: 1 / -1; }
+    input:not([type=checkbox]), select, textarea { font: inherit; font-size: var(--text-md); color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 32px; padding: 0 var(--space-2); }
+    textarea { padding: var(--space-2); min-height: 88px; resize: vertical; }
+    input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; border-radius: var(--radius-sm); }
+    [aria-invalid=true] { border-color: var(--danger); }
+    .actions { display: flex; gap: var(--space-2); align-items: center; justify-content: flex-end; }
+    .status { color: var(--fg-2); font-size: var(--text-sm); }
+    .error { color: var(--danger); font-size: var(--text-sm); }
+    button[type=submit] { font: inherit; font-weight: 500; height: 32px; padding: 0 var(--space-3); border-radius: var(--radius); border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); cursor: pointer; }
+    button[type=submit]:disabled { opacity: .6; cursor: progress; }
+  </style>
+</template>
+<script type="module" src="ui-form.js"></script>

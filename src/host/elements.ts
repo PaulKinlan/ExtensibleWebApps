@@ -1,0 +1,108 @@
+// Loads the custom elements views use. Each element is one file in
+// /elements/, named after its tag: ui-table is /elements/ui-table.html. The
+// file holds a <template> (the element's shadow content and style) and, if
+// the element needs behaviour, a module script, inline or linked by src,
+// whose default export is the element's class. Nothing is built: the browser
+// runs the files as they are written.
+//
+// An element is loaded the first time a view uses it. A file with no script
+// gets a class from templateElement() below, which fills {{name}} holes from
+// the element's attributes.
+
+const BASE = new URL("/elements/", location.href);
+const loading = new Map<string, Promise<void>>();
+
+/** Element classes get their template as a static property. */
+type ElementClass = CustomElementConstructor & { template?: HTMLTemplateElement };
+
+/** Starts loading every ui-* element under `root` that isn't defined yet. */
+export function defineElementsIn(root: ParentNode): void {
+  for (const el of root.querySelectorAll(":not(:defined)")) if (el.localName.startsWith("ui-")) void loadElement(el.localName);
+}
+
+/** Loads and defines one element; repeated calls share the first load. */
+export function loadElement(name: string): Promise<void> {
+  let pending = loading.get(name);
+  if (!pending) {
+    pending = define(name).catch((error) => console.warn(`Couldn't load <${name}>:`, error));
+    loading.set(name, pending);
+  }
+  return pending;
+}
+
+async function define(name: string): Promise<void> {
+  const url = new URL(`${name}.html`, BASE);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url} answered ${response.status}`);
+  const file = new DOMParser().parseFromString(await response.text(), "text/html");
+  const template = file.querySelector("template") ?? undefined;
+  const script = file.querySelector<HTMLScriptElement>('script[type="module"]');
+
+  let element: ElementClass;
+  if (script?.hasAttribute("src")) {
+    element = (await import(/* @vite-ignore */ new URL(script.getAttribute("src")!, url).href)).default;
+  } else if (script) {
+    // Inline behaviour runs from a blob: URL, so relative imports don't work in it; link a file for those.
+    const blob = URL.createObjectURL(new Blob([script.textContent ?? ""], { type: "text/javascript" }));
+    try {
+      element = (await import(/* @vite-ignore */ blob)).default;
+    } finally {
+      URL.revokeObjectURL(blob);
+    }
+  } else {
+    element = templateElement(template);
+  }
+  if (template) element.template = template;
+  if (!customElements.get(name)) customElements.define(name, element);
+}
+
+const HOLE = /\{\{\s*([a-z][\w-]*)\s*\}\}/gi;
+
+/**
+ * A class for an element with no script: its template, with each {{name}}
+ * in text or an attribute value filled from the attribute of that name.
+ * Values go in as text, never parsed as HTML.
+ */
+export function templateElement(template: HTMLTemplateElement | undefined): ElementClass {
+  const names = new Set<string>();
+  for (const match of (template?.innerHTML ?? "").matchAll(HOLE)) names.add(match[1].toLowerCase());
+
+  return class TemplateElement extends HTMLElement {
+    static template = template;
+    static observedAttributes = [...names];
+    /** Every text node or attribute with holes, and what it said before they were filled. */
+    private parts: { node: Text | Attr; source: string }[] = [];
+
+    connectedCallback() {
+      if (!this.shadowRoot && template) {
+        const content = document.importNode(template.content, true);
+        this.parts = holes(content);
+        this.attachShadow({ mode: "open" }).append(content);
+      }
+      this.fill();
+    }
+
+    attributeChangedCallback() {
+      if (this.shadowRoot) this.fill();
+    }
+
+    private fill() {
+      for (const { node, source } of this.parts) {
+        const value = source.replace(HOLE, (_, name: string) => this.getAttribute(name.toLowerCase()) ?? "");
+        if (node instanceof Text) node.data = value;
+        else node.value = value;
+      }
+    }
+  };
+}
+
+function holes(root: Node): { node: Text | Attr; source: string }[] {
+  const found: { node: Text | Attr; source: string }[] = [];
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    // A style's text is CSS, not a place for values.
+    if (node instanceof Text && node.parentElement?.localName !== "style" && /\{\{/.test(node.data)) found.push({ node, source: node.data });
+    if (node instanceof Element) for (const attr of node.attributes) if (/\{\{/.test(attr.value)) found.push({ node: attr, source: attr.value });
+  }
+  return found;
+}

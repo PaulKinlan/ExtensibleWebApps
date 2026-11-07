@@ -1,3 +1,5 @@
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { extname, join, resolve, sep } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
 // Plugin workers get their content security policy from the response that
@@ -25,8 +27,35 @@ function workerPolicy(): Plugin {
   };
 }
 
+// Folders the browser runs as written: served untouched in development (no
+// transforms, no injected scripts) and copied unchanged into the build.
+const AS_WRITTEN = ["elements"];
+const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".md": "text/markdown" };
+
+function asWritten(): Plugin {
+  const root = process.cwd();
+  const files = (dir: string): string[] =>
+    readdirSync(join(root, dir)).flatMap((name) => (statSync(join(root, dir, name)).isDirectory() ? files(join(dir, name)) : [join(dir, name)]));
+  return {
+    name: "as-written",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const path = decodeURIComponent(new URL(req.url ?? "/", "http://host").pathname);
+        const dir = AS_WRITTEN.find((d) => path.startsWith(`/${d}/`));
+        const file = resolve(root, `.${path}`);
+        if (!dir || !file.startsWith(resolve(root, dir) + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
+        res.setHeader("Content-Type", TYPES[extname(file)] ?? "application/octet-stream");
+        createReadStream(file).pipe(res);
+      });
+    },
+    generateBundle() {
+      for (const dir of AS_WRITTEN) for (const file of files(dir)) this.emitFile({ type: "asset", fileName: file.split(sep).join("/"), source: readFileSync(join(root, file)) });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [workerPolicy()],
+  plugins: [workerPolicy(), asWritten()],
   worker: { format: "es" },
   build: { target: "es2022" },
 });

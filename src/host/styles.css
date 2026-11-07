@@ -127,19 +127,6 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 .html-view progress, .html-view meter { width: 100%; accent-color: var(--accent); }
 
 /* ---- Components ---- */
-ui-stack { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
-ui-stack[direction="row"] { flex-direction: row; align-items: center; }
-ui-stack[wrap] { flex-wrap: wrap; }
-ui-stack[gap="0"] { gap: 0; } ui-stack[gap="1"] { gap: var(--space-1); } ui-stack[gap="2"] { gap: var(--space-2); } ui-stack[gap="4"] { gap: var(--space-4); } ui-stack[gap="5"] { gap: var(--space-5); } ui-stack[gap="6"] { gap: var(--space-6); }
-ui-stack[align="start"] { align-items: flex-start; } ui-stack[align="center"] { align-items: center; } ui-stack[align="end"] { align-items: flex-end; } ui-stack[align="stretch"] { align-items: stretch; }
-ui-stack[justify="start"] { justify-content: flex-start; } ui-stack[justify="center"] { justify-content: center; } ui-stack[justify="end"] { justify-content: flex-end; } ui-stack[justify="between"] { justify-content: space-between; }
-ui-card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); min-width: 0; }
-ui-card[tone="accent"] { border-color: var(--accent); } ui-card[tone="ok"] { border-color: var(--ok); } ui-card[tone="warn"] { border-color: var(--warn); } ui-card[tone="danger"] { border-color: var(--danger); }
-ui-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 var(--space-2); border-radius: 999px; font-size: var(--text-sm); font-weight: 500; background: var(--bg-2); color: var(--fg-2); white-space: nowrap; width: fit-content; }
-ui-badge[tone="accent"] { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
-ui-badge[tone="ok"] { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
-ui-badge[tone="warn"] { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
-ui-badge[tone="danger"] { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
-ui-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-ui-spacer { flex: 1; }
+/* Each ui-* element brings its own style from /elements/. Until its file has loaded, a layout element shows as a plain block. */
+:where(ui-stack, ui-grid, ui-card, ui-toolbar, ui-stat, ui-empty, ui-table, ui-form):not(:defined) { display: block; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

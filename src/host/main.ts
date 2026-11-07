@@ -4,9 +4,8 @@
 // page (Web Audio here). It runs no plugin code.
 
 import type { Command, HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
-import { connectBindings, receive, setOwner } from "./bindings";
-import { defineBoundComponents } from "./bound";
-import { defineComponents } from "./components";
+import { answerElements, connectBindings, receive, setOwner } from "./bindings";
+import { defineElementsIn } from "./elements";
 import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
 
@@ -36,8 +35,7 @@ const newTrace = () => `${tab}-${++traceCounter}`;
 // events. An update builds the new DOM and morphs the old into it, so focus,
 // typing, scroll and open <details> survive.
 
-defineComponents();
-defineBoundComponents();
+answerElements(document);
 connectBindings((message) => send(message), () => newTrace());
 
 type Entry = { owner: string; order: number; el: HTMLElement };
@@ -260,6 +258,7 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     const sorted = [...entries.values()].sort((a, b) => a.order - b.order);
     container.append(...sorted.map((e) => e.el));
   }
+  defineElementsIn(entry.el);
   for (const placeholder of entry.el.querySelectorAll<HTMLCanvasElement>("canvas[data-canvas]")) {
     const live = canvases.get(placeholder.dataset.canvas!);
     if (live && live !== placeholder) placeholder.replaceWith(live);

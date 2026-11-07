@@ -1,0 +1,15 @@
+<!--
+  ui-badge: a short status word.
+  Attributes: tone="neutral|accent|ok|warn|danger".
+  Template only: no JavaScript.
+-->
+<template>
+  <style>
+    :host { display: inline-flex; align-items: center; height: 20px; padding: 0 var(--space-2); border-radius: 999px; font-size: var(--text-sm); font-weight: 500; background: var(--bg-2); color: var(--fg-2); white-space: nowrap; width: fit-content; }
+    :host([tone="accent"]) { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+    :host([tone="ok"]) { background: color-mix(in srgb, var(--ok) 14%, transparent); color: var(--ok); }
+    :host([tone="warn"]) { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+    :host([tone="danger"]) { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+  </style>
+  <slot></slot>
+</template>

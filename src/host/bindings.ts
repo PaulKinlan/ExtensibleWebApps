@@ -1,7 +1,9 @@
-// The host's side of collection bindings. A bound component asks for a
-// collection on behalf of the plugin whose view it sits in; the kernel checks
-// that plugin's rights, sends the records, and sends them again whenever the
-// collection changes. Saves and deletes go back the same way.
+// The host's side of collection bindings. A bound element (ui-table,
+// ui-form) asks for a collection on behalf of the plugin whose view it sits
+// in; the kernel checks that plugin's rights, sends the records, and sends
+// them again whenever the collection changes. Saves and deletes go back the
+// same way. The elements ask with DOM events (see elements/bound-element.js),
+// answered by answerElements() at the end of this file.
 
 import type { HostToKernel, KernelToHost } from "../shared/protocol";
 
@@ -65,5 +67,26 @@ export function saveRecord(owner: string, collection: string, recordId: string |
   return new Promise((resolve) => {
     waiting.set(id, resolve);
     send({ t: "record", id, owner, collection, recordId, fields, trace: trace() });
+  });
+}
+
+/**
+ * Answers the events bound elements send. The host works out the plugin from
+ * where the element sits, so an element can't act for a different plugin.
+ */
+export function answerElements(root: Document): void {
+  type Asked = CustomEvent<Record<string, unknown>>;
+  root.addEventListener("ui-owner", (e) => {
+    (e as Asked).detail.owner = ownerOf(e.target as Element);
+  });
+  root.addEventListener("ui-bind", (e) => {
+    const { detail } = e as Asked;
+    const owner = ownerOf(e.target as Element);
+    if (owner) detail.unbind = bind(owner, String(detail.collection), detail.listener as (message: Bound) => void);
+  });
+  root.addEventListener("ui-save", (e) => {
+    const { detail } = e as Asked;
+    const owner = ownerOf(e.target as Element);
+    if (owner) detail.result = saveRecord(owner, String(detail.collection), detail.recordId as string | undefined, detail.fields as Record<string, unknown> | null);
   });
 }
