@@ -8,6 +8,7 @@ Each folder here is an app. An app is an `app.html` page plus its plugins: one `
 | [`spending/`](spending/) | `expenses` owns the expenses; `budget` and `categories` read them | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/spending/app.html) |
 | [`recipes/`](recipes/) | `cookbook` owns the recipes and scales the open one; `shopping` owns a list it fills from them; `quick` reads them, drawn in code | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/recipes/app.html) |
 | [`contacts/`](contacts/) | `people` owns the contacts, with a live search; `birthdays` reads them; `vcard-import` adds to them, with review | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/contacts/app.html) |
+| [`habits/`](habits/) | `habits` owns the habits and draws them live; the app the [developer guide](../docs/guide/writing-a-plugin.md) builds | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/habits/app.html) |
 | [`calendar/`](calendar/) | `events` owns the events; `month` draws a month grid from nested template loops; `agenda` reads the events and the contacts app's birthdays | [hosted](https://extensible-web-apps.kinlan-test.workers.dev/demos/calendar/app.html) |
 
 Locally, run `npm run dev` and open `http://localhost:5173/demos/reading-list/app.html`.

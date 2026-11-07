@@ -10,6 +10,7 @@ A platform for malleable web apps: a small kernel, and everything else is a plug
 
 | If you want to… | Read |
 | --- | --- |
+| Build an app or a plugin | The [developer guide](docs/guide/README.md), or [`AGENTS.md`](AGENTS.md) for the short version |
 | See what writing an app looks like | [`demos/`](demos/), starting with [`demos/README.md`](demos/README.md) |
 | Look up an API | [`docs/api.md`](docs/api.md), generated from the running kernel |
 | Understand how the kernel works | [`docs/kernel.md`](docs/kernel.md) |
