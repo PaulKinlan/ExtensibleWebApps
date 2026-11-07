@@ -15,6 +15,8 @@ import { EDITOR_PERMISSIONS } from "./gate";
 import { capabilityFor, hooks, type Mode } from "./hooks";
 import { ACTIONS, COMPONENTS, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, HTML_MAX, INPUT_TYPES } from "../shared/html";
 import { MANIFEST_FIELDS, RESERVED } from "./manifest";
+import { RECORD_FIELDS } from "./records";
+import { SCHEMA_KEYWORDS } from "./schema";
 import { PLATFORM } from "./paths";
 import type { RemotePlugins, ServiceProvider } from "./remote";
 
@@ -134,6 +136,8 @@ export interface Reference {
   editorPermissions: { permission: string; capabilities: string[] }[];
   manifest: { field: string; about: string }[];
   reservedIds: string[];
+  schema: { keyword: string; about: string }[];
+  recordFields: string[];
   platformPaths: string[];
   views: { type: string; about: string }[];
   html: {
@@ -175,6 +179,8 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
     editorPermissions: Object.entries(EDITOR_PERMISSIONS).map(([permission, caps]) => ({ permission, capabilities: caps })),
     manifest: Object.entries(MANIFEST_FIELDS).map(([field, about]) => ({ field, about })),
     reservedIds: [...RESERVED],
+    schema: Object.entries(SCHEMA_KEYWORDS).map(([keyword, about]) => ({ keyword, about })),
+    recordFields: RECORD_FIELDS,
     platformPaths: [...PLATFORM],
     views: Object.entries(VIEWS).map(([type, about]) => ({ type, about })),
     html: {
@@ -257,6 +263,16 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     `Reserved ids: ${ref.reservedIds.map(code).join(", ")}.`,
     "",
     `Paths that belong to the platform, which no plugin can read or write through \`files\`: ${ref.platformPaths.map(code).join(", ")}.`,
+    "",
+    "## Collections",
+    "",
+    `A plugin declares the collections it owns in its manifest, each with a schema, and reads and writes them through the \`data\` service without asking. Another plugin needs \`data:read:<collection>\` or \`data:write:<collection>\`, and its writes are reviewed. Every write runs \`data:beforeWrite:<collection>\` (a listener can block it) and then \`data:changed:<collection>\`; listening to either also needs \`data:read:<collection>\`. The kernel keeps ${ref.recordFields.map(code).join(", ")} on every record. Records are kept with the app's data in \`collections/<name>.json\`.`,
+    "",
+    "Schemas are a JSON Schema subset:",
+    "",
+    table(["Keyword", "Notes"], ref.schema.map((s) => [code(s.keyword), s.about])),
+    "",
+    "Views bind to a collection with `<ui-table collection=\"…\">` and `<ui-form collection=\"…\">` (see Components), acting with the rights of the plugin that drew them.",
     "",
     "## HTML views",
     "",

@@ -13,6 +13,8 @@ import { changeLog } from "./changes";
 import { checkPath, PathError } from "./paths";
 import { allowed, reviews as makeReviews } from "./review";
 import { notesApp } from "./notes";
+import { grants } from "./gate";
+import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { Store } from "./store";
@@ -197,6 +199,15 @@ const remote = new RemotePlugins(root, hosts, services);
 const plugins = catalog(remote, store, hosts, log, reviews);
 remote.onDispose = (instance) => reviews.cancelInstance(instance);
 services.settings = plugins.service;
+const records = collections(root, store, hosts, remote, reviewed);
+remote.onManifest = records.register;
+remote.readable = (instance, name) => {
+  const owner = records.registry.get(name)?.owner;
+  const plugin = remote.installed.get(base(instance));
+  return !!plugin && !!owner && (owner === plugin.id || grants(plugin.caps, `data:read:${name}`));
+};
+remote.collectionOwner = (name) => records.registry.get(name)?.owner;
+services.data = records.service;
 
 /** The kernel's API reference, built from the registries above as they are now. */
 const describe = () => reference(services, remote);
@@ -215,7 +226,10 @@ hosts.onHello = (host, folder) => {
   remote.hostJoined(host);
 };
 
-hosts.onLeave = (host) => remote.hostLeft(host);
+hosts.onLeave = (host) => {
+  remote.hostLeft(host);
+  records.hostLeft(host);
+};
 
 hosts.onSpawnerChange = (host) => {
   if (!host) return;
@@ -239,6 +253,12 @@ hosts.onMessage = async (host, message) => {
       return remote.attach(message.plugin, host, message.port);
     case "canvas":
       return remote.deliver(message.owner, { t: "canvas", id: message.id, canvas: message.canvas }, [message.canvas]);
+    case "bind":
+      return records.bind(host, message.id, message.owner, message.collection);
+    case "unbind":
+      return records.unbind(host, message.id);
+    case "record":
+      return records.fromView(host, message.id, message.owner, message.collection, message.recordId, message.fields, message.trace);
     case "command": {
       const value = await command(message.name, message.arg);
       return hosts.send(host, { t: "command:result", id: message.id, value });

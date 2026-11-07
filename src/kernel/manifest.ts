@@ -8,12 +8,14 @@
 // the statement. Anything else is refused.
 
 import type { Manifest } from "../shared/protocol";
+import { checkCollections } from "./records";
+import { checkSchema } from "./schema";
 
 export class ManifestError extends Error {}
 
 const ID = /^[a-z][a-z0-9-]{0,63}$/;
 /** Owners of the kernel's own views and services; a plugin with one of these ids could pass for them. */
-export const RESERVED = new Set(["kernel", "host", "notes", "plugins", "review", "store", "settings", "storage", "files", "audio"]);
+export const RESERVED = new Set(["kernel", "host", "notes", "plugins", "review", "store", "settings", "storage", "files", "audio", "data"]);
 
 /** What each manifest field means. Typed against Manifest, so a new field can't go undocumented. */
 export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
@@ -24,6 +26,7 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   permissions: "Required, may be empty. Capabilities, or editor-style permissions that stand for them (see Capabilities).",
   order: "Optional. Where the plugin's views go among others in the same slot; lower comes first.",
   scope: '"shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state.',
+  collections: "Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking.",
   settings: "Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form.",
 };
 
@@ -45,6 +48,13 @@ function validate(value: unknown): Manifest {
   if (m.scope !== undefined && m.scope !== "shared" && m.scope !== "tab") throw new ManifestError('`scope` must be "shared" or "tab"');
   if (m.order !== undefined && typeof m.order !== "number") throw new ManifestError("`order` must be a number");
   if (m.settings !== undefined) validateSettings(m.settings);
+  if (m.collections !== undefined) {
+    try {
+      checkCollections(m.collections, checkSchema);
+    } catch (error) {
+      throw new ManifestError(error instanceof Error ? error.message : String(error));
+    }
+  }
   return m as unknown as Manifest;
 }
 

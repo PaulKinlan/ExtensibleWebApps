@@ -4,6 +4,8 @@
 // page (Web Audio here). It runs no plugin code.
 
 import type { Command, HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
+import { connectBindings, receive, setOwner } from "./bindings";
+import { defineBoundComponents } from "./bound";
 import { defineComponents } from "./components";
 import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
@@ -35,6 +37,8 @@ const newTrace = () => `${tab}-${++traceCounter}`;
 // typing, scroll and open <details> survive.
 
 defineComponents();
+defineBoundComponents();
+connectBindings((message) => send(message), () => newTrace());
 
 type Entry = { owner: string; order: number; el: HTMLElement };
 const slots = new Map<Slot, Map<string, Entry>>();
@@ -214,6 +218,11 @@ function listen(entry: Entry) {
     clearTimeout(timers.get(target));
     timers.set(target, setTimeout(() => event(action, value), 300));
   });
+  // Components (a bound table's row, a bound form's save) report through this event.
+  el.addEventListener("ui-action", (e) => {
+    const { action, value } = (e as CustomEvent<{ action: string; value: unknown }>).detail;
+    event(action, value);
+  });
   el.addEventListener("submit", (e) => {
     // Never let a plugin's form navigate the page.
     e.preventDefault();
@@ -238,11 +247,13 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
   next.append(element(view, owner));
   let entry = old;
   if (entry) {
+    setOwner(entry.el, owner);
     morphChildren(entry.el, next);
     entry.owner = owner;
     entry.order = order;
   } else {
     next.dataset.key = key;
+    setOwner(next, owner);
     entry = { owner, order, el: next };
     listen(entry);
     entries.set(key, entry);
@@ -362,6 +373,7 @@ document.getElementById("reference")!.onclick = async () => {
 let spawner = false;
 port.onmessage = async (e: MessageEvent<KernelToHost>) => {
   const message = e.data;
+  if (receive(message)) return;
   switch (message.t) {
     case "welcome":
       spawner = message.spawner;

@@ -65,6 +65,25 @@ The host parses the HTML inertly and keeps only the elements and attributes in `
 
 ![An HTML view built only from plain HTML and the host's components](images/html-view.png)
 
+## Collections: data with a schema
+
+A plugin declares the records it keeps in its manifest, with a small JSON Schema subset (no `pattern`, so a plugin can't stall the kernel with a regular expression):
+
+```js
+collections: {
+  books: { schema: { type: "object", required: ["title"], properties: {
+    title: { type: "string", title: "Title" },
+    year: { type: "integer", title: "Year", minimum: 0 },
+  } } },
+},
+```
+
+Records live in `collections/<name>.json` in the data folder, with `id`, `createdAt` and `updatedAt` added by the kernel. Every write is checked against the schema, so a bad record never reaches disk. The owner reads and writes through the `data` service (`ctx.call("data", …)`) without asking; another plugin needs `data:read:<name>` or `data:write:<name>`, and its writes go through change review. Hooks `data:changed:<name>` and `data:beforeWrite:<name>` let plugins react to or adjust writes.
+
+Two host components draw a collection without any plugin code: `<ui-table collection="books" columns="title,year" deletable>` is a sortable table that stays up to date, and `<ui-form collection="books" fields="title,year">` is a form built from the schema, with labels, input types, required fields and the kernel's errors. Both act with the rights of the plugin whose view they sit in; the host tracks that itself, so a plugin can't borrow another's rights with an attribute.
+
+![A reading list drawn with ui-form and ui-table](images/collections.png)
+
 ## Change review
 
 A write outside a plugin's own data is shown to the person before it happens (`src/kernel/review.ts`). Notes belong to the notes app, and files are in the data folder, so a plugin's `store.put` or `files.write` opens a card above the editor. The card shows the plugin's name, its reason, and a line diff of the change, with three choices:
