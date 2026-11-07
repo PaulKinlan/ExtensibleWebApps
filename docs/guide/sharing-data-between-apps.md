@@ -38,6 +38,6 @@ export default async function (ctx) {
 
 ## The workbench
 
-The workbench at `/` shows every running plugin's views at once, whatever app they came from, with the trace and the plugins panel. It's the place to see what the kernel sees: which collections exist, who owns them, and what each plugin was refused.
+The workbench at `/workbench/` shows every running plugin's views at once, whatever app they came from, with the trace and the plugins panel. It's the place to see what the kernel sees: which collections exist, who owns them, and what each plugin was refused.
 
 Back to the [guide's contents](README.md).

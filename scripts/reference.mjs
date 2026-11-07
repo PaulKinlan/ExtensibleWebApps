@@ -22,7 +22,8 @@ try {
   });
   const browser = await chromium.launch();
   const page = await browser.newPage();
-  await page.goto(`http://localhost:${PORT}/`);
+  // The workbench: the homepage is an app, and its collections would join the reference.
+  await page.goto(`http://localhost:${PORT}/workbench/`);
   await page.waitForFunction(() => window.__host);
   const { markdown } = await page.evaluate(() => window.__host.command("reference"));
   writeFileSync(new URL("../docs/api.md", import.meta.url), markdown);

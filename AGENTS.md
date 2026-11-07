@@ -34,7 +34,7 @@ Start with `npm run new-app -- my-app`: it copies [`starter/`](starter/), a list
 ```sh
 npm install
 npm run check        # finds mistakes in the apps without a browser: permissions, manifests, templates, slots (--json for tools)
-npm run dev          # open http://localhost:5173/demos/<app>/app.html; the workbench at / has the trace
+npm run dev          # open http://localhost:5173/demos/<app>/app.html; the workbench at /workbench/ has the trace
 npm test             # builds, then opens every app in demos/ and checks each linked plugin draws
 npm run typecheck
 npm run reference    # after changing the kernel's API: rewrites docs/api.md (the tests check it)

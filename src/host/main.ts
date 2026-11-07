@@ -6,7 +6,7 @@
 // The page is an app: an app.html that links its plugins with
 // <link rel="plugin" href="…">. The host fetches each one and asks the
 // kernel to run it, and shows only the views those plugins draw. A page that
-// links no plugins is the platform's own workbench (index.html), which shows
+// links no plugins is the platform's workbench (workbench/index.html), which shows
 // every view along with the trace and the plugins panel.
 
 import type { Command, HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
@@ -296,7 +296,15 @@ async function openApp() {
     }),
   );
   for (const { href, source, why } of plugins) if (!source) notice(`Couldn't load the plugin at ${href}: ${why}`);
-  send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })) });
+  // ?reset turns this app's plugins back on, for when a person has switched off the very plugin that would do it.
+  // It works once: the address loses it, so reloading doesn't reset again.
+  const reset = params.has("reset");
+  if (reset) {
+    const url = new URL(location.href);
+    url.searchParams.delete("reset");
+    history.replaceState(history.state, "", url);
+  }
+  send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })), reset });
 }
 
 function opened(plugins: { href: string; id?: string; error?: string }[]) {
@@ -479,7 +487,7 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
   });
 }
 
-/** The trace, benchmarks and demo links, on the platform's own page only. */
+/** The trace, benchmarks and demo links, on the workbench page only. */
 const bench = document.getElementById("devtools") ? workbench(command) : undefined;
 serviceWorker(command, report);
 const traces: TraceEvent[] = [];
