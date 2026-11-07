@@ -33,7 +33,7 @@ export const manifest = {
               properties: {
                 amount: { type: "number", minimum: 0 },
                 unit: { type: "string", maxLength: 20 },
-                item: { type: "string", maxLength: 80 },
+                item: { type: "string", maxLength: 200 },
               },
             },
           },
@@ -44,14 +44,21 @@ export const manifest = {
   },
 };
 
-/** "200 g flour" as { amount: 200, unit: "g", item: "flour" }. Recipes saved before ingredients were a list are read this way. */
+/**
+ * "200 g flour" as { amount: 200, unit: "g", item: "flour" }. Recipes saved
+ * before ingredients were a list are read this way. Nothing is lost: a line
+ * that isn't an amount and an item stays whole, as the item.
+ */
 export function ingredient(line) {
-  const match = /^(\d+\/\d+|\d+(?:[.,]\d+)?)\s*(?:(g|kg|ml|l|tsp|tbsp|cup|cups|pinch)\s+)?(.*)$/i.exec(line.trim());
-  if (!match) return { item: line.trim() };
+  const text = line.trim();
+  const match = /^(\d+\/\d+|\d+(?:[.,]\d+)?)\s*(?:(g|kg|ml|l|tsp|tbsp|cup|cups|pinch)\s+)?(.+)$/i.exec(text);
+  if (!match) return { item: text };
   const [n, d] = match[1].split("/").map((x) => Number(x.replace(",", ".")));
   return { amount: d ? n / d : n, ...(match[2] && { unit: match[2] }), item: match[3] };
 }
 const lines = (text) => text.split("\n").filter((l) => l.trim()).map(ingredient);
+/** A recipe's ingredients as a list, whether saved as one or (from before) as lines of text. */
+const ingredients = (recipe) => (Array.isArray(recipe.ingredients) ? recipe.ingredients : typeof recipe.ingredients === "string" ? lines(recipe.ingredients) : []);
 
 const SAMPLE = [
   { title: "Pancakes", serves: 4, minutes: 20, ingredients: lines("200 g flour\n2 eggs\n300 ml milk\n1 pinch salt"), method: "Whisk everything into a smooth batter. Fry ladlefuls in a hot buttered pan, a minute a side." },
@@ -61,7 +68,7 @@ const SAMPLE = [
 
 /** An ingredient as text, its amount scaled: 200 g flour × 1.5 is "300 g flour"; one with no amount stays as it is. */
 export function scale({ amount, unit, item }, factor) {
-  if (amount === undefined) return item;
+  if (amount === undefined) return [unit, item].filter(Boolean).join(" ");
   const scaled = amount * factor;
   const shown = Number.isInteger(scaled) ? String(scaled) : scaled.toFixed(scaled < 10 ? 1 : 0).replace(/\.0$/, "");
   return [shown, unit, item].filter(Boolean).join(" ");
@@ -73,9 +80,12 @@ export default async function (ctx) {
     for (const recipe of SAMPLE) await ctx.call("data", "put", "recipes", recipe);
     await ctx.storage.set("seeded", true);
   }
-  // Recipes saved when ingredients were lines of text become lists.
+  // Recipes saved when ingredients were lines of text become lists. If one is
+  // refused, it stays as text, and is still read as a list (see ingredients()).
   for (const recipe of await ctx.call("data", "list", "recipes")) {
-    if (typeof recipe.ingredients === "string") await ctx.call("data", "put", "recipes", { ...recipe, ingredients: lines(recipe.ingredients) });
+    if (typeof recipe.ingredients !== "string") continue;
+    const result = await ctx.call("data", "put", "recipes", { ...recipe, ingredients: lines(recipe.ingredients) });
+    if (!result.ok) ctx.log(`Kept "${recipe.title}" ingredients as text: ${JSON.stringify(result.errors ?? result.error)}`, "error");
   }
 
   let open = null; // the id of the recipe being read
@@ -92,7 +102,7 @@ export default async function (ctx) {
       recipe: recipe && {
         ...recipe,
         people,
-        lines: (recipe.ingredients ?? []).map((i) => scale(i, people / recipe.serves)),
+        lines: ingredients(recipe).map((i) => scale(i, people / recipe.serves)),
         steps: (recipe.method ?? "").split(/\n+/).filter((s) => s.trim()),
       },
     });
