@@ -40,22 +40,15 @@ settings: {
 
 `boolean` becomes a checkbox, `number` a number field, and `string` a text field, or a menu when it has an `enum`. The kernel checks each value against its spec before keeping it. Which plugins are off, and every plugin's settings, are kept in `plugins.json` in the data folder. A plugin reads its own settings with `await ctx.settings.get()` and hears changes through `ctx.settings.onChange(handler)`. No capability is needed, because a plugin can only read its own. Editor extensions get the same values from `editor.settings.get()`.
 
-## The `ctx` a plugin gets
+## The `ctx` a plugin gets, and the rest of the API
 
-| Call | Needs |
-| --- | --- |
-| `ctx.on(hook, handler)` | `hook:listen:<hook>` for `emit` and `parallel` hooks; `hook:intercept:<hook>` for hooks that can change or stop an action (`serial`, `bail`, `waterfall`) |
-| `ctx.call(service, method, ...args)` | Whatever the service asks for: `audio` for `audio.*`, `data:read:notes` for `store.list` |
-| `ctx.ui.render(slot, key, view)` | `ui` |
-| `ctx.ui.onEvent(handler)`, `ctx.ui.onCanvas(id, handler)` | Nothing extra |
-| `ctx.settings.get()`, `ctx.settings.onChange(handler)` | Nothing: a plugin sees only its own settings |
-| `ctx.storage.get(key)`, `ctx.storage.set(key, value)` | Nothing: the plugin's own data, kept in `plugin-data/<id>.json`, up to 1 MB, never reviewed |
-| `ctx.call("store", "put", { id?, text }, reason)` | `data:write:notes`, and the person's review |
-| `ctx.call("files", "read" \| "write", path, text?, reason?)` | `files:<folder>` for the path's first folder, path checks, and (for a write) the person's review |
-| `ctx.log(text)` | Nothing |
-| `ctx.traced()` | Nothing: returns a copy of `ctx` whose calls keep the current trace id after an `await` |
+The full API is in [api.md](api.md), which the kernel prints about itself: every `ctx` call, every service method and what it needs, every hook and its contract, the capabilities, the manifest fields, the views and slots. It is built at run time from the same tables the kernel enforces:
 
-Editor-style permissions map onto capabilities: `post:read` is `hook:listen:note:*`, `post:write` is `hook:intercept:data:beforeWrite`.
+- hooks come from the hook registry, with their mode, time limit, failure policy and arguments;
+- each service lists its methods, and a method that isn't listed can't be called, so nothing is callable that the reference leaves out;
+- the `ctx` API, views, slots and manifest fields are tables typed against their TypeScript types, so adding a member without describing it doesn't compile.
+
+`npm run reference` rewrites api.md, and `npm test` fails when it falls behind. Plugins get the same thing as data from `ctx.call("kernel", "reference")`, which is what a plugin builder will read. In the app, **API reference** in the trace panel shows it with what is installed and which hooks each running plugin listens to.
 
 ## Change review
 

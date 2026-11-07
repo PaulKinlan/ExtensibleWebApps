@@ -7,6 +7,8 @@
 // Exits non-zero if any check fails.
 
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -22,7 +24,7 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
 }
 
-const server = spawn("npx", ["vite", "preview", "--port", String(PORT), "--strictPort"], { stdio: "pipe" });
+const server = spawn(process.execPath, [fileURLToPath(new globalThis.URL("../node_modules/vite/bin/vite.js", import.meta.url)), "preview", "--port", String(PORT), "--strictPort"], { stdio: "pipe" });
 await new Promise((resolve, reject) => {
   server.stdout.on("data", (d) => String(d).includes(String(PORT)) && resolve());
   server.on("exit", (code) => reject(new Error(`vite preview exited with ${code}`)));
@@ -93,6 +95,35 @@ export default (ctx) => {
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
   check("removing a plugin kept with the data stops it and takes it off the panel", !(await a.$(panel("temp"))));
   check("built-in plugins can't be removed", !(await a.$(`${panel("tone")} >> text=Remove`)));
+
+  // Self-description: the kernel prints its own API reference.
+  const reference = await a.evaluate(() => window.__host.command("reference"));
+  const onDisk = readFileSync(new globalThis.URL("../docs/api.md", import.meta.url), "utf8");
+  check("docs/api.md is what the kernel prints about itself", reference.markdown === onDisk, reference.markdown === onDisk ? "" : "run npm run reference");
+  const hookNames = await a.evaluate(() => window.__host.command("reference").then((r) => r.data.hooks.map((h) => h.name)));
+  check("the reference lists every hook and service the kernel has", ["data:changed", "data:beforeWrite", "note:open"].every((h) => hookNames.includes(h)) && ["audio", "store", "files", "storage", "kernel", "settings"].every((s) => reference.data.services.some((x) => x.name === s)));
+  const wordCount = reference.data.plugins.find((p) => p.id === "word-count");
+  check("the live reference says which hooks each running plugin listens to", wordCount?.hooks.includes("note:open") && /## Installed now/.test(reference.live), wordCount?.hooks.join(" "));
+  await a.evaluate(() => window.__host.command("install", `export const manifest = { id: 'reader', name: 'Reader', permissions: ['ui'] };
+export default async (ctx) => {
+  const ref = await ctx.call('kernel', 'reference');
+  const refused = [];
+  for (const method of ['nope', 'toString', '__proto__']) {
+    try { await ctx.call('kernel', method); refused.push('allowed'); } catch (error) { refused.push(error.message); }
+  }
+  for (const service of ['toString', '__proto__']) {
+    try { await ctx.call(service, 'ping'); refused.push('allowed'); } catch (error) { refused.push(error.message); }
+  }
+  ctx.ui.render('devtools', 'reader', { type: 'text', text: 'reader sees ' + ref.services.length + ' services' });
+  ctx.log('reader: ' + JSON.stringify(refused));
+};`));
+  await a.waitForSelector('#devtools [data-slot="devtools"] >> text=reader sees 6 services', { timeout: 5000 });
+  check("a plugin can read the reference, and draw in the devtools slot", true);
+  await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")), null, { timeout: 5000 });
+  const refusedCalls = await a.evaluate(() => JSON.parse(window.__host.traces.find((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")).detail.slice(8)));
+  check("a method or service the reference doesn't list can't be called", refusedCalls.length === 5 && refusedCalls.slice(0, 3).every((m) => /is not a method/.test(m)) && refusedCalls.slice(3).every((m) => /No service named/.test(m)), refusedCalls.join("; "));
+  await a.evaluate(() => window.__host.command("uninstall", "reader"));
+  await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 
   // Worker content security policy.
   await a.waitForFunction(() => window.__host.traces.filter((e) => e.detail?.startsWith("network:")).length >= 2, null, { timeout: 5000 });

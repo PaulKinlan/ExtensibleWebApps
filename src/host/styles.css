@@ -51,6 +51,7 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 #devtools .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
 #trace { font-family: var(--mono); max-height: 220px; overflow: auto; margin: 0; padding-left: 0; list-style: none; }
 #trace li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#reference-text { font: 12px/1.5 var(--mono); max-height: 360px; overflow: auto; margin: 0 0 8px; padding: 8px 10px; white-space: pre-wrap; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); }
 #trace li.denied, #trace li.error { color: var(--danger); }
 #notice { position: fixed; right: 16px; bottom: 16px; max-width: 360px; }
 #notice p { margin: 4px 0 0; padding: 8px 12px; border-radius: var(--radius); background: var(--fg); color: var(--bg); }

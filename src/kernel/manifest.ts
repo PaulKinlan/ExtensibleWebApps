@@ -13,7 +13,19 @@ export class ManifestError extends Error {}
 
 const ID = /^[a-z][a-z0-9-]{0,63}$/;
 /** Owners of the kernel's own views and services; a plugin with one of these ids could pass for them. */
-const RESERVED = new Set(["kernel", "host", "notes", "plugins", "review", "store", "settings", "storage", "files", "audio"]);
+export const RESERVED = new Set(["kernel", "host", "notes", "plugins", "review", "store", "settings", "storage", "files", "audio"]);
+
+/** What each manifest field means. Typed against Manifest, so a new field can't go undocumented. */
+export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
+  id: "Required. Lowercase letters, digits and dashes, starting with a letter; at most 64 characters. A plugin with the same id replaces the one installed.",
+  name: "Required. The name the person sees.",
+  version: "Optional. Shown nowhere yet.",
+  description: "Optional. Shown as the name's tooltip in the plugins panel.",
+  permissions: "Required, may be empty. Capabilities, or editor-style permissions that stand for them (see Capabilities).",
+  order: "Optional. Where the plugin's views go among others in the same slot; lower comes first.",
+  scope: '"shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state.',
+  settings: "Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form.",
+};
 
 export function readManifest(source: string): Manifest {
   const parser = new LiteralParser(source, 0);

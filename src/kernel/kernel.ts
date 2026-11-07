@@ -13,6 +13,7 @@ import { changeLog } from "./changes";
 import { checkPath, PathError } from "./paths";
 import { allowed, reviews as makeReviews } from "./review";
 import { notesApp } from "./notes";
+import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { Store } from "./store";
 import { record, recent, setSink, tap } from "./trace";
@@ -35,13 +36,15 @@ const root: any = new Context();
 tap(root);
 
 // Hooks the kernel and its built-in plugins define. Plugins can define more.
-defineHook("data:changed", { mode: "emit", description: "A record was written." });
-defineHook("data:beforeWrite", { mode: "serial", timeoutMs: 1000, onFailure: "open", description: "Return { block } to stop a write." });
-defineHook("note:open", { mode: "emit" });
-defineHook("note:change", { mode: "emit" });
-defineHook("note:save", { mode: "emit" });
-defineHook("note:close", { mode: "emit" });
-defineHook("bench:ping", { mode: "serial", timeoutMs: 1000, onFailure: "open" });
+const CHANGE = "{ collection, id, before?, after }";
+const POST = "{ path, url, title, siteName, text, bodyStart, selection, unsaved }";
+defineHook("data:changed", { mode: "emit", args: CHANGE, description: "A record was written." });
+defineHook("data:beforeWrite", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: CHANGE, description: "Before a record is written. Return { block: reason } to stop the write." });
+defineHook("note:open", { mode: "emit", args: POST, description: "The person opened a note." });
+defineHook("note:change", { mode: "emit", args: POST, description: "The person typed in the open note (unsaved is true)." });
+defineHook("note:save", { mode: "emit", args: POST, description: "The open note was saved, by the person or by a reviewed write." });
+defineHook("note:close", { mode: "emit", args: "null", description: "The open note was closed." });
+defineHook("bench:ping", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "n", description: "Used by the round-trip benchmark; answer with anything." });
 
 const hosts = new Hosts(shared ? "shared" : "dedicated");
 setSink((events) => hosts.broadcast({ t: "trace", events }));
@@ -87,10 +90,20 @@ const dataOf = (id: string) => {
 
 const services: Record<string, ServiceProvider> = {
   audio: {
+    description: "Sound, played by the tab that runs the plugin workers. Audio runs in an AudioWorklet, never through hooks.",
+    methods: {
+      registerProcessor: { args: "(name, source)", returns: "true", needs: "audio", description: "Registers an AudioWorklet processor, from its source, under a name." },
+      play: { args: "({ processor, ms?, options? })", returns: "{ played, state }", needs: "audio", description: "Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions." },
+    },
     capability: () => "audio",
     call: (_plugin, method, args, dispatch) => hosts.bridge("audio", method, args, dispatch),
   },
   store: {
+    description: "The notes. They belong to the notes app, so a plugin's change to one is reviewed first.",
+    methods: {
+      list: { args: "()", returns: "[{ id, title, text, updated }]", needs: "data:read:notes", description: "Every note, most recently changed first." },
+      put: { args: "({ id?, text }, reason)", returns: "{ ok, id, outcome }", needs: "data:write:notes", reviewed: true, description: "Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open." },
+    },
     capability: (method) => (method === "list" ? "data:read:notes" : "data:write:notes"),
     /** `put({ id?, text }, reason)`: notes belong to the notes app, so a plugin's write is reviewed first. */
     call: async (plugin, method, args, dispatch) => {
@@ -109,6 +122,11 @@ const services: Record<string, ServiceProvider> = {
     },
   },
   files: {
+    description: "Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.",
+    methods: {
+      read: { args: "(path)", returns: "text or null", needs: "files:<folder>", description: "Reads a file. `<folder>` is the path's first folder." },
+      write: { args: "(path, text, reason)", returns: "{ ok, path, outcome } or { ok, unchanged }", needs: "files:<folder>", reviewed: true, description: "Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open." },
+    },
     /** Each folder is its own capability: `files:exports` lets a plugin use `exports/...`. */
     capability: (_method, args) => `files:${typeof args[0] === "string" ? args[0].split("/")[0] : ""}`,
     call: async (plugin, method, args, dispatch) => {
@@ -133,6 +151,11 @@ const services: Record<string, ServiceProvider> = {
     },
   },
   storage: {
+    description: "The plugin's own data, kept in `plugin-data/<id>.json` with the app's data. Never reviewed, since it is the plugin's own.",
+    methods: {
+      get: { args: "(key)", returns: "the value, or null", description: "Reads a value." },
+      set: { args: "(key, value)", returns: "true", description: "Saves a JSON value; null removes it. Up to 1 MB in all." },
+    },
     capability: () => undefined,
     call: async (plugin, method, args) => {
       const id = base(plugin);
@@ -154,10 +177,17 @@ const services: Record<string, ServiceProvider> = {
     },
   },
   kernel: {
+    description: "The kernel itself.",
+    methods: {
+      ping: { args: "()", returns: '"pong"', description: "Answers at once; for checking the connection." },
+      hooks: { args: "()", returns: "{ [name]: { mode, timeoutMs?, onFailure?, args?, description? } }", description: "Every hook and its contract." },
+      reference: { args: "()", returns: "the reference, as data", description: "This API reference, as the kernel describes itself." },
+    },
     capability: () => undefined,
     call: (_plugin, method) => {
       if (method === "ping") return "pong";
       if (method === "hooks") return Object.fromEntries(hooks);
+      if (method === "reference") return describe();
       throw new Error(`kernel.${method} is not a method`);
     },
   },
@@ -167,6 +197,9 @@ const remote = new RemotePlugins(root, hosts, services);
 const plugins = catalog(remote, store, hosts, log, reviews);
 remote.onDispose = (instance) => reviews.cancelInstance(instance);
 services.settings = plugins.service;
+
+/** The kernel's API reference, built from the registries above as they are now. */
+const describe = () => reference(services, remote);
 
 const BUILT_IN = [wordCount, editTimes, noShouting, tone, bars, tidy, pinger, sneaky, fetcher, offline];
 
@@ -221,6 +254,10 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "uninstall") return plugins.remove(String(arg));
   if (name === "trace") return recent();
   if (name === "changes") return log.list();
+  if (name === "reference") {
+    const data = describe();
+    return { data, markdown: toMarkdown(data), live: toMarkdown(data, { live: true }) };
+  }
   return undefined;
 }
 

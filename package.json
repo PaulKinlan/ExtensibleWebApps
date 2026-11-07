@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node tests/platform.test.mjs"
+    "test": "npm run build && node tests/platform.test.mjs",
+    "reference": "vite build && node scripts/reference.mjs"
   },
   "dependencies": {
     "cordis": "4.0.0-rc.11"

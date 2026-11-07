@@ -1,0 +1,178 @@
+# API reference
+
+Printed by the kernel from its own registries (`npm run reference` writes this file; the tests fail if it falls behind). Plugins can read the same thing as data with `ctx.call("kernel", "reference")`.
+
+## The plugin's `ctx`
+
+| Call | Needs | What it does |
+| --- | --- | --- |
+| `ctx.on(hook, handler) → off()` | `hook:listen:<hook>` (emit, parallel) or `hook:intercept:<hook>` (serial, bail, waterfall) | Listens to a hook. In a `function` handler, `this` is a copy of ctx pinned to the action's trace. What it returns matters only for hooks that can change or stop an action. |
+| `ctx.call(service, method, ...args) → Promise` | What the method needs (see Services) | Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses. |
+| `ctx.ui.render(slot, key, view, order?)` | `ui` | Draws a view in a slot, under a key of the plugin's own; null removes it. Plugins never touch the DOM. |
+| `ctx.ui.onEvent((action, value) => …) → off()` | Nothing | Hears the person use the plugin's views: a button's or field's `action`, with a field's new value. |
+| `ctx.ui.onCanvas(id, (canvas) => …)` | Nothing | Receives the OffscreenCanvas for a canvas view the plugin rendered. Use scope "tab" for plugins that draw. |
+| `ctx.settings.get() → Promise<values>` | Nothing | The plugin's own settings: saved values over the manifest's defaults. |
+| `ctx.settings.onChange((values) => …) → off()` | Nothing | Hears the person change the plugin's settings. |
+| `ctx.storage.get(key) → Promise<value \| null>` | Nothing | Reads the plugin's own data. |
+| `ctx.storage.set(key, value) → Promise` | Nothing | Saves a JSON value in the plugin's own data (null removes it), up to 1 MB in all. Never reviewed. |
+| `ctx.traced() → ctx` | Nothing | A copy of ctx whose calls keep the current trace id after an `await`. |
+| `ctx.log(text, level?)` | Nothing | Writes to the trace, as info or error. |
+
+## Services
+
+Called with `ctx.call(service, method, ...args)`. A method not listed here doesn't exist. Reviewed methods show the person a diff with the plugin's reason first; they accept once, allow that plugin in that place from then on, or decline.
+
+### audio
+
+Sound, played by the tab that runs the plugin workers. Audio runs in an AudioWorklet, never through hooks.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `audio.registerProcessor(name, source)` | true | `audio` | Registers an AudioWorklet processor, from its source, under a name. |
+| `audio.play({ processor, ms?, options? })` | { played, state } | `audio` | Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions. |
+
+### store
+
+The notes. They belong to the notes app, so a plugin's change to one is reviewed first.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `store.list()` | [{ id, title, text, updated }] | `data:read:notes` | Every note, most recently changed first. |
+| `store.put({ id?, text }, reason)` | { ok, id, outcome } | `data:write:notes`, and the person's review | Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open. |
+
+### files
+
+Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `files.read(path)` | text or null | `files:<folder>` | Reads a file. `<folder>` is the path's first folder. |
+| `files.write(path, text, reason)` | { ok, path, outcome } or { ok, unchanged } | `files:<folder>`, and the person's review | Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open. |
+
+### storage
+
+The plugin's own data, kept in `plugin-data/<id>.json` with the app's data. Never reviewed, since it is the plugin's own.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `storage.get(key)` | the value, or null | Nothing | Reads a value. |
+| `storage.set(key, value)` | true | Nothing | Saves a JSON value; null removes it. Up to 1 MB in all. |
+
+### kernel
+
+The kernel itself.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `kernel.ping()` | "pong" | Nothing | Answers at once; for checking the connection. |
+| `kernel.hooks()` | { [name]: { mode, timeoutMs?, onFailure?, args?, description? } } | Nothing | Every hook and its contract. |
+| `kernel.reference()` | the reference, as data | Nothing | This API reference, as the kernel describes itself. |
+
+### settings
+
+The plugin's own settings, from the form the plugins panel builds out of its manifest.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `settings.get()` | { [key]: value } | Nothing | The plugin's settings: saved values over the manifest's defaults. |
+
+## Hooks
+
+| Hook | Mode | Listening needs | Listeners get | What it means |
+| --- | --- | --- | --- | --- |
+| `data:changed` | emit | `hook:listen:data:changed` | `{ collection, id, before?, after }` | A record was written. |
+| `data:beforeWrite` | serial, 1000 ms per listener, fails open | `hook:intercept:data:beforeWrite` | `{ collection, id, before?, after }` | Before a record is written. Return { block: reason } to stop the write. |
+| `note:open` | emit | `hook:listen:note:open` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The person opened a note. |
+| `note:change` | emit | `hook:listen:note:change` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The person typed in the open note (unsaved is true). |
+| `note:save` | emit | `hook:listen:note:save` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The open note was saved, by the person or by a reviewed write. |
+| `note:close` | emit | `hook:listen:note:close` | `null` | The open note was closed. |
+| `bench:ping` | serial, 1000 ms per listener, fails open | `hook:intercept:bench:ping` | `n` | Used by the round-trip benchmark; answer with anything. |
+
+### Dispatch modes
+
+| Mode | What happens |
+| --- | --- |
+| `emit` | Every listener is told; nothing comes back. Listening needs hook:listen. |
+| `parallel` | Every listener is told at once; nothing comes back. Listening needs hook:listen. |
+| `serial` | Listeners answer one after another; returning { block } stops the action. Listening needs hook:intercept. |
+| `bail` | Listeners answer one after another; the first answer wins. Listening needs hook:intercept. |
+| `waterfall` | Each listener can change the value before the next sees it, or return { block }. Listening needs hook:intercept. |
+
+## Capabilities
+
+A plugin lists what it needs in its manifest's `permissions`; the gate checks every message against them. A trailing `*` grants everything that starts with what comes before it.
+
+| Capability | Lets a plugin |
+| --- | --- |
+| `ui` | Draw views with ctx.ui.render. |
+| `network` | Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere. |
+| `hook:listen:<hook>` | Listen to an emit or parallel hook. |
+| `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
+| `audio` | Call audio.registerProcessor, audio.play. |
+| `data:read:notes` | Call store.list. |
+| `data:write:notes` | Call store.put. |
+| `files:<folder>` | Call files.read, files.write. |
+
+Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
+
+| Editor permission | Capabilities |
+| --- | --- |
+| `post:read` | `hook:listen:note:*` |
+| `post:write` | `hook:intercept:data:beforeWrite` |
+| `ui` | `ui` |
+
+## Manifest
+
+`export const manifest = { ... }` must be the module's first statement, a plain literal, read before any of the plugin's code runs.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | Required. Lowercase letters, digits and dashes, starting with a letter; at most 64 characters. A plugin with the same id replaces the one installed. |
+| `name` | Required. The name the person sees. |
+| `version` | Optional. Shown nowhere yet. |
+| `description` | Optional. Shown as the name's tooltip in the plugins panel. |
+| `permissions` | Required, may be empty. Capabilities, or editor-style permissions that stand for them (see Capabilities). |
+| `order` | Optional. Where the plugin's views go among others in the same slot; lower comes first. |
+| `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
+| `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
+
+Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`.
+
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`.
+
+## Views and slots
+
+| View | Shape |
+| --- | --- |
+| `stack` | { children, direction? }: views in a column, or a row. |
+| `heading` | { text } |
+| `text` | { text, title?, tone? }: tone is muted, error or ok. |
+| `button` | { label, action, primary? }: sends `action` when pressed. |
+| `list` | { items: [{ label, action, selected? }] } |
+| `textarea` | { name, value, action, placeholder? }: sends `action` with the text as the person types. |
+| `canvas` | { id, width, height }: the plugin receives an OffscreenCanvas through ctx.ui.onCanvas. |
+| `diff` | { lines: [{ op, text }] }: a line diff; op is same, add or del. |
+| `field` | { name, label, kind, value, action, options?, description? }: kind is text, number, checkbox or select; sends `action` with the new value. |
+
+| Slot | Where |
+| --- | --- |
+| `app.nav` | The column on the left. |
+| `app.main` | The middle of the page. |
+| `app.side` | The column on the right, where the plugins panel is. |
+| `statusbar` | The bar at the bottom. |
+| `devtools` | Inside the trace panel, under its buttons. |
+
+## Commands
+
+For devtools and tests, from the page: `window.__host.command(name, arg)`.
+
+| Command | What it does |
+| --- | --- |
+| `bench` | (n) Times a hook round trip to a plugin worker against one answered in the kernel. |
+| `reload-test` | (n) Reloads word-count n times and counts listeners and workers before and after. |
+| `reload` | (id) Restarts a plugin's workers. |
+| `install` | (source) Installs a plugin and keeps it with the data. |
+| `uninstall` | (id) Removes a plugin kept with the data. |
+| `trace` | () The most recent trace events. |
+| `changes` | () The change log. |
+| `reference` | () This reference, as { data, markdown }. |

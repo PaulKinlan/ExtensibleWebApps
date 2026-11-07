@@ -22,7 +22,22 @@ import type { Host, Hosts } from "./hosts";
 import { ManifestError, readManifest } from "./manifest";
 import { record } from "./trace";
 
+/** One method of a service, as the API reference shows it. */
+export interface MethodDoc {
+  /** The arguments after the method name, e.g. `(path, text, reason)`. */
+  args: string;
+  returns: string;
+  /** The capability it needs, as a reader should see it (`files:<folder>`); none if it needs nothing. */
+  needs?: string;
+  /** True if the person reviews the change before it happens. */
+  reviewed?: boolean;
+  description: string;
+}
+
 export interface ServiceProvider {
+  description: string;
+  /** Every method the service has. A method that isn't listed here can't be called, so the reference is the whole API. */
+  methods: Record<string, MethodDoc>;
   /** Capability a plugin needs to call this method. */
   capability(method: string, args: unknown[]): string | undefined;
   call(plugin: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown> | unknown;
@@ -211,7 +226,7 @@ export class RemotePlugins {
 export class Remote {
   private ctx: any;
   private fiber: any;
-  private listeners = new Map<number, () => void>();
+  private listeners = new Map<number, { name: string; off: () => void }>();
   private pending = new Map<number, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout> }>();
   private nextId = 0;
   private disposed = false;
@@ -228,6 +243,11 @@ export class Remote {
   ) {
     port.onmessage = (e: MessageEvent<PluginToKernel>) => void this.receive(e.data);
     port.start();
+  }
+
+  /** The hooks this instance listens to, each once. */
+  get heard(): string[] {
+    return [...new Set([...this.listeners.values()].map((l) => l.name))];
   }
 
   /** The tab this instance belongs to, for tab-scoped plugins. */
@@ -275,7 +295,7 @@ export class Remote {
       case "on":
         return this.listen(message.listener, message.name);
       case "off":
-        this.listeners.get(message.listener)?.();
+        this.listeners.get(message.listener)?.off();
         this.listeners.delete(message.listener);
         return;
       case "hook:result": {
@@ -309,7 +329,7 @@ export class Remote {
       this.post({ t: "event", action: "kernel:denied", value: capabilityFor(name) });
       return;
     }
-    this.listeners.set(listener, this.ctx.on(name, this.forwarder(listener, name, spec)));
+    this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
   }
 
   private forwarder(listener: number, name: string, spec: HookSpec) {
@@ -360,9 +380,11 @@ export class Remote {
   }
 
   private async call(id: number, service: string, method: string, args: unknown[], trace?: string): Promise<void> {
-    const provider = this.manager.services[service];
+    // Own entries only: `toString` or `__proto__` would find the object's prototype instead.
+    const provider = Object.hasOwn(this.manager.services, service) ? this.manager.services[service] : undefined;
     const reply = (ok: boolean, value?: unknown, error?: string) => this.post({ t: "result", id, ok, value, error });
     if (!provider) return reply(false, undefined, `No service named ${service}`);
+    if (!Object.hasOwn(provider.methods, method)) return reply(false, undefined, `${service}.${method} is not a method`);
     let needed: string | undefined;
     try {
       needed = provider.capability(method, args);

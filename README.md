@@ -8,7 +8,7 @@ An exploration of malleable web applications: a small kernel where everything el
 
 ## What's here
 
-A notes app where every feature is a plugin and no plugin runs on the main thread. The phase 0 spike and what it showed are in [docs/spike.md](docs/spike.md); the kernel as it stands is described in [docs/kernel.md](docs/kernel.md).
+A notes app where every feature is a plugin and no plugin runs on the main thread. The phase 0 spike and what it showed are in [docs/spike.md](docs/spike.md); the kernel as it stands is described in [docs/kernel.md](docs/kernel.md), and its API, as the kernel prints it, in [docs/api.md](docs/api.md).
 
 ![The spike: notes, a blocked save, plugin views and the trace](docs/images/spike.png)
 
@@ -26,7 +26,8 @@ page (host)  <-- port -->  kernel (shared worker)  <-- port -->  plugin (dedicat
 ```sh
 npm install
 npm run dev        # http://localhost:5173 ; add ?kernel=dedicated to run the kernel in a dedicated worker
-npm test           # build, then 55 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm test           # build, then 60 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```
 

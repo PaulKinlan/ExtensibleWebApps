@@ -10,6 +10,8 @@ export interface HookSpec {
   /** "open": skip a listener that fails or times out. "closed": treat it as a block. */
   onFailure?: "open" | "closed";
   description?: string;
+  /** What listeners receive, as a reader should see it. */
+  args?: string;
 }
 
 export const hooks = new Map<string, HookSpec>();
