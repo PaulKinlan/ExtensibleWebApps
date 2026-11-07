@@ -329,6 +329,7 @@ export default async (ctx) => {
         return result;
       });
       // The agenda is a live view: when the contacts app first runs, in another tab, the birthdays appear here without a reload.
+      proof.quietRead = await page.evaluate(() => !window.__host.traces.some((e) => /No collection named contacts/.test(e.detail ?? "")));
       const contactsTab = await openTab(`${URL}demos/contacts/app.html`);
       proof.liveBirthday = await page.waitForSelector('[data-key="agenda:agenda"] >> text=Priya Shah', { timeout: 8000 }).then(() => true, () => false);
       await contactsTab.close({ runBeforeUnload: true });
@@ -396,6 +397,7 @@ export default async (ctx) => {
   check("a plugin in an app writing another plugin's collection is reviewed in that app, then lands", importedBook);
   check("a month grid from nested template loops has seven days in every week", proof.grid?.length >= 4 && proof.grid.every((n) => n === 7), JSON.stringify(proof.grid));
   check("a plugin's own stylesheet styles its views, by class, and nothing else on the page", proof.styled?.plugin === "month" && proof.styled.layout === "fixed" && proof.styled.other === "0.6" && proof.styled.own === "1" && proof.styled.outside !== "fixed" && proof.styled.entry[0] !== "fixed" && proof.styled.entry[1] === "layout paint", JSON.stringify(proof.styled));
+  check("reading a collection that doesn't exist yet gives an empty list, not an error", proof.quietRead);
   check("a live view fills in when a collection it reads first appears, from another app's tab", proof.liveBirthday);
   check("a live view draws again on refresh() after the plugin's own state changes", proof.nextMonth);
   check("a search box with data-live redraws the plugin's own list", proof.search);

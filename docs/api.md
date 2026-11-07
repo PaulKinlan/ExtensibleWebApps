@@ -86,7 +86,7 @@ Collections: typed records plugins share. A plugin declares its own in its manif
 | Method | Returns | Needs | What it does |
 | --- | --- | --- | --- |
 | `data.collections()` | [{ name, owner, title, schema }] | Nothing | Every collection, with its schema. |
-| `data.list(collection)` | [record], most recently changed first | `data:read:<collection>` | Every record in a collection. Each record has its fields plus id, createdAt and updatedAt. |
+| `data.list(collection)` | [record], most recently changed first | `data:read:<collection>` | Every record in a collection. Each record has its fields plus id, createdAt and updatedAt. A collection no plugin has made yet reads as empty. |
 | `data.get(collection, id)` | record or null | `data:read:<collection>` | One record. |
 | `data.put(collection, { id?, ...fields }, reason?)` | { ok, id, outcome? } or { ok: false, errors } | `data:write:<collection>`, and the person's review | Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection. |
 | `data.delete(collection, id, reason?)` | { ok, id } | `data:write:<collection>`, and the person's review | Deletes a record. Reviewed unless the plugin owns the collection. |
