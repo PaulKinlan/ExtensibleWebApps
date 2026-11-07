@@ -47,8 +47,8 @@ export default async function (ctx) {
     if (action === "add" && value.item?.trim()) await ctx.call("data", "put", "shopping", { item: value.item.trim() });
     if (action === "from-recipe") {
       const recipe = await ctx.call("data", "get", "recipes", String(value.recipe));
-      for (const line of (recipe?.ingredients ?? "").split("\n").map((l) => l.trim()).filter(Boolean)) {
-        await ctx.call("data", "put", "shopping", { item: line, from: recipe.title });
+      for (const { amount, unit, item } of recipe?.ingredients ?? []) {
+        await ctx.call("data", "put", "shopping", { item: [amount, unit, item].filter((x) => x !== undefined && x !== "").join(" "), from: recipe.title });
       }
     }
     if (action === "clear") {

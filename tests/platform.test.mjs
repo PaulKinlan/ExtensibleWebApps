@@ -333,6 +333,24 @@ export default async (ctx) => {
       await page.waitForFunction((sel) => document.querySelectorAll(`${sel} input[type=checkbox]`).length === 4, list, { timeout: 5000 }).catch(() => {});
       await page.check(`${list} input[type=checkbox] >> nth=0`);
       proof.ticked = await page.waitForSelector(`${list} s`, { timeout: 5000 }).then(() => true, () => false);
+      // ui-form edits a list of groups: add two ingredients, remove one, see an error beside the field it is about, then save.
+      await page.click(`${book} button >> text=All recipes`);
+      const form = `${book} ui-form`;
+      await page.fill(`${form} input[name=title]`, "Toast");
+      await page.click(`${form} button.add`);
+      await page.click(`${form} button.add`);
+      await page.fill(`${form} input[name="ingredients[0].amount"]`, "2");
+      await page.fill(`${form} input[name="ingredients[0].unit"]`, "slices");
+      await page.fill(`${form} input[name="ingredients[1].item"]`, "butter");
+      await page.click(`${form} button.remove >> nth=1`);
+      proof.rows = await page.locator(`${form} li`).count();
+      await page.click(`${form} button[type=submit]`);
+      proof.nestedError = await page.waitForSelector(`${form} li >> text=item is required`, { timeout: 5000 }).then(() => true, () => false);
+      await page.fill(`${form} input[name="ingredients[0].item"]`, "bread");
+      await page.click(`${form} button[type=submit]`);
+      await page.click(`${book} ui-table >> text=Toast`, { timeout: 5000 });
+      await page.waitForSelector(`${book} input[data-action=serves]`, { timeout: 5000 });
+      proof.toast = await page.locator(`${book} ul li`).allTextContents();
     }
     await page.close({ runBeforeUnload: true });
   }
@@ -356,6 +374,7 @@ export default async (ctx) => {
   check("a vCard import writes a contact after review", proof.vcard);
   check("a recipe scales its ingredients to the servings typed in", JSON.stringify(proof.scaled) === JSON.stringify(["300 g flour", "3 eggs", "450 ml milk", "1.5 pinch salt"]), JSON.stringify(proof.scaled));
   check("a shopping list fills from a recipe and ticks an item off", proof.ticked);
+  check("a form edits a list of ingredients: add, remove, an error beside the field, save", proof.rows === 1 && proof.nestedError && JSON.stringify(proof.toast) === JSON.stringify(["2 slices bread"]), JSON.stringify({ rows: proof.rows, error: proof.nestedError, toast: proof.toast }));
   // The calendar reads the contacts app's collection, though no contacts plugin is running now.
   const calendar = await openTab(`${URL}demos/calendar/app.html`);
   const birthday = await calendar.waitForSelector('[data-key="agenda:agenda"] >> text=Priya Shah', { timeout: 8000 }).then(() => true, () => false);

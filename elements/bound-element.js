@@ -144,6 +144,7 @@ export function format(value, schema) {
   if (typeof value === "number") return Number.isInteger(value) && Math.abs(value) < 10_000 ? String(value) : value.toLocaleString();
   if (schema?.format === "date" && typeof value === "string") return new Date(`${value}T00:00:00`).toLocaleDateString();
   if (schema?.format === "date-time" && typeof value === "string") return new Date(value).toLocaleString();
-  if (typeof value === "object") return JSON.stringify(value);
+  // A group reads as its values in order: { amount: 200, unit: "g", item: "flour" } is "200 g flour".
+  if (typeof value === "object") return Object.entries(value).map(([k, v]) => format(v, schema?.properties?.[k])).filter(Boolean).join(" ");
   return String(value);
 }
