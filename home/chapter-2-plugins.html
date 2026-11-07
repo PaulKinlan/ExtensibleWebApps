@@ -1,0 +1,26 @@
+<!--
+  Chapter 2's words. chapter-2-plugins.js sends { on }: whether Note stats is
+  running. The checkbox sends "toggle" with true or false.
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter pre { overflow-x: auto; padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); font-size: var(--text-sm); }
+  .chapter .try { padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); }
+  .chapter .try p { margin-top: 0; }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">2</ui-badge> Everything is a plugin</h2>
+    <p>A plugin is one JavaScript file. It starts with a manifest that says what it is and what it needs, and the kernel reads that before it runs any of the code. The counts above your notes come from this one:</p>
+    <pre><code>export const manifest = {
+  id: "note-stats",
+  name: "Note stats",
+  permissions: ["ui", "data:read:learning"],
+};</code></pre>
+    <p>Note stats can draw (<code>ui</code>) and read your notes (<code>data:read:learning</code>), and that's all. It can't touch the page, reach the network, or change your notes. It runs in a worker, so it couldn't even if it tried: anything it wasn't given is refused and written in the trace.</p>
+    <div class="try">
+      <p><strong>Try it.</strong> Switch Note stats off. The counts go, and your notes carry on, because the two plugins never talk to each other.</p>
+      <label><input type="checkbox" data-action="toggle" checked="{{on}}"> Note stats is on</label>
+    </div>
+  </ui-card>
+</template>

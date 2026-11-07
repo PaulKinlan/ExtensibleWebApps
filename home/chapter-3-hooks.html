@@ -1,0 +1,31 @@
+<!--
+  Chapter 3's words. chapter-3-hooks.js sends { on }: whether Quiet please is
+  running. The checkbox sends "toggle" with true or false.
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter pre { overflow-x: auto; padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); font-size: var(--text-sm); }
+  .chapter .try { padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); }
+  .chapter .try p { margin-top: 0; }
+  .chapter dt { font-weight: 600; }
+  .chapter dd { margin: 0 0 var(--space-2); }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">3</ui-badge> Hooks</h2>
+    <p>Plugins never call each other. They meet at hooks: named moments such as "a learning note is about to be saved". Any plugin with permission can listen. How the listeners are run is part of each hook's contract:</p>
+    <dl>
+      <dt>emit</dt><dd>Every listener hears it, and nobody can change it. <code>data:changed:learning</code> works this way.</dd>
+      <dt>serial</dt><dd>Listeners run one at a time, and any of them can stop the action. <code>data:beforeWrite:learning</code> works this way.</dd>
+      <dt>waterfall and bail</dt><dd>Each listener passes a changed value on, or the first to answer wins.</dd>
+    </dl>
+    <p>Quiet please listens on <code>data:beforeWrite:learning</code>:</p>
+    <pre><code>ctx.on("data:beforeWrite:learning", (change) =&gt; {
+  if (isAllCapitals(change.after.text)) return { block: "…" };
+});</code></pre>
+    <div class="try">
+      <p><strong>Try it.</strong> Write a note in capitals. Quiet please stops it, and the notes tell you why. Switch it off and try again.</p>
+      <label><input type="checkbox" data-action="toggle" checked="{{on}}"> Quiet please is on</label>
+    </div>
+  </ui-card>
+</template>

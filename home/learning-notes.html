@@ -1,0 +1,38 @@
+<!--
+  The learning notes. learning-notes.js sends { notes, problem }: each note
+  is { id, text, when }, and problem is why the last note wasn't saved.
+
+  The form's data-action sends "add" with its fields; each note's delete
+  button sends "delete:<id>".
+-->
+<style>
+  .notes { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .note { display: flex; gap: var(--space-2); align-items: start; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+  .note p { flex: 1; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .note small { color: var(--fg-2); }
+  .add { display: grid; gap: var(--space-2); }
+  .add textarea { width: 100%; min-height: 4em; font: inherit; }
+  .problem { margin: 0; color: var(--danger); }
+</style>
+<template id="notes">
+  <ui-card>
+    <h2>Your learning notes</h2>
+    <form class="add" data-action="add">
+      <label for="learning-text">What did you notice?</label>
+      <textarea id="learning-text" name="text" rows="3" maxlength="2000" placeholder="Turning off the chapters left the slots empty…"></textarea>
+      <template if="problem"><p class="problem" role="alert">Not saved: {{problem}}</p></template>
+      <ui-stack direction="row" justify="end"><button type="submit" class="primary">Add note</button></ui-stack>
+    </form>
+    <template if="notes.length">
+      <ul class="notes">
+        <template for="n of notes">
+          <li class="note" key="{{n.id}}">
+            <p>{{n.text}}<br><small>{{n.when}}</small></p>
+            <button type="button" data-action="delete:{{n.id}}" aria-label="Delete this note">Delete</button>
+          </li>
+        </template>
+      </ul>
+    </template>
+    <template if="!notes.length"><ui-empty heading="No notes yet"><p>Write one as you go. They stay in this browser.</p></ui-empty></template>
+  </ui-card>
+</template>

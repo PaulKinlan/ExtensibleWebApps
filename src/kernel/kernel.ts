@@ -15,10 +15,12 @@ import { checkPath, PathError } from "./paths";
 import { allowed, reviews as makeReviews } from "./review";
 import { notesApp } from "./notes";
 import { grants } from "./gate";
+import { readManifest } from "./manifest";
 import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { Store } from "./store";
+import { switches } from "./switches";
 import { record, recent, setSink, startedAt, tap } from "./trace";
 
 import wordCount from "../../plugins/word-count.js?raw";
@@ -247,6 +249,7 @@ remote.readable = (instance, name) => {
 };
 remote.collectionOwner = (name) => records.registry.get(name)?.owner;
 services.data = records.service;
+services.plugins = switches(root, remote, apps);
 
 /** The kernel's API reference, built from the registries above as they are now. */
 const describe = () => reference(services, remote);
@@ -314,6 +317,8 @@ hosts.onMessage = async (host, message) => {
     case "open":
       // An app's plugins may read collections whose owners aren't running: know those first.
       // The tab may have closed while waiting; then there's nothing to open.
+      // Opened with ?reset: the app's plugins the person turned off come back on first.
+      if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ source }) => { try { return [readManifest(source).id]; } catch { return []; } }));
       return records.ready.then(() => (hosts.list.includes(host) ? apps.open(host, message.plugins) : undefined));
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });

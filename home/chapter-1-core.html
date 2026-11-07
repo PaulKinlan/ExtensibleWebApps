@@ -1,0 +1,20 @@
+<!--
+  Chapter 1's words. Nothing to fill in: chapter-1-core.js draws it as it is.
+  The button sends "all-off".
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter .try { padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); }
+  .chapter .try p { margin-top: 0; }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">1</ui-badge> A tiny core</h2>
+    <p>Underneath this page is a kernel of about 3,000 lines. It starts plugins, each in its own worker. It checks every message a plugin sends against the permissions that plugin asked for. It passes hooks between plugins, keeps their data, and writes down everything that happens in a trace.</p>
+    <p>The kernel draws nothing itself. The page is plain HTML with empty <code>&lt;slot&gt;</code> elements, and plugins draw into them. That includes this chapter.</p>
+    <div class="try">
+      <p><strong>Try it.</strong> Turn every plugin on this page off, this chapter too. You'll see the page as the kernel leaves it: the header, a line of text and empty slots. Each empty slot has a link to bring everything back.</p>
+      <button type="button" data-action="all-off">Turn every plugin off</button>
+    </div>
+  </ui-card>
+</template>

@@ -100,10 +100,20 @@ Collections: typed records plugins share. A plugin declares its own in its manif
 | `data.put(collection, { id?, ...fields }, reason?)` | { ok, id, outcome? } or { ok: false, errors } | `data:write:<collection>`, and the person's review | Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection. |
 | `data.delete(collection, id, reason?)` | { ok, id } | `data:write:<collection>`, and the person's review | Deletes a record. Reviewed unless the plugin owns the collection. |
 
+### plugins
+
+The plugins in the caller's app, and a switch for each. The caller must be tab-scoped; hear changes with the `plugins:changed` hook.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `plugins.app()` | [{ id, name, description, enabled }] | `plugins:read` | Every plugin the caller's app links, in the order its app.html lists them. Empty until the tab has opened its app. |
+| `plugins.setEnabled(id, enabled)` | true if it changed | `plugins:manage` | Turns one of the app's plugins on or off. Saved, and applies in every tab, as the plugins panel's switch does. |
+
 ## Hooks
 
 | Hook | Mode | Listening needs | Listeners get | What it means |
 | --- | --- | --- | --- | --- |
+| `plugins:changed` | emit | `plugins:read` | `{ change, id }` | A plugin was installed, removed, or turned on or off. `change` is install, uninstall, enable or disable. |
 | `data:changed` | emit | `hook:listen:data:changed` | `{ collection, id, before?, after }` | A record was written. |
 | `data:beforeWrite` | serial, 1000 ms per listener, fails open | `hook:intercept:data:beforeWrite` | `{ collection, id, before?, after }` | Before a record is written. Return { block: reason } to stop the write. |
 | `note:open` | emit | `hook:listen:note:open` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The person opened a note. |
@@ -140,6 +150,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `debug:read` | Call debug.recent, debug.app. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
+| `plugins:read` | Call plugins.app. |
+| `plugins:manage` | Call plugins.setEnabled. |
 
 Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
 

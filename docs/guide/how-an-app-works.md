@@ -69,6 +69,6 @@ Three things follow from this:
 
 - **Data** is kept by the kernel in the browser's origin-private file system: collections, each plugin's own storage, its settings and the change log. Every app on the same origin shares it, which is how one app can read another's collection.
 - **Plugins** are fetched from the app's folder each time. A plugin installed at run time is kept with the data instead.
-- **The trace** (on the workbench at `/`) shows every message, check and refusal, with timings. When something doesn't draw, look there first.
+- **The trace** (on the workbench at `/workbench/`) shows every message, check and refusal, with timings. When something doesn't draw, look there first.
 
 Next: [Writing a plugin](writing-a-plugin.md).
