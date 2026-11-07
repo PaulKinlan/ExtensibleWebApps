@@ -107,7 +107,7 @@ export const COMPONENTS: Record<string, { attributes: string; about: string }> =
   "ui-stat": { attributes: "label, value, delta, tone", about: "A number with its label, and an optional change." },
   "ui-empty": { attributes: "heading", about: "What to show when there is nothing yet; put a sentence and a button inside." },
   "ui-table": { attributes: "collection, columns=\"title,author\", sort=\"title|-title\", empty, row-action, deletable", about: "A sortable table of a collection's records, kept up to date. The first column becomes a button that sends `row-action` with the record's id; `deletable` adds a Delete button. Acts with the rights of the plugin that drew it." },
-  "ui-form": { attributes: "collection, fields=\"title,author\", record, submit, action", about: "A form built from the collection's schema: labels, input types, required fields and errors from the kernel's checks. Saves a new record, or edits `record`; sends `action` with the saved record's id." },
+  "ui-form": { attributes: "collection, fields=\"title,author\", record, submit, action", about: "A form built from the collection's schema: labels, input types, required fields and errors from the kernel's checks, beside the control they are about. A list field gets a row per item with Add and Remove buttons, and a group gets a fieldset, two levels deep. Saves a new record, or edits `record`; sends `action` with the saved record's id." },
   "ui-toolbar": { attributes: "", about: "A row of controls that wraps, with the last group pushed to the end by a ui-spacer." },
   "ui-spacer": { attributes: "", about: "Takes up the free space in a row." },
 };
