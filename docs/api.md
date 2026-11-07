@@ -8,7 +8,8 @@ Printed by the kernel from its own registries (`npm run reference` writes this f
 | --- | --- | --- |
 | `ctx.on(hook, handler) → off()` | `hook:listen:<hook>` (emit, parallel) or `hook:intercept:<hook>` (serial, bail, waterfall) | Listens to a hook. In a `function` handler, `this` is a copy of ctx pinned to the action's trace. What it returns matters only for hooks that can change or stop an action. |
 | `ctx.call(service, method, ...args) → Promise` | What the method needs (see Services) | Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses. |
-| `ctx.ui.render(slot, key, view, order?)` | `ui` | Draws a view in a slot, under a key of the plugin's own; null removes it. Plugins never touch the DOM. |
+| `ctx.ui.render(slot, key, view, order?)` | `ui` | Draws a view in a slot, under a key of the plugin's own: an HTML string (see HTML views), a JSON view, or null to remove it. Drawing again updates it in place. Plugins never touch the DOM. |
+| `ctx.ui.html`…${value}…` → view` | Nothing | Builds an HTML view from a template, escaping every value (arrays are joined, nested html results go in as they are). Use it whenever text comes from data. |
 | `ctx.ui.onEvent((action, value) => …) → off()` | Nothing | Hears the person use the plugin's views: a button's or field's `action`, with a field's new value. |
 | `ctx.ui.onCanvas(id, (canvas) => …)` | Nothing | Receives the OffscreenCanvas for a canvas view the plugin rendered. Use scope "tab" for plugins that draw. |
 | `ctx.settings.get() → Promise<values>` | Nothing | The plugin's own settings: saved values over the manifest's defaults. |
@@ -76,6 +77,18 @@ The plugin's own settings, from the form the plugins panel builds out of its man
 | --- | --- | --- | --- |
 | `settings.get()` | { [key]: value } | Nothing | The plugin's settings: saved values over the manifest's defaults. |
 
+### data
+
+Collections: typed records plugins share. A plugin declares its own in its manifest; reading or writing another's needs a capability, and writes to another's are reviewed.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `data.collections()` | [{ name, owner, title, schema }] | Nothing | Every collection, with its schema. |
+| `data.list(collection)` | [record], most recently changed first | `data:read:<collection>` | Every record in a collection. Each record has its fields plus id, createdAt and updatedAt. |
+| `data.get(collection, id)` | record or null | `data:read:<collection>` | One record. |
+| `data.put(collection, { id?, ...fields }, reason?)` | { ok, id, outcome? } or { ok: false, errors } | `data:write:<collection>`, and the person's review | Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection. |
+| `data.delete(collection, id, reason?)` | { ok, id } | `data:write:<collection>`, and the person's review | Deletes a record. Reviewed unless the plugin owns the collection. |
+
 ## Hooks
 
 | Hook | Mode | Listening needs | Listeners get | What it means |
@@ -112,6 +125,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:read:notes` | Call store.list. |
 | `data:write:notes` | Call store.put. |
 | `files:<folder>` | Call files.read, files.write. |
+| `data:read:<collection>` | Call data.list, data.get. |
+| `data:write:<collection>` | Call data.put, data.delete. |
 
 Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
 
@@ -134,16 +149,135 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `permissions` | Required, may be empty. Capabilities, or editor-style permissions that stand for them (see Capabilities). |
 | `order` | Optional. Where the plugin's views go among others in the same slot; lower comes first. |
 | `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
+| `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 
-Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`.
+Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`.
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`.
+
+## Collections
+
+A plugin declares the collections it owns in its manifest, each with a schema, and reads and writes them through the `data` service without asking. Another plugin needs `data:read:<collection>` or `data:write:<collection>`, and its writes are reviewed. Every write runs `data:beforeWrite:<collection>` (a listener can block it) and then `data:changed:<collection>`; listening to either also needs `data:read:<collection>`. The kernel keeps `id`, `createdAt`, `updatedAt` on every record. Records are kept with the app's data in `collections/<name>.json`.
+
+Schemas are a JSON Schema subset:
+
+| Keyword | Notes |
+| --- | --- |
+| `type` | string, number, integer, boolean, array or object |
+| `title` | The label forms and tables show |
+| `description` |  |
+| `default` | What a new record's form starts with |
+| `enum` | A fixed set of choices; forms show a menu |
+| `properties` | The fields of an object |
+| `required` | Fields that must be filled in |
+| `items` | The schema of each item in an array |
+| `minimum` | Numbers |
+| `maximum` |  |
+| `minLength` | Strings |
+| `maxLength` | Over 200 makes a form show a text area |
+| `format` | date, date-time, email or uri; forms use the matching input |
+| `x-multiline` | true makes a form show a text area |
+
+Views bind to a collection with `<ui-table collection="…">` and `<ui-form collection="…">` (see Components), acting with the rights of the plugin that drew them.
+
+## HTML views
+
+Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it inertly and keeps only what is listed here: no script, no style or class attributes, no frames, no event attributes. Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app. Images load from https: only for plugins with the `network` capability; others can use data: images.
+
+### Components
+
+| Element | Attributes | What it does |
+| --- | --- | --- |
+| `<ui-stack>` | direction="row", gap="1"…"6", align="start\|center\|end\|stretch", justify="start\|center\|end\|between", wrap | Lays its children out in a column (or a row) with even spacing. |
+| `<ui-grid>` | min="12rem", gap="1"…"6" | As many columns as fit, each at least `min` wide. |
+| `<ui-card>` | tone="accent\|ok\|warn\|danger" | A bordered surface for one thing. |
+| `<ui-badge>` | tone="neutral\|accent\|ok\|warn\|danger" | A short status word. |
+| `<ui-stat>` | label, value, delta, tone | A number with its label, and an optional change. |
+| `<ui-empty>` | heading | What to show when there is nothing yet; put a sentence and a button inside. |
+| `<ui-table>` | collection, columns="title,author", sort="title\|-title", empty, row-action, deletable | A sortable table of a collection's records, kept up to date. The first column becomes a button that sends `row-action` with the record's id; `deletable` adds a Delete button. Acts with the rights of the plugin that drew it. |
+| `<ui-form>` | collection, fields="title,author", record, submit, action | A form built from the collection's schema: labels, input types, required fields and errors from the kernel's checks. Saves a new record, or edits `record`; sends `action` with the saved record's id. |
+| `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
+| `<ui-spacer>` |  | Takes up the free space in a row. |
+
+### Actions
+
+- A click on an element with `data-action` sends that action, with `data-value` as the value if it has one.
+- An `input`, `select` or `textarea` with `data-action` sends it when the change is committed, with the new value (a boolean for a checkbox, a number for a number). Add `data-live` to send it as the person types, after a 300 ms pause.
+- A `form` with `data-action` sends it on submit, with `{ name: value }` for every named field.
+- Give repeated elements a `key` attribute so an update moves them instead of redrawing them; focus, typing and scroll survive updates either way.
+
+### Plain elements
+
+Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, `key`, `aria-*` and `data-*`. Input types: `text`, `search`, `email`, `url`, `tel`, `number`, `range`, `date`, `time`, `datetime-local`, `month`, `week`, `color`, `checkbox`, `radio`, `hidden`.
+
+| Element | Its own attributes | Notes |
+| --- | --- | --- |
+| `<div>` |  | A block |
+| `<span>` |  | An inline run |
+| `<p>` |  | A paragraph |
+| `<h1>` |  | Headings; the host styles them to the app's scale |
+| `<h2>` |  |  |
+| `<h3>` |  |  |
+| `<h4>` |  |  |
+| `<strong>` |  | Text styles |
+| `<em>` |  |  |
+| `<small>` |  |  |
+| `<code>` |  |  |
+| `<pre>` |  |  |
+| `<kbd>` |  |  |
+| `<mark>` |  |  |
+| `<s>` |  |  |
+| `<sub>` |  |  |
+| `<sup>` |  |  |
+| `<br>` |  |  |
+| `<hr>` |  |  |
+| `<blockquote>` |  |  |
+| `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto: or # |
+| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: or a data: image |
+| `<figure>` |  |  |
+| `<figcaption>` |  |  |
+| `<ul>` |  | Lists |
+| `<ol>` | `start`, `reversed` |  |
+| `<li>` |  |  |
+| `<dl>` |  |  |
+| `<dt>` |  |  |
+| `<dd>` |  |  |
+| `<table>` |  | Tables; styled to the app's tokens |
+| `<caption>` |  |  |
+| `<thead>` |  |  |
+| `<tbody>` |  |  |
+| `<tfoot>` |  |  |
+| `<tr>` |  |  |
+| `<th>` | `colspan`, `rowspan`, `scope` |  |
+| `<td>` | `colspan`, `rowspan` |  |
+| `<section>` |  | Grouping |
+| `<header>` |  |  |
+| `<footer>` |  |  |
+| `<article>` |  |  |
+| `<aside>` |  |  |
+| `<nav>` |  |  |
+| `<details>` | `open` | A disclosure, with summary |
+| `<summary>` |  |  |
+| `<form>` | `novalidate` | A form; with data-action, submitting it sends the action with every named field's value |
+| `<label>` | `for` | Form controls; with data-action, a change sends the action with the new value |
+| `<input>` | `type`, `name`, `value`, `placeholder`, `checked`, `disabled`, `readonly`, `required`, `min`, `max`, `step`, `minlength`, `maxlength`, `pattern`, `autocomplete`, `id` |  |
+| `<select>` | `name`, `disabled`, `required`, `multiple`, `id` |  |
+| `<option>` | `value`, `selected`, `disabled` |  |
+| `<textarea>` | `name`, `placeholder`, `disabled`, `readonly`, `required`, `rows`, `minlength`, `maxlength`, `id` |  |
+| `<button>` | `type`, `disabled`, `name`, `value` | A button; with data-action, a click sends the action (and data-value, if set) |
+| `<fieldset>` | `disabled` |  |
+| `<legend>` |  |  |
+| `<progress>` | `value`, `max` |  |
+| `<meter>` | `value`, `min`, `max`, `low`, `high`, `optimum` |  |
+| `<time>` | `datetime` |  |
+| `<abbr>` |  |  |
 
 ## Views and slots
 
 | View | Shape |
 | --- | --- |
+| `html` | { html }: plain HTML (see HTML views). The usual way to build UI; a string passed to ctx.ui.render becomes one. |
 | `stack` | { children, direction? }: views in a column, or a row. |
 | `heading` | { text } |
 | `text` | { text, title?, tone? }: tone is muted, error or ok. |

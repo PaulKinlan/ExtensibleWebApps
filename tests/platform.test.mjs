@@ -101,7 +101,7 @@ export default (ctx) => {
   const onDisk = readFileSync(new globalThis.URL("../docs/api.md", import.meta.url), "utf8");
   check("docs/api.md is what the kernel prints about itself", reference.markdown === onDisk, reference.markdown === onDisk ? "" : "run npm run reference");
   const hookNames = await a.evaluate(() => window.__host.command("reference").then((r) => r.data.hooks.map((h) => h.name)));
-  check("the reference lists every hook and service the kernel has", ["data:changed", "data:beforeWrite", "note:open"].every((h) => hookNames.includes(h)) && ["audio", "store", "files", "storage", "kernel", "settings"].every((s) => reference.data.services.some((x) => x.name === s)));
+  check("the reference lists every hook and service the kernel has", ["data:changed", "data:beforeWrite", "note:open"].every((h) => hookNames.includes(h)) && ["audio", "store", "files", "storage", "kernel", "settings", "data"].every((s) => reference.data.services.some((x) => x.name === s)));
   const wordCount = reference.data.plugins.find((p) => p.id === "word-count");
   check("the live reference says which hooks each running plugin listens to", wordCount?.hooks.includes("note:open") && /## Installed now/.test(reference.live), wordCount?.hooks.join(" "));
   await a.evaluate(() => window.__host.command("install", `export const manifest = { id: 'reader', name: 'Reader', permissions: ['ui'] };
@@ -117,12 +117,138 @@ export default async (ctx) => {
   ctx.ui.render('devtools', 'reader', { type: 'text', text: 'reader sees ' + ref.services.length + ' services' });
   ctx.log('reader: ' + JSON.stringify(refused));
 };`));
-  await a.waitForSelector('#devtools [data-slot="devtools"] >> text=reader sees 6 services', { timeout: 5000 });
+  await a.waitForSelector('#devtools [data-slot="devtools"] >> text=reader sees 7 services', { timeout: 5000 });
   check("a plugin can read the reference, and draw in the devtools slot", true);
   await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")), null, { timeout: 5000 });
   const refusedCalls = await a.evaluate(() => JSON.parse(window.__host.traces.find((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")).detail.slice(8)));
   check("a method or service the reference doesn't list can't be called", refusedCalls.length === 5 && refusedCalls.slice(0, 3).every((m) => /is not a method/.test(m)) && refusedCalls.slice(3).every((m) => /No service named/.test(m)), refusedCalls.join("; "));
   await a.evaluate(() => window.__host.command("uninstall", "reader"));
+  await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
+
+  // HTML views: plain HTML, sanitised, updated in place.
+  await a.evaluate(() => window.__host.command("install", `export const manifest = { id: 'htmlcheck', name: 'HTML check', permissions: ['ui'] };
+export default (ctx) => {
+  let n = 0;
+  const draw = () => ctx.ui.render('devtools', 'form', ctx.ui.html\`
+    <form data-action="save"><label>Name <input name="name" value="Ada"></label><label><input type="checkbox" name="ok" checked> OK</label><input type="number" name="count" value="3"><input name="__proto__" value="p"><select multiple name="pick"><option value="a" selected>a</option><option value="b" selected>b</option><option value="c">c</option></select><button type="submit">Save</button></form>
+    <ui-badge id="lbl">Label</ui-badge><input name="a11y" aria-labelledby="lbl"><a href="#lbl" data-test="frag">jump</a><div hidden data-test="hid"><ui-stack>hidden</ui-stack></div>
+    <p data-test="evil">safe<script>window.__pwned = 1</script><img src="https://example.com/x.png" onerror="window.__pwned = 2"><a href="javascript:window.__pwned = 3">bad link</a><iframe src="https://example.com"></iframe><blink>kept text</blink></p>
+    <p data-test="escaped">\${'<b>not bold</b>'}</p>
+    <input data-action="typed" data-live name="live" value="">
+    <ui-stat label="Ticks" value="\${n}"></ui-stat>\`);
+  draw();
+  setInterval(() => { n++; draw(); }, 100);
+  ctx.ui.onEvent((action, value) => ctx.log('html-event ' + action + ' ' + JSON.stringify(value)));
+};`));
+  const view = '#devtools [data-key="htmlcheck:form"]';
+  await a.waitForSelector(`${view} >> text=kept text`, { timeout: 5000 });
+  const cleaned = await a.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    const all = [...el.querySelectorAll("*")];
+    return {
+      script: !!el.querySelector("script, iframe, blink"),
+      handlers: all.some((x) => [...x.attributes].some((at) => at.name.startsWith("on"))),
+      remoteImage: [...el.querySelectorAll("img")].some((img) => img.hasAttribute("src")),
+      jsLink: [...el.querySelectorAll("a")].some((x) => /^javascript:/i.test(x.getAttribute("href") ?? "")),
+      pwned: window.__pwned,
+      escaped: el.querySelector('[data-test="escaped"]').textContent,
+      bold: !!el.querySelector('[data-test="escaped"] b'),
+    };
+  }, view);
+  check("HTML views keep no script, frames, event attributes, javascript: links or remote images", !cleaned.script && !cleaned.handlers && !cleaned.remoteImage && !cleaned.jsLink && cleaned.pwned === undefined, JSON.stringify(cleaned));
+  check("ctx.ui.html escapes values", cleaned.escaped === "<b>not bold</b>" && !cleaned.bold, cleaned.escaped);
+  const htmlEvent = (prefix) => a.waitForFunction((p) => window.__host.traces.find((e) => e.plugin === "htmlcheck" && e.detail?.startsWith(p)), prefix, { timeout: 5000 }).then((h) => h.jsonValue()).then((e) => e.detail);
+  await a.fill(`${view} input[name="name"]`, "Grace");
+  await a.focus(`${view} input[name="count"]`);
+  await a.waitForTimeout(400);
+  await a.click(`${view} >> text=Save`);
+  const saved = await htmlEvent("html-event save");
+  check("a form with data-action sends every named field, typed, with edits kept across redraws after focus moves", saved === 'html-event save {"name":"Grace","ok":true,"count":3,"__proto__":"p","pick":["a","b"]}', saved);
+  const refs = await a.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    const badge = el.querySelector("ui-badge[id]");
+    return { id: badge.id, labelledby: el.querySelector('input[name="a11y"]').getAttribute("aria-labelledby"), href: el.querySelector('[data-test="frag"]').getAttribute("href"), hidden: getComputedStyle(el.querySelector('[data-test="hid"]')).display };
+  }, view);
+  check("ARIA id references and fragment links are scoped like ids, and hidden hides", refs.labelledby === refs.id && refs.href === "#" + refs.id && refs.id !== "lbl" && refs.hidden === "none", JSON.stringify(refs));
+  await a.focus(`${view} input[name="live"]`);
+  await a.keyboard.type("hello", { delay: 60 });
+  await a.waitForTimeout(500);
+  const kept = await a.evaluate((sel) => ({ focused: document.activeElement?.getAttribute("name"), value: document.querySelector(`${sel} input[name="live"]`).value, ticks: document.querySelector(`${sel} ui-stat`).getAttribute("value") }), view);
+  const typed = await htmlEvent('html-event typed "hello"');
+  check("typing and focus survive a view redrawn every 100 ms", kept.focused === "live" && kept.value === "hello" && Number(kept.ticks) > 5 && !!typed, JSON.stringify(kept));
+  await a.evaluate(() => window.__host.command("uninstall", "htmlcheck"));
+  await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
+
+  // Collections: a plugin owns a typed collection; views bind to it; others need capabilities.
+  const plugin = (src) => a.evaluate((source) => window.__host.command("install", source), src);
+  const pluginLog = (id, prefix) => a.waitForFunction(([i, p]) => window.__host.traces.findLast((e) => e.plugin === i && e.detail?.startsWith(p)), [id, prefix], { timeout: 5000 }).then((h) => h.jsonValue()).then((e) => e.detail);
+  await plugin(`export const manifest = { id: 'books', name: 'Books', permissions: ['ui'], collections: { books: { title: 'Books', schema: { type: 'object', required: ['title'], properties: {
+  title: { type: 'string', title: 'Title' }, author: { type: 'string' }, year: { type: 'integer', minimum: 1450 }, shelf: { type: 'string', enum: ['to read', 'reading', 'done'] } } } } } };
+export default (ctx) => {
+  ctx.ui.render('app.main', 'books', '<h2>Books</h2><ui-form collection="books" fields="title,author,year" action="added"></ui-form><ui-table collection="books" columns="title,author,year" sort="title" row-action="open" deletable></ui-table>');
+  ctx.ui.onEvent((action, value) => ctx.log('books-event ' + action + ' ' + JSON.stringify(value)));
+};`);
+  const books = 'main [data-key="books:books"]';
+  const reviewCard = 'main [data-key^="review:"]';
+  await a.waitForSelector(`${books} ui-form input[name="title"]`, { timeout: 5000 });
+  await a.click(`${books} ui-form button[type="submit"]`);
+  await a.waitForSelector(`${books} ui-form >> text=Title is required`, { timeout: 5000 });
+  await a.fill(`${books} ui-form input[name="title"]`, "Dune");
+  await a.fill(`${books} ui-form input[name="year"]`, "1200");
+  await a.click(`${books} ui-form button[type="submit"]`);
+  await a.waitForSelector(`${books} ui-form >> text=year must be at least 1450`, { timeout: 5000 });
+  check("a bound form checks records against the collection's schema", true);
+  await a.fill(`${books} ui-form input[name="year"]`, "1965");
+  await a.fill(`${books} ui-form input[name="author"]`, "Frank Herbert");
+  await a.click(`${books} ui-form button[type="submit"]`);
+  await a.waitForSelector(`${books} ui-table >> text=Frank Herbert`, { timeout: 5000 });
+  const added = await pluginLog("books", "books-event added");
+  check("saving a bound form adds the record and the bound table updates", /^books-event added "\w+"$/.test(added), added);
+  const cleared = await a.evaluate((sel) => document.querySelector(sel).querySelector("ui-form").shadowRoot.querySelector('input[name="title"]').value, books);
+  check("after adding a record the bound form starts a fresh one", cleared === "", cleared);
+  // A plugin that declares a collection someone else owns doesn't own it, and can't intercept its writes.
+  await plugin(`export const manifest = { id: 'squatter', name: 'Squatter', permissions: ['data:read:books'], collections: { books: { schema: { type: 'object' } } } };
+export default (ctx) => {
+  ctx.on('data:beforeWrite:books', () => ({ block: 'mine now' }));
+  ctx.call('data', 'put', 'books', JSON.parse('{"__proto__": {"title": "Smuggled"}}')).then((r) => ctx.log('squatter ' + JSON.stringify(r)), (e) => ctx.log('squatter refused: ' + e.message));
+};`);
+  const squatted = await pluginLog("squatter", "squatter");
+  const squatDenied = await a.waitForFunction(() => window.__host.traces.some((e) => e.kind === "denied" && e.plugin === "squatter" && e.name === "hook:intercept:data:beforeWrite:books"), null, { timeout: 5000 }).then(() => true, () => false);
+  check("declaring another plugin's collection grants neither writes nor interception", squatted === "squatter refused: Missing capability data:write:books" && squatDenied, squatted);
+  await plugin(`export const manifest = { id: 'shelf', name: 'Shelf', permissions: ['data:read:books', 'hook:listen:data:changed:books'] };
+export default (ctx) => {
+  ctx.on('data:changed:books', async function () { const all = await this.call('data', 'list', 'books'); this.log('shelf sees ' + all.length); });
+  ctx.call('data', 'list', 'books').then((all) => ctx.log('shelf sees ' + all.length));
+};`);
+  check("a second plugin with data:read reads another plugin's collection", (await pluginLog("shelf", "shelf sees")) === "shelf sees 1");
+  await plugin(`export const manifest = { id: 'nosy', name: 'Nosy', permissions: ['hook:listen:data:changed:books'] };
+export default (ctx) => {
+  ctx.on('data:changed:books', () => ctx.log('nosy heard'));
+  ctx.call('data', 'list', 'books').then(() => ctx.log('nosy read it'), (e) => ctx.log('nosy refused: ' + e.message));
+};`);
+  const nosy = await pluginLog("nosy", "nosy");
+  const nosyDenied = await a.evaluate(() => window.__host.traces.some((e) => e.kind === "denied" && e.plugin === "nosy" && e.name === "data:read:books"));
+  check("without data:read a plugin can neither read a collection nor hear its changes", nosy === "nosy refused: Missing capability data:read:books" && nosyDenied, nosy);
+  await plugin(`export const manifest = { id: 'lender', name: 'Lender', permissions: ['data:write:books'] };
+export default async (ctx) => {
+  const smuggled = await ctx.call('data', 'put', 'books', JSON.parse('{"__proto__": {"title": "Smuggled"}}'));
+  ctx.log('lender-proto ' + JSON.stringify(smuggled));
+  const result = await ctx.call('data', 'put', 'books', { title: 'Lent book', author: 'A. Friend' }, 'Record a book you lent');
+  ctx.log('lender ' + JSON.stringify(result));
+};`);
+  await a.waitForSelector(`${reviewCard} >> text=Lender wants to change a new record in Books`, { timeout: 5000 });
+  await a.click(`${reviewCard} >> text=Accept`);
+  await a.waitForSelector(`${books} ui-table >> text=Lent book`, { timeout: 5000 });
+  check("another plugin's write to a collection is reviewed first", /"ok":true/.test(await pluginLog("lender", "lender")));
+  const proto = await pluginLog("lender", "lender-proto");
+  check("a field named __proto__ can't satisfy a required field", /"ok":false/.test(proto) && /Title is required/.test(proto), proto);
+  check("data:changed:<collection> reaches plugins that may read it", (await pluginLog("shelf", "shelf sees 2")) === "shelf sees 2" && !(await a.evaluate(() => window.__host.traces.some((e) => e.plugin === "nosy" && e.detail === "nosy heard"))));
+  await a.click(`${books} ui-table button.link >> text=Dune`);
+  check("a bound table's row sends its row-action with the record id", /^books-event open "\w+"$/.test(await pluginLog("books", "books-event open")));
+  await a.click(`${books} ui-table button[aria-label="Delete Dune"]`);
+  await a.waitForFunction((sel) => !document.querySelector(sel).querySelector("ui-table").shadowRoot.textContent.includes("Dune"), books, { timeout: 5000 });
+  check("a deletable table deletes a record", (await pluginLog("shelf", "shelf sees 1")) === "shelf sees 1");
+  for (const id of ["books", "shelf", "nosy", "lender", "squatter"]) await a.evaluate((i) => window.__host.command("uninstall", i), id);
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 
   // Worker content security policy.
@@ -146,14 +272,14 @@ export default async (ctx) => {
   check("edits reach plugin workers after the debounce", (await status(a)).includes("12 words"));
   check("editor's edit-times.js runs unchanged", (await status(a)).includes("Edited just now"), await status(a));
 
-  await a.click("text=Save");
+  await a.click("main button >> text=Save");
   await a.waitForSelector("main >> text=Saved");
   check("a save passes the intercepting plugin", true);
 
   // Interception: a plugin in a worker blocks a write through a serial hook.
   await a.fill("textarea", "THIS IS ALL CAPITALS AND SHOULD NOT SAVE");
   await a.waitForTimeout(400);
-  await a.click("text=Save");
+  await a.click("main button >> text=Save");
   await a.waitForSelector("text=Not saved: the note is all capitals");
   check("no-shouting.js blocks the write from its worker", true);
 
@@ -203,7 +329,7 @@ export default async (ctx) => {
   check("a trace id links the click, the kernel dispatch and the plugin's answer", saveTrace.includes("dispatch:data:beforeWrite") && saveTrace.includes("remote:data:beforeWrite"), saveTrace.join(", "));
   await a.fill("textarea", "Hello there\n\nOne two three four five six seven eight nine ten.");
   await a.waitForTimeout(400);
-  await a.click("text=Save");
+  await a.click("main button >> text=Save");
   await a.waitForSelector("main >> text=Saved");
   await a.waitForTimeout(300);
   const afterAwait = await a.evaluate(() => {
@@ -220,7 +346,7 @@ export default async (ctx) => {
   const saveText = async (text) => {
     await a.fill("textarea", text);
     await a.waitForTimeout(400);
-    await a.click("main >> text=Save");
+    await a.click("main button >> text=Save");
     await a.waitForSelector("main >> text=Saved");
   };
   await saveText(messy);

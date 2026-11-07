@@ -4,6 +4,11 @@
 // page (Web Audio here). It runs no plugin code.
 
 import type { Command, HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
+import { connectBindings, receive, setOwner } from "./bindings";
+import { defineBoundComponents } from "./bound";
+import { defineComponents } from "./components";
+import { morphChildren } from "./morph";
+import { sanitize } from "./sanitize";
 
 const tab = Math.random().toString(36).slice(2, 8);
 const params = new URLSearchParams(location.search);
@@ -25,14 +30,28 @@ let traceCounter = 0;
 const newTrace = () => `${tab}-${++traceCounter}`;
 
 // ---- Views ----
+//
+// Every view, JSON or HTML, becomes DOM whose controls carry `data-action`;
+// one set of listeners per drawn entry turns the person's actions into
+// events. An update builds the new DOM and morphs the old into it, so focus,
+// typing, scroll and open <details> survive.
+
+defineComponents();
+defineBoundComponents();
+connectBindings((message) => send(message), () => newTrace());
 
 type Entry = { owner: string; order: number; el: HTMLElement };
 const slots = new Map<Slot, Map<string, Entry>>();
 const canvases = new Map<string, HTMLCanvasElement>();
 
 function element(view: View, owner: string): HTMLElement {
-  const event = (action: string, value?: unknown) => send({ t: "event", owner, action, value, trace: newTrace() });
   switch (view.type) {
+    case "html": {
+      const el = document.createElement("div");
+      el.className = "html-view";
+      el.append(sanitize(view.html, owner, { remote: view.remote === true }));
+      return el;
+    }
     case "stack": {
       const el = document.createElement("div");
       el.className = `stack${view.direction === "row" ? " row" : ""}`;
@@ -55,7 +74,7 @@ function element(view: View, owner: string): HTMLElement {
       const el = document.createElement("button");
       el.textContent = view.label;
       if (view.primary) el.className = "primary";
-      el.onclick = () => event(view.action);
+      el.dataset.action = view.action;
       return el;
     }
     case "list": {
@@ -66,7 +85,7 @@ function element(view: View, owner: string): HTMLElement {
         const button = document.createElement("button");
         button.textContent = item.label;
         button.setAttribute("aria-current", String(Boolean(item.selected)));
-        button.onclick = () => event(item.action);
+        button.dataset.action = item.action;
         li.append(button);
         el.append(li);
       }
@@ -76,24 +95,11 @@ function element(view: View, owner: string): HTMLElement {
       const el = document.createElement("textarea");
       el.name = view.name;
       el.value = view.value;
+      el.textContent = view.value;
       if (view.placeholder) el.placeholder = view.placeholder;
-      let timer: ReturnType<typeof setTimeout> | undefined;
       // Plugins see edits after a short pause, as editor extensions do.
-      el.oninput = () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => event(view.action, el.value), 300);
-      };
-      return el;
-    }
-    case "diff": {
-      const el = document.createElement("pre");
-      el.className = "diff";
-      for (const line of view.lines) {
-        const row = document.createElement("span");
-        row.className = line.op;
-        row.textContent = `${line.op === "add" ? "+" : line.op === "del" ? "−" : " "} ${line.text}\n`;
-        el.append(row);
-      }
+      el.dataset.action = view.action;
+      el.dataset.live = "";
       return el;
     }
     case "field": {
@@ -105,22 +111,31 @@ function element(view: View, owner: string): HTMLElement {
       let input: HTMLInputElement | HTMLSelectElement;
       if (view.kind === "select") {
         input = document.createElement("select");
-        for (const option of view.options ?? []) input.append(new Option(option, option, false, option === view.value));
+        for (const option of view.options ?? []) input.append(new Option(option, option, option === view.value, option === view.value));
       } else {
         input = document.createElement("input");
         input.type = view.kind;
-        if (view.kind === "checkbox") input.checked = Boolean(view.value);
-        else input.value = String(view.value);
+        if (view.kind === "checkbox") {
+          if (view.value) input.setAttribute("checked", "");
+        } else input.setAttribute("value", String(view.value));
       }
       input.name = view.name;
       // Sent when the change is committed (blur, Enter, or a click), not on every key.
-      input.onchange = () => {
-        const el = input as HTMLInputElement;
-        event(view.action, view.kind === "checkbox" ? el.checked : view.kind === "number" ? el.valueAsNumber : el.value);
-      };
+      input.dataset.action = view.action;
       if (view.kind === "checkbox") label.append(input, caption);
       else label.append(caption, input);
       return label;
+    }
+    case "diff": {
+      const el = document.createElement("pre");
+      el.className = "diff";
+      for (const line of view.lines) {
+        const span = document.createElement("span");
+        span.className = line.op;
+        span.textContent = `${line.op === "add" ? "+ " : line.op === "del" ? "- " : "  "}${line.text}`;
+        el.append(span);
+      }
+      return el;
     }
     case "canvas": {
       // A canvas can only go to a worker this tab created: handing an
@@ -133,18 +148,88 @@ function element(view: View, owner: string): HTMLElement {
         return note;
       }
       const key = `${owner}/${view.id}`;
-      let el = canvases.get(key);
-      if (!el) {
-        el = document.createElement("canvas");
+      if (!canvases.has(key)) {
+        const el = document.createElement("canvas");
         el.width = view.width;
         el.height = view.height;
+        el.dataset.canvas = key;
         const offscreen = el.transferControlToOffscreen();
         send({ t: "canvas", owner, id: view.id, canvas: offscreen }, [offscreen]);
         canvases.set(key, el);
       }
-      return el;
+      // A stand-in; the live canvas takes its place once the view is drawn.
+      const placeholder = document.createElement("canvas");
+      placeholder.dataset.canvas = key;
+      return placeholder;
     }
   }
+}
+
+/** The value a control holds, as a plugin wants it. */
+function valueOf(control: Element): unknown {
+  if (control instanceof HTMLInputElement) {
+    if (control.type === "checkbox") return control.checked;
+    if (control.type === "number" || control.type === "range") return control.valueAsNumber;
+    return control.value;
+  }
+  if (control instanceof HTMLSelectElement && control.multiple) return [...control.selectedOptions].map((o) => o.value);
+  return (control as HTMLSelectElement | HTMLTextAreaElement).value;
+}
+
+function formValues(form: HTMLFormElement): Record<string, unknown> {
+  // No prototype, so a field named __proto__ or constructor is just a field.
+  const out: Record<string, unknown> = Object.create(null);
+  for (const control of form.elements) {
+    const name = (control as HTMLInputElement).name;
+    if (!name || control instanceof HTMLButtonElement || control instanceof HTMLFieldSetElement) continue;
+    if (control instanceof HTMLInputElement && control.type === "radio") {
+      if (control.checked) out[name] = control.value;
+      else if (!Object.hasOwn(out, name)) out[name] = null;
+      continue;
+    }
+    out[name] = valueOf(control);
+  }
+  return out;
+}
+
+const CONTROLS = "input, select, textarea";
+
+/** One set of listeners per drawn entry; they look up the owner when an event happens. */
+function listen(entry: Entry) {
+  const el = entry.el;
+  const event = (action: string, value?: unknown) => send({ t: "event", owner: entry.owner, action, value, trace: newTrace() });
+  const timers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
+  el.addEventListener("click", (e) => {
+    const target = (e.target as Element).closest("[data-action]");
+    if (!target || !el.contains(target) || target.matches(`${CONTROLS}, form`)) return;
+    event(target.getAttribute("data-action")!, target.getAttribute("data-value") ?? undefined);
+  });
+  el.addEventListener("change", (e) => {
+    const target = e.target as Element;
+    if (!target.matches(CONTROLS) || !target.hasAttribute("data-action") || target.hasAttribute("data-live")) return;
+    event(target.getAttribute("data-action")!, valueOf(target));
+  });
+  el.addEventListener("input", (e) => {
+    const target = e.target as Element;
+    if (!target.matches(CONTROLS) || !target.hasAttribute("data-action") || !target.hasAttribute("data-live")) return;
+    // Read the action and value now: a redraw may change the control before the timer fires.
+    const action = target.getAttribute("data-action")!;
+    const value = valueOf(target);
+    clearTimeout(timers.get(target));
+    timers.set(target, setTimeout(() => event(action, value), 300));
+  });
+  // Components (a bound table's row, a bound form's save) report through this event.
+  el.addEventListener("ui-action", (e) => {
+    const { action, value } = (e as CustomEvent<{ action: string; value: unknown }>).detail;
+    event(action, value);
+  });
+  el.addEventListener("submit", (e) => {
+    // Never let a plugin's form navigate the page.
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const action = form.getAttribute("data-action");
+    if (action) event(action, formValues(form));
+  });
 }
 
 function render(slot: Slot, key: string, owner: string, order: number, view: View | null) {
@@ -158,22 +243,26 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     entries.delete(key);
     return;
   }
-  const el = document.createElement("div");
-  el.dataset.key = key;
-  el.append(element(view, owner));
-  // Keep the text field the person is typing in, and keep focus on any other
-  // named control they were on, so keyboard use carries on after a redraw.
-  const active = document.activeElement as (HTMLElement & { name?: string }) | null;
-  const hadFocus = old && active && old.el.contains(active) && typeof active.name === "string" ? active : undefined;
-  const sameName = (root: HTMLElement) =>
-    hadFocus ? [...root.querySelectorAll<HTMLElement & { name: string }>(hadFocus.tagName)].find((x) => x.name === hadFocus.name) : undefined;
-  if (hadFocus instanceof HTMLTextAreaElement) sameName(el)?.replaceWith(hadFocus);
-  if (old) old.el.replaceWith(el);
-  if (hadFocus && !(hadFocus instanceof HTMLTextAreaElement)) sameName(el)?.focus();
-  entries.set(key, { owner, order, el });
-  if (!old) {
+  const next = document.createElement("div");
+  next.append(element(view, owner));
+  let entry = old;
+  if (entry) {
+    setOwner(entry.el, owner);
+    morphChildren(entry.el, next);
+    entry.owner = owner;
+    entry.order = order;
+  } else {
+    next.dataset.key = key;
+    setOwner(next, owner);
+    entry = { owner, order, el: next };
+    listen(entry);
+    entries.set(key, entry);
     const sorted = [...entries.values()].sort((a, b) => a.order - b.order);
     container.append(...sorted.map((e) => e.el));
+  }
+  for (const placeholder of entry.el.querySelectorAll<HTMLCanvasElement>("canvas[data-canvas]")) {
+    const live = canvases.get(placeholder.dataset.canvas!);
+    if (live && live !== placeholder) placeholder.replaceWith(live);
   }
 }
 
@@ -284,6 +373,7 @@ document.getElementById("reference")!.onclick = async () => {
 let spawner = false;
 port.onmessage = async (e: MessageEvent<KernelToHost>) => {
   const message = e.data;
+  if (receive(message)) return;
   switch (message.t) {
     case "welcome":
       spawner = message.spawner;

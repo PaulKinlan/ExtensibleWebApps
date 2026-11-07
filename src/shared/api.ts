@@ -15,7 +15,10 @@ export interface Api {
   on(name: string, handler: (...args: any[]) => unknown): () => void;
   call(service: string, method: string, ...args: unknown[]): Promise<unknown>;
   ui: {
-    render(slot: Slot, key: string, view: View | null, order?: number): void;
+    /** Draws a view: HTML (a string, or what `ui.html` returns), a JSON view, or null to remove it. */
+    render(slot: Slot, key: string, view: View | string | null, order?: number): void;
+    /** A tagged template: `ctx.ui.html\`<p>${name}</p>\`` escapes every value, and nests other `html` results as they are. */
+    html(strings: TemplateStringsArray, ...values: unknown[]): View;
     onEvent(handler: (action: string, value: unknown) => void): () => void;
     onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void): void;
   };
