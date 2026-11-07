@@ -130,7 +130,8 @@ export default async (ctx) => {
 export default (ctx) => {
   let n = 0;
   const draw = () => ctx.ui.render('devtools', 'form', ctx.ui.html\`
-    <form data-action="save"><label>Name <input name="name" value="Ada"></label><label><input type="checkbox" name="ok" checked> OK</label><input type="number" name="count" value="3"><button type="submit">Save</button></form>
+    <form data-action="save"><label>Name <input name="name" value="Ada"></label><label><input type="checkbox" name="ok" checked> OK</label><input type="number" name="count" value="3"><input name="__proto__" value="p"><select multiple name="pick"><option value="a" selected>a</option><option value="b" selected>b</option><option value="c">c</option></select><button type="submit">Save</button></form>
+    <ui-badge id="lbl">Label</ui-badge><input name="a11y" aria-labelledby="lbl"><a href="#lbl" data-test="frag">jump</a><div hidden data-test="hid"><ui-stack>hidden</ui-stack></div>
     <p data-test="evil">safe<script>window.__pwned = 1</script><img src="https://example.com/x.png" onerror="window.__pwned = 2"><a href="javascript:window.__pwned = 3">bad link</a><iframe src="https://example.com"></iframe><blink>kept text</blink></p>
     <p data-test="escaped">\${'<b>not bold</b>'}</p>
     <input data-action="typed" data-live name="live" value="">
@@ -148,7 +149,7 @@ export default (ctx) => {
       script: !!el.querySelector("script, iframe, blink"),
       handlers: all.some((x) => [...x.attributes].some((at) => at.name.startsWith("on"))),
       remoteImage: [...el.querySelectorAll("img")].some((img) => img.hasAttribute("src")),
-      jsLink: [...el.querySelectorAll("a")].some((x) => x.hasAttribute("href")),
+      jsLink: [...el.querySelectorAll("a")].some((x) => /^javascript:/i.test(x.getAttribute("href") ?? "")),
       pwned: window.__pwned,
       escaped: el.querySelector('[data-test="escaped"]').textContent,
       bold: !!el.querySelector('[data-test="escaped"] b'),
@@ -157,9 +158,18 @@ export default (ctx) => {
   check("HTML views keep no script, frames, event attributes, javascript: links or remote images", !cleaned.script && !cleaned.handlers && !cleaned.remoteImage && !cleaned.jsLink && cleaned.pwned === undefined, JSON.stringify(cleaned));
   check("ctx.ui.html escapes values", cleaned.escaped === "<b>not bold</b>" && !cleaned.bold, cleaned.escaped);
   const htmlEvent = (prefix) => a.waitForFunction((p) => window.__host.traces.find((e) => e.plugin === "htmlcheck" && e.detail?.startsWith(p)), prefix, { timeout: 5000 }).then((h) => h.jsonValue()).then((e) => e.detail);
+  await a.fill(`${view} input[name="name"]`, "Grace");
+  await a.focus(`${view} input[name="count"]`);
+  await a.waitForTimeout(400);
   await a.click(`${view} >> text=Save`);
   const saved = await htmlEvent("html-event save");
-  check("a form with data-action sends every named field, typed", saved === 'html-event save {"name":"Ada","ok":true,"count":3}', saved);
+  check("a form with data-action sends every named field, typed, with edits kept across redraws after focus moves", saved === 'html-event save {"name":"Grace","ok":true,"count":3,"__proto__":"p","pick":["a","b"]}', saved);
+  const refs = await a.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    const badge = el.querySelector("ui-badge[id]");
+    return { id: badge.id, labelledby: el.querySelector('input[name="a11y"]').getAttribute("aria-labelledby"), href: el.querySelector('[data-test="frag"]').getAttribute("href"), hidden: getComputedStyle(el.querySelector('[data-test="hid"]')).display };
+  }, view);
+  check("ARIA id references and fragment links are scoped like ids, and hidden hides", refs.labelledby === refs.id && refs.href === "#" + refs.id && refs.id !== "lbl" && refs.hidden === "none", JSON.stringify(refs));
   await a.focus(`${view} input[name="live"]`);
   await a.keyboard.type("hello", { delay: 60 });
   await a.waitForTimeout(500);
@@ -247,14 +257,14 @@ export default async (ctx) => {
   check("edits reach plugin workers after the debounce", (await status(a)).includes("12 words"));
   check("editor's edit-times.js runs unchanged", (await status(a)).includes("Edited just now"), await status(a));
 
-  await a.click("text=Save");
+  await a.click("main button >> text=Save");
   await a.waitForSelector("main >> text=Saved");
   check("a save passes the intercepting plugin", true);
 
   // Interception: a plugin in a worker blocks a write through a serial hook.
   await a.fill("textarea", "THIS IS ALL CAPITALS AND SHOULD NOT SAVE");
   await a.waitForTimeout(400);
-  await a.click("text=Save");
+  await a.click("main button >> text=Save");
   await a.waitForSelector("text=Not saved: the note is all capitals");
   check("no-shouting.js blocks the write from its worker", true);
 
@@ -304,7 +314,7 @@ export default async (ctx) => {
   check("a trace id links the click, the kernel dispatch and the plugin's answer", saveTrace.includes("dispatch:data:beforeWrite") && saveTrace.includes("remote:data:beforeWrite"), saveTrace.join(", "));
   await a.fill("textarea", "Hello there\n\nOne two three four five six seven eight nine ten.");
   await a.waitForTimeout(400);
-  await a.click("text=Save");
+  await a.click("main button >> text=Save");
   await a.waitForSelector("main >> text=Saved");
   await a.waitForTimeout(300);
   const afterAwait = await a.evaluate(() => {
@@ -321,7 +331,7 @@ export default async (ctx) => {
   const saveText = async (text) => {
     await a.fill("textarea", text);
     await a.waitForTimeout(400);
-    await a.click("main >> text=Save");
+    await a.click("main button >> text=Save");
     await a.waitForSelector("main >> text=Saved");
   };
   await saveText(messy);

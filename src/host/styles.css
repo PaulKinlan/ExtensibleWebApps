@@ -75,6 +75,8 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 #notice p { margin: 4px 0 0; padding: 8px 12px; border-radius: var(--radius); background: var(--fg); color: var(--bg); }
 
 /* ---- HTML views: plain HTML, styled from the tokens ---- */
+/* hidden wins over every layout rule below, for elements and components alike. */
+.html-view [hidden] { display: none !important; }
 .html-view { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .html-view :where(h1, h2, h3, h4) { margin: 0; line-height: 1.25; letter-spacing: -0.01em; }
 .html-view h1 { font-size: var(--text-2xl); }
