@@ -97,7 +97,7 @@ export function validate(schema: Schema, value: unknown, path = ""): { path: str
   if (Array.isArray(value) && schema.items) value.forEach((item, i) => errors.push(...validate(schema.items!, item, `${path}[${i}]`)));
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
-    for (const name of schema.required ?? []) if (!Object.hasOwn(record, name) || record[name] === undefined || record[name] === null || record[name] === "") errors.push({ path: name, message: `${schema.properties?.[name]?.title ?? name} is required` });
+    for (const name of schema.required ?? []) if (!Object.hasOwn(record, name) || record[name] === undefined || record[name] === null || record[name] === "") errors.push({ path: path ? `${path}.${name}` : name, message: `${schema.properties?.[name]?.title ?? name} is required` });
     for (const [name, child] of Object.entries(schema.properties ?? {})) {
       // Only absent fields skip their schema; the kernel drops cleared ones (null or "") before validating.
       if (!Object.hasOwn(record, name) || record[name] === undefined) continue;

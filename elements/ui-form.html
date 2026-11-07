@@ -5,6 +5,11 @@
   record (edit this record; without it the form adds new ones), submit (the
   button's text), action (sent with the saved record's id).
 
+  A list field (type: "array") gets a row per item, each with a Remove
+  button, and an Add button; a group (type: "object") gets a fieldset of its
+  own fields. Lists of groups work too, two levels deep: a recipe's
+  ingredients, each with an amount, a unit and an item.
+
   The behaviour is in ui-form.js, linked below.
 -->
 <template>
@@ -22,6 +27,15 @@
     .actions { display: flex; gap: var(--space-2); align-items: center; justify-content: flex-end; }
     .status { color: var(--fg-2); font-size: var(--text-sm); }
     .error { color: var(--danger); font-size: var(--text-sm); }
+    fieldset { grid-column: 1 / -1; margin: 0; padding: var(--space-2) var(--space-3) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+    legend { font-size: var(--text-sm); color: var(--fg-2); padding: 0 var(--space-1); }
+    fieldset > small { color: var(--fg-2); font-size: var(--text-sm); }
+    ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+    li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; }
+    li + li { border-top: 1px solid var(--border); padding-top: var(--space-2); }
+    li > :first-child { flex: 1 1 16rem; min-width: 0; }
+    .group { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(min(5rem, 100%), 1fr)); }
+    button[type=button] { font: inherit; font-size: var(--text-sm); height: 32px; padding: 0 var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); cursor: pointer; }
     button[type=submit] { font: inherit; font-weight: 500; height: 32px; padding: 0 var(--space-3); border-radius: var(--radius); border: 1px solid var(--accent); background: var(--accent); color: var(--accent-fg); cursor: pointer; }
     button[type=submit]:disabled { opacity: .6; cursor: progress; }
   </style>
