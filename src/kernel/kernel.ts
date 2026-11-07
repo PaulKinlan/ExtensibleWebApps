@@ -264,7 +264,8 @@ hosts.onMessage = async (host, message) => {
       return records.fromView(host, message.id, message.owner, message.collection, message.recordId, message.fields, message.trace);
     case "open":
       // An app's plugins may read collections whose owners aren't running: know those first.
-      return records.ready.then(() => apps.open(host, message.plugins));
+      // The tab may have closed while waiting; then there's nothing to open.
+      return records.ready.then(() => (hosts.list.includes(host) ? apps.open(host, message.plugins) : undefined));
     case "command": {
       const value = await command(message.name, message.arg);
       return hosts.send(host, { t: "command:result", id: message.id, value });

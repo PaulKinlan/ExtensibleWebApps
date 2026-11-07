@@ -10,7 +10,7 @@
 // block it) and then `data:changed:<collection>`.
 //
 // Which plugin owns each collection, and its schema, is kept too
-// (`collections/index.json`), so a plugin in one app can read a collection
+// (`collections/_registry.json`), so a plugin in one app can read a collection
 // another app's plugin owns even when that app isn't open: the calendar can
 // list birthdays from the contacts without running the contacts' plugins.
 //
@@ -46,7 +46,8 @@ export const RECORD_FIELDS = ["id", "createdAt", "updatedAt"];
 const NAME = /^[a-z][a-z0-9-]{0,40}$/;
 const MAX_RECORDS = 10_000;
 const MAX_BYTES = 5_000_000;
-const INDEX = "collections/index.json";
+/** Not a valid collection name (names start with a letter), so no collection's records can land on it. */
+const INDEX = "collections/_registry.json";
 
 /** What `reviewed` in the kernel does: asks the person, throws unless they allow it. */
 type Review = (instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: Dispatch) => Promise<string>;
@@ -99,27 +100,37 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     }
   }
 
-  /** Keeps the registry with the data, one write at a time. */
+  /**
+   * Keeps the registry with the data, one write at a time. Each write waits
+   * for the saved registry to load and snapshots then, so an early write
+   * can't drop collections it didn't know about yet.
+   */
   let indexWrite: Promise<unknown> = Promise.resolve();
   const saveIndex = () => {
-    const snapshot = Object.fromEntries([...registry].map(([name, { owner, title, schema }]) => [name, { owner, title, schema }]));
-    indexWrite = indexWrite.then(() => store.writeJson(INDEX, snapshot)).catch((error) => trace({ kind: "error", name: "collections:index", detail: String(error) }));
+    indexWrite = indexWrite
+      .then(() => ready)
+      .then(() => store.writeJson(INDEX, Object.fromEntries([...registry].map(([name, { owner, title, schema }]) => [name, { owner, title, schema }]))))
+      .catch((error) => trace({ kind: "error", name: "collections:index", detail: String(error) }));
   };
 
   /**
-   * The collections saved from earlier runs. A collection a running plugin
-   * has already declared keeps that plugin's version; anything that isn't a
-   * valid entry is skipped.
+   * The collections saved from earlier runs. Saved ownership wins: a plugin
+   * that declared a saved collection before this loaded, under a different
+   * id, loses it (data calls wait for this, so it never used it). The same
+   * owner keeps its newer schema. Anything that isn't a valid entry is skipped.
    */
-  const ready = store.readJson<unknown>(INDEX, {}).then((saved) => {
+  const ready: Promise<void> = store.readJson<unknown>(INDEX, {}).then((saved) => {
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
     for (const [name, entry] of Object.entries(saved as Record<string, Partial<Collection>>)) {
-      if (registry.has(name) || !NAME.test(name) || !entry || typeof entry.owner !== "string") continue;
+      if (!NAME.test(name) || !entry || typeof entry.owner !== "string") continue;
       try {
         checkSchema(entry.schema);
       } catch {
         continue;
       }
+      const early = registry.get(name);
+      if (early?.owner === entry.owner) continue;
+      if (early) trace({ kind: "error", name: "collection:taken", plugin: early.owner, detail: `${name} belongs to ${entry.owner}` });
       define({ name, owner: entry.owner, title: typeof entry.title === "string" ? entry.title : name, schema: entry.schema as Schema });
     }
   });

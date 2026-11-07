@@ -38,9 +38,9 @@ const SAMPLE = [
   { title: "Lentil curry", serves: 4, minutes: 45, ingredients: "250 g red lentils\n400 ml coconut milk\n1 onion\n2 tbsp curry paste", method: "Fry the onion and paste, add lentils, coconut milk and 400 ml water, simmer until soft." },
 ];
 
-/** "200 g flour" scaled by 1.5 is "300 g flour"; a line with no number stays as it is. */
+/** "200 g flour" scaled by 1.5 is "300 g flour", and "1/2 tsp salt" doubled is "1 tsp salt"; a line with no number stays as it is. */
 export function scale(line, factor) {
-  const match = /^(\d+(?:[.,]\d+)?|\d+\/\d+)\s*(.*)$/.exec(line.trim());
+  const match = /^(\d+\/\d+|\d+(?:[.,]\d+)?)\s*(.*)$/.exec(line.trim());
   if (!match) return line.trim();
   const [n, d] = match[1].split("/").map((x) => Number(x.replace(",", ".")));
   const amount = (d ? n / d : n) * factor;

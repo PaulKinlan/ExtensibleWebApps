@@ -63,7 +63,11 @@ export default async function (ctx) {
       }
       // Each write waits for the person's answer to the review card.
       const result = await ctx.call("data", "put", "contacts", person, `Add ${person.name} from a vCard`).catch((error) => ({ ok: false, error: error.message }));
-      if (result.ok) added++;
+      if (result.ok) {
+        added++;
+        // A second card with the same email, later in this paste, is a duplicate too.
+        if (person.email) known.add(person.email.toLowerCase());
+      }
     }
     status = people.length ? `Added ${added} of ${people.length}${skipped ? `; ${skipped} already there` : ""}.` : "No vCards found in that text.";
     draw();

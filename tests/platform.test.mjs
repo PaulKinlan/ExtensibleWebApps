@@ -262,7 +262,7 @@ export default async (ctx) => {
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 
   // The demos: each folder in demos/ is an app whose app.html links its plugins.
-  const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort(); // sorted: calendar runs before contacts
   const linkedIds = (name) => {
     const page = readFileSync(new globalThis.URL(`../demos/${name}/app.html`, import.meta.url), "utf8");
     return [...page.matchAll(/<link rel="plugin" href="([^"]+)">/g)].map(([, href]) => readFileSync(new globalThis.URL(`../demos/${name}/${href}`, import.meta.url), "utf8").match(/id: "([^"]+)"/)[1]);
