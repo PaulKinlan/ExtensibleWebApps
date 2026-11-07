@@ -112,6 +112,30 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 #trace li.denied, #trace li.error { color: var(--danger); }
 #notice { position: fixed; right: 16px; bottom: 16px; max-width: 360px; }
 #notice p { margin: 4px 0 0; padding: 8px 12px; border-radius: var(--radius); background: var(--fg); color: var(--bg); }
+/* Places: a plugin's views in a page that left no slot for them (places.ts). */
+.place { display: contents; }
+/* The default app layout puts body's children in named areas; a place right in <body> would land after the footer, so it spans the page instead. Target inside <main> or <header> to place it exactly. */
+body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
+[hidden] { display: none !important; }
+.place-pending { outline: 2px dashed var(--accent); outline-offset: 4px; }
+/* The Customize button and panel, on every app page. */
+.customize-button { position: fixed; left: 16px; bottom: 16px; z-index: 10; box-shadow: var(--shadow-1); background: var(--surface); }
+dialog.customize { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); font: var(--text-md)/1.5 var(--font); }
+dialog.customize::backdrop { background: rgb(0 0 0 / 0.35); }
+dialog.customize h2 { font-size: var(--text-lg); }
+dialog.customize h3 { font-size: var(--text-md); margin: var(--space-4) 0 var(--space-2); }
+dialog.customize p { margin: var(--space-1) 0; }
+.customize-list, .customize-places { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+.customize-list > li { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
+.customize-places { gap: var(--space-1); margin-top: var(--space-2); font-size: var(--text-sm); }
+.customize-places code { font: var(--text-sm) var(--mono); }
+.customize-places button { margin-left: var(--space-2); height: 24px; }
+.customize-actions, .customize-url { display: flex; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
+.customize-add { display: grid; gap: var(--space-2); justify-items: start; }
+.customize-add textarea, .customize-add .customize-url { justify-self: stretch; }
+.customize-add textarea { min-height: 96px; font: var(--text-sm)/1.5 var(--mono); }
+.customize-url input { flex: 1; min-width: 0; font: inherit; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+.customize-close { margin-top: var(--space-4); }
 
 /* ---- HTML views: plain HTML, styled from the tokens ---- */
 /* hidden wins over every layout rule below, for elements and components alike. */

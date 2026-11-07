@@ -9,6 +9,7 @@ import { Context } from "cordis";
 import { defineHook, hooks } from "./hooks";
 import { Hosts } from "./hosts";
 import { apps as makeApps } from "./apps";
+import { makeRoutes } from "./routes";
 import { catalog } from "./catalog";
 import { changeLog } from "./changes";
 import { checkPath, PathError } from "./paths";
@@ -22,6 +23,8 @@ import { RemotePlugins, type ServiceProvider } from "./remote";
 import { Store } from "./store";
 import { switches } from "./switches";
 import { record, recent, setSink, startedAt, tap } from "./trace";
+import { checkApp, userPlugins } from "./user-plugins";
+import type { Opened } from "../shared/protocol";
 
 import wordCount from "../../plugins/word-count.js?raw";
 import editTimes from "../../plugins/edit-times.js?raw";
@@ -217,6 +220,29 @@ const services: Record<string, ServiceProvider> = {
       throw new Error(`debug.${method} is not a method`);
     },
   },
+  page: {
+    description: "The app's own page, as far as a plugin's places reach into it.",
+    methods: {
+      matches: {
+        args: "(place)",
+        returns: "[{ text, data }]",
+        needs: "ui",
+        description:
+          "What one of the plugin's places matches in the page: each element's text (up to 500 characters) and its data-* attributes, in page order. A plugin with `each: true` draws a view per match by rendering to `<place>#<index>`.",
+      },
+    },
+    capability: () => "ui",
+    call: (plugin, method, args, dispatch) => {
+      if (method !== "matches") throw new Error(`page.${method} is not a method`);
+      const id = base(plugin);
+      if (typeof args[0] !== "string" || !remote.installed.get(id)?.manifest.places?.[args[0]]) throw new Error(`${id} has no place named ${String(args[0])}`);
+      // A tab-scoped plugin asks its own tab; a shared one, any tab with its app open.
+      const tab = plugin.split("@")[1];
+      const host = hosts.list.find((h) => (tab ? h.tab === tab : apps.linkedBy(h.tab)?.includes(id)));
+      if (!host) throw new Error("No tab has this plugin's app open");
+      return hosts.bridge("page", "matches", [id, args[0]], dispatch, host);
+    },
+  },
   kernel: {
     description: "The kernel itself.",
     methods: {
@@ -240,6 +266,60 @@ remote.onDispose = (instance) => reviews.cancelInstance(instance);
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
+const userAdded = userPlugins(store, self.location.origin);
+
+/** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
+const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
+
+/**
+ * Opens an app in a tab: the plugins its app.html links, and the person's own plugins for it that are
+ * on. The tab hears each plugin's places, and which locked places the person let it into.
+ */
+async function openApp(host: (typeof hosts.list)[number], links: { href: string; source: string }[], app?: string) {
+  if (!hosts.list.includes(host)) return;
+  let mine: { href: string; source: string }[] = [];
+  let ids = new Set<string>();
+  try {
+    if (app !== undefined) {
+      checkApp(app);
+      mine = await userAdded.links(app);
+      ids = await userAdded.ids(app);
+    }
+  } catch {
+    app = undefined;
+  }
+  openApps.set(host.tab, { app, links });
+  const describe = (o: Opened): Opened => {
+    if (!o.id) return o;
+    const installed = remote.installed.get(o.id);
+    // A plugin turned off (in the workbench, say) changes nothing in the page.
+    const manifest = installed?.enabled ? installed.manifest : undefined;
+    const unlocked = app ? reviews.grantsFor(o.id).flatMap((g) => (g.startsWith(`unlock:${app}#`) ? [g.split("#")[1]] : [])) : [];
+    return { ...o, name: installed?.manifest.name, places: manifest?.places, unlocked, user: ids.has(o.id) };
+  };
+  await apps.open(host, [...links, ...mine], describe);
+}
+
+/** Opens an app again in every tab that has it open, after its user plugins or places changed. */
+async function reopen(app: string) {
+  for (const host of hosts.list) {
+    const open = openApps.get(host.tab);
+    if (open?.app === app) await openApp(host, open.links, app);
+  }
+}
+
+// A plugin turned on or off anywhere: the tabs whose apps use it hear again, so its places come or go.
+const notify = remote.onChange;
+remote.onChange = (change, id) => {
+  notify?.(change, id);
+  if (change !== "enable" && change !== "disable") return;
+  for (const host of hosts.list) {
+    const open = openApps.get(host.tab);
+    if (open && apps.linkedBy(host.tab)?.includes(id)) void openApp(host, open.links, open.app);
+  }
+};
+
+const routes = makeRoutes(root, remote, shared);
 remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;
@@ -285,6 +365,7 @@ hosts.onLeave = (host) => {
   remote.hostLeft(host);
   records.hostLeft(host);
   apps.hostLeft(host);
+  openApps.delete(host.tab);
 };
 
 hosts.onSpawnerChange = (host) => {
@@ -317,7 +398,6 @@ hosts.onMessage = async (host, message) => {
       return records.fromView(host, message.id, message.owner, message.collection, message.recordId, message.fields, message.trace);
     case "open":
       // An app's plugins may read collections whose owners aren't running: know those first.
-      // The tab may have closed while waiting; then there's nothing to open.
       // Opened with ?reset: the app's plugins the person turned off come back on first.
       // Only plugins this app may load: not one whose id belongs to a different running plugin.
       if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ source }) => {
@@ -330,9 +410,8 @@ hosts.onMessage = async (host, message) => {
         }
       }));
       await records.ready;
-      // The tab may have closed while waiting; then there's nothing to open.
-      if (!hosts.list.includes(host)) return;
-      await apps.open(host, message.plugins);
+      // openApp checks the tab is still open: it may have closed while waiting.
+      await openApp(host, message.plugins, message.app);
       // Its tab-scoped plugins may have started before the app said what it links: tell them it has.
       return pluginSwitches.opened(host.tab);
     case "report":
@@ -351,10 +430,66 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "install") return plugins.install(String(arg));
   if (name === "uninstall") return plugins.remove(String(arg));
   if (name === "trace") return recent();
+  if (name === "route") return routes.answer(arg);
   if (name === "changes") return log.list();
+  // The panel's commands answer { ok: false, error } rather than throw, so the page always hears back.
+  if (name.startsWith("user:") || name.startsWith("place:")) return customize(name, arg).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   if (name === "reference") {
     const data = describe();
     return { data, markdown: toMarkdown(data), live: toMarkdown(data, { live: true }) };
+  }
+  return undefined;
+}
+
+/** The Customize panel's commands: the person's own plugins for an app, and the places they let plugins into. */
+async function customize(name: string, arg: unknown): Promise<unknown> {
+  const a = (arg ?? {}) as Record<string, unknown>;
+  const app = checkApp(a.app);
+  const id = typeof a.id === "string" ? a.id : typeof a.plugin === "string" ? a.plugin : "";
+  switch (name) {
+    case "user:list":
+      return userAdded.list(app);
+    case "user:add": {
+      const added = typeof a.url === "string" ? await userAdded.addFromUrl(app, a.url) : await userAdded.add(app, a.files as { name: string; data: Blob | string }[]);
+      // Adding a plugin again turns it off: stop the copy that was running.
+      await reopen(app);
+      return added;
+    }
+    case "user:on":
+    case "user:off":
+      await (name === "user:on" ? userAdded.on(app, id) : userAdded.off(app, id));
+      await reopen(app);
+      return true;
+    case "user:remove": {
+      const removed = await userAdded.remove(app, id);
+      await reopen(app);
+      return removed;
+    }
+    case "place:ask": {
+      const outcome = await reviews.ask(
+        {
+          plugin: id,
+          instance: id,
+          name: remote.installed.get(id)?.manifest.name ?? id,
+          place: `place:${app}#${String(a.place)}`,
+          target: String(a.target ?? "the page").slice(0, 120),
+          before: "",
+          after: "",
+          reason: String(a.what ?? "").slice(0, 300),
+          kind: "place",
+        },
+        {},
+      );
+      return allowed(outcome);
+    }
+    case "place:unlock":
+    case "place:lock": {
+      const place = `unlock:${app}#${String(a.place)}`;
+      if (name === "place:unlock") await reviews.grant(id, place);
+      else await reviews.forget(id, place);
+      await reopen(app);
+      return true;
+    }
   }
   return undefined;
 }

@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check": "node scripts/check.mjs",
+    "new-app": "node scripts/new-app.mjs",
     "preview": "vite preview --port 4173 --strictPort",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && node tests/platform.test.mjs",

@@ -8,13 +8,13 @@
 // the id of a different running plugin is refused, since ids are how
 // permissions, data and views are tied to a plugin.
 
+import type { Opened } from "../shared/protocol";
 import type { Host, Hosts } from "./hosts";
 import { readManifest } from "./manifest";
 import type { RemotePlugins } from "./remote";
 import { record } from "./trace";
 
 type Link = { href: string; source: string };
-type Opened = { href: string; id?: string; error?: string };
 
 export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) => Promise<boolean>) {
   /** For each plugin an app linked: the tabs that have that app open. */
@@ -75,11 +75,19 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
   }
 
   return {
-    /** Starts the plugins a tab's app links, and tells the tab which ids they have. */
-    async open(host: Host, links: Link[]): Promise<void> {
+    /**
+     * Starts the plugins a tab's app links, and tells the tab which ids they have. A tab may open its
+     * app again (after the person turns a user plugin on or off): plugins it no longer links stop, unless
+     * another tab still needs them. `describe` adds what the tab needs to know about each plugin.
+     */
+    async open(host: Host, links: Link[], describe: (opened: Opened) => Opened = (o) => o): Promise<void> {
+      const before = new Set(linked.get(host.tab));
+      linked.set(host.tab, new Set());
       const plugins = await Promise.all(links.map((link) => openOne(host, link)));
+      const now = linked.get(host.tab)!;
+      for (const id of before) if (!now.has(id)) release(id, host.tab);
       record({ kind: "lifecycle", name: "app:open", detail: `${host.tab}: ${plugins.map((p) => p.id ?? `${p.href} (${p.error})`).join(", ")}` });
-      if (hosts.list.includes(host)) hosts.send(host, { t: "opened", plugins });
+      if (hosts.list.includes(host)) hosts.send(host, { t: "opened", plugins: plugins.map(describe) });
     },
 
     /** The plugins the app open in `tab` links, by id. */
