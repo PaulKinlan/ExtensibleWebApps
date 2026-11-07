@@ -23,6 +23,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 
 ## Examples
 
+- [Starter](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/starter): the app `npm run new-app` copies; `npm run check` finds mistakes in it
 - [Habits](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos/habits): the smallest complete app, the one the guide builds
 - [All demo apps](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos): reading list, spending, recipes, contacts, calendar
 - [Live demos](https://extensible-web-apps.kinlan-test.workers.dev/)

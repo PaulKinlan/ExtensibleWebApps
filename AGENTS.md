@@ -9,7 +9,7 @@ Instructions for AI agents (and people) building apps and plugins on this platfo
 - A **plugin** is one ES module, run in its own worker. It has a manifest and a default export that gets `ctx`. Its views are `<template id>` elements in an `.html` file next to it.
 - **No build step.** Write plain JavaScript (JSDoc and `// @ts-check` are welcome), HTML and CSS. The browser runs the files as written. Don't add bundlers, frameworks or npm dependencies to apps or plugins.
 
-Copy [`demos/habits/`](demos/habits/) to start: it is the smallest complete app, and [the guide](docs/guide/writing-a-plugin.md) walks through it.
+Start with `npm run new-app -- my-app`: it copies [`starter/`](starter/), a list you can add to and tick off, to `demos/my-app/`. [`demos/habits/`](demos/habits/) is the smallest complete demo, and [the guide](docs/guide/writing-a-plugin.md) walks through it.
 
 ## Rules the kernel enforces
 
@@ -34,6 +34,7 @@ Copy [`demos/habits/`](demos/habits/) to start: it is the smallest complete app,
 
 ```sh
 npm install
+npm run check        # finds mistakes in the apps without a browser: permissions, manifests, templates, slots (--json for tools)
 npm run dev          # open http://localhost:5173/demos/<app>/app.html; the workbench at /workbench/ has the trace
 npm test             # builds, then opens every app in demos/ and checks each linked plugin draws
 npm run typecheck

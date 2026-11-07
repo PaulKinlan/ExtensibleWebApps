@@ -34,6 +34,7 @@ const AS_WRITTEN = [
   "elements",
   "home",
   "index.html",
+  "starter",
   "std",
   "sw",
   "sw.js",

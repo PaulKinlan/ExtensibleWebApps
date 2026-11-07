@@ -142,6 +142,7 @@ Use the design tokens (`--space-2`, `--border`, `--ok`) so the plugin matches wh
 
 ## 6. Check it
 
+- **`npm run check`** reads your app without opening it, and says what to fix: a manifest that isn't a plain literal, a call your `permissions` don't allow, a template the code draws that isn't in the file, HTML the sanitiser would drop, a slot the page doesn't have. `npm run check demos/habits` checks one app.
 - **The trace** on the workbench (`/workbench/`) shows every message from your plugin, every refusal, and anything you `ctx.log()`. A missing permission shows up there as `denied`.
 - **The API reference** button on the workbench lists every call and what it needs; [`docs/api.md`](../api.md) is the same thing.
 - **The tests**: `npm test` opens every app in `demos/` and checks that each plugin it links draws. Add checks of your own in a new file, `tests/demos/<app>.mjs`; [the Habits one](../../tests/demos/habits.mjs) adds a habit, ticks it and waits for the streak.
