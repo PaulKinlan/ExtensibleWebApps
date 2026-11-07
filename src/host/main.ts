@@ -14,6 +14,7 @@ import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn, onElementError } from "./elements";
 import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
+import { serviceWorker } from "./service-worker";
 import { cleanCss, installPluginStyle } from "./plugin-styles";
 import { fill, loadedFile, loadFile, styleOf } from "./templates";
 import { workbench } from "./workbench";
@@ -480,6 +481,7 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
 
 /** The trace, benchmarks and demo links, on the platform's own page only. */
 const bench = document.getElementById("devtools") ? workbench(command) : undefined;
+serviceWorker(command, report);
 const traces: TraceEvent[] = [];
 function showTrace(events: TraceEvent[]) {
   traces.push(...events);

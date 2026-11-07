@@ -13,6 +13,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [Data and permissions](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/data-and-permissions.md): collections, schemas, ui-form and ui-table, permissions, reviews
 - [Styling](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/styling.md): design tokens, plugin stylesheets, page overrides
 - [Sharing data between apps](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/sharing-data-between-apps.md): one app reading another's collection
+- [Routes and the service worker](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/routes.md): plugins answering links, forms and fetches
 
 ## Reference
 
