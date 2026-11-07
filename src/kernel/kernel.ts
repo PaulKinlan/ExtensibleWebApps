@@ -263,7 +263,8 @@ hosts.onMessage = async (host, message) => {
     case "record":
       return records.fromView(host, message.id, message.owner, message.collection, message.recordId, message.fields, message.trace);
     case "open":
-      return apps.open(host, message.plugins);
+      // An app's plugins may read collections whose owners aren't running: know those first.
+      return records.ready.then(() => apps.open(host, message.plugins));
     case "command": {
       const value = await command(message.name, message.arg);
       return hosts.send(host, { t: "command:result", id: message.id, value });

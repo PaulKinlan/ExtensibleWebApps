@@ -9,6 +9,11 @@
 // read. Every write runs `data:beforeWrite:<collection>` (a listener can
 // block it) and then `data:changed:<collection>`.
 //
+// Which plugin owns each collection, and its schema, is kept too
+// (`collections/index.json`), so a plugin in one app can read a collection
+// another app's plugin owns even when that app isn't open: the calendar can
+// list birthdays from the contacts without running the contacts' plugins.
+//
 // Views can be bound to a collection (`<ui-table collection="books">`,
 // `<ui-form collection="books">`). The host asks for the binding on behalf of
 // the plugin that drew the view, so it gets exactly that plugin's rights.
@@ -18,7 +23,7 @@ import { defineHook, hooks } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import { check, grants } from "./gate";
 import type { RemotePlugins, ServiceProvider } from "./remote";
-import { validate, type Schema } from "./schema";
+import { checkSchema, validate, type Schema } from "./schema";
 import type { Store } from "./store";
 import { record as trace } from "./trace";
 
@@ -41,6 +46,7 @@ export const RECORD_FIELDS = ["id", "createdAt", "updatedAt"];
 const NAME = /^[a-z][a-z0-9-]{0,40}$/;
 const MAX_RECORDS = 10_000;
 const MAX_BYTES = 5_000_000;
+const INDEX = "collections/index.json";
 
 /** What `reviewed` in the kernel does: asks the person, throws unless they allow it. */
 type Review = (instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: Dispatch) => Promise<string>;
@@ -82,21 +88,56 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     await store.writeText(`collections/${name}.json`, text);
   };
 
+  /** Adds a collection to the registry, with its hooks. */
+  function define(collection: Collection) {
+    registry.set(collection.name, collection);
+    const { name } = collection;
+    if (!hooks.has(`data:changed:${name}`)) {
+      defineHook(`data:changed:${name}`, { mode: "emit", args: "{ collection, id, before?, after? }", description: `A record in ${name} was written or deleted (after is missing for a delete).` });
+      defineHook(`data:beforeWrite:${name}`, { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "{ collection, id, before?, after? }", description: `Before a record in ${name} is written or deleted. Return { block: reason } to stop it.` });
+      root.on(`data:changed:${name}`, () => push(name));
+    }
+  }
+
+  /** Keeps the registry with the data, one write at a time. */
+  let indexWrite: Promise<unknown> = Promise.resolve();
+  const saveIndex = () => {
+    const snapshot = Object.fromEntries([...registry].map(([name, { owner, title, schema }]) => [name, { owner, title, schema }]));
+    indexWrite = indexWrite.then(() => store.writeJson(INDEX, snapshot)).catch((error) => trace({ kind: "error", name: "collections:index", detail: String(error) }));
+  };
+
+  /**
+   * The collections saved from earlier runs. A collection a running plugin
+   * has already declared keeps that plugin's version; anything that isn't a
+   * valid entry is skipped.
+   */
+  const ready = store.readJson<unknown>(INDEX, {}).then((saved) => {
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
+    for (const [name, entry] of Object.entries(saved as Record<string, Partial<Collection>>)) {
+      if (registry.has(name) || !NAME.test(name) || !entry || typeof entry.owner !== "string") continue;
+      try {
+        checkSchema(entry.schema);
+      } catch {
+        continue;
+      }
+      define({ name, owner: entry.owner, title: typeof entry.title === "string" ? entry.title : name, schema: entry.schema as Schema });
+    }
+  });
+
   /** Called with each plugin's manifest as it is installed, before it starts. */
   function register(manifest: Manifest) {
+    let changed = false;
     for (const [name, spec] of Object.entries(manifest.collections ?? {})) {
       const existing = registry.get(name);
       if (existing && existing.owner !== manifest.id) {
         trace({ kind: "error", name: "collection:taken", plugin: manifest.id, detail: `${name} belongs to ${existing.owner}` });
         continue;
       }
-      registry.set(name, { name, owner: manifest.id, title: spec.title ?? name, schema: spec.schema as Schema });
-      if (!hooks.has(`data:changed:${name}`)) {
-        defineHook(`data:changed:${name}`, { mode: "emit", args: "{ collection, id, before?, after? }", description: `A record in ${name} was written or deleted (after is missing for a delete).` });
-        defineHook(`data:beforeWrite:${name}`, { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "{ collection, id, before?, after? }", description: `Before a record in ${name} is written or deleted. Return { block: reason } to stop it.` });
-        root.on(`data:changed:${name}`, () => push(name));
-      }
+      const collection = { name, owner: manifest.id, title: spec.title ?? name, schema: spec.schema as Schema };
+      if (JSON.stringify(existing) !== JSON.stringify(collection)) changed = true;
+      define(collection);
     }
+    if (changed) saveIndex();
   }
 
   /** The rights a plugin has on a collection: owners have both. */
@@ -173,6 +214,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     // Ownership is checked in `call`; the capability is what a non-owner needs.
     capability: () => undefined,
     call: async (instance, method, args, dispatch) => {
+      await ready;
       if (method === "collections") return [...registry.values()];
       const name = String(args[0]);
       known(name);
@@ -200,6 +242,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
   }
 
   async function bind(host: Host, id: string, owner: string, name: string) {
+    await ready;
     const collection = registry.get(name);
     const key = `${host.tab}/${id}`;
     if (!collection || !may(owner, name, "read")) {
@@ -223,6 +266,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     async fromView(host: Host, id: string, owner: string, name: string, recordId: string | undefined, fields: Fields | null, trace: string) {
       try {
         if (!remote.live.has(owner)) throw new Error(`${owner} isn't running`);
+        await ready;
         known(name);
         if (!may(owner, name, "write")) throw new Error(`${owner} can't write ${name}`);
         const { id: saved, ...result } = await write(owner, name, recordId, fields, fields ? "Saved from the form" : "Deleted from the table", { trace });
@@ -232,6 +276,8 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       }
     },
     registry,
+    /** Settles once the collections saved from earlier runs are known. */
+    ready,
   };
 }
 
