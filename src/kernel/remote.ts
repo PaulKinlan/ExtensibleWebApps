@@ -423,6 +423,8 @@ export class Remote {
     const base = this.plugin.href;
     if (!base) return refuse("Only a plugin an app links can add routes");
     const folder = new URL("./", base);
+    // The service worker only sees this site's paths, so a plugin from another site has no folder here to answer for.
+    if (folder.origin !== self.location.origin) return refuse("Only a plugin on this site can add routes");
     const at = new URL(path, base);
     if (at.origin !== folder.origin || !at.pathname.startsWith(folder.pathname) || at.pathname === folder.pathname || at.search || at.hash) return refuse(`${path} isn't a path inside the plugin's own folder, ${folder.pathname}`);
     const name = `route:${method} ${at.pathname}`;
