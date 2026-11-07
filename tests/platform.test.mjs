@@ -111,6 +111,9 @@ export default async (ctx) => {
   for (const method of ['nope', 'toString', '__proto__']) {
     try { await ctx.call('kernel', method); refused.push('allowed'); } catch (error) { refused.push(error.message); }
   }
+  for (const service of ['toString', '__proto__']) {
+    try { await ctx.call(service, 'ping'); refused.push('allowed'); } catch (error) { refused.push(error.message); }
+  }
   ctx.ui.render('devtools', 'reader', { type: 'text', text: 'reader sees ' + ref.services.length + ' services' });
   ctx.log('reader: ' + JSON.stringify(refused));
 };`));
@@ -118,7 +121,7 @@ export default async (ctx) => {
   check("a plugin can read the reference, and draw in the devtools slot", true);
   await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")), null, { timeout: 5000 });
   const refusedCalls = await a.evaluate(() => JSON.parse(window.__host.traces.find((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")).detail.slice(8)));
-  check("a method the reference doesn't list can't be called", refusedCalls.every((m) => /is not a method/.test(m)), refusedCalls.join("; "));
+  check("a method or service the reference doesn't list can't be called", refusedCalls.length === 5 && refusedCalls.slice(0, 3).every((m) => /is not a method/.test(m)) && refusedCalls.slice(3).every((m) => /No service named/.test(m)), refusedCalls.join("; "));
   await a.evaluate(() => window.__host.command("uninstall", "reader"));
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 

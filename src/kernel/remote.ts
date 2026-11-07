@@ -380,7 +380,8 @@ export class Remote {
   }
 
   private async call(id: number, service: string, method: string, args: unknown[], trace?: string): Promise<void> {
-    const provider = this.manager.services[service];
+    // Own entries only: `toString` or `__proto__` would find the object's prototype instead.
+    const provider = Object.hasOwn(this.manager.services, service) ? this.manager.services[service] : undefined;
     const reply = (ok: boolean, value?: unknown, error?: string) => this.post({ t: "result", id, ok, value, error });
     if (!provider) return reply(false, undefined, `No service named ${service}`);
     if (!Object.hasOwn(provider.methods, method)) return reply(false, undefined, `${service}.${method} is not a method`);
