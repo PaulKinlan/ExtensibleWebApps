@@ -98,12 +98,14 @@ Plugins live in two places:
 ```sh
 npm install
 npm run dev        # http://localhost:5173 is the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
-npm test           # build, then 107 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm test           # build, then every check in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```
 
 The trace panel at the bottom of the page shows every dispatch, remote call, denial and lifecycle event.
+
+A core rule for every change: add files rather than edit shared ones, and leave existing demos and other people's work merging cleanly. [`AGENTS.md`](AGENTS.md#changing-the-platform-without-getting-in-anyones-way) says how.
 
 Every push to `main` is deployed to Cloudflare as static assets ([`wrangler.jsonc`](wrangler.jsonc)), through Cloudflare's Git integration. Cloudflare applies [`public/_headers`](public/_headers), so plugin workers there get the same content security policy as under `vite preview`: no network unless the plugin's manifest asks for it.
 

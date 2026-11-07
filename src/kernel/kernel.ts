@@ -251,7 +251,19 @@ services.data = records.service;
 /** The kernel's API reference, built from the registries above as they are now. */
 const describe = () => reference(services, remote);
 
-const BUILT_IN = [wordCount, editTimes, noShouting, tone, bars, tidy, pinger, sneaky, fetcher, offline];
+// One per line, with a trailing comma, so two changes that add a plugin land on different lines.
+const BUILT_IN = [
+  wordCount,
+  editTimes,
+  noShouting,
+  tone,
+  bars,
+  tidy,
+  pinger,
+  sneaky,
+  fetcher,
+  offline,
+];
 
 let started = false;
 let loaded = false;
