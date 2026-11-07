@@ -1,0 +1,28 @@
+<!--
+  ui-table: a sortable table of a collection's records, kept up to date.
+  Attributes: collection, columns="title,author", sort="title|-title", empty,
+  row-action (the first column becomes a button that sends it with the
+  record's id), deletable (adds a Delete button).
+
+  The behaviour is in ui-table.js, linked below. The template holds the style;
+  the script builds the table into the shadow root after it.
+-->
+<template>
+  <style>
+    :host { display: block; min-width: 0; overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+    th, td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); vertical-align: top; }
+    th { font-size: var(--text-sm); color: var(--fg-2); font-weight: 600; white-space: nowrap; }
+    th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+    td.number, th.number { text-align: right; }
+    tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+    caption { text-align: left; }
+    button.link { all: unset; cursor: pointer; color: var(--accent); font-weight: 500; }
+    button.remove { font: inherit; font-size: var(--text-sm); height: 24px; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: none; color: var(--fg-2); cursor: pointer; }
+    /* After the resets above, so `all: unset` doesn't remove the focus ring. */
+    button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; border-radius: var(--radius-sm); }
+    .empty, .status { color: var(--fg-2); font-size: var(--text-sm); padding: var(--space-3) 0; }
+    .error { color: var(--danger); font-size: var(--text-sm); }
+  </style>
+</template>
+<script type="module" src="ui-table.js"></script>

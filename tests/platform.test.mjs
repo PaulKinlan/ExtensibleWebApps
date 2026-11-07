@@ -176,6 +176,12 @@ export default (ctx) => {
   const kept = await a.evaluate((sel) => ({ focused: document.activeElement?.getAttribute("name"), value: document.querySelector(`${sel} input[name="live"]`).value, ticks: document.querySelector(`${sel} ui-stat`).getAttribute("value") }), view);
   const typed = await htmlEvent('html-event typed "hello"');
   check("typing and focus survive a view redrawn every 100 ms", kept.focused === "live" && kept.value === "hello" && Number(kept.ticks) > 5 && !!typed, JSON.stringify(kept));
+  // Elements are files in /elements/, loaded when a view first uses them. ui-stat has no script: its {{value}} hole follows the attribute.
+  const stat = await a.evaluate((sel) => {
+    const el = document.querySelector(`${sel} ui-stat`);
+    return { defined: !!customElements.get("ui-stat"), attribute: el.getAttribute("value"), shown: el.shadowRoot?.querySelector(".value")?.textContent };
+  }, view);
+  check("a template-only element from /elements/ fills its holes from its attributes", stat.defined && stat.shown === stat.attribute, JSON.stringify(stat));
   await a.evaluate(() => window.__host.command("uninstall", "htmlcheck"));
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 
@@ -254,15 +260,22 @@ export default async (ctx) => {
   // The demos in demos/ install and draw.
   const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => f.slice(0, -3));
   const drawn = [];
+  let gridMin;
   for (const name of demoNames) {
     const source = readFileSync(new globalThis.URL(`../demos/${name}.js`, import.meta.url), "utf8");
     const outcome = await plugin(source);
     const ok = outcome?.ok && (await a.waitForSelector(`main [data-key="${name}:${name}"] h2`, { timeout: 5000 }).then(() => true, () => false));
     drawn.push(`${name}: ${ok ? "drawn" : JSON.stringify(outcome)}`);
+    if (name === "spending") {
+      // ui-grid's behaviour is a script inline in elements/ui-grid.html.
+      await a.waitForFunction(() => customElements.get("ui-grid"), null, { timeout: 5000 }).catch(() => {});
+      gridMin = await a.evaluate(() => document.querySelector('main [data-key="spending:spending"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent);
+    }
     await a.evaluate((i) => window.__host.command("uninstall", i), name);
   }
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
   check("every demo installs and draws", demoNames.length >= 2 && drawn.every((d) => d.endsWith("drawn")), drawn.join(", "));
+  check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
 
   // Worker content security policy.
   await a.waitForFunction(() => window.__host.traces.filter((e) => e.detail?.startsWith("network:")).length >= 2, null, { timeout: 5000 });

@@ -1,0 +1,24 @@
+<!--
+  ui-stat: a number with its label, and an optional change.
+  Attributes: label, value, delta, tone="ok|warn|danger" (colours the delta).
+
+  Template only. Each {{name}} is filled, as text, from the attribute of that
+  name, and filled again whenever the attribute changes. A hole left empty
+  leaves its element :empty, which the style uses to hide the delta.
+-->
+<template>
+  <style>
+    :host { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
+    .label { font-size: var(--text-sm); color: var(--fg-2); }
+    .value { font-size: var(--text-2xl); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+    .delta { font-size: var(--text-sm); font-variant-numeric: tabular-nums; color: var(--fg-2); }
+    :host([tone="ok"]) .delta { color: var(--ok); }
+    :host([tone="danger"]) .delta { color: var(--danger); }
+    :host([tone="warn"]) .delta { color: var(--warn); }
+    .delta:empty { display: none; }
+  </style>
+  <span class="label">{{label}}</span>
+  <span class="value">{{value}}</span>
+  <span class="delta">{{delta}}</span>
+  <slot></slot>
+</template>

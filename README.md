@@ -26,8 +26,9 @@ Three kinds of code, each in its own place:
 - **The host** (`src/host/`) is the page. It draws what plugins render, turns clicks and typing into events, and runs no plugin code. Read [`main.ts`](src/host/main.ts) first, then:
   - [`sanitize.ts`](src/host/sanitize.ts) keeps only the HTML listed in [`src/shared/html.ts`](src/shared/html.ts)
   - [`morph.ts`](src/host/morph.ts) updates a view in place
-  - [`components.ts`](src/host/components.ts) holds the `ui-*` layout components
-  - [`bound.ts`](src/host/bound.ts) holds `<ui-form>` and `<ui-table>`
+  - [`elements.ts`](src/host/elements.ts) loads the `ui-*` elements from [`elements/`](elements/)
+  - [`bindings.ts`](src/host/bindings.ts) connects `<ui-form>` and `<ui-table>` to collections
+- **The elements** ([`elements/`](elements/)) are the `ui-*` custom elements views are built from, one `.html` file each, run as written with no build. See [`elements/README.md`](elements/README.md).
 - **The kernel** (`src/kernel/`) is a shared worker that every tab talks to. [`kernel.ts`](src/kernel/kernel.ts) wires everything together and is the place to start. The other files, by job:
   - **Talking to plugins:**
     - [`remote.ts`](src/kernel/remote.ts) is the bridge to plugin workers
@@ -65,7 +66,7 @@ Plugins live in two places:
 ```sh
 npm install
 npm run dev        # http://localhost:5173 ; ?demo=reading-list adds a demo, ?kernel=dedicated runs the kernel in a dedicated worker
-npm test           # build, then 77 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm test           # build, then 79 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```

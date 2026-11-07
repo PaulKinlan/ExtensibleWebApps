@@ -1,0 +1,15 @@
+<!--
+  ui-card: a bordered surface for one thing.
+  Attributes: tone="accent|ok|warn|danger" colours the border.
+  Template only: no JavaScript.
+-->
+<template>
+  <style>
+    :host { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); min-width: 0; }
+    :host([tone="accent"]) { border-color: var(--accent); }
+    :host([tone="ok"]) { border-color: var(--ok); }
+    :host([tone="warn"]) { border-color: var(--warn); }
+    :host([tone="danger"]) { border-color: var(--danger); }
+  </style>
+  <slot></slot>
+</template>
