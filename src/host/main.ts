@@ -253,7 +253,8 @@ const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"
 let shown: Set<string> | "all" = links.length ? new Set() : "all";
 /** Review cards always show: the person must see what a plugin wants to change. */
 const ALWAYS = new Set(["review"]);
-const showing = (owner: string) => shown === "all" || shown.has(owner) || ALWAYS.has(owner);
+/** A tab-scoped plugin's views come from an instance such as `drawing@tab1`; the app linked `drawing`. */
+const showing = (owner: string) => shown === "all" || shown.has(owner.split("@")[0]) || ALWAYS.has(owner);
 /** Views for owners this page doesn't show (yet): kept, in case the app's plugins are still starting. */
 const held = new Map<string, Extract<KernelToHost, { t: "render" }>>();
 

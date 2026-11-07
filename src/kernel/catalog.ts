@@ -53,6 +53,9 @@ function valid(value: unknown): Saved {
 export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: ChangeLog, reviews: Reviews) {
   let saved: Saved = { off: [], settings: {} };
   let loaded = false;
+  /** Settles once the saved state has been read, so `isOff` can wait for it. */
+  let markLoaded!: () => void;
+  const savedRead = new Promise<void>((resolve) => (markLoaded = resolve));
   /** True while the plugins already in the app start up; those aren't changes worth logging. */
   let booting = true;
   const errors = new Map<string, string>();
@@ -248,11 +251,17 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
     service,
     install,
     remove,
+    /** Whether the person turned this plugin off. Waits for the saved state, so an app opened early still honours it. */
+    async isOff(id: string): Promise<boolean> {
+      await savedRead;
+      return saved.off.includes(id);
+    },
     /** Installs the built-in plugins and the ones in the data folder, then draws the panel. */
     async load(builtIn: string[]) {
       saved = valid(await store.readJson<unknown>(FILE, null));
       // From here on, turning a plugin on or off is saved, even while others are still starting.
       loaded = true;
+      markLoaded();
       const stored = await store.pluginSources();
       const off = new Set(saved.off);
       const storedIds = new Set(stored.map(idOf));
