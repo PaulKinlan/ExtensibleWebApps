@@ -299,6 +299,13 @@ function slotFor(name: Slot, owner: string): HTMLElement | null {
   return slot;
 }
 
+/** Every template file a view uses, including inside stacks. */
+function templateFiles(view: View): string[] {
+  if (view.type === "template") return [view.src];
+  if (view.type === "stack") return view.children.flatMap(templateFiles);
+  return [];
+}
+
 const waitingForFile = new Map<string, [Slot, string, string, number, View]>();
 
 function render(slot: Slot, key: string, owner: string, order: number, view: View | null) {
@@ -308,18 +315,23 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     else held.delete(id);
     return;
   }
-  // A template view waits for its file; the latest view for this slot and key is drawn once it loads.
-  if (view?.type === "template" && !loadedFile(view.src)) {
-    waitingForFile.set(id, [slot, key, owner, order, view]);
-    loadFile(view.src).then(
+  // A template view (or a stack holding one) waits for its files; the latest view for this slot and key is drawn once they load.
+  const missing = view ? templateFiles(view).filter((src) => !loadedFile(src)) : [];
+  if (missing.length) {
+    waitingForFile.set(id, [slot, key, owner, order, view!]);
+    Promise.all(missing.map(loadFile)).then(
       () => {
         const latest = waitingForFile.get(id);
         waitingForFile.delete(id);
         if (latest) render(...latest);
       },
       (error) => {
+        // Only if this view is still the one waiting: the key may since have been removed or redrawn.
+        const latest = waitingForFile.get(id);
+        if (latest?.[4] !== view) return;
         waitingForFile.delete(id);
-        render(slot, key, owner, order, { type: "text", text: `Couldn't load ${view.src}: ${error instanceof Error ? error.message : error}`, tone: "error" });
+        const [s, k, o, n] = latest;
+        render(s, k, o, n, { type: "text", text: `Couldn't load ${missing.join(", ")}: ${error instanceof Error ? error.message : error}`, tone: "error" });
       },
     );
     return;
@@ -493,4 +505,5 @@ send({ t: "hello", tab, folder });
 if (links.length) await openApp();
 
 // For tests and poking around in the console.
-Object.assign(window, { __host: { tab, command, traces, audioStats, workers, get spawner() { return spawner; } } });
+// Tests reach the template filler here, to check its limits without a plugin.
+Object.assign(window, { __host: { tab, command, traces, audioStats, workers, fill, get spawner() { return spawner; } } });

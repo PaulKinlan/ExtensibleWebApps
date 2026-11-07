@@ -307,6 +307,15 @@ export default async (ctx) => {
   check("an app page shows only its own plugins' views", leaks.length === 0, leaks.join(", "));
   check("a plugin that reads another's collection hears its changes and redraws", spentItems);
   check("a view template from an .html file repeats rows and fills holes as text", templateText.shown && !templateText.bold && templateText.rows === 5, JSON.stringify(templateText));
+  // Nested loops multiply: 300 × 300 items would make 90,000 rows, so filling stops at its node budget.
+  const tooBig = await a.evaluate(() => {
+    const file = new DOMParser().parseFromString('<template id="grid"><template for="r of rows"><template for="c of rows"><i>{{c}}</i></template></template></template>', "text/html");
+    const rows = Array.from({ length: 300 }, (_, i) => i);
+    const started = performance.now();
+    const html = window.__host.fill(file, "grid", { rows });
+    return { html: html.slice(0, 120), ms: Math.round(performance.now() - started) };
+  });
+  check("a template that would make too many nodes stops early instead of freezing the page", /wasn't drawn/.test(tooBig.html), `${tooBig.ms}ms: ${tooBig.html}`);
   check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
   check("a plugin in an app writing another plugin's collection is reviewed in that app, then lands", importedBook);
   // Closing an app's last tab stops its plugins.

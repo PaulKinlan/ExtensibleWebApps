@@ -26,7 +26,8 @@ export const loadedFile = (src: string) => ready.get(src);
 export function loadFile(src: string): Promise<Document> {
   let pending = files.get(src);
   if (!pending) {
-    pending = fetch(src).then(async (response) => {
+    // No redirects: the kernel checked this URL's origin, and a redirect could leave it.
+    pending = fetch(src, { redirect: "error" }).then(async (response) => {
       if (!response.ok) throw new Error(`${src} answered ${response.status}`);
       const file = new DOMParser().parseFromString(await response.text(), "text/html");
       ready.set(src, file);
@@ -48,28 +49,43 @@ export function fill(file: Document, id: string, data: unknown): string {
   if (!template) return `<p>No template with id ${escapeText(id)}.</p>`;
   const scope: Scope = data && typeof data === "object" && !Array.isArray(data) ? (data as Scope) : { value: data };
   const out = inert.createElement("div");
-  out.append(render(template.content, scope));
+  try {
+    out.append(render(template.content, scope, { left: MAX_NODES }));
+  } catch (error) {
+    if (error instanceof TooBig) return `<p>The template ${escapeText(id)} makes more than ${MAX_NODES} nodes, so it wasn't drawn.</p>`;
+    throw error;
+  }
   return out.innerHTML;
 }
+
+/**
+ * Loops can multiply: two nested loops over 1,000 items make a million nodes
+ * from a small payload. Filling stops at this many nodes, before it can
+ * freeze the page.
+ */
+const MAX_NODES = 20_000;
+class TooBig extends Error {}
+type Budget = { left: number };
 
 /** Built in a document with no scripts or custom elements, so nothing runs or upgrades before the sanitiser sees it. */
 const inert = document.implementation.createHTMLDocument("");
 
-function render(from: ParentNode, scope: Scope): DocumentFragment {
+function render(from: ParentNode, scope: Scope, budget: Budget): DocumentFragment {
   const fragment = inert.createDocumentFragment();
   for (const node of from.childNodes) {
+    if (--budget.left < 0) throw new TooBig();
     if (node.nodeType === Node.TEXT_NODE) {
       fragment.append((node as Text).data.replace(HOLE, (_, path: string) => text(lookup(scope, path))));
     } else if (node instanceof HTMLTemplateElement && node.hasAttribute("for")) {
       const [, name, path] = /^\s*([A-Za-z_$][\w$]*)\s+of\s+(\S+)\s*$/.exec(node.getAttribute("for")!) ?? [];
       const items = name ? lookup(scope, path) : undefined;
-      if (Array.isArray(items)) for (const item of items) fragment.append(render(node.content, { ...scope, [name]: item }));
+      if (Array.isArray(items)) for (const item of items) fragment.append(render(node.content, { ...scope, [name]: item }, budget));
     } else if (node instanceof HTMLTemplateElement && node.hasAttribute("if")) {
-      if (lookup(scope, node.getAttribute("if")!.trim())) fragment.append(render(node.content, scope));
+      if (lookup(scope, node.getAttribute("if")!.trim())) fragment.append(render(node.content, scope, budget));
     } else if (node instanceof Element) {
       const copy = inert.createElement(node.localName);
       for (const attr of node.attributes) copy.setAttribute(attr.name, attr.value.replace(HOLE, (_, path: string) => text(lookup(scope, path))));
-      copy.append(render(node instanceof HTMLTemplateElement ? node.content : node, scope));
+      copy.append(render(node instanceof HTMLTemplateElement ? node.content : node, scope, budget));
       fragment.append(copy);
     }
     // Comments are left out.
