@@ -24,7 +24,8 @@ function scopedValue(owner: string, name: string, value: string): string {
 }
 
 function allowedAttribute(tag: string, name: string): boolean {
-  if (name.startsWith("on") || name === "style" || name === "class" || name === "slot" || name === "is") return false;
+  // data-plugin marks which plugin's stylesheet applies to a view, so only the host sets it.
+  if (name.startsWith("on") || name === "style" || name === "slot" || name === "is" || name === "data-plugin") return false;
   if (tag in COMPONENTS) return true;
   if (name.startsWith("aria-") || name.startsWith("data-")) return true;
   return GLOBAL_ATTRIBUTES.includes(name) || (ELEMENT_ATTRIBUTES[tag] ?? []).includes(name);

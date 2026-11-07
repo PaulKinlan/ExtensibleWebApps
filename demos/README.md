@@ -53,7 +53,9 @@ A plugin's views are HTML templates in a file next to it. The plugin sends data;
 </template>
 ```
 
-`{{path}}` holes go in text and attribute values and are filled as text, never as HTML. `<template for="x of path">` repeats and `<template if="path">` keeps or drops its content; a path is names joined by dots, optionally starting with `!`. There are no other expressions, so the logic stays in the script. The filled HTML is checked like any other view.
+`{{path}}` holes go in text and attribute values and are filled as text, never as HTML. An attribute that is one whole hole comes and goes with its value: `checked="{{done}}"` is there when `done` is true and left out when it is false or missing. `<template for="x of path">` repeats and `<template if="path">` keeps or drops its content; a path is names joined by dots, optionally starting with `!`. There are no other expressions, so the logic stays in the script. The filled HTML is checked like any other view.
+
+A template file can bring its own `<style>`, as [`calendar/month.html`](calendar/month.html) does. The host scopes it to that plugin's views, so `.month td` can't reach another plugin's table, and puts it under the page's own styles, so the app can still restyle any plugin.
 
 The script is one ES module with two exports:
 
