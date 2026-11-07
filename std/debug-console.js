@@ -30,6 +30,10 @@ export const manifest = {
 
 /** How many events it keeps; the kernel keeps the last 500 too. */
 const KEEP = 1000;
+/** The most text the log draws: a view must stay well under the kernel's limit on HTML. Older lines are left out first. */
+const DRAWN = 100_000;
+/** The longest a single line is drawn. */
+const LINE = 1500;
 
 /** An error, a refused permission, or a call or hook that failed. */
 const isProblem = (e) => e.kind === "error" || e.kind === "denied" || /^failed/.test(e.detail ?? "");
@@ -42,9 +46,11 @@ export default async function (ctx) {
   let events = [];
   let open = false;
   let show = "problems";
-  /** The tab this instance serves, and the plugins its app links; the kernel says, in debug.recent(). */
+  /** The tab this instance serves, and the plugins its app links; the kernel says, in debug.recent() and debug.app(). */
   let tab;
   let app;
+  /** The `seq` of the newest event held, so an event in both the snapshot and a batch is kept once. */
+  let lastSeq = 0;
   /** Only this app's plugins, this tab's page and the kernel itself; off, the whole kernel's trace. */
   let onlyThisApp = true;
 
@@ -59,9 +65,25 @@ export default async function (ctx) {
   /** One line per event: time, kind, name, plugin, how long it took, what happened and its trace id. */
   const line = (e) => {
     const time = new Date(startedAt + e.at).toISOString().slice(11, 23);
-    return [time, e.kind.padEnd(9), e.name, e.plugin ? `[${e.plugin}]` : "", e.ms !== undefined ? `${e.ms} ms` : "", e.detail ?? "", e.trace ? `#${e.trace}` : ""]
+    const text = [time, e.kind.padEnd(9), e.name, e.plugin ? `[${e.plugin}]` : "", e.ms !== undefined ? `${e.ms} ms` : "", e.detail ?? "", e.trace ? `#${e.trace}` : ""]
       .filter(Boolean)
       .join("  ");
+    return text.length > LINE ? `${text.slice(0, LINE)}…` : text;
+  };
+
+  /** The newest lines that fit in DRAWN characters, oldest first, and how many were left out. */
+  const fit = (list) => {
+    const lines = [];
+    let size = 0;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const text = line(list[i]);
+      // Measured as escaped HTML: `&` becomes `&amp;`, and so on.
+      const cost = text.length + 4 * (text.match(/[&<>"']/g)?.length ?? 0) + 20;
+      if (size + cost > DRAWN) return { lines, left: i + 1 };
+      size += cost;
+      lines.unshift({ text, problem: isProblem(list[i]) });
+    }
+    return { lines, left: 0 };
   };
 
   const problemCount = () => events.filter((e) => isProblem(e) && ours(e)).length;
@@ -69,7 +91,7 @@ export default async function (ctx) {
   const draw = () => {
     const mine = events.filter(ours);
     const problems = mine.filter(isProblem);
-    const shown = show === "problems" ? problems : mine;
+    const { lines, left } = fit(show === "problems" ? problems : mine);
     // While the panel is closed only the bug and its count are drawn: the log is drawn while someone is looking.
     const panel = open
       ? html`
@@ -81,7 +103,7 @@ export default async function (ctx) {
             <button data-copy="log" data-primary>Copy</button>
             <button data-action="clear">Clear</button>
           </ui-toolbar>
-          <pre data-copy-source="log">${shown.length ? shown.map((e) => (isProblem(e) ? html`<strong>${line(e)}</strong>\n` : `${line(e)}\n`)) : show === "problems" ? "No problems so far." : "Nothing traced yet."}</pre>
+          <pre data-copy-source="log">${left ? `… ${left} earlier line${left === 1 ? "" : "s"} not shown\n` : ""}${lines.length ? lines.map((l) => (l.problem ? html`<strong>${l.text}</strong>\n` : `${l.text}\n`)) : show === "problems" ? "No problems so far." : "Nothing traced yet."}</pre>
         `
       : "";
     ctx.ui.render("debug", "console", html`<ui-debug corner="${corner}" problems="${problems.length}" label="Debug console" toggle="toggle">${panel}</ui-debug>`);
@@ -96,9 +118,19 @@ export default async function (ctx) {
     draw();
   });
 
+  /** Asks again which plugins the app links: a tab's console can start before its app is open. */
+  const refreshApp = async () => {
+    ({ app } = await ctx.call("debug", "app"));
+    draw();
+  };
+
   ctx.on("debug:trace", (batch) => {
+    const fresh = batch.filter((e) => e.seq > lastSeq);
+    if (!fresh.length) return;
+    lastSeq = fresh[fresh.length - 1].seq;
     const before = problemCount();
-    events = events.concat(batch).slice(-KEEP);
+    events = events.concat(fresh).slice(-KEEP);
+    if (tab && fresh.some((e) => e.name === "app:open" && e.detail?.startsWith(`${tab}:`))) void refreshApp();
     // Closed, only a change in the count is worth a redraw.
     if (open || problemCount() !== before) draw();
   });
@@ -112,7 +144,9 @@ export default async function (ctx) {
   const [recent, settings] = await Promise.all([ctx.call("debug", "recent"), ctx.settings.get()]);
   ({ startedAt, tab, app } = recent);
   corner = String(settings.corner ?? corner);
-  const heard = events;
-  events = recent.events.filter((e) => !heard.some((h) => h.at === e.at && h.name === e.name)).concat(heard).slice(-KEEP);
+  // Batches heard while waiting are newer than some of the snapshot, and may overlap it: keep each event once, in order.
+  const snapshotLast = recent.events.at(-1)?.seq ?? 0;
+  events = recent.events.concat(events.filter((e) => e.seq > snapshotLast)).slice(-KEEP);
+  lastSeq = Math.max(lastSeq, snapshotLast);
   draw();
 }

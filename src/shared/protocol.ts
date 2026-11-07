@@ -41,6 +41,8 @@ export type View =
 export type Slot = string;
 
 export interface TraceEvent {
+  /** Counts up from 1 with each event, so a reader can tell which events it already has. */
+  seq: number;
   at: number; // ms since kernel start
   trace?: string;
   kind: "dispatch" | "remote" | "call" | "denied" | "lifecycle" | "bridge" | "error" | "note";

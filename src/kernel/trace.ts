@@ -17,8 +17,10 @@ let pending: TraceEvent[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | undefined;
 let sink: ((events: TraceEvent[]) => void) | undefined;
 
-export function record(event: Omit<TraceEvent, "at">): void {
-  const full: TraceEvent = { at: Math.round((performance.now() - start) * 10) / 10, ...event };
+let seq = 0;
+
+export function record(event: Omit<TraceEvent, "at" | "seq">): void {
+  const full: TraceEvent = { seq: ++seq, at: Math.round((performance.now() - start) * 10) / 10, ...event };
   if (full.trace === undefined) delete full.trace;
   buffer.push(full);
   if (buffer.length > LIMIT) buffer.shift();

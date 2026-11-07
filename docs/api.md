@@ -66,7 +66,8 @@ The trace: everything the kernel, the pages and plugins did, and every error. Fo
 
 | Method | Returns | Needs | What it does |
 | --- | --- | --- | --- |
-| `debug.recent()` | { startedAt, events: [{ at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? } | `debug:read` | The last 500 trace events, oldest first; `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links. |
+| `debug.recent()` | { startedAt, events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? } | `debug:read` | The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one. |
+| `debug.app()` | { tab?, app? } | `debug:read` | For a tab-scoped caller: its `tab`, and the ids of the plugins the app open there links, or no `app` if the tab hasn't opened one yet. The trace's `app:open` event says when to ask again. |
 
 ### kernel
 
@@ -108,7 +109,7 @@ Collections: typed records plugins share. A plugin declares its own in its manif
 | `note:change` | emit | `hook:listen:note:change` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The person typed in the open note (unsaved is true). |
 | `note:save` | emit | `hook:listen:note:save` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The open note was saved, by the person or by a reviewed write. |
 | `note:close` | emit | `hook:listen:note:close` | `null` | The open note was closed. |
-| `debug:trace` | emit | `debug:read` | `[{ at, kind, name, plugin?, trace?, ms?, detail? }]` | New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read. |
+| `debug:trace` | emit | `debug:read` | `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]` | New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read. |
 | `bench:ping` | serial, 1000 ms per listener, fails open | `hook:intercept:bench:ping` | `n` | Used by the round-trip benchmark; answer with anything. |
 
 ### Dispatch modes
@@ -135,7 +136,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:read:notes` | Call store.list. |
 | `data:write:notes` | Call store.put. |
 | `files:<folder>` | Call files.read, files.write. |
-| `debug:read` | Call debug.recent. |
+| `debug:read` | Call debug.recent, debug.app. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 

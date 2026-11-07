@@ -47,7 +47,7 @@ defineHook("note:open", { mode: "emit", args: POST, description: "The person ope
 defineHook("note:change", { mode: "emit", args: POST, description: "The person typed in the open note (unsaved is true)." });
 defineHook("note:save", { mode: "emit", args: POST, description: "The open note was saved, by the person or by a reviewed write." });
 defineHook("note:close", { mode: "emit", args: "null", description: "The open note was closed." });
-defineHook("debug:trace", { mode: "emit", needs: "debug:read", args: "[{ at, kind, name, plugin?, trace?, ms?, detail? }]", description: "New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read." });
+defineHook("debug:trace", { mode: "emit", needs: "debug:read", args: "[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]", description: "New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read." });
 defineHook("bench:ping", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "n", description: "Used by the round-trip benchmark; answer with anything." });
 
 const hosts = new Hosts(shared ? "shared" : "dedicated");
@@ -195,16 +195,24 @@ const services: Record<string, ServiceProvider> = {
     methods: {
       recent: {
         args: "()",
-        returns: "{ startedAt, events: [{ at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? }",
+        returns: "{ startedAt, events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? }",
         needs: "debug:read",
-        description: "The last 500 trace events, oldest first; `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links.",
+        description: "The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.",
+      },
+      app: {
+        args: "()",
+        returns: "{ tab?, app? }",
+        needs: "debug:read",
+        description: "For a tab-scoped caller: its `tab`, and the ids of the plugins the app open there links, or no `app` if the tab hasn't opened one yet. The trace's `app:open` event says when to ask again.",
       },
     },
     capability: () => "debug:read",
     call: (plugin, method) => {
-      if (method !== "recent") throw new Error(`debug.${method} is not a method`);
       const tab = plugin.split("@")[1];
-      return { startedAt, events: recent(), ...(tab ? { tab, app: apps.linkedBy(tab) } : {}) };
+      const where = tab ? { tab, app: apps.linkedBy(tab) } : {};
+      if (method === "app") return where;
+      if (method === "recent") return { startedAt, events: recent(), ...where };
+      throw new Error(`debug.${method} is not a method`);
     },
   },
   kernel: {

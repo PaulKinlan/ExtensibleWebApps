@@ -355,6 +355,15 @@ export default async (ctx) => {
   await debugPage.waitForFunction(() => /Copied/.test(document.querySelector("ui-debug")?.shadowRoot?.getElementById("status")?.textContent ?? ""), null, { timeout: 3000 }).catch(() => {});
   const clipboard = await debugPage.evaluate(() => navigator.clipboard.readText()).catch((e) => String(e));
   check("Copy puts the log on the clipboard, headed with the page's address", clipboard.includes("/demos/spending/app.html") && clipboard.includes("debug-test boom") && clipboard.includes("plugin:ready"), clipboard.slice(0, 200));
+  const lines = clipboard.split("\n").filter((l) => /^\d\d:\d\d:\d\d\.\d{3}  /.test(l));
+  check("each trace event is in the log once, though the snapshot and the first batches overlap", lines.length > 5 && new Set(lines).size === lines.length, `${lines.length} lines, ${new Set(lines).size} different`);
+  // A second tab on the same app: its console starts before the tab has said which plugins its app links.
+  const debugPage2 = await openTab(`${URL}demos/spending/app.html`);
+  await debugPage2.waitForSelector("ui-debug .bug", { state: "attached", timeout: 8000 });
+  await debugPage2.click("ui-debug .bug");
+  const knowsApp = await debugPage2.waitForSelector('ui-debug input[data-action="only-this-app"]', { timeout: 5000 }).then(() => true, () => false);
+  check("a console that starts before its tab opens the app learns the app's plugins once it does", knowsApp);
+  await debugPage2.close({ runBeforeUnload: true });
   await debugPage.keyboard.press("Escape");
   check("Escape closes the panel", await debugPage.evaluate(() => document.querySelector("ui-debug")?.shadowRoot?.getElementById("panel")?.hidden === true));
   await debugPage.close({ runBeforeUnload: true });
