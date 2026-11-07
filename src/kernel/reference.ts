@@ -233,6 +233,16 @@ const cell = (text: unknown) => String(text ?? "").replace(/\|/g, "\\|").replace
 const code = (text: string) => (text ? `\`${text}\`` : "");
 const table = (head: string[], rows: unknown[][]) =>
   [`| ${head.join(" | ")} |`, `| ${head.map(() => "---").join(" | ")} |`, ...rows.map((r) => `| ${r.map(cell).join(" | ")} |`)].join("\n");
+const byName = <T>(key: (item: T) => string) => (a: T, b: T) => key(a).localeCompare(key(b), "en");
+
+/**
+ * The parts that every new feature adds to (ctx members, service methods,
+ * hooks) are printed as one heading per entry, sorted by name, with blank
+ * lines between. Two changes that each add an entry then touch different
+ * lines of docs/api.md, so they merge without a conflict.
+ */
+const spaced = (blocks: string[]) => blocks.flatMap((b, i) => (i ? ["", b] : [b]));
+const entry = (level: string, name: string, lines: string[]) => [`${level} ${name}`, "", ...lines.filter(Boolean).flatMap((l) => [l, ""])].join("\n").trimEnd();
 
 /** The reference as Markdown. With `live`, it ends with what is installed right now. */
 export function toMarkdown(ref: Reference, { live = false } = {}): string {
@@ -243,21 +253,30 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     "",
     "## The plugin's `ctx`",
     "",
-    table(["Call", "Needs", "What it does"], ref.ctx.map((c) => [code(c.signature), c.needs || "Nothing", c.description])),
+    ...spaced([...ref.ctx].sort(byName((c) => c.member)).map((c) => entry("###", `ctx.${c.member}`, [code(c.signature), `Needs: ${c.needs || "nothing"}.`, c.description]))),
     "",
     "## Services",
     "",
     "Called with `ctx.call(service, method, ...args)`. A method not listed here doesn't exist. Reviewed methods show the person a diff with the plugin's reason first; they accept once, allow that plugin in that place from then on, or decline.",
   ];
   for (const s of ref.services) {
-    out.push("", `### ${s.name}`, "", s.description, "");
-    out.push(table(["Method", "Returns", "Needs", "What it does"], s.methods.map((m) => [code(`${s.name}.${m.name}${m.args}`), m.returns, (code(m.needs ?? "") || "Nothing") + (m.reviewed ? ", and the person's review" : ""), m.description])));
+    out.push("", `### ${s.name}`, "", s.description);
+    for (const m of [...s.methods].sort(byName((m) => m.name))) {
+      const needs = (code(m.needs ?? "") || "nothing") + (m.reviewed ? ", and the person's review" : "");
+      out.push("", entry("####", `${s.name}.${m.name}`, [`${code(`${s.name}.${m.name}${m.args}`)} → ${m.returns}`, `Needs: ${needs}.`, m.description]));
+    }
   }
   out.push(
     "",
     "## Hooks",
     "",
-    table(["Hook", "Mode", "Listening needs", "Listeners get", "What it means"], ref.hooks.map((h) => [code(h.name), h.mode + (h.timeoutMs ? `, ${h.timeoutMs} ms per listener, fails ${h.onFailure ?? "open"}` : ""), code(h.listen), h.args ? code(h.args) : "", h.description ?? ""])),
+    ...spaced([...ref.hooks].sort(byName((h) => h.name)).map((h) =>
+      entry("###", code(h.name), [
+        h.description ?? "",
+        `Mode: ${code(h.mode)}${h.timeoutMs ? `, ${h.timeoutMs} ms per listener, fails ${h.onFailure ?? "open"}` : ""}. Listening needs ${code(h.listen)}.`,
+        h.args ? `Listeners get ${code(h.args)}.` : "",
+      ]),
+    )),
     "",
     "### Dispatch modes",
     "",
