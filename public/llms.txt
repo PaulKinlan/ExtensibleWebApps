@@ -1,0 +1,26 @@
+# Extensible Web Apps
+
+> A platform for malleable web apps: a small kernel in a shared worker, and everything else is a plugin. An app is an app.html page that lists plugins with <link rel="plugin">; each plugin is one ES module with a literal manifest, runs in its own worker, can do only what its manifest asks for, and draws plain-HTML views from template files. No build step.
+
+Start with AGENTS.md for the rules and conventions, then the developer guide. The API reference is generated from the running kernel.
+
+## Docs
+
+- [AGENTS.md](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/AGENTS.md): rules the kernel enforces, how to write an app, how to check it
+- [How an app works](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/how-an-app-works.md): the page, the kernel and the plugins, and the messages between them
+- [Writing a plugin](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/writing-a-plugin.md): builds the Habits app step by step
+- [Views and templates](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/views-and-templates.md): template syntax, actions, components, live views, allowed HTML
+- [Data and permissions](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/data-and-permissions.md): collections, schemas, ui-form and ui-table, permissions, reviews
+- [Styling](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/styling.md): design tokens, plugin stylesheets, page overrides
+- [Sharing data between apps](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/sharing-data-between-apps.md): one app reading another's collection
+
+## Reference
+
+- [API reference](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/api.md): every ctx call, service method, hook, capability, manifest field, component and allowed element
+- [The kernel](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/kernel.md): how plugins are run, checked and reviewed
+
+## Examples
+
+- [Habits](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos/habits): the smallest complete app, the one the guide builds
+- [All demo apps](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos): reading list, spending, recipes, contacts, calendar
+- [Live demos](https://extensible-web-apps.kinlan-test.workers.dev/)
