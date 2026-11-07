@@ -11,11 +11,11 @@ export default {
     if (request.mode !== "navigate" || request.method !== "GET" || url.pathname === "/" || !url.pathname.endsWith("/")) return undefined;
     const page = await env.fetch(new Request(new URL("app.html", url))).catch(() => undefined);
     if (!page?.ok || !(page.headers.get("Content-Type") ?? "").includes("text/html")) return undefined;
-    // A server may answer a missing file with its index page: an app.html links plugins.
+    // A server may answer a missing file with its front page (a single-page fallback, or the
+    // development server's index). That isn't this folder's app: it goes to the network as usual.
+    // An app.html only has to load the platform; it needn't link any plugins.
     const html = await page.text();
-    if (!/<link\b[^>]*\brel=["']?plugin\b/i.test(html)) return undefined;
-    // A host that answers a missing file with its front page (a single-page fallback) would pass that
-    // check when the front page is itself an app: a folder with no app.html of its own goes to the network.
+    if (!/<script\b[^>]*\bsrc=["']?\/platform\/host\.js/i.test(html) || html.includes("/@vite/client")) return undefined;
     const front = await env.fetch(new Request(new URL("/index.html", url))).then((r) => (r.ok ? r.text() : ""), () => "");
     if (html === front) return undefined;
     // The server's headers (its security policies, caching) stay; only those about the encoded body go, as it's decoded here.
