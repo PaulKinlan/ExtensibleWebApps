@@ -66,12 +66,28 @@ export type HostToKernel =
   | { t: "unbind"; id: string }
   /** A bound form or table saves (fields) or deletes (null) a record for `owner`. */
   | { t: "record"; id: string; owner: string; collection: string; recordId?: string; fields: Record<string, unknown> | null; trace: string }
-  /** The tab opened an app: the plugins its app.html links, fetched by the tab. */
-  | { t: "open"; plugins: { href: string; source: string }[] }
+  /** The tab opened an app: the plugins its app.html links, fetched by the tab, and the app's folder (`demos/trip`), whose user plugins also run. */
+  | { t: "open"; plugins: { href: string; source: string }[]; app?: string }
   /** Something went wrong in the page: a file that didn't load, an uncaught error. The kernel puts it in the trace. */
   | { t: "report"; source: string; text: string };
 
-export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace" | "changes" | "reference";
+export type Command =
+  | "bench"
+  | "reload-test"
+  | "reload"
+  | "install"
+  | "uninstall"
+  | "trace"
+  | "changes"
+  | "reference"
+  | "user:list"
+  | "user:add"
+  | "user:on"
+  | "user:off"
+  | "user:remove"
+  | "place:ask"
+  | "place:unlock"
+  | "place:lock";
 
 // kernel -> host
 export type KernelToHost =
@@ -85,8 +101,33 @@ export type KernelToHost =
   | { t: "command:result"; id: number; value: unknown }
   | { t: "bound"; id: string; collection: string; title?: string; schema?: unknown; writable?: boolean; records?: Record<string, unknown>[]; error?: string }
   | { t: "record:result"; id: string; ok: boolean; recordId?: string; errors?: { path: string; message: string }[]; error?: string }
-  /** The app's plugins are running: each link's plugin id, or why it isn't. */
-  | { t: "opened"; plugins: { href: string; id?: string; error?: string }[] };
+  /**
+   * The app's plugins are running: each link's plugin id, or why it isn't. Sent again whenever the
+   * person turns a user plugin on or off. `places` are the plugin's, `unlocked` the locked places the
+   * person let it into, and `user` marks a plugin the person added rather than the app's author.
+   */
+  | { t: "opened"; plugins: Opened[] };
+
+export interface Opened {
+  href: string;
+  id?: string;
+  error?: string;
+  name?: string;
+  places?: Record<string, Place>;
+  unlocked?: string[];
+  user?: boolean;
+}
+
+/**
+ * Where a plugin's view goes in a page that has no slot for it: `at` is a CSS selector run against the
+ * app's own page, and `put` says what happens there. The view is drawn by rendering to the place's name,
+ * as to a slot. `each` uses every match instead of the first.
+ */
+export interface Place {
+  at: string;
+  put: "before" | "after" | "prepend" | "append" | "replace" | "hide";
+  each?: boolean;
+}
 
 // kernel <-> plugin worker
 export type KernelToPlugin =
@@ -119,6 +160,10 @@ export interface Manifest {
   collections?: Record<string, { title?: string; schema: unknown }>;
   /** Settings the person can change; the shell builds the form from these. */
   settings?: Record<string, { type: "string" | "number" | "boolean"; title?: string; description?: string; default?: unknown; enum?: string[] }>;
+  /** Places in the app's page where the plugin draws, adds or hides, by name: `{ days: { at: "main > h1", put: "after" } }`. */
+  places?: Record<string, Place>;
+  /** Other files next to the plugin that it needs (its templates, images), copied with it when a person adds it to an app. */
+  files?: string[];
 }
 
 /** Carried as Cordis's `thisArg` on every kernel dispatch, so listeners in any worker know which action they serve. */
