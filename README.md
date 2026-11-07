@@ -19,10 +19,34 @@ A platform for malleable web apps: a small kernel, and everything else is a plug
 
 An app is a folder with an `app.html`: an ordinary page that lays out `<slot name>` elements and lists its plugins with `<link rel="plugin" href="…">`. Each plugin is one file. The page loads the platform with two lines (`/platform/host.css` and `/platform/host.js`); the host fetches the linked plugins, the kernel runs each in its own worker, and their views appear in the slots they name.
 
+### How a view and its data move
 
+A plugin never touches the page. It sends messages, the kernel checks each one against the plugin's manifest, and the page draws what's left. Each arrow below is a message between workers.
+
+```mermaid
+sequenceDiagram
+    participant P as Plugin (its own worker)
+    participant K as Kernel (shared worker)
+    participant H as Page (app.html)
+
+    Note over P,H: Drawing
+    P->>K: views.render(slot, template id, data)
+    K->>K: checks the ui permission and that the template file sits next to the plugin
+    K->>H: the view
+    H->>H: fill holes as text, sanitise to the HTML allowlist, morph only what changed
+
+    Note over P,H: Acting
+    H->>K: a click on data-action, or a form submit
+    K->>P: ctx.ui.onEvent(action, value), sent only to the plugin that drew the view
+
+    Note over P,H: Data
+    P->>K: ctx.call("data", "put", collection, record)
+    K->>K: owner, or data:write plus a review card the person accepts, then schema check and save
+    K-->>P: data:changed:collection, to every plugin listening
+    K-->>H: new records, pushed to bound ui-table and ui-form
 ```
-page (host)  <-- port -->  kernel (shared worker)  <-- port -->  plugin (dedicated worker, one each)
-```
+
+Bound elements update on their own. A plugin's own views update when it hears `data:changed` and draws again.
 
 Three kinds of code, each in its own place:
 
