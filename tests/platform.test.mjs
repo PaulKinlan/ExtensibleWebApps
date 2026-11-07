@@ -8,7 +8,7 @@
 
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -34,9 +34,6 @@ await new Promise((resolve, reject) => {
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const context = await browser.newContext();
 const errors = [];
-let importedBook = false;
-let spentItems = false;
-let templateText = {};
 const proof = {};
 
 async function openTab(url = URL) {
@@ -50,9 +47,27 @@ async function openTab(url = URL) {
 const traceHas = (page, fn) => page.evaluate(`window.__host.traces.some(${fn})`);
 const status = (page) => page.textContent("footer");
 
+// What every test file gets. The workbench tab (`a`) and its plugin helpers are added once they exist.
+const t = { check, openTab, context, URL, errors, proof, measurements, traceHas, status };
+
+// Checks for a feature are a file in tests/checks/, and checks for a demo are
+// tests/demos/<demo>.mjs, so adding checks means adding a file, not editing this one.
+const importAll = async (dir) => {
+  const folder = new globalThis.URL(dir, import.meta.url);
+  const files = existsSync(folder) ? readdirSync(folder).filter((f) => f.endsWith(".mjs")).sort() : [];
+  return new Map(await Promise.all(files.map(async (f) => [f.slice(0, -4), await import(new globalThis.URL(f, folder))])));
+};
+let demoTests = new Map();
+let featureTests = new Map();
+
 try {
+  // Loaded inside the try, so a broken test file is reported and the browser and server still close.
+  demoTests = await importAll("./demos/");
+  featureTests = await importAll("./checks/");
+
   // ---- One tab ----
   const a = await openTab();
+  t.a = a;
   await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "plugin:ready").length >= 10, null, { timeout: 10000 });
   check("all ten sandboxed plugins start in their own workers", (await a.evaluate(() => window.__host.workers.size)) === 10);
 
@@ -192,6 +207,7 @@ export default (ctx) => {
   // Collections: a plugin owns a typed collection; views bind to it; others need capabilities.
   const plugin = (src) => a.evaluate((source) => window.__host.command("install", source), src);
   const pluginLog = (id, prefix) => a.waitForFunction(([i, p]) => window.__host.traces.findLast((e) => e.plugin === i && e.detail?.startsWith(p)), [id, prefix], { timeout: 5000 }).then((h) => h.jsonValue()).then((e) => e.detail);
+  Object.assign(t, { plugin, pluginLog });
   await plugin(`export const manifest = { id: 'books', name: 'Books', permissions: ['ui'], collections: { books: { title: 'Books', schema: { type: 'object', required: ['title'], properties: {
   title: { type: 'string', title: 'Title' }, author: { type: 'string' }, year: { type: 'integer', minimum: 1450 }, shelf: { type: 'string', enum: ['to read', 'reading', 'done'] } } } } } };
 export default (ctx) => {
@@ -287,7 +303,6 @@ export default async (ctx) => {
   };
   const drawn = [];
   const leaks = [];
-  let gridMin;
   for (const name of demoNames) {
     const page = await openTab(`${URL}demos/${name}/app.html`);
     const ids = linkedIds(name);
@@ -297,211 +312,17 @@ export default async (ctx) => {
     drawn.push(`${name}: ${missing.length ? `missing ${missing.join(", ")}` : `${ids.length} plugins drawn`}`);
     // An app shows only its own plugins' views, not the workbench's notes or panel.
     if (await page.$('[data-key^="notes:"], [data-key^="plugins:"]')) leaks.push(name);
-    // Readers redraw once the owner has added its samples: the budget counts every expense.
-    if (name === "spending") {
-      // expenses.html fills {{e.item}} as text: markup typed into the form shows as written.
-      await page.fill('[data-key="expenses:list"] input[name="item"]', "<b>Tea</b>");
-      await page.fill('[data-key="expenses:list"] input[name="amount"]', "3");
-      await page.click('[data-key="expenses:list"] button[type="submit"]');
-      await page.waitForSelector('[data-key="expenses:list"] td >> text=<b>Tea</b>', { timeout: 8000 }).catch(() => {});
-      templateText = await page.evaluate(() => {
-        const cells = [...document.querySelectorAll('[data-key="expenses:list"] tbody td:first-child')];
-        return { shown: cells.some((td) => td.textContent.includes("<b>Tea</b>")), bold: !!document.querySelector('[data-key="expenses:list"] tbody b'), rows: cells.length };
-      });
-      spentItems = await page.waitForSelector('[data-key="budget:month"] ui-stat[delta="5 items"]', { timeout: 8000 }).then(() => true, () => false);
-      // ui-grid's behaviour is a script inline in elements/ui-grid.html.
-      await page.waitForFunction(() => document.querySelector('[data-key="budget:month"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent, null, { timeout: 5000 }).catch(() => {});
-      gridMin = await page.evaluate(() => document.querySelector('[data-key="budget:month"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent);
-    }
-    if (name === "reading-list") {
-      // book-import writes to a collection it doesn't own: the review card shows in the app, and the book lands once accepted.
-      await page.fill('[data-key="book-import:form"] textarea[name="list"]', "Middlemarch by George Eliot");
-      await page.click('[data-key="book-import:form"] button[type="submit"]');
-      await page.waitForSelector('[data-key^="review:"] >> text=Accept', { timeout: 8000 });
-      await page.click('[data-key^="review:"] >> text=Accept');
-      importedBook = await page.waitForSelector('[data-key="library:books"] ui-table >> text=Middlemarch', { timeout: 8000 }).then(() => true, () => false);
-    }
-    if (name === "calendar") {
-      // The contacts app hasn't run yet, so the agenda has no contacts to read, and says so.
-      proof.noContacts = await page.waitForSelector('[data-key="agenda:agenda"] >> text=Open the Contacts app once', { timeout: 5000 }).then(() => true, () => false);
-      // The month grid is two nested template loops: a row per week, seven days each.
-      proof.grid = await page.evaluate(() => [...document.querySelectorAll('[data-key="month:grid"] tbody tr')].map((tr) => tr.children.length));
-      // month.html's own <style> lays out its grid, and reaches nothing outside the month plugin's views.
-      proof.styled = await page.evaluate(() => {
-        const grid = document.querySelector('[data-key="month:grid"]');
-        const outside = document.body.appendChild(Object.assign(document.createElement("table"), { className: "month", innerHTML: "<tr><td>x</td></tr>" }));
-        const style = (el) => el && getComputedStyle(el);
-        const result = {
-          plugin: grid?.dataset.plugin,
-          layout: style(grid?.querySelector(".month"))?.tableLayout,
-          other: style(grid?.querySelector("td[data-other]"))?.opacity,
-          own: style(grid?.querySelector("td:not([data-other])"))?.opacity,
-          outside: style(outside)?.tableLayout,
-        };
-        // A plugin's CSS can't reach the entry that holds the containment, even with :scope.
-        const sheet = new CSSStyleSheet();
-        sheet.replaceSync('@layer plugins { @scope ([data-plugin="month"] > *) { :scope { position: fixed; } } }');
-        document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
-        result.entry = [style(grid).position, style(grid).contain];
-        document.adoptedStyleSheets = document.adoptedStyleSheets.filter((s) => s !== sheet);
-        outside.remove();
-        return result;
-      });
-      // The agenda is a live view: when the contacts app first runs, in another tab, the birthdays appear here without a reload.
-      proof.quietRead = await page.evaluate(() => !window.__host.traces.some((e) => /No collection named contacts/.test(e.detail ?? "")));
-      const contactsTab = await openTab(`${URL}demos/contacts/app.html`);
-      proof.liveBirthday = await page.waitForSelector('[data-key="agenda:agenda"] >> text=Priya Shah', { timeout: 8000 }).then(() => true, () => false);
-      await contactsTab.close({ runBeforeUnload: true });
-      // The month moves with its own state: refresh() draws it again.
-      const title = await page.textContent('[data-key="month:grid"] h2');
-      await page.click('[data-key="month:grid"] button[aria-label="Next month"]');
-      proof.nextMonth = await page.waitForFunction((t) => document.querySelector('[data-key="month:grid"] h2')?.textContent !== t, title, { timeout: 5000 }).then(() => true, () => false);
-    }
-    if (name === "habits") {
-      // The guide's app: add a habit with the form, tick it, and the live list shows the streak.
-      const view = '[data-key="habits:habits"]';
-      await page.fill(`${view} ui-form input[name=name]`, "Stretch");
-      await page.click(`${view} ui-form button[type=submit]`);
-      await page.check(`${view} input[type=checkbox]`, { timeout: 5000 });
-      proof.habit = await page.waitForSelector(`${view} li[data-done] >> text=1 day`, { timeout: 5000 }).then(() => true, () => false);
-    }
-    if (name === "contacts") {
-      const people = '[data-key="people:people"]';
-      await page.fill(`${people} input[type=search]`, "priya");
-      proof.search = await page.waitForFunction((sel) => document.querySelectorAll(`${sel} ul li`).length === 1 && !document.querySelector(`${sel} ui-table`), people, { timeout: 5000 }).then(() => true, () => false);
-      // A pasted vCard becomes a contact once the person accepts the review card.
-      await page.fill('[data-key="vcard-import:form"] textarea', "BEGIN:VCARD\nVERSION:3.0\nFN:Katherine Johnson\nEMAIL;TYPE=work:katherine@example.com\nBDAY:19180826\nEND:VCARD");
-      await page.click('[data-key="vcard-import:form"] button[type=submit]');
-      await page.click('[data-key^="review:"] >> text=Accept', { timeout: 8000 });
-      proof.vcard = await page.waitForSelector('[data-key="vcard-import:form"] >> text=Added 1 of 1', { timeout: 8000 }).then(() => true, () => false);
-    }
-    if (name === "recipes") {
-      const book = '[data-key="cookbook:cookbook"]';
-      await page.click(`${book} ui-table >> text=Pancakes`);
-      await page.waitForSelector(`${book} input[data-action=serves]`, { timeout: 5000 });
-      await page.fill(`${book} input[data-action=serves]`, "6");
-      await page.press(`${book} input[data-action=serves]`, "Tab");
-      await page.waitForSelector(`${book} li >> text=300 g flour`, { timeout: 5000 }).catch(() => {});
-      proof.scaled = await page.locator(`${book} ul li`).allTextContents();
-      // The shopping list fills from a recipe it reads but doesn't own, then ticks an item off.
-      const list = '[data-key="shopping:list"]';
-      await page.selectOption(`${list} select`, { label: "Pancakes" });
-      await page.click(`${list} button[type=submit] >> text=Add its ingredients`);
-      await page.waitForFunction((sel) => document.querySelectorAll(`${sel} input[type=checkbox]`).length === 4, list, { timeout: 5000 }).catch(() => {});
-      await page.check(`${list} input[type=checkbox] >> nth=0`);
-      proof.ticked = await page.waitForSelector(`${list} s`, { timeout: 5000 }).then(() => true, () => false);
-      // ui-form edits a list of groups: add two ingredients, remove one, see an error beside the field it is about, then save.
-      await page.click(`${book} button >> text=All recipes`);
-      const form = `${book} ui-form`;
-      await page.fill(`${form} input[name=title]`, "Toast");
-      await page.click(`${form} button.add`);
-      await page.click(`${form} button.add`);
-      // Add moves focus to the new row's first field.
-      proof.focusAfterAdd = await page.evaluate((sel) => document.querySelector(sel).shadowRoot.activeElement?.getAttribute("name"), `${book} ui-form`);
-      await page.fill(`${form} input[name="ingredients[1].amount"]`, "2");
-      await page.fill(`${form} input[name="ingredients[1].unit"]`, "slices");
-      await page.click(`${form} button.add`);
-      await page.fill(`${form} input[name="ingredients[2].item"]`, "butter");
-      await page.click(`${form} button.remove >> nth=2`);
-      proof.rows = await page.locator(`${form} li`).count();
-      // Row 0 is blank and left out, so the kernel's error is about ingredients[0]; it shows in row 1, where it came from.
-      await page.click(`${form} button[type=submit]`);
-      proof.nestedError = await page.waitForSelector(`${form} li[data-row="ingredients[1]"] >> text=item is required`, { timeout: 5000 }).then(() => true, () => false);
-      await page.fill(`${form} input[name="ingredients[1].item"]`, "bread");
-      await page.click(`${form} button[type=submit]`);
-      await page.click(`${book} ui-table >> text=Toast`, { timeout: 5000 });
-      await page.waitForSelector(`${book} input[data-action=serves]`, { timeout: 5000 });
-      proof.toast = await page.locator(`${book} ul li`).allTextContents();
-    }
+    // What this app does: tests/demos/<name>.mjs, if there is one.
+    await demoTests.get(name)?.default?.(page, t);
     await page.close({ runBeforeUnload: true });
   }
-  // The debug console (std/debug-console.js): a bug that counts problems, opens a log, and copies it.
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: URL });
-  const debugPage = await openTab(`${URL}demos/spending/app.html`);
-  await debugPage.waitForSelector("ui-debug .bug", { timeout: 8000 });
-  // An uncaught error in the page is reported to the kernel, and reaches the console through the trace.
-  await debugPage.evaluate(() => setTimeout(() => { throw new Error("debug-test boom"); }));
-  const counted = await debugPage.waitForFunction(() => Number(document.querySelector("ui-debug")?.getAttribute("problems")) > 0, null, { timeout: 5000 }).then(() => true, () => false);
-  check("the debug console counts an uncaught page error on its bug", counted, await debugPage.evaluate(() => document.querySelector("ui-debug")?.getAttribute("problems")));
-  await debugPage.click("ui-debug .bug");
-  const logged = await debugPage.waitForSelector('ui-debug pre[data-copy-source="log"] >> text=debug-test boom', { timeout: 5000 }).then(() => true, () => false);
-  await debugPage.click('ui-debug button[data-value="all"]');
-  const everything = await debugPage.waitForSelector('ui-debug pre[data-copy-source="log"] >> text=plugin:ready', { timeout: 5000 }).then(() => true, () => false);
-  check("opening it shows the problems, and Everything shows the whole trace", logged && everything);
-  await debugPage.click("ui-debug button[data-copy]");
-  await debugPage.waitForFunction(() => /Copied/.test(document.querySelector("ui-debug")?.shadowRoot?.getElementById("status")?.textContent ?? ""), null, { timeout: 3000 }).catch(() => {});
-  const clipboard = await debugPage.evaluate(() => navigator.clipboard.readText()).catch((e) => String(e));
-  check("Copy puts the log on the clipboard, headed with the page's address", clipboard.includes("/demos/spending/app.html") && clipboard.includes("debug-test boom") && clipboard.includes("plugin:ready"), clipboard.slice(0, 200));
-  const lines = clipboard.split("\n").filter((l) => /^\d\d:\d\d:\d\d\.\d{3}  /.test(l));
-  check("each trace event is in the log once, though the snapshot and the first batches overlap", lines.length > 5 && new Set(lines).size === lines.length, `${lines.length} lines, ${new Set(lines).size} different`);
-  // A second tab on the same app: its console starts before the tab has said which plugins its app links.
-  const debugPage2 = await openTab(`${URL}demos/spending/app.html`);
-  await debugPage2.waitForSelector("ui-debug .bug", { state: "attached", timeout: 8000 });
-  await debugPage2.click("ui-debug .bug");
-  const knowsApp = await debugPage2.waitForSelector('ui-debug input[data-action="only-this-app"]', { timeout: 5000 }).then(() => true, () => false);
-  check("a console that starts before its tab opens the app learns the app's plugins once it does", knowsApp);
-  await debugPage2.close({ runBeforeUnload: true });
-  await debugPage.keyboard.press("Escape");
-  check("Escape closes the panel", await debugPage.evaluate(() => !document.querySelector("ui-debug")?.shadowRoot?.getElementById("panel")?.matches(":popover-open")));
-  await debugPage.close({ runBeforeUnload: true });
-  // That error was thrown on purpose.
-  for (let i = errors.length - 1; i >= 0; i--) if (errors[i].includes("debug-test boom")) errors.splice(i, 1);
-  // Without debug:read a plugin can neither read the trace nor hear it.
-  await plugin(`export const manifest = { id: 'peeker', name: 'Peeker', permissions: [] };
-export default async (ctx) => {
-  ctx.on('debug:trace', () => ctx.log('peeker heard'));
-  try { await ctx.call('debug', 'recent'); ctx.log('peeker read'); } catch (e) { ctx.log('peeker refused: ' + e.message); }
-};`);
-  const peeked = await pluginLog("peeker", "peeker");
-  await a.waitForFunction(() => window.__host.traces.some((e) => e.kind === "denied" && e.plugin === "peeker" && e.name === "debug:read"), null, { timeout: 3000 }).catch(() => {});
-  const peekDenied = await traceHas(a, `(e) => e.kind === "denied" && e.plugin === "peeker" && e.name === "debug:read"`);
-  check("without debug:read a plugin can neither read the trace nor hear it", peeked === "peeker refused: Missing capability debug:read" && peekDenied, peeked);
-  await a.evaluate(() => window.__host.command("uninstall", "peeker"));
   check("every demo app draws a view from each plugin it links", demoNames.length >= 2 && drawn.every((d) => d.endsWith("drawn")), drawn.join("; "));
   check("an app page shows only its own plugins' views", leaks.length === 0, leaks.join(", "));
-  check("a plugin that reads another's collection hears its changes and redraws", spentItems);
-  check("a view template from an .html file repeats rows and fills holes as text", templateText.shown && !templateText.bold && templateText.rows === 5, JSON.stringify(templateText));
-  // Nested loops multiply: 300 × 300 items would make 90,000 rows, so filling stops at its node budget.
-  const tooBig = await a.evaluate(() => {
-    const file = new DOMParser().parseFromString('<template id="grid"><template for="r of rows"><template for="c of rows"><i>{{c}}</i></template></template></template>', "text/html");
-    const rows = Array.from({ length: 300 }, (_, i) => i);
-    const started = performance.now();
-    const html = window.__host.fill(file, "grid", { rows });
-    return { html: html.slice(0, 120), ms: Math.round(performance.now() - started) };
-  });
-  check("a template that would make too many nodes stops early instead of freezing the page", /wasn't drawn/.test(tooBig.html), `${tooBig.ms}ms: ${tooBig.html}`);
-  // An attribute that is one whole hole comes and goes with its value; a hole inside other text is just text.
-  const conditional = await a.evaluate(() => {
-    const file = new DOMParser().parseFromString('<template id="t"><input type="checkbox" checked="{{on}}"><i data-x="{{off}}" data-y="{{missing}}" data-n="{{n}}" title="is {{on}}"></i></template>', "text/html");
-    return window.__host.fill(file, "t", { on: true, off: false, n: 0 });
-  });
-  check("an attribute that is one whole hole is left out when false or missing, and bare when true", conditional === '<input type="checkbox" checked=""><i data-n="0" title="is true"></i>', conditional);
-  // A plugin's CSS keeps its rules but loses anything that loads, any @import or @font-face, and !important.
-  const cleanCss = await a.evaluate(() => window.__host.cleanCss(`@import "https://example.com/x.css";
-    @font-face { font-family: x; src: url(https://example.com/x.woff2); }
-    .a { color: red !important; background: url(https://example.com/x.png); --y: \\75 rl(https://example.com/y.png); padding: 4px; }
-    @media (min-width: 1px) { .b { cursor: url(https://example.com/c.cur), auto; margin: 1px; } }
-    @keyframes spin { to { rotate: 1turn; } }
-    .n { color: red; & .m { color: blue; } padding: 2px; }`));
-  check("a plugin's CSS is cleaned: no url(), @import, @font-face or !important", !/url|import|font-face|important|keyframes|example/i.test(cleanCss) && /\.a \{[^}]*padding: 4px;[^}]*color: red;/.test(cleanCss) && /@media .*\.b \{ margin: 1px; \}/s.test(cleanCss) && /\.n \{[^]*padding: 2px/.test(cleanCss), cleanCss);
-  check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
-  check("a plugin in an app writing another plugin's collection is reviewed in that app, then lands", importedBook);
-  check("a month grid from nested template loops has seven days in every week", proof.grid?.length >= 4 && proof.grid.every((n) => n === 7), JSON.stringify(proof.grid));
-  check("a plugin's own stylesheet styles its views, by class, and nothing else on the page", proof.styled?.plugin === "month" && proof.styled.layout === "fixed" && proof.styled.other === "0.6" && proof.styled.own === "1" && proof.styled.outside !== "fixed" && proof.styled.entry[0] !== "fixed" && proof.styled.entry[1] === "layout paint", JSON.stringify(proof.styled));
-  check("reading a collection that doesn't exist yet gives an empty list, not an error", proof.quietRead);
-  check("a live view fills in when a collection it reads first appears, from another app's tab", proof.liveBirthday);
-  check("a live view draws again on refresh() after the plugin's own state changes", proof.nextMonth);
-  check("the guide's habits app adds a habit, ticks it, and shows its streak", proof.habit);
-  check("a search box with data-live redraws the plugin's own list", proof.search);
-  check("a vCard import writes a contact after review", proof.vcard);
-  check("a recipe scales its ingredients to the servings typed in", JSON.stringify(proof.scaled) === JSON.stringify(["300 g flour", "3 eggs", "450 ml milk", "1.5 pinch salt"]), JSON.stringify(proof.scaled));
-  check("a shopping list fills from a recipe and ticks an item off", proof.ticked);
-  check("a form edits a list of ingredients: add, remove, an error beside the field, save", proof.focusAfterAdd === "ingredients[1].amount" && proof.rows === 2 && proof.nestedError && JSON.stringify(proof.toast) === JSON.stringify(["2 slices bread"]), JSON.stringify({ focus: proof.focusAfterAdd, rows: proof.rows, error: proof.nestedError, toast: proof.toast }));
-  // The calendar reads the contacts app's collection, though no contacts plugin is running now.
-  const calendar = await openTab(`${URL}demos/calendar/app.html`);
-  const birthday = await calendar.waitForSelector('[data-key="agenda:agenda"] >> text=Priya Shah', { timeout: 8000 }).then(() => true, () => false);
-  await calendar.close({ runBeforeUnload: true });
-  check("one app reads another app's collection while that app is closed", proof.noContacts && birthday, `before contacts ran: ${proof.noContacts}, after: ${birthday}`);
+  // What a demo checks once every demo has run (the calendar reads contacts the contacts demo made).
+  for (const test of demoTests.values()) await test.after?.(t);
+  // Each feature's own checks, in file name order.
+  for (const test of featureTests.values()) await test.default(t);
+
   // Closing an app's last tab stops its plugins.
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 8000 }).catch(() => {});
   check("closing an app's last tab stops the plugins it linked", (await a.evaluate(() => window.__host.workers.size)) === before, `${await a.evaluate(() => window.__host.workers.size)} workers, expected ${before}`);
