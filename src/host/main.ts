@@ -348,6 +348,34 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
   });
 }
 
+// ---- Demos ----
+// Each file in demos/ is an ordinary plugin. Picking one installs it, as a
+// person installing a plugin would; `?demo=<name>` does the same on load.
+const DEMOS = import.meta.glob("../../demos/*.js", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+const demoName = (path: string) => path.split("/").pop()!.replace(/\.js$/, "");
+const picker = document.getElementById("demo") as HTMLSelectElement;
+for (const path of Object.keys(DEMOS).sort()) picker.append(new Option(demoName(path), demoName(path)));
+const installDemo = async (name: string) => {
+  const path = Object.keys(DEMOS).find((p) => demoName(p) === name);
+  if (!path) return;
+  const outcome = (await command("install", DEMOS[path])) as { ok: boolean; error?: string };
+  if (!outcome.ok) notice(`Couldn't add the ${name} demo: ${outcome.error}`);
+  const url = new URL(location.href);
+  url.searchParams.set("demo", name);
+  history.replaceState(null, "", url);
+  return outcome;
+};
+picker.onchange = () => {
+  if (picker.value) void installDemo(picker.value);
+};
+/** Resolves once the kernel has said hello to this tab. */
+let welcomed: () => void;
+const kernelReady = new Promise<void>((resolve) => (welcomed = resolve));
+if (params.get("demo")) {
+  picker.value = params.get("demo")!;
+  void kernelReady.then(() => installDemo(params.get("demo")!));
+}
+
 const result = document.getElementById("result")!;
 document.getElementById("bench")!.onclick = async () => {
   result.textContent = "Measuring…";
@@ -377,6 +405,7 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
   switch (message.t) {
     case "welcome":
       spawner = message.spawner;
+      welcomed();
       document.getElementById("mode")!.textContent = `Kernel in a ${message.mode} worker · tab ${tab}${spawner ? " · runs the plugin workers" : ""}`;
       return;
     case "render":

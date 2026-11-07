@@ -1,34 +1,83 @@
 # Extensible Web Apps
 
-An exploration of malleable web applications: a small kernel where everything else, including the UI shell, storage and the AI app builder, is a plugin.
+A platform for malleable web apps: a small kernel, and everything else is a plugin. That includes the UI shell, storage and, later, the AI app builder. Plugins run in their own workers, can only do what their manifest asks for, and draw their UI as plain HTML.
 
-- Research and plan: https://claude.ai/artifact/S7NdMrp2PkNSqHZFNdqGrC
-- Built on [Cordis](https://github.com/cordiverse/cordis), the plugin framework under [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness).
-- Learns from the [Markdown editor](https://github.com/PaulKinlan/MarkdownEdiitor)'s extension system, [Pi](https://github.com/badlogic/pi-mono)'s extensions and Ink & Switch's [Malleable software](https://www.inkandswitch.com/essay/malleable-software/) essay.
+**Try it:** https://paulkinlan.github.io/ExtensibleWebApps/. Pick a demo from the menu at the top right, or open the [reading list](https://paulkinlan.github.io/ExtensibleWebApps/?demo=reading-list) or [spending](https://paulkinlan.github.io/ExtensibleWebApps/?demo=spending) directly.
 
-## What's here
+![The reading list demo](docs/images/collections.png)
 
-A notes app where every feature is a plugin and no plugin runs on the main thread. The phase 0 spike and what it showed are in [docs/spike.md](docs/spike.md); the kernel as it stands is described in [docs/kernel.md](docs/kernel.md), and its API, as the kernel prints it, in [docs/api.md](docs/api.md).
+## Start here
 
-![The spike: notes, a blocked save, plugin views and the trace](docs/images/spike.png)
+| If you want to… | Read |
+| --- | --- |
+| See what writing an app looks like | [`demos/`](demos/), starting with [`demos/README.md`](demos/README.md) |
+| Look up an API | [`docs/api.md`](docs/api.md), generated from the running kernel |
+| Understand how the kernel works | [`docs/kernel.md`](docs/kernel.md) |
+| Know why it is built this way | [`docs/spike.md`](docs/spike.md) and the [plan](https://claude.ai/artifact/S7NdMrp2PkNSqHZFNdqGrC) |
+
+## How it fits together
 
 ```
 page (host)  <-- port -->  kernel (shared worker)  <-- port -->  plugin (dedicated worker, one each)
 ```
 
-- **Host** (`src/host/`): draws the declarative views plugins send, turns clicks and typing into events, creates plugin workers when it is the spawner tab, and bridges page-only APIs (Web Audio). Runs no plugin code.
-- **Kernel** (`src/kernel/`): Cordis core, plus the bridge to plugin workers (`remote.ts`), the capability gate (`gate.ts`), hook specs (`hooks.ts`) and the trace tap (`trace.ts`). Trusted plugins live here too: the store; the notes app; the plugins panel (`catalog.ts`), which turns plugins on and off, removes them, and builds settings forms from their manifests; change review (`review.ts`), which shows the person a diff before a plugin writes outside its own data; and the change log (`changes.ts`).
-- **Sandbox runtime** (`src/sandbox/runtime.ts`): loads one plugin in a worker and gives it a `ctx` whose calls are messages the gate checks. Markdown editor extensions get an `editor` shim instead.
-- **Plugins** (`plugins/`): `word-count.js` and `edit-times.js` copied unchanged from the Markdown editor; `no-shouting.js` (blocks a write), `tone.js` (AudioWorklet), `bars.js` (OffscreenCanvas, one per tab), `pinger.js` (benchmark), `sneaky.js` (asks for more than it may have), `fetcher.js` and `offline.js` (network allowed and blocked); `tidy.js` (tidies and exports a note, through change review).
+Three kinds of code, each in its own place:
+
+- **The host** (`src/host/`) is the page. It draws what plugins render, turns clicks and typing into events, and runs no plugin code. Read [`main.ts`](src/host/main.ts) first, then:
+  - [`sanitize.ts`](src/host/sanitize.ts) keeps only the HTML listed in [`src/shared/html.ts`](src/shared/html.ts)
+  - [`morph.ts`](src/host/morph.ts) updates a view in place
+  - [`components.ts`](src/host/components.ts) holds the `ui-*` layout components
+  - [`bound.ts`](src/host/bound.ts) holds `<ui-form>` and `<ui-table>`
+- **The kernel** (`src/kernel/`) is a shared worker that every tab talks to. [`kernel.ts`](src/kernel/kernel.ts) wires everything together and is the place to start. The other files, by job:
+  - **Talking to plugins:**
+    - [`remote.ts`](src/kernel/remote.ts) is the bridge to plugin workers
+    - [`manifest.ts`](src/kernel/manifest.ts) reads a manifest without running the plugin
+    - [`gate.ts`](src/kernel/gate.ts) checks every call against the manifest
+    - [`hooks.ts`](src/kernel/hooks.ts) defines the events plugins can listen to
+  - **Data:**
+    - [`store.ts`](src/kernel/store.ts) is the data folder
+    - [`records.ts`](src/kernel/records.ts) and [`schema.ts`](src/kernel/schema.ts) hold collections
+    - [`paths.ts`](src/kernel/paths.ts) checks file paths
+  - **Keeping the person in charge:**
+    - [`review.ts`](src/kernel/review.ts) shows a diff before a plugin changes data it doesn't own
+    - [`changes.ts`](src/kernel/changes.ts) is the log of what changed
+    - [`catalog.ts`](src/kernel/catalog.ts) is the plugins panel
+  - **Built in:**
+    - [`notes.ts`](src/kernel/notes.ts) is the notes app
+    - [`reference.ts`](src/kernel/reference.ts) is the API reference
+    - [`trace.ts`](src/kernel/trace.ts) is the trace you see at the bottom of the page
+- **The sandbox** ([`src/sandbox/runtime.ts`](src/sandbox/runtime.ts)) runs inside each plugin's worker. It builds the `ctx` a plugin is given, and every call on `ctx` becomes a message to the kernel.
+
+[`src/shared/`](src/shared/) holds what both sides agree on:
+- the message protocol
+- the plugin API's types
+- the HTML allowlist
+
+Plugins live in two places:
+- [`demos/`](demos/) holds apps written to show the programming model.
+- [`plugins/`](plugins/) holds the plugins built into the app:
+  - `word-count.js` and `edit-times.js`, copied unchanged from the [Markdown editor](https://github.com/PaulKinlan/MarkdownEdiitor)
+  - `tidy.js` (change review), `tone.js` (audio) and `bars.js` (canvas)
+  - test plugins that check the security rules
 
 ## Running it
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173 ; add ?kernel=dedicated to run the kernel in a dedicated worker
-npm test           # build, then 76 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm run dev        # http://localhost:5173 ; ?demo=reading-list adds a demo, ?kernel=dedicated runs the kernel in a dedicated worker
+npm test           # build, then 77 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```
 
-The trace panel at the bottom of the page shows every dispatch, remote call, denial and lifecycle event, and has buttons to measure the hook round trip and run the reload test.
+The trace panel at the bottom of the page shows every dispatch, remote call, denial and lifecycle event.
+
+Every push to `main` publishes the site to GitHub Pages ([`.github/workflows/pages.yml`](.github/workflows/pages.yml)). GitHub Pages can't send response headers, so the content security policy that blocks plugin workers from the network isn't applied there. That policy is in `vite.config.ts` and `public/_headers`. Hosts that honour `_headers`, such as Cloudflare Pages, do apply it.
+
+## Background
+
+- Built on [Cordis](https://github.com/cordiverse/cordis), the plugin framework under [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness).
+- It also learns from:
+  - the [Markdown editor](https://github.com/PaulKinlan/MarkdownEdiitor)'s extension system
+  - [Pi](https://github.com/badlogic/pi-mono)'s extensions
+  - Ink & Switch's [Malleable software](https://www.inkandswitch.com/essay/malleable-software/) essay

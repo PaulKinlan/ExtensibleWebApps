@@ -4,13 +4,17 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
-    <title>Extensible Web Apps: spike</title>
+    <title>Extensible Web Apps</title>
     <link rel="stylesheet" href="/src/host/styles.css" />
   </head>
   <body>
     <header>
       <strong>Extensible Web Apps</strong>
       <span id="mode" class="muted"></span>
+      <span class="spacer"></span>
+      <label class="demo-pick">Demo
+        <select id="demo"><option value="">Pick one…</option></select>
+      </label>
     </header>
     <main>
       <nav data-slot="app.nav"></nav>
