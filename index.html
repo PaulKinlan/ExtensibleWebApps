@@ -45,6 +45,7 @@
     .intro h2 { font-size: var(--text-2xl); line-height: 1.2; margin: 0 0 8px; }
     .intro p { margin: 0 0 12px; color: var(--fg-2); font-size: var(--text-lg); }
     .intro p:first-of-type { color: var(--fg); }
+    .intro .inspiration { font-size: var(--text-md); }
     .home { display: grid; gap: 16px; padding: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); grid-template-areas: "chapters playground"; align-items: start; }
     .chapters { grid-area: chapters; display: flex; flex-direction: column; gap: 16px; }
     .side { grid-area: playground; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
@@ -68,9 +69,10 @@
   </header>
   <section class="intro">
     <h2>Web apps that the people using them can change.</h2>
-    <p>Extensible Web Apps is an experiment in malleable software. Most web apps are fixed: you get the features the developer shipped, and if you need something else, you wait or you leave. Here, an app is a small kernel plus plugins, and anyone can add, remove or rewrite a plugin. That could be the developer who built the app, a person using it, or an LLM agent working for them.</p>
+    <p>Extensible Web Apps is an experiment in <a href="https://www.inkandswitch.com/essay/malleable-software/">malleable software</a>. Most web apps are fixed: you get the features the developer shipped, and if you need something else, you wait or you leave. Here, an app is a small kernel plus plugins, and anyone can add, remove or rewrite a plugin. That could be the developer who built the app, a person using it, or an LLM agent working for them.</p>
     <p>To make that safe, each plugin is one JavaScript file that declares what it needs, runs in its own Web Worker, and can't do anything it didn't ask for. Changes to data it doesn't own wait for the person to approve them. It's plain HTML, CSS and JavaScript, with no build step.</p>
     <p>This page is an app built that way. Each section below is a plugin: read how it works, then switch parts off and watch the page change.</p>
+    <p class="inspiration">Built on ideas from Ink &amp; Switch's essay <a href="https://www.inkandswitch.com/essay/malleable-software/">Malleable software</a>, the <a href="https://github.com/deepseek-ai/DeepSeek-Harness">DeepSeek Harness</a>, where every part of the agent is an extension, the <a href="https://github.com/cordiverse/cordis">Cordis</a> plugin framework that the kernel runs on, and the extensions of the <a href="https://github.com/badlogic/pi-mono">Pi</a> coding agent.</p>
   </section>
   <div class="home">
     <section class="chapters" aria-label="How it works">
