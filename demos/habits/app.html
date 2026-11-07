@@ -1,0 +1,28 @@
+<!doctype html>
+<!--
+  Habits: the app the developer guide builds, step by step
+  (docs/guide/writing-a-plugin.md). One plugin, two files:
+
+  habits.js    owns the `habits` collection, and draws the list live
+  habits.html  the list's template, and its own <style>
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Habits</title>
+  <meta name="description" content="Tick off today's habits, and keep a streak.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="habits.js">
+</head>
+<body>
+  <header>
+    <h1>Habits</h1>
+    <a href="/">Workbench</a>
+  </header>
+  <main>
+    <slot name="main"><p>Loading your habits…</p></slot>
+  </main>
+</body>
+</html>

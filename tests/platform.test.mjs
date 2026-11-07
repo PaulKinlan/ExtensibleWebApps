@@ -355,6 +355,14 @@ export default async (ctx) => {
       await page.click('[data-key="month:grid"] button[aria-label="Next month"]');
       proof.nextMonth = await page.waitForFunction((t) => document.querySelector('[data-key="month:grid"] h2')?.textContent !== t, title, { timeout: 5000 }).then(() => true, () => false);
     }
+    if (name === "habits") {
+      // The guide's app: add a habit with the form, tick it, and the live list shows the streak.
+      const view = '[data-key="habits:habits"]';
+      await page.fill(`${view} ui-form input[name=name]`, "Stretch");
+      await page.click(`${view} ui-form button[type=submit]`);
+      await page.check(`${view} input[type=checkbox]`, { timeout: 5000 });
+      proof.habit = await page.waitForSelector(`${view} li[data-done] >> text=1 day`, { timeout: 5000 }).then(() => true, () => false);
+    }
     if (name === "contacts") {
       const people = '[data-key="people:people"]';
       await page.fill(`${people} input[type=search]`, "priya");
@@ -439,6 +447,7 @@ export default async (ctx) => {
   check("reading a collection that doesn't exist yet gives an empty list, not an error", proof.quietRead);
   check("a live view fills in when a collection it reads first appears, from another app's tab", proof.liveBirthday);
   check("a live view draws again on refresh() after the plugin's own state changes", proof.nextMonth);
+  check("the guide's habits app adds a habit, ticks it, and shows its streak", proof.habit);
   check("a search box with data-live redraws the plugin's own list", proof.search);
   check("a vCard import writes a contact after review", proof.vcard);
   check("a recipe scales its ingredients to the servings typed in", JSON.stringify(proof.scaled) === JSON.stringify(["300 g flour", "3 eggs", "450 ml milk", "1.5 pinch salt"]), JSON.stringify(proof.scaled));
