@@ -17,16 +17,16 @@ page (host)  <-- port -->  kernel (shared worker)  <-- port -->  plugin (dedicat
 ```
 
 - **Host** (`src/host/`): draws the declarative views plugins send, turns clicks and typing into events, creates plugin workers when it is the spawner tab, and bridges page-only APIs (Web Audio). Runs no plugin code.
-- **Kernel** (`src/kernel/`): Cordis core, plus the bridge to plugin workers (`remote.ts`), the capability gate (`gate.ts`), hook specs (`hooks.ts`) and the trace tap (`trace.ts`). Two trusted demo plugins live here too: the store and the notes app.
+- **Kernel** (`src/kernel/`): Cordis core, plus the bridge to plugin workers (`remote.ts`), the capability gate (`gate.ts`), hook specs (`hooks.ts`) and the trace tap (`trace.ts`). Trusted plugins live here too: the store; the notes app; the plugins panel (`catalog.ts`), which turns plugins on and off, removes them, and builds settings forms from their manifests; change review (`review.ts`), which shows the person a diff before a plugin writes outside its own data; and the change log (`changes.ts`).
 - **Sandbox runtime** (`src/sandbox/runtime.ts`): loads one plugin in a worker and gives it a `ctx` whose calls are messages the gate checks. Markdown editor extensions get an `editor` shim instead.
-- **Plugins** (`plugins/`): `word-count.js` and `edit-times.js` copied unchanged from the Markdown editor; `no-shouting.js` (blocks a write), `tone.js` (AudioWorklet), `bars.js` (OffscreenCanvas, one per tab), `pinger.js` (benchmark), `sneaky.js` (asks for more than it may have), `fetcher.js` and `offline.js` (network allowed and blocked).
+- **Plugins** (`plugins/`): `word-count.js` and `edit-times.js` copied unchanged from the Markdown editor; `no-shouting.js` (blocks a write), `tone.js` (AudioWorklet), `bars.js` (OffscreenCanvas, one per tab), `pinger.js` (benchmark), `sneaky.js` (asks for more than it may have), `fetcher.js` and `offline.js` (network allowed and blocked); `tidy.js` (tidies and exports a note, through change review).
 
 ## Running it
 
 ```sh
 npm install
 npm run dev        # http://localhost:5173 ; add ?kernel=dedicated to run the kernel in a dedicated worker
-npm test           # build, then 43 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm test           # build, then 55 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run typecheck
 ```
 

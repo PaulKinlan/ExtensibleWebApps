@@ -15,7 +15,9 @@
 import type { Dispatch, Manifest, View } from "../shared/protocol";
 import type { Hosts } from "./hosts";
 import { readManifest } from "./manifest";
+import type { ChangeLog } from "./changes";
 import type { RemotePlugins, ServiceProvider } from "./remote";
+import { placeLabel, type Reviews } from "./review";
 import type { Store } from "./store";
 import { record } from "./trace";
 
@@ -48,9 +50,11 @@ function valid(value: unknown): Saved {
   return { off, settings };
 }
 
-export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
+export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: ChangeLog, reviews: Reviews) {
   let saved: Saved = { off: [], settings: {} };
   let loaded = false;
+  /** True while the plugins already in the app start up; those aren't changes worth logging. */
+  let booting = true;
   const errors = new Map<string, string>();
 
   // Every write to the data folder goes through one queue, in order, so an
@@ -130,6 +134,14 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
           ],
         },
         ...(enabled ? fields : []),
+        ...reviews.grantsFor(id).map((place): View => ({
+          type: "stack",
+          direction: "row",
+          children: [
+            { type: "text", text: `Changes ${placeLabel(place)} without asking`, tone: "muted" },
+            { type: "button", label: "Forget", action: `forget:${id}:${place}` },
+          ],
+        })),
         ...(error ? [{ type: "text" as const, text: error, tone: "error" as const }] : []),
         {
           type: "stack",
@@ -149,7 +161,11 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
     for (const id of remote.installed.keys()) draw(id);
   };
 
+  reviews.onGrants = (id) => draw(id);
+
   remote.onChange = (change, id) => {
+    if (!booting || change !== "install") void log.append({ kind: change, plugin: id });
+    if (change === "uninstall" || change === "disable") reviews.cancel(id);
     if (change === "uninstall") {
       hosts.render("plugins", "app.side", `plugins:${id}`, null, ORDER + 1);
       // A plugin that leaves (removed, or stopped for lying about its manifest) leaves the data folder too.
@@ -204,6 +220,7 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
       saved.settings[id] = { ...saved.settings[id], [key]: result.value };
       void persist().catch(() => {});
       record({ kind: "note", name: "settings:changed", plugin: id, trace: d.trace, detail: `${key} = ${JSON.stringify(result.value)}` });
+      void log.append({ kind: "settings", plugin: id, detail: `${key} = ${JSON.stringify(result.value)}`, trace: d.trace });
       const values = settingsFor(id);
       for (const instance of remote.instances(id)) remote.deliver(instance, { t: "event", action: "settings:changed", value: values, trace: d.trace });
     }
@@ -236,6 +253,7 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
         ...builtIn.filter((source) => !storedIds.has(idOf(source))).map((source) => remote.install(source, { origin: "built-in", enabled: !off.has(idOf(source)) })),
         ...stored.map((source) => remote.install(source, { origin: "data", enabled: !off.has(idOf(source)) })),
       ]);
+      booting = false;
       record({ kind: "lifecycle", name: "plugins:loaded", detail: `${builtIn.length} built in, ${stored.length} with the data, ${off.size} off` });
     },
     event(action: string, value: unknown, trace: string) {
@@ -245,6 +263,7 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts) {
       if (verb === "toggle") return void remote.setEnabled(id, !remote.installed.get(id)?.enabled);
       if (verb === "remove") return void remove(id);
       if (verb === "set") return set(id, action.slice(verb.length + id.length + 2), value, d);
+      if (verb === "forget") return void reviews.forget(id, action.slice(verb.length + id.length + 2), trace);
     },
   };
 }

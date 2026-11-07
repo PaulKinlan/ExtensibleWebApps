@@ -11,6 +11,8 @@ export function notesApp(ctx: any, store: Store, hosts: Hosts) {
   let openId: string | undefined;
   let draft = "";
   let status = "";
+  /** The draft has edits the person hasn't saved (also after a save was refused). */
+  let dirty = false;
 
   const snapshot = (unsaved: boolean) => {
     const note = openId ? store.get(openId) : undefined;
@@ -49,6 +51,7 @@ export function notesApp(ctx: any, store: Store, hosts: Hosts) {
     openId = id;
     draft = store.get(id)?.text ?? "";
     status = "";
+    dirty = false;
     render();
     ctx.emit(d, "note:open", snapshot(false));
   };
@@ -59,6 +62,7 @@ export function notesApp(ctx: any, store: Store, hosts: Hosts) {
     const next: Note = { ...note, text: draft, title: titleOf(draft), updated: Date.now() };
     const result = await store.put(next, d);
     status = result.ok ? "Saved" : `Not saved: ${result.reason}`;
+    if (result.ok) dirty = false;
     render();
     if (result.ok) ctx.emit(d, "note:save", snapshot(false));
   };
@@ -73,11 +77,26 @@ export function notesApp(ctx: any, store: Store, hosts: Hosts) {
     if (action === "edit") {
       draft = String(value ?? "");
       status = "Unsaved changes";
+      dirty = true;
       ctx.emit(d, "note:change", snapshot(true));
       return;
     }
     if (action === "save") return save(d);
   };
+
+  // A note can also change from elsewhere: a plugin's reviewed write. Show
+  // it, unless the person has unsaved edits of their own.
+  ctx.on("data:changed", function (this: Dispatch | null, change: { id: string; after: Note }) {
+    if (change.id === openId && !dirty && draft !== change.after.text) {
+      draft = change.after.text;
+      status = "Changed by a plugin";
+      render();
+      // Tell note listeners (word count, the editor shim) what the note now says.
+      ctx.emit(this ?? {}, "note:save", snapshot(false));
+      return;
+    }
+    render();
+  });
 
   return {
     async start() {

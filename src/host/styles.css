@@ -39,6 +39,12 @@ label.field { display: flex; flex-direction: column; gap: 2px; font-size: 13px; 
 label.field.checkbox { flex-direction: row; align-items: center; gap: 6px; }
 label.field input:not([type="checkbox"]), label.field select { font: inherit; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
 label.field :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+pre.diff { margin: 0; padding: 8px 0; max-height: 320px; overflow: auto; font: 13px/1.5 var(--mono); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); }
+pre.diff span { display: block; padding: 0 10px; white-space: pre-wrap; }
+pre.diff .add { background: color-mix(in srgb, var(--ok) 16%, transparent); }
+pre.diff .del { background: color-mix(in srgb, var(--danger) 16%, transparent); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--danger) 60%, transparent); }
+pre.diff .same { color: var(--fg-2); }
+[data-key^="review:"] { border: 1px solid var(--accent); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; }
 canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radius); }
 #devtools { border-top: 1px solid var(--border); padding: 8px 16px; font-size: 12px; }
 #devtools summary { cursor: pointer; color: var(--fg-2); }

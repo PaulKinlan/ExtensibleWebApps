@@ -16,6 +16,8 @@ export type View =
   | { type: "list"; items: { label: string; action: string; selected?: boolean }[] }
   | { type: "textarea"; name: string; value: string; action: string; placeholder?: string }
   | { type: "canvas"; id: string; width: number; height: number }
+  /** A line diff, for change review. */
+  | { type: "diff"; lines: { op: "same" | "add" | "del"; text: string }[] }
   /** A form field. The host sends `action` with the new value when the person changes it. */
   | {
       type: "field";
@@ -50,7 +52,7 @@ export type HostToKernel =
   | { t: "bridge:result"; id: number; ok: boolean; value?: unknown; error?: string }
   | { t: "command"; name: Command; arg?: unknown; id: number };
 
-export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace";
+export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace" | "changes";
 
 // kernel -> host
 export type KernelToHost =

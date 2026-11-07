@@ -55,6 +55,11 @@ interface Api {
     get(): Promise<Record<string, unknown>>;
     onChange(handler: (values: Record<string, unknown>) => void): () => void;
   };
+  /** The plugin's own data, kept with the app's data. Writing it needs no review. */
+  storage: {
+    get(key: string): Promise<unknown>;
+    set(key: string, value: unknown): Promise<unknown>;
+  };
   traced(): Api;
   log(text: string, level?: "info" | "error"): void;
 }
@@ -97,6 +102,10 @@ function api(trace: () => string | undefined): Api {
         settingsHandlers.add(handler);
         return () => void settingsHandlers.delete(handler);
       },
+    },
+    storage: {
+      get: (key: string) => call("storage", "get", key),
+      set: (key: string, value: unknown) => call("storage", "set", key, value),
     },
     /** A copy of this API whose calls carry the trace active now, even after an `await`. */
     traced(): Api {
@@ -152,7 +161,7 @@ function editorShim() {
       commands.set(`command:${id}`, run);
       return () => commands.delete(`command:${id}`);
     },
-    storage: { get: async () => undefined, set: async () => {} },
+    storage: { get: (key: string) => ctx.storage.get(key), set: (key: string, value: unknown) => ctx.storage.set(key, value) },
     settings: { get: () => ctx.settings.get() },
   };
 }
