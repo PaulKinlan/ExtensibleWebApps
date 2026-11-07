@@ -295,6 +295,13 @@ async function receive(message: KernelToPlugin) {
   }
 }
 
+// A plugin's uncaught errors, from timers and promises nobody awaited, go to the trace as its own errors.
+self.addEventListener("error", (e) => port && ctx.log(String(e.message ?? e), "error"));
+self.addEventListener("unhandledrejection", (e) => {
+  const reason = e.reason;
+  if (port) ctx.log(`Unhandled: ${reason instanceof Error ? reason.message : String(reason)}`, "error");
+});
+
 self.onmessage = (e: MessageEvent<{ t: "init"; source: string }>) => {
   if (e.data?.t !== "init") return;
   port = e.ports[0];

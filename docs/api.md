@@ -61,6 +61,15 @@ The plugin's own data, kept in `plugin-data/<id>.json` with the app's data. Neve
 | `storage.get(key)` | the value, or null | Nothing | Reads a value. |
 | `storage.set(key, value)` | true | Nothing | Saves a JSON value; null removes it. Up to 1 MB in all. |
 
+### debug
+
+The trace: everything the kernel, the pages and plugins did, and every error. For developer tools such as std/debug-console.js; hear new events with the `debug:trace` hook.
+
+| Method | Returns | Needs | What it does |
+| --- | --- | --- | --- |
+| `debug.recent()` | { startedAt, events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? } | `debug:read` | The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one. |
+| `debug.app()` | { tab?, app? } | `debug:read` | For a tab-scoped caller: its `tab`, and the ids of the plugins the app open there links, or no `app` if the tab hasn't opened one yet. The trace's `app:open` event says when to ask again. |
+
 ### kernel
 
 The kernel itself.
@@ -101,6 +110,7 @@ Collections: typed records plugins share. A plugin declares its own in its manif
 | `note:change` | emit | `hook:listen:note:change` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The person typed in the open note (unsaved is true). |
 | `note:save` | emit | `hook:listen:note:save` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The open note was saved, by the person or by a reviewed write. |
 | `note:close` | emit | `hook:listen:note:close` | `null` | The open note was closed. |
+| `debug:trace` | emit | `debug:read` | `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]` | New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read. |
 | `bench:ping` | serial, 1000 ms per listener, fails open | `hook:intercept:bench:ping` | `n` | Used by the round-trip benchmark; answer with anything. |
 
 ### Dispatch modes
@@ -127,6 +137,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:read:notes` | Call store.list. |
 | `data:write:notes` | Call store.put. |
 | `files:<folder>` | Call files.read, files.write. |
+| `debug:read` | Call debug.recent, debug.app. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 
@@ -154,7 +165,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 
-Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`.
+Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`.
 
 Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`.
 
@@ -201,6 +212,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-form>` | collection, fields="title,author", record, submit, action | A form built from the collection's schema: labels, input types, required fields and errors from the kernel's checks, beside the control they are about. A list field gets a row per item with Add and Remove buttons, and a group gets a fieldset, two levels deep. Saves a new record, or edits `record`; sends `action` with the saved record's id. |
 | `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
 | `<ui-spacer>` |  | Takes up the free space in a row. |
+| `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
 
 ### Actions
 

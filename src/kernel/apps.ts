@@ -19,6 +19,8 @@ type Opened = { href: string; id?: string; error?: string };
 export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) => Promise<boolean>) {
   /** For each plugin an app linked: the tabs that have that app open. */
   const users = new Map<string, Set<string>>();
+  /** For each tab with an app open: every plugin id its app.html links, including ones that failed to start. */
+  const linked = new Map<string, Set<string>>();
   /** Installs under way, so two tabs opening the same app share one. */
   const installing = new Map<string, Promise<string | undefined>>();
 
@@ -51,6 +53,8 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     if (running && running.source !== source) return { href, id, error: `Another plugin with the id “${id}” is already running` };
     // The tab counts as a user before anything is awaited, so a tab that
     // closes while the plugin starts still lets it stop.
+    if (!linked.has(host.tab)) linked.set(host.tab, new Set());
+    linked.get(host.tab)!.add(id);
     if (!users.has(id)) users.set(id, new Set());
     users.get(id)!.add(host.tab);
     if (running && !installing.has(id)) return { href, id };
@@ -78,8 +82,16 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
       if (hosts.list.includes(host)) hosts.send(host, { t: "opened", plugins });
     },
 
+    /** The plugins the app open in `tab` links, by id. */
+    /** Undefined until the tab has opened an app (and for the workbench, which opens none). */
+    linkedBy(tab: string): string[] | undefined {
+      const ids = linked.get(tab);
+      return ids && [...ids];
+    },
+
     /** A tab closed: stop the app plugins no open tab needs any more. */
     hostLeft(host: Host): void {
+      linked.delete(host.tab);
       for (const id of [...users.keys()]) release(id, host.tab);
     },
   };

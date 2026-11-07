@@ -11,6 +11,12 @@
 
 const BASE = new URL("/elements/", location.href);
 const loading = new Map<string, Promise<void>>();
+let reportError: (name: string, error: unknown) => void = () => {};
+
+/** Tells `fn` when an element's file can't be loaded, so the host can report it. */
+export function onElementError(fn: (name: string, error: unknown) => void): void {
+  reportError = fn;
+}
 
 /** Element classes get their template as a static property. */
 type ElementClass = CustomElementConstructor & { template?: HTMLTemplateElement };
@@ -28,6 +34,7 @@ export function loadElement(name: string): Promise<void> {
       // Forget the failure so a later render can try again.
       loading.delete(name);
       console.warn(`Couldn't load <${name}>:`, error);
+      reportError(name, error);
     });
     loading.set(name, pending);
   }

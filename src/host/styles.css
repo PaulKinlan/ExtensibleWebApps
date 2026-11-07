@@ -163,4 +163,11 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 
 /* Each view entry is drawn by one plugin (data-plugin, set by the host). Containment keeps what it draws inside it. */
 [data-plugin] { contain: layout paint; overflow-clip-margin: 4px; }
+
+/* The "debug" slot floats: what is drawn there (std/debug-console.js's bug) stays in a corner of the screen, where <ui-debug corner> says. */
+slot[name="debug"] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); }
+slot[name="debug"] > [data-plugin]:has(ui-debug[corner="bottom-right"]) { inset: auto var(--space-4) var(--space-4) auto; }
+slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-left"]) { inset: var(--space-4) auto auto var(--space-4); }
+slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-right"]) { inset: var(--space-4) var(--space-4) auto auto; }
+slot[name="debug"] > [data-plugin]:has(ui-debug[corner="inline"]) { position: static; }
 }

@@ -22,6 +22,8 @@
   <link rel="plugin" href="library.js">
   <link rel="plugin" href="due-soon.js">
   <link rel="plugin" href="book-import.js">
+  <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
+  <link rel="plugin" href="/std/debug-console.js">
 </head>
 <body>
   <header>
@@ -34,5 +36,6 @@
   <aside>
     <slot name="side"></slot>
   </aside>
+  <slot name="debug"></slot>
 </body>
 </html>
