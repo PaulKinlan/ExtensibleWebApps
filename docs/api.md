@@ -4,23 +4,117 @@ Printed by the kernel from its own registries (`npm run reference` writes this f
 
 ## The plugin's `ctx`
 
-| Call | Needs | What it does |
-| --- | --- | --- |
-| `ctx.on(hook, handler) → off()` | `hook:listen:<hook>` (emit, parallel) or `hook:intercept:<hook>` (serial, bail, waterfall) | Listens to a hook. In a `function` handler, `this` is a copy of ctx pinned to the action's trace. What it returns matters only for hooks that can change or stop an action. |
-| `ctx.call(service, method, ...args) → Promise` | What the method needs (see Services) | Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses. |
-| `ctx.routes.add(method, path, (request) => response) → off()` | `routes` | Answers requests for a path inside the plugin's own folder (only for plugins an app links), so a link or a form can reach the plugin. The platform's service worker sends a matching request to the kernel through an open tab. `request` is `{ method, path, query, form }`; the handler returns `{ redirect }` (a 303 to a page on this site), `{ html }` (a page in which no script runs), `{ json }` or `{ text }`, each with an optional `status`. Returning nothing lets another plugin answer, and then 404. |
-| `ctx.ui.render(slot, key, view, order?)` | `ui` | Draws a view in a slot, under a key of the plugin's own: an HTML string (see HTML views), a JSON view, or null to remove it. Drawing again updates it in place. Plugins never touch the DOM. |
-| `ctx.ui.html`…${value}…` → view` | Nothing | Builds an HTML view from a template, escaping every value (arrays are joined, nested html results go in as they are). Use it whenever text comes from data. |
-| `ctx.ui.live(slot, key, (ctx) => view, order?) → { refresh(), stop() }` | `ui` | Draws what the function returns, like `ui.render`, and draws it again whenever a collection it read (with `data.list` or `data.get` on the ctx it is given) or the plugin's settings change. Call `refresh()` after the plugin's own state changes. A collection that doesn't exist yet is followed too, so the view fills in when it appears. |
-| `ctx.ui.views(file) → { render(slot, id, data?, { key?, order? }?), live(slot, id, (ctx) => data, { key?, order? }?) }` | `ui` (to render) | The `<template id>` elements in an .html file next to the plugin (only for plugins an app links). `render` draws one, filled with `data`: `{{path}}` holes in text and attribute values (an attribute that is one whole hole is left out when its value is false or missing, and bare when true), `<template for="x of path">` and `<template if="path">`. Values go in as text, and the result is checked like any HTML view. A `<style>` in the file styles only this plugin's views, below the page's own styles. `live` fills it with what the function returns, again whenever what it read changes (see `ui.live`). |
-| `ctx.ui.onEvent((action, value) => …) → off()` | Nothing | Hears the person use the plugin's views: a button's or field's `action`, with a field's new value. |
-| `ctx.ui.onCanvas(id, (canvas) => …)` | Nothing | Receives the OffscreenCanvas for a canvas view the plugin rendered. Use scope "tab" for plugins that draw. |
-| `ctx.settings.get() → Promise<values>` | Nothing | The plugin's own settings: saved values over the manifest's defaults. |
-| `ctx.settings.onChange((values) => …) → off()` | Nothing | Hears the person change the plugin's settings. |
-| `ctx.storage.get(key) → Promise<value \| null>` | Nothing | Reads the plugin's own data. |
-| `ctx.storage.set(key, value) → Promise` | Nothing | Saves a JSON value in the plugin's own data (null removes it), up to 1 MB in all. Never reviewed. |
-| `ctx.traced() → ctx` | Nothing | A copy of ctx whose calls keep the current trace id after an `await`. |
-| `ctx.log(text, level?)` | Nothing | Writes to the trace, as info or error. |
+### ctx.call
+
+`ctx.call(service, method, ...args) → Promise`
+
+Needs: What the method needs (see Services).
+
+Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses.
+
+### ctx.log
+
+`ctx.log(text, level?)`
+
+Needs: nothing.
+
+Writes to the trace, as info or error.
+
+### ctx.on
+
+`ctx.on(hook, handler) → off()`
+
+Needs: `hook:listen:<hook>` (emit, parallel) or `hook:intercept:<hook>` (serial, bail, waterfall).
+
+Listens to a hook. In a `function` handler, `this` is a copy of ctx pinned to the action's trace. What it returns matters only for hooks that can change or stop an action.
+
+### ctx.settings.get
+
+`ctx.settings.get() → Promise<values>`
+
+Needs: nothing.
+
+The plugin's own settings: saved values over the manifest's defaults.
+
+### ctx.settings.onChange
+
+`ctx.settings.onChange((values) => …) → off()`
+
+Needs: nothing.
+
+Hears the person change the plugin's settings.
+
+### ctx.storage.get
+
+`ctx.storage.get(key) → Promise<value | null>`
+
+Needs: nothing.
+
+Reads the plugin's own data.
+
+### ctx.storage.set
+
+`ctx.storage.set(key, value) → Promise`
+
+Needs: nothing.
+
+Saves a JSON value in the plugin's own data (null removes it), up to 1 MB in all. Never reviewed.
+
+### ctx.traced
+
+`ctx.traced() → ctx`
+
+Needs: nothing.
+
+A copy of ctx whose calls keep the current trace id after an `await`.
+
+### ctx.ui.html
+
+`ctx.ui.html`…${value}…` → view`
+
+Needs: nothing.
+
+Builds an HTML view from a template, escaping every value (arrays are joined, nested html results go in as they are). Use it whenever text comes from data.
+
+### ctx.ui.live
+
+`ctx.ui.live(slot, key, (ctx) => view, order?) → { refresh(), stop() }`
+
+Needs: `ui`.
+
+Draws what the function returns, like `ui.render`, and draws it again whenever a collection it read (with `data.list` or `data.get` on the ctx it is given) or the plugin's settings change. Call `refresh()` after the plugin's own state changes. A collection that doesn't exist yet is followed too, so the view fills in when it appears.
+
+### ctx.ui.onCanvas
+
+`ctx.ui.onCanvas(id, (canvas) => …)`
+
+Needs: nothing.
+
+Receives the OffscreenCanvas for a canvas view the plugin rendered. Use scope "tab" for plugins that draw.
+
+### ctx.ui.onEvent
+
+`ctx.ui.onEvent((action, value) => …) → off()`
+
+Needs: nothing.
+
+Hears the person use the plugin's views: a button's or field's `action`, with a field's new value.
+
+### ctx.ui.render
+
+`ctx.ui.render(slot, key, view, order?)`
+
+Needs: `ui`.
+
+Draws a view in a slot, under a key of the plugin's own: an HTML string (see HTML views), a JSON view, or null to remove it. Drawing again updates it in place. Plugins never touch the DOM.
+
+### ctx.ui.views
+
+`ctx.ui.views(file) → { render(slot, id, data?, { key?, order? }?), live(slot, id, (ctx) => data, { key?, order? }?) }`
+
+Needs: `ui` (to render).
+
+The `<template id>` elements in an .html file next to the plugin (only for plugins an app links). `render` draws one, filled with `data`: `{{path}}` holes in text and attribute values (an attribute that is one whole hole is left out when its value is false or missing, and bare when true), `<template for="x of path">` and `<template if="path">`. Values go in as text, and the result is checked like any HTML view. A `<style>` in the file styles only this plugin's views, below the page's own styles. `live` fills it with what the function returns, again whenever what it read changes (see `ui.live`).
 
 ## Services
 
@@ -30,97 +124,251 @@ Called with `ctx.call(service, method, ...args)`. A method not listed here doesn
 
 Sound, played by the tab that runs the plugin workers. Audio runs in an AudioWorklet, never through hooks.
 
-| Method | Returns | Needs | What it does |
-| --- | --- | --- | --- |
-| `audio.registerProcessor(name, source)` | true | `audio` | Registers an AudioWorklet processor, from its source, under a name. |
-| `audio.play({ processor, ms?, options? })` | { played, state } | `audio` | Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions. |
+#### audio.play
+
+`audio.play({ processor, ms?, options? })` → { played, state }
+
+Needs: `audio`.
+
+Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions.
+
+#### audio.registerProcessor
+
+`audio.registerProcessor(name, source)` → true
+
+Needs: `audio`.
+
+Registers an AudioWorklet processor, from its source, under a name.
 
 ### store
 
 The notes. They belong to the notes app, so a plugin's change to one is reviewed first.
 
-| Method | Returns | Needs | What it does |
-| --- | --- | --- | --- |
-| `store.list()` | [{ id, title, text, updated }] | `data:read:notes` | Every note, most recently changed first. |
-| `store.put({ id?, text }, reason)` | { ok, id, outcome } | `data:write:notes`, and the person's review | Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open. |
+#### store.list
+
+`store.list()` → [{ id, title, text, updated }]
+
+Needs: `data:read:notes`.
+
+Every note, most recently changed first.
+
+#### store.put
+
+`store.put({ id?, text }, reason)` → { ok, id, outcome }
+
+Needs: `data:write:notes`, and the person's review.
+
+Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open.
 
 ### files
 
 Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.
 
-| Method | Returns | Needs | What it does |
-| --- | --- | --- | --- |
-| `files.read(path)` | text or null | `files:<folder>` | Reads a file. `<folder>` is the path's first folder. |
-| `files.write(path, text, reason)` | { ok, path, outcome } or { ok, unchanged } | `files:<folder>`, and the person's review | Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open. |
+#### files.read
+
+`files.read(path)` → text or null
+
+Needs: `files:<folder>`.
+
+Reads a file. `<folder>` is the path's first folder.
+
+#### files.write
+
+`files.write(path, text, reason)` → { ok, path, outcome } or { ok, unchanged }
+
+Needs: `files:<folder>`, and the person's review.
+
+Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open.
 
 ### storage
 
 The plugin's own data, kept in `plugin-data/<id>.json` with the app's data. Never reviewed, since it is the plugin's own.
 
-| Method | Returns | Needs | What it does |
-| --- | --- | --- | --- |
-| `storage.get(key)` | the value, or null | Nothing | Reads a value. |
-| `storage.set(key, value)` | true | Nothing | Saves a JSON value; null removes it. Up to 1 MB in all. |
+#### storage.get
+
+`storage.get(key)` → the value, or null
+
+Needs: nothing.
+
+Reads a value.
+
+#### storage.set
+
+`storage.set(key, value)` → true
+
+Needs: nothing.
+
+Saves a JSON value; null removes it. Up to 1 MB in all.
 
 ### debug
 
 The trace: everything the kernel, the pages and plugins did, and every error. For developer tools such as std/debug-console.js; hear new events with the `debug:trace` hook.
 
-| Method | Returns | Needs | What it does |
-| --- | --- | --- | --- |
-| `debug.recent()` | { startedAt, events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? } | `debug:read` | The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one. |
-| `debug.app()` | { tab?, app? } | `debug:read` | For a tab-scoped caller: its `tab`, and the ids of the plugins the app open there links, or no `app` if the tab hasn't opened one yet. The trace's `app:open` event says when to ask again. |
+#### debug.app
 
-### page
+`debug.app()` → { tab?, app? }
 
-The app's own page, as far as a plugin's places reach into it.
+Needs: `debug:read`.
 
-| Method | Returns | Needs | What it does |
-| --- | --- | --- | --- |
-| `page.matches(place)` | [{ text, data }] | `ui` | What one of the plugin's places matches in the page: each element's text (up to 500 characters) and its data-* attributes, in page order. A plugin with `each: true` draws a view per match by rendering to `<place>#<index>`. |
+For a tab-scoped caller: its `tab`, and the ids of the plugins the app open there links, or no `app` if the tab hasn't opened one yet. The trace's `app:open` event says when to ask again.
+
+#### debug.recent
+
+`debug.recent()` → { startedAt, events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? }
+
+Needs: `debug:read`.
+
+The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.
 
 ### kernel
 
 The kernel itself.
 
-| Method | Returns | Needs | What it does |
-| --- | --- | --- | --- |
-| `kernel.ping()` | "pong" | Nothing | Answers at once; for checking the connection. |
-| `kernel.hooks()` | { [name]: { mode, timeoutMs?, onFailure?, args?, description? } } | Nothing | Every hook and its contract. |
-| `kernel.reference()` | the reference, as data | Nothing | This API reference, as the kernel describes itself. |
+#### kernel.hooks
+
+`kernel.hooks()` → { [name]: { mode, timeoutMs?, onFailure?, args?, description? } }
+
+Needs: nothing.
+
+Every hook and its contract.
+
+#### kernel.ping
+
+`kernel.ping()` → "pong"
+
+Needs: nothing.
+
+Answers at once; for checking the connection.
+
+#### kernel.reference
+
+`kernel.reference()` → the reference, as data
+
+Needs: nothing.
+
+This API reference, as the kernel describes itself.
 
 ### settings
 
 The plugin's own settings, from the form the plugins panel builds out of its manifest.
 
-| Method | Returns | Needs | What it does |
-| --- | --- | --- | --- |
-| `settings.get()` | { [key]: value } | Nothing | The plugin's settings: saved values over the manifest's defaults. |
+#### settings.get
+
+`settings.get()` → { [key]: value }
+
+Needs: nothing.
+
+The plugin's settings: saved values over the manifest's defaults.
 
 ### data
 
 Collections: typed records plugins share. A plugin declares its own in its manifest; reading or writing another's needs a capability, and writes to another's are reviewed.
 
-| Method | Returns | Needs | What it does |
-| --- | --- | --- | --- |
-| `data.collections()` | [{ name, owner, title, schema }] | Nothing | Every collection, with its schema. |
-| `data.list(collection)` | [record], most recently changed first | `data:read:<collection>` | Every record in a collection. Each record has its fields plus id, createdAt and updatedAt. A collection no plugin has made yet reads as empty. |
-| `data.get(collection, id)` | record or null | `data:read:<collection>` | One record. |
-| `data.put(collection, { id?, ...fields }, reason?)` | { ok, id, outcome? } or { ok: false, errors } | `data:write:<collection>`, and the person's review | Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection. |
-| `data.delete(collection, id, reason?)` | { ok, id } | `data:write:<collection>`, and the person's review | Deletes a record. Reviewed unless the plugin owns the collection. |
+#### data.collections
+
+`data.collections()` → [{ name, owner, title, schema }]
+
+Needs: nothing.
+
+Every collection, with its schema.
+
+#### data.delete
+
+`data.delete(collection, id, reason?)` → { ok, id }
+
+Needs: `data:write:<collection>`, and the person's review.
+
+Deletes a record. Reviewed unless the plugin owns the collection.
+
+#### data.get
+
+`data.get(collection, id)` → record or null
+
+Needs: `data:read:<collection>`.
+
+One record.
+
+#### data.list
+
+`data.list(collection)` → [record], most recently changed first
+
+Needs: `data:read:<collection>`.
+
+Every record in a collection. Each record has its fields plus id, createdAt and updatedAt. A collection no plugin has made yet reads as empty.
+
+#### data.put
+
+`data.put(collection, { id?, ...fields }, reason?)` → { ok, id, outcome? } or { ok: false, errors }
+
+Needs: `data:write:<collection>`, and the person's review.
+
+Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection.
 
 ## Hooks
 
-| Hook | Mode | Listening needs | Listeners get | What it means |
-| --- | --- | --- | --- | --- |
-| `data:changed` | emit | `hook:listen:data:changed` | `{ collection, id, before?, after }` | A record was written. |
-| `data:beforeWrite` | serial, 1000 ms per listener, fails open | `hook:intercept:data:beforeWrite` | `{ collection, id, before?, after }` | Before a record is written. Return { block: reason } to stop the write. |
-| `note:open` | emit | `hook:listen:note:open` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The person opened a note. |
-| `note:change` | emit | `hook:listen:note:change` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The person typed in the open note (unsaved is true). |
-| `note:save` | emit | `hook:listen:note:save` | `{ path, url, title, siteName, text, bodyStart, selection, unsaved }` | The open note was saved, by the person or by a reviewed write. |
-| `note:close` | emit | `hook:listen:note:close` | `null` | The open note was closed. |
-| `debug:trace` | emit | `debug:read` | `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]` | New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read. |
-| `bench:ping` | serial, 1000 ms per listener, fails open | `hook:intercept:bench:ping` | `n` | Used by the round-trip benchmark; answer with anything. |
+### `bench:ping`
+
+Used by the round-trip benchmark; answer with anything.
+
+Mode: `serial`, 1000 ms per listener, fails open. Listening needs `hook:intercept:bench:ping`.
+
+Listeners get `n`.
+
+### `data:beforeWrite`
+
+Before a record is written. Return { block: reason } to stop the write.
+
+Mode: `serial`, 1000 ms per listener, fails open. Listening needs `hook:intercept:data:beforeWrite`.
+
+Listeners get `{ collection, id, before?, after }`.
+
+### `data:changed`
+
+A record was written.
+
+Mode: `emit`. Listening needs `hook:listen:data:changed`.
+
+Listeners get `{ collection, id, before?, after }`.
+
+### `debug:trace`
+
+New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read.
+
+Mode: `emit`. Listening needs `debug:read`.
+
+Listeners get `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]`.
+
+### `note:change`
+
+The person typed in the open note (unsaved is true).
+
+Mode: `emit`. Listening needs `hook:listen:note:change`.
+
+Listeners get `{ path, url, title, siteName, text, bodyStart, selection, unsaved }`.
+
+### `note:close`
+
+The open note was closed.
+
+Mode: `emit`. Listening needs `hook:listen:note:close`.
+
+Listeners get `null`.
+
+### `note:open`
+
+The person opened a note.
+
+Mode: `emit`. Listening needs `hook:listen:note:open`.
+
+Listeners get `{ path, url, title, siteName, text, bodyStart, selection, unsaved }`.
+
+### `note:save`
+
+The open note was saved, by the person or by a reviewed write.
+
+Mode: `emit`. Listening needs `hook:listen:note:save`.
+
+Listeners get `{ path, url, title, siteName, text, bodyStart, selection, unsaved }`.
 
 ### Dispatch modes
 
@@ -139,7 +387,6 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | Capability | Lets a plugin |
 | --- | --- |
 | `ui` | Draw views with ctx.ui.render. |
-| `routes` | Answer requests for paths in the plugin's own folder with ctx.routes.add. |
 | `network` | Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
@@ -148,7 +395,6 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:notes` | Call store.put. |
 | `files:<folder>` | Call files.read, files.write. |
 | `debug:read` | Call debug.recent, debug.app. |
-| `ui` | Call page.matches. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 
@@ -175,12 +421,10 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
 | `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
-| `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin's view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
-| `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
 Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`.
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`.
 
 ## Collections
 
@@ -261,7 +505,7 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<hr>` |  |  |
 | `<blockquote>` |  |  |
 | `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto: or # |
-| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: (with the network permission), a data: image, or a file next to the plugin's template file |
+| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: or a data: image |
 | `<figure>` |  |  |
 | `<figcaption>` |  |  |
 | `<ul>` |  | Lists |
@@ -338,12 +582,3 @@ For devtools and tests, from the page: `window.__host.command(name, arg)`.
 | `trace` | () The most recent trace events. |
 | `changes` | () The change log. |
 | `reference` | () This reference, as { data, markdown }. |
-| `user:list` | ({ app }) The person's own plugins for an app: each file, its manifest's id, name, permissions and places, and whether it is on. |
-| `user:add` | ({ app, files: [{ name, data }] } or { app, url }) Adds plugins (.js) and the files they bring to an app's user folder; from a URL on this site, the files its manifest lists come too. They start off. |
-| `user:on` | ({ app, id }) Turns a user plugin on, and opens the app again in every tab that has it open. |
-| `user:off` | ({ app, id }) Turns a user plugin off, and opens the app again in every tab that has it open. |
-| `user:remove` | ({ app, id }) Removes a user plugin and the files it lists. |
-| `place:ask` | ({ app, plugin, place, target, what }) Asks the person, on a review card, to let a plugin change a place the author marked review. |
-| `place:unlock` | ({ app, plugin, place }) Lets a plugin into a place the author locked, because the person said so. |
-| `place:lock` | ({ app, plugin, place }) Takes that back. |
-| `route` | ({ method, path, query, form }) Answers a request with the plugin route for it, or null. The service worker sends these through a tab. |
