@@ -304,7 +304,7 @@ async function reopen(app: string) {
   }
 }
 
-const routes = makeRoutes(root, remote);
+const routes = makeRoutes(root, remote, shared);
 remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;

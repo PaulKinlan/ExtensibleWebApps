@@ -17,10 +17,20 @@ export function serviceWorker(command: (name: Command, arg?: unknown) => Promise
     const reply = e.ports[0];
     if (!reply || e.data?.t !== "sw:kernel") return;
     if (!ALLOWED.has(e.data.name)) return reply.postMessage({ ok: false, error: `The service worker can't ask for ${e.data.name}` });
+    // Taken: the service worker waits for this tab's answer instead of asking another tab.
+    reply.postMessage({ taken: true });
     command(e.data.name, e.data.arg).then(
       (value) => reply.postMessage({ ok: true, value }),
       (error) => reply.postMessage({ ok: false, error: String(error instanceof Error ? error.message : error) }),
     );
   });
+  const first = !navigator.serviceWorker.controller;
   navigator.serviceWorker.register("/sw.js", { type: "module", scope: "/" }).catch((error) => report("service-worker", `Couldn't start the service worker: ${error instanceof Error ? error.message : error}`));
+  // On the first visit the page loaded before the service worker started, so it kept nothing: tell it what this page loaded.
+  if (first) {
+    void navigator.serviceWorker.ready.then((registration) => {
+      const urls = [location.href, ...performance.getEntriesByType("resource").map((entry) => entry.name)].filter((u) => new URL(u).origin === location.origin);
+      registration.active?.postMessage({ t: "sw:warm", urls });
+    });
+  }
 }
