@@ -1,13 +1,20 @@
-// The host: the only code on the main thread. It draws the declarative views
-// plugins send, turns the person's actions into events, creates plugin
-// workers when it is the spawner tab, and bridges APIs that only exist in a
-// page (Web Audio here). It runs no plugin code.
+// The host: the only code on the main thread. It draws the views plugins
+// send into the page's <slot name> elements, turns the person's actions into
+// events, creates plugin workers when it is the spawner tab, and bridges APIs
+// that only exist in a page (Web Audio here). It runs no plugin code.
+//
+// The page is an app: an app.html that links its plugins with
+// <link rel="plugin" href="…">. The host fetches each one and asks the
+// kernel to run it, and shows only the views those plugins draw. A page that
+// links no plugins is the platform's own workbench (index.html), which shows
+// every view along with the trace and the plugins panel.
 
 import type { Command, HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn } from "./elements";
 import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
+import { workbench } from "./workbench";
 
 const tab = Math.random().toString(36).slice(2, 8);
 const params = new URLSearchParams(location.search);
@@ -230,8 +237,68 @@ function listen(entry: Entry) {
   });
 }
 
+// ---- The app ----
+
+/** The plugins this page's app links; the kernel answers with their ids. */
+const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"]')].map((link) => link.href);
+/** Whose views this page shows: its app's plugins, or (on the workbench) everyone's. */
+let shown: Set<string> | "all" = links.length ? new Set() : "all";
+/** Review cards always show: the person must see what a plugin wants to change. */
+const ALWAYS = new Set(["review"]);
+/** A tab-scoped plugin's views come from an instance such as `drawing@tab1`; the app linked `drawing`. */
+const showing = (owner: string) => shown === "all" || shown.has(owner.split("@")[0]) || ALWAYS.has(owner);
+/** Views for owners this page doesn't show (yet): kept, in case the app's plugins are still starting. */
+const held = new Map<string, Extract<KernelToHost, { t: "render" }>>();
+
+async function openApp() {
+  const plugins = await Promise.all(
+    links.map(async (href) => {
+      const response = await fetch(href).catch(() => undefined);
+      return { href, source: response?.ok ? await response.text() : "" };
+    }),
+  );
+  for (const { href, source } of plugins) if (!source) notice(`Couldn't load the plugin at ${href}`);
+  send({ t: "open", plugins: plugins.filter((p) => p.source) });
+}
+
+function opened(plugins: { href: string; id?: string; error?: string }[]) {
+  for (const p of plugins) if (p.error) notice(`${p.href.split("/").pop()}: ${p.error}`);
+  shown = new Set(plugins.flatMap((p) => (p.id && !p.error ? [p.id] : [])));
+  for (const [id, message] of held) {
+    if (!showing(message.owner)) continue;
+    held.delete(id);
+    render(message.slot, message.key, message.owner, message.order, message.view);
+  }
+}
+
+// ---- Slots ----
+//
+// A view goes into the <slot name> it names. Whatever the page put inside a
+// slot is its fallback, shown until some plugin draws there.
+
+const fallbacks = new Map<HTMLElement, HTMLElement>();
+function slotFor(name: Slot, owner: string): HTMLElement | null {
+  let slot = document.querySelector<HTMLElement>(`slot[name="${CSS.escape(name)}"]`);
+  // A review card must be seen, even in an app with no slot of that name.
+  if (!slot && ALWAYS.has(owner)) slot = document.getElementById("review") ?? document.body.appendChild(Object.assign(document.createElement("section"), { id: "review" }));
+  if (slot && !fallbacks.has(slot)) {
+    const fallback = document.createElement("span");
+    fallback.className = "fallback";
+    fallback.append(...slot.childNodes);
+    slot.append(fallback);
+    fallbacks.set(slot, fallback);
+  }
+  return slot;
+}
+
 function render(slot: Slot, key: string, owner: string, order: number, view: View | null) {
-  const container = document.querySelector<HTMLElement>(`[data-slot="${slot}"]`);
+  const id = `${slot}/${key}`;
+  if (!showing(owner)) {
+    if (view) held.set(id, { t: "render", slot, key, owner, order, view });
+    else held.delete(id);
+    return;
+  }
+  const container = slotFor(slot, owner);
   if (!container) return;
   const entries = slots.get(slot) ?? new Map<string, Entry>();
   slots.set(slot, entries);
@@ -239,6 +306,7 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
   if (!view) {
     old?.el.remove();
     entries.delete(key);
+    fallbacks.get(container)!.hidden = entries.size > 0;
     return;
   }
   const next = document.createElement("div");
@@ -257,6 +325,7 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     entries.set(key, entry);
     const sorted = [...entries.values()].sort((a, b) => a.order - b.order);
     container.append(...sorted.map((e) => e.el));
+    fallbacks.get(container)!.hidden = true;
   }
   defineElementsIn(entry.el);
   for (const placeholder of entry.el.querySelectorAll<HTMLCanvasElement>("canvas[data-canvas]")) {
@@ -312,26 +381,11 @@ async function bridge(service: string, method: string, args: unknown[]): Promise
   throw new Error(`The host has no ${service}.${method}`);
 }
 
-// ---- Trace view ----
-
-const traceList = document.getElementById("trace")!;
-const traces: TraceEvent[] = [];
-function showTrace(events: TraceEvent[]) {
-  traces.push(...events);
-  if (traces.length > 1000) traces.splice(0, traces.length - 1000);
-  for (const e of events) {
-    const li = document.createElement("li");
-    li.className = e.kind;
-    li.textContent = `${e.at.toFixed(1).padStart(8)}  ${e.kind.padEnd(9)} ${e.name}${e.plugin ? ` [${e.plugin}]` : ""}${e.ms !== undefined ? ` ${e.ms} ms` : ""}${e.detail ? `  ${e.detail}` : ""}${e.trace ? `  #${e.trace}` : ""}`;
-    traceList.prepend(li);
-  }
-  while (traceList.children.length > 200) traceList.lastChild?.remove();
-}
-
 function notice(text: string) {
   const p = document.createElement("p");
   p.textContent = text;
-  document.getElementById("notice")!.append(p);
+  const area = document.getElementById("notice") ?? document.body.appendChild(Object.assign(document.createElement("div"), { id: "notice", role: "status" }));
+  area.append(p);
   setTimeout(() => p.remove(), 4000);
 }
 
@@ -347,56 +401,14 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
   });
 }
 
-// ---- Demos ----
-// Each file in demos/ is an ordinary plugin. Picking one installs it, as a
-// person installing a plugin would; `?demo=<name>` does the same on load.
-const DEMOS = import.meta.glob("../../demos/*.js", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
-const demoName = (path: string) => path.split("/").pop()!.replace(/\.js$/, "");
-const picker = document.getElementById("demo") as HTMLSelectElement;
-for (const path of Object.keys(DEMOS).sort()) picker.append(new Option(demoName(path), demoName(path)));
-/** Resolves once the kernel has said hello to this tab. */
-let welcomed: () => void;
-const kernelReady = new Promise<void>((resolve) => (welcomed = resolve));
-const installDemo = async (name: string) => {
-  // Commands sent before the kernel has said hello are dropped, so wait for it.
-  await kernelReady;
-  const path = Object.keys(DEMOS).find((p) => demoName(p) === name);
-  if (!path) return;
-  const outcome = (await command("install", DEMOS[path])) as { ok: boolean; error?: string };
-  if (!outcome.ok) notice(`Couldn't add the ${name} demo: ${outcome.error}`);
-  const url = new URL(location.href);
-  url.searchParams.set("demo", name);
-  history.replaceState(null, "", url);
-  return outcome;
-};
-picker.onchange = () => {
-  const name = picker.value;
-  if (name) void installDemo(name);
-};
-if (params.get("demo")) {
-  picker.value = params.get("demo")!;
-  void installDemo(params.get("demo")!);
+/** The trace, benchmarks and demo links, on the platform's own page only. */
+const bench = document.getElementById("devtools") ? workbench(command) : undefined;
+const traces: TraceEvent[] = [];
+function showTrace(events: TraceEvent[]) {
+  traces.push(...events);
+  if (traces.length > 1000) traces.splice(0, traces.length - 1000);
+  bench?.trace(events);
 }
-
-const result = document.getElementById("result")!;
-document.getElementById("bench")!.onclick = async () => {
-  result.textContent = "Measuring…";
-  const r = (await command("bench", 300)) as any;
-  result.textContent = `Hook round trip to a plugin worker: p50 ${r.remote.p50} ms, p95 ${r.remote.p95} ms (in-kernel p50 ${r.local.p50} ms)`;
-};
-document.getElementById("reload-test")!.onclick = async () => {
-  result.textContent = "Reloading…";
-  const r = (await command("reload-test", 50)) as any;
-  result.textContent = `50 reloads: listeners ${r.before.hooks} → ${r.after.hooks}, workers ${r.before.workers} → ${r.after.workers}, ${r.failures} failed`;
-};
-
-document.getElementById("reference")!.onclick = async () => {
-  const pre = document.getElementById("reference-text")!;
-  if (!pre.hidden) return void (pre.hidden = true);
-  const r = (await command("reference")) as { live: string };
-  pre.textContent = r.live;
-  pre.hidden = false;
-};
 
 // ---- Kernel messages ----
 
@@ -407,9 +419,10 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
   switch (message.t) {
     case "welcome":
       spawner = message.spawner;
-      welcomed();
-      document.getElementById("mode")!.textContent = `Kernel in a ${message.mode} worker · tab ${tab}${spawner ? " · runs the plugin workers" : ""}`;
+      bench?.mode(`Kernel in a ${message.mode} worker · tab ${tab}${spawner ? " · runs the plugin workers" : ""}`);
       return;
+    case "opened":
+      return opened(message.plugins);
     case "render":
       return render(message.slot, message.key, message.owner, message.order, message.view);
     case "spawn":
@@ -450,6 +463,7 @@ await new Promise<void>((held) => {
 });
 const folder = await navigator.storage.getDirectory().catch(() => undefined);
 send({ t: "hello", tab, folder });
+if (links.length) await openApp();
 
 // For tests and poking around in the console.
 Object.assign(window, { __host: { tab, command, traces, audioStats, workers, get spawner() { return spawner; } } });

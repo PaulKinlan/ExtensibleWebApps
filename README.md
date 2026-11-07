@@ -2,7 +2,7 @@
 
 A platform for malleable web apps: a small kernel, and everything else is a plugin. That includes the UI shell, storage and, later, the AI app builder. Plugins run in their own workers, can only do what their manifest asks for, and draw their UI as plain HTML.
 
-**Try it:** https://extensible-web-apps.paulkinlan.workers.dev/. Pick a demo from the menu at the top right, or open the [reading list](https://extensible-web-apps.paulkinlan.workers.dev/?demo=reading-list) or [spending](https://extensible-web-apps.paulkinlan.workers.dev/?demo=spending) directly.
+**Try it:** https://extensible-web-apps.paulkinlan.workers.dev/ is the workbench. The demo apps are the [reading list](https://extensible-web-apps.paulkinlan.workers.dev/demos/reading-list/app.html) and [spending](https://extensible-web-apps.paulkinlan.workers.dev/demos/spending/app.html).
 
 ![The reading list demo](docs/images/collections.png)
 
@@ -17,6 +17,9 @@ A platform for malleable web apps: a small kernel, and everything else is a plug
 
 ## How it fits together
 
+An app is a folder with an `app.html`: an ordinary page that lays out `<slot name>` elements and lists its plugins with `<link rel="plugin" href="…">`. Each plugin is one file. The page loads the platform with two lines (`/platform/host.css` and `/platform/host.js`); the host fetches the linked plugins, the kernel runs each in its own worker, and their views appear in the slots they name.
+
+
 ```
 page (host)  <-- port -->  kernel (shared worker)  <-- port -->  plugin (dedicated worker, one each)
 ```
@@ -26,6 +29,7 @@ Three kinds of code, each in its own place:
 - **The host** (`src/host/`) is the page. It draws what plugins render, turns clicks and typing into events, and runs no plugin code. Read [`main.ts`](src/host/main.ts) first, then:
   - [`sanitize.ts`](src/host/sanitize.ts) keeps only the HTML listed in [`src/shared/html.ts`](src/shared/html.ts)
   - [`morph.ts`](src/host/morph.ts) updates a view in place
+  - [`workbench.ts`](src/host/workbench.ts) is the trace and benchmarks on the platform's own page
   - [`elements.ts`](src/host/elements.ts) loads the `ui-*` elements from [`elements/`](elements/)
   - [`bindings.ts`](src/host/bindings.ts) connects `<ui-form>` and `<ui-table>` to collections
 - **The elements** ([`elements/`](elements/)) are the `ui-*` custom elements views are built from, one `.html` file each, run as written with no build. See [`elements/README.md`](elements/README.md).
@@ -35,6 +39,7 @@ Three kinds of code, each in its own place:
     - [`manifest.ts`](src/kernel/manifest.ts) reads a manifest without running the plugin
     - [`gate.ts`](src/kernel/gate.ts) checks every call against the manifest
     - [`hooks.ts`](src/kernel/hooks.ts) defines the events plugins can listen to
+    - [`apps.ts`](src/kernel/apps.ts) runs the plugins an open app links, while a tab has it open
   - **Data:**
     - [`store.ts`](src/kernel/store.ts) is the data folder
     - [`records.ts`](src/kernel/records.ts) and [`schema.ts`](src/kernel/schema.ts) hold collections
@@ -55,7 +60,7 @@ Three kinds of code, each in its own place:
 - the HTML allowlist
 
 Plugins live in two places:
-- [`demos/`](demos/) holds apps written to show the programming model.
+- [`demos/`](demos/) holds apps written to show the programming model, one folder per app.
 - [`plugins/`](plugins/) holds the plugins built into the app:
   - `word-count.js` and `edit-times.js`, copied unchanged from the [Markdown editor](https://github.com/PaulKinlan/MarkdownEdiitor)
   - `tidy.js` (change review), `tone.js` (audio) and `bars.js` (canvas)
@@ -65,8 +70,8 @@ Plugins live in two places:
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173 ; ?demo=reading-list adds a demo, ?kernel=dedicated runs the kernel in a dedicated worker
-npm test           # build, then 79 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
+npm run dev        # http://localhost:5173 is the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
+npm test           # build, then 83 checks in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck
 ```

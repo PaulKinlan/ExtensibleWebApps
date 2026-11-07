@@ -139,7 +139,7 @@ function editorShim() {
     },
     ui: {
       status(id: string, text: string, title?: string) {
-        const set = (t: string, ti?: string) => ctx.ui.render("statusbar", id, t ? { type: "text", text: t, title: ti } : null);
+        const set = (t: string, ti?: string) => ctx.ui.render("status", id, t ? { type: "text", text: t, title: ti } : null);
         set(text, title);
         return { set, remove: () => set("") };
       },

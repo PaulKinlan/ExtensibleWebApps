@@ -32,7 +32,8 @@ export type View =
       description?: string;
     };
 
-export type Slot = "app.nav" | "app.main" | "app.side" | "statusbar" | "devtools";
+/** Where a view goes: the name of a `<slot name>` in the page. Each app's app.html names its own; the platform's page has nav, main, side, status and devtools. */
+export type Slot = string;
 
 export interface TraceEvent {
   at: number; // ms since kernel start
@@ -57,7 +58,9 @@ export type HostToKernel =
   | { t: "bind"; id: string; owner: string; collection: string }
   | { t: "unbind"; id: string }
   /** A bound form or table saves (fields) or deletes (null) a record for `owner`. */
-  | { t: "record"; id: string; owner: string; collection: string; recordId?: string; fields: Record<string, unknown> | null; trace: string };
+  | { t: "record"; id: string; owner: string; collection: string; recordId?: string; fields: Record<string, unknown> | null; trace: string }
+  /** The tab opened an app: the plugins its app.html links, fetched by the tab. */
+  | { t: "open"; plugins: { href: string; source: string }[] };
 
 export type Command = "bench" | "reload-test" | "reload" | "install" | "uninstall" | "trace" | "changes" | "reference";
 
@@ -72,7 +75,9 @@ export type KernelToHost =
   | { t: "notice"; text: string; tone?: "error" | "ok" }
   | { t: "command:result"; id: number; value: unknown }
   | { t: "bound"; id: string; collection: string; title?: string; schema?: unknown; writable?: boolean; records?: Record<string, unknown>[]; error?: string }
-  | { t: "record:result"; id: string; ok: boolean; recordId?: string; errors?: { path: string; message: string }[]; error?: string };
+  | { t: "record:result"; id: string; ok: boolean; recordId?: string; errors?: { path: string; message: string }[]; error?: string }
+  /** The app's plugins are running: each link's plugin id, or why it isn't. */
+  | { t: "opened"; plugins: { href: string; id?: string; error?: string }[] };
 
 // kernel <-> plugin worker
 export type KernelToPlugin =

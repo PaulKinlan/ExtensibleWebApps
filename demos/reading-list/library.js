@@ -1,15 +1,16 @@
-// Reading list: a whole app with almost no code. The manifest declares a
-// collection with a schema; the view is one string of HTML. <ui-form> builds
-// its fields, labels and errors from the schema, <ui-table> lists the records
-// and stays up to date, and the kernel checks every write against the schema.
-// The plugin only handles what is specific to it: which book is open.
+// The library: the plugin that owns the books. Its manifest declares a
+// collection with a schema, and its view is one string of HTML: <ui-form>
+// builds its fields, labels and errors from the schema, <ui-table> lists the
+// records and stays up to date, and the kernel checks every write against the
+// schema. The plugin only handles what is specific to it: which book is open.
 
 export const manifest = {
-  id: "reading-list",
-  name: "Reading list",
-  description: "Books to read, built from a collection, ui-form and ui-table.",
+  id: "library",
+  name: "Library",
+  description: "The books, with a form to add or edit one and a table of them all.",
   version: "1.0.0",
   permissions: ["ui"],
+  order: 10,
   collections: {
     library: {
       title: "Books",
@@ -48,10 +49,10 @@ export default async function (ctx) {
 
   const draw = () =>
     ctx.ui.render(
-      "app.main",
-      "reading-list",
+      "main",
+      "library",
       html`
-        <ui-toolbar><h2>Reading list</h2><ui-spacer></ui-spacer>${open ? html`<button data-action="close">Add a book instead</button>` : ""}</ui-toolbar>
+        <ui-toolbar><h2>Books</h2><ui-spacer></ui-spacer>${open ? html`<button data-action="close">Add a book instead</button>` : ""}</ui-toolbar>
         <ui-card>
           <h3>${open ? "Edit book" : "Add a book"}</h3>
           ${open

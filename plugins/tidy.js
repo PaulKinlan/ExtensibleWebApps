@@ -26,7 +26,7 @@ export default async function (ctx) {
     const html = api.ui.html;
     const failed = status.startsWith("Not") || status.startsWith("The person");
     api.ui.render(
-      "app.side",
+      "side",
       "tidy",
       html`<h2>Tidy</h2>
         ${note

@@ -48,7 +48,7 @@ export default async function (ctx) {
     draw();
   });
   const draw = (api = ctx) =>
-    api.ui.render("app.side", "tone", {
+    api.ui.render("side", "tone", {
       type: "stack",
       children: [
         { type: "heading", text: "Tone" },

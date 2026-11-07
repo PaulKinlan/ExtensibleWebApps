@@ -290,10 +290,10 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 
 | Slot | Where |
 | --- | --- |
-| `app.nav` | The column on the left. |
-| `app.main` | The middle of the page. |
-| `app.side` | The column on the right, where the plugins panel is. |
-| `statusbar` | The bar at the bottom. |
+| `nav` | The column on the left. |
+| `main` | The middle of the page. Review cards appear here too. |
+| `side` | The column on the right, where the plugins panel is. |
+| `status` | The bar at the bottom. |
 | `devtools` | Inside the trace panel, under its buttons. |
 
 ## Commands

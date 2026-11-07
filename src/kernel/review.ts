@@ -80,7 +80,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     if (!p) return;
     pending.delete(id);
     clearTimeout(p.timer);
-    hosts.render("review", "app.main", `review:${id}`, null, 0);
+    hosts.render("review", "main", `review:${id}`, null, 0);
     if (outcome === "allowed-always") {
       const list = (grants[p.request.plugin] ??= []);
       if (!list.includes(p.request.place)) list.push(p.request.place);
@@ -105,7 +105,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
       return new Promise<Outcome>((resolve) => {
         const timer = setTimeout(() => settle(id, "cancelled"), TIMEOUT);
         pending.set(id, { request, resolve, timer, dispatch });
-        hosts.render("review", "app.main", `review:${id}`, card(id, request), 0);
+        hosts.render("review", "main", `review:${id}`, card(id, request), 0);
       });
     },
 
