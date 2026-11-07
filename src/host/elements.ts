@@ -24,7 +24,11 @@ export function defineElementsIn(root: ParentNode): void {
 export function loadElement(name: string): Promise<void> {
   let pending = loading.get(name);
   if (!pending) {
-    pending = define(name).catch((error) => console.warn(`Couldn't load <${name}>:`, error));
+    pending = define(name).catch((error) => {
+      // Forget the failure so a later render can try again.
+      loading.delete(name);
+      console.warn(`Couldn't load <${name}>:`, error);
+    });
     loading.set(name, pending);
   }
   return pending;
