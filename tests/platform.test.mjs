@@ -138,7 +138,9 @@ export default async (ctx) => {
   ctx.ui.render('devtools', 'reader', { type: 'text', text: 'reader sees ' + ref.services.length + ' services' });
   ctx.log('reader: ' + JSON.stringify(refused));
 };`));
-  await a.waitForSelector('#devtools slot[name="devtools"] >> text=/reader sees [0-9]+ services/', { timeout: 5000 });
+  // As many as the kernel's own reference lists, so a new service doesn't need this line changed.
+  const serviceCount = (await a.evaluate(() => window.__host.command("reference"))).data.services.length;
+  await a.waitForSelector(`#devtools slot[name="devtools"] >> text=reader sees ${serviceCount} services`, { timeout: 5000 });
   check("a plugin can read the reference, and draw in the devtools slot", true);
   await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")), null, { timeout: 5000 });
   const refusedCalls = await a.evaluate(() => JSON.parse(window.__host.traces.find((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")).detail.slice(8)));
@@ -481,6 +483,11 @@ export default async (ctx) => {
   check("a plugin's own storage needs no review", (await a.textContent('aside [data-key="tidy:tidy"]')).includes("Tidied 3 · exported 1"));
 
   // Path checks: sneaky may write files anywhere (files:*) but not into the platform's folders, outside the data folder, or hidden files.
+  // The page keeps only the last 1000 trace events, and sneaky tries once each time it starts, so start it again here.
+  await a.click(`${panel("sneaky")} >> text=Turn off`);
+  await a.waitForSelector(`${panel("sneaky")} >> text=Turn on`);
+  await a.click(`${panel("sneaky")} >> text=Turn on`);
+  await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "files:path" && e.plugin === "sneaky").length >= 3, null, { timeout: 5000 }).catch(() => {});
   const refusedPaths = await a.evaluate(() => window.__host.traces.filter((e) => e.kind === "denied" && e.name === "files:path" && e.plugin === "sneaky").map((e) => e.detail));
   const evil = await a.evaluate(async () => {
     const root = await navigator.storage.getDirectory();

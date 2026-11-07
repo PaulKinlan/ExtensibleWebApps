@@ -31,7 +31,7 @@ export const ELEMENTS: Record<string, string> = {
   hr: "",
   blockquote: "",
   a: "A link; opens in a new tab. href must be https:, http:, mailto: or #",
-  img: "An image; src must be https: or a data: image",
+  img: "An image; src must be https: (with the network permission), a data: image, or a file next to the plugin's template file",
   figure: "",
   figcaption: "",
   ul: "Lists",

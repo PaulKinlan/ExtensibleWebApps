@@ -6,7 +6,7 @@
 // use editor-style permissions such as `post:read`) get a shim instead, so
 // they run unchanged.
 
-import type { Api, Live } from "../shared/api";
+import type { Api, Live, RouteRequest } from "../shared/api";
 import { lockdown } from "./lockdown";
 import type { KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
 
@@ -57,6 +57,11 @@ function api(trace: () => string | undefined): Api {
       };
     },
     call,
+    routes: {
+      add(method, path, handler) {
+        return self.on(`route:${String(method).toUpperCase()} ${path}`, (request: RouteRequest) => handler(request));
+      },
+    },
     ui: {
       render(slot: Slot, key: string, view: View | string | null, order?: number) {
         send({ t: "render", slot, key, view: typeof view === "string" ? { type: "html", html: view } : view, order, trace: trace() });

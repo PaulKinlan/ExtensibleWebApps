@@ -106,9 +106,9 @@ export class Hosts {
     }
   }
 
-  /** Calls a page-only API in the spawner tab (audio, worker counts, ...). */
-  bridge(service: string, method: string, args: unknown[], dispatch: Dispatch = {}): Promise<unknown> {
-    const host = this.spawner;
+  /** Calls a page-only API in the spawner tab (audio, worker counts, ...), or in the tab given. */
+  bridge(service: string, method: string, args: unknown[], dispatch: Dispatch = {}, to?: Host): Promise<unknown> {
+    const host = to ?? this.spawner;
     if (!host) return Promise.reject(new Error("No tab is open"));
     const id = ++this.bridgeId;
     const started = performance.now();

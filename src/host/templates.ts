@@ -25,6 +25,19 @@ const ready = new Map<string, Document>();
 export const loadedFile = (src: string) => ready.get(src);
 
 /** Loads a template file once; later calls share the first load. */
+/**
+ * A person's own plugins live on this device, and only the service worker can serve their files
+ * (/user/…). On a first visit it takes charge of the page a moment after the page loads, so wait for
+ * that, for up to three seconds.
+ */
+function controlled(src: string): Promise<unknown> {
+  if (!new URL(src, location.href).pathname.startsWith("/user/") || !("serviceWorker" in navigator) || navigator.serviceWorker.controller) return Promise.resolve();
+  return Promise.race([
+    new Promise((resolve) => navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true })),
+    new Promise((resolve) => setTimeout(resolve, 3000)),
+  ]);
+}
+
 export function loadFile(src: string): Promise<Document> {
   let pending = files.get(src);
   if (!pending) {
@@ -32,7 +45,7 @@ export function loadFile(src: string): Promise<Document> {
     // followed, but only a file that ends up on this page's origin is used: the
     // kernel checked the plugin's URL, and the operator's own server decides
     // where its redirects go, not the plugin.
-    pending = fetch(src, { credentials: "same-origin" }).then(async (response) => {
+    pending = controlled(src).then(() => fetch(src, { credentials: "same-origin" })).then(async (response) => {
       if (new URL(response.url).origin !== location.origin) throw new Error(`${src} redirected to another origin`);
       if (!response.ok) throw new Error(`${src} answered ${response.status}`);
       const file = new DOMParser().parseFromString(await response.text(), "text/html");
@@ -44,6 +57,14 @@ export function loadFile(src: string): Promise<Document> {
     files.set(src, pending);
   }
   return pending;
+}
+
+/** Forgets the loaded files under a path (`/user/demos/trip/`), so the next view that needs one loads it again. */
+export function forgetFiles(path: string): void {
+  for (const src of [...files.keys()]) if (new URL(src, location.href).pathname.startsWith(path)) {
+    files.delete(src);
+    ready.delete(src);
+  }
 }
 
 type Scope = Record<string, unknown>;

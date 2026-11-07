@@ -1,0 +1,6 @@
+<!-- The packing list: a form to add an item and a table of them, both bound to the collection. -->
+<template id="packing">
+  <h2>Packing</h2>
+  <ui-form collection="packing" fields="item" submit="Add"></ui-form>
+  <ui-table collection="packing" columns="item,packed" sort="item" deletable empty="Nothing yet."></ui-table>
+</template>

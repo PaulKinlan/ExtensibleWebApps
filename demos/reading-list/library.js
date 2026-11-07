@@ -4,13 +4,17 @@
 // lists the records and stays up to date, and the kernel checks every write
 // against the schema. The plugin only handles what is specific to it: which
 // book is open.
+//
+// It also answers two addresses next to it, through the platform's service
+// worker: books.json is the whole list, for anything that wants it as data,
+// and a form posted to add-book adds a book, as plain HTML would.
 
 export const manifest = {
   id: "library",
   name: "Library",
   description: "The books, with a form to add or edit one and a table of them all.",
   version: "1.0.0",
-  permissions: ["ui"],
+  permissions: ["ui", "routes"],
   order: 10,
   collections: {
     library: {
@@ -64,6 +68,13 @@ export default async function (ctx) {
       open = null;
       draw();
     }
+  });
+  // /demos/reading-list/books.json: the books, as JSON.
+  ctx.routes.add("GET", "books.json", async () => ({ json: await ctx.call("data", "list", "library") }));
+  // <form method="post" action="add-book"><input name="title">…</form> adds a book, then goes back to the app.
+  ctx.routes.add("POST", "add-book", async ({ form }) => {
+    const result = await ctx.call("data", "put", "library", { title: String(form?.title ?? ""), ...(form?.author && { author: String(form.author) }) });
+    return result.ok ? { redirect: "./" } : { status: 400, text: JSON.stringify(result.errors ?? result.error) };
   });
   draw();
 }

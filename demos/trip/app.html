@@ -1,0 +1,78 @@
+<!doctype html>
+<!--
+  A trip: a plain HTML page with no slots and no plugins of its own. The
+  author wrote an itinerary, nothing more, and still a person can add to it.
+
+  Open Customize (bottom left) and add a sample, or a plugin of your own:
+
+  samples/countdown.js  "12 days to go" after the heading, with an image
+                        that comes with it (its manifest lists its files)
+  samples/packing.js    a packing list it owns, at the start of the footer,
+                        drawn with the bound ui-form and ui-table
+
+  Neither needs anything from this page except names it already has: the
+  heading's data-start, and a <footer>. See docs/guide/places.md.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lisbon trip</title>
+  <meta name="description" content="Four days in Lisbon: an app with no slots, that a person extends anyway.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <!-- Plugins the author suggests; the person chooses whether to add them. -->
+  <link rel="plugin-sample" href="samples/countdown.js" title="Countdown">
+  <link rel="plugin-sample" href="samples/packing.js" title="Packing list">
+  <style>
+    body { max-width: 720px; margin: 0 auto; padding: 16px 16px 72px; }
+    body > header { display: block; }
+    header p { color: var(--fg-2); margin-top: 0; }
+    article { border-top: 1px solid var(--border); padding: 8px 0; }
+    article h2 { font-size: 16px; }
+    footer { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 8px; color: var(--fg-2); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1 data-start="2027-05-12">Lisbon, 12 to 16 May</h1>
+    <p>Four days of trams, tiles and custard tarts.</p>
+  </header>
+  <main>
+    <article id="day-1">
+      <h2>Wednesday 12 · Arrive</h2>
+      <ul>
+        <li>Land 11:40, metro red line to Alameda, then green to Baixa-Chiado</li>
+        <li>Check in at Rua das Flores 28</li>
+        <li>Sunset at Miradouro de Santa Catarina</li>
+      </ul>
+    </article>
+    <article id="day-2">
+      <h2>Thursday 13 · Alfama</h2>
+      <ul>
+        <li>Tram 28 from Martim Moniz, early, before the queue</li>
+        <li>Castelo de São Jorge</li>
+        <li>Fado at Tasca do Chico, book ahead</li>
+      </ul>
+    </article>
+    <article id="day-3">
+      <h2>Friday 14 · Belém</h2>
+      <ul>
+        <li>Pastéis de Belém, then the Jerónimos Monastery</li>
+        <li>Walk the river to the MAAT</li>
+      </ul>
+    </article>
+    <article id="day-4">
+      <h2>Saturday 15 · Sintra</h2>
+      <ul>
+        <li>Train from Rossio, 40 minutes</li>
+        <li>Pena Palace and the Moorish Castle</li>
+      </ul>
+    </article>
+  </main>
+  <footer>
+    <p>Flight home Sunday 16 at 17:05. Hotel: +351 21 000 0000.</p>
+    <p><a href="/">Workbench</a></p>
+  </footer>
+</body>
+</html>

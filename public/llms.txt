@@ -13,6 +13,8 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [Data and permissions](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/data-and-permissions.md): collections, schemas, ui-form and ui-table, permissions, reviews
 - [Styling](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/styling.md): design tokens, plugin stylesheets, page overrides
 - [Sharing data between apps](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/sharing-data-between-apps.md): one app reading another's collection
+- [Routes and the service worker](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/routes.md): plugins answering links, forms and fetches
+- [Places](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/places.md): plugins adding to, replacing or hiding parts of a page with no slot for them; open, review and locked areas; a person's own plugins
 
 ## Reference
 
@@ -22,6 +24,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 
 ## Examples
 
+- [Starter](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/starter): the app `npm run new-app` copies; `npm run check` finds mistakes in it
 - [Habits](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos/habits): the smallest complete app, the one the guide builds
 - [All demo apps](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos): reading list, spending, recipes, contacts, calendar
 - [Live demos](https://extensible-web-apps.kinlan-test.workers.dev/)

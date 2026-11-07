@@ -124,6 +124,42 @@ export class Store extends Service {
 
   private writes: Promise<void> = Promise.resolve();
 
+  /** The names of the files in a folder of the data folder, or none if there is no such folder. */
+  async listFiles(path: string): Promise<string[]> {
+    await this.ready;
+    const names: string[] = [];
+    try {
+      let folder = this.dir!;
+      for (const part of path.split("/")) folder = await folder.getDirectoryHandle(part);
+      for await (const [name, handle] of (folder as any).entries() as AsyncIterable<[string, FileSystemHandle]>) if (handle.kind === "file") names.push(name);
+    } catch {
+      // No such folder yet.
+    }
+    return names.sort();
+  }
+
+  /** Writes any file, text or binary (an image a plugin brings), in the same queue as writeText. */
+  writeFile(path: string, data: Blob | string): Promise<void> {
+    const run = this.writes.then(async () => {
+      await this.ready;
+      const { folder, name } = await this.locate(path, true);
+      await write(await folder.getFileHandle(name, { create: true }), data);
+    });
+    this.writes = run.catch(() => {});
+    return run;
+  }
+
+  /** Removes a file; one that is already gone is fine. */
+  async removeFile(path: string): Promise<void> {
+    await this.ready;
+    try {
+      const { folder, name } = await this.locate(path, false);
+      await folder.removeEntry(name);
+    } catch (error) {
+      if ((error as DOMException)?.name !== "NotFoundError") throw error;
+    }
+  }
+
   private async locate(path: string, create: boolean): Promise<{ folder: FileSystemDirectoryHandle; name: string }> {
     const parts = path.split("/");
     const name = parts.pop()!;
@@ -169,7 +205,7 @@ export class Store extends Service {
   }
 }
 
-async function write(handle: FileSystemFileHandle, text: string): Promise<void> {
+async function write(handle: FileSystemFileHandle, text: Blob | string): Promise<void> {
   const writable = await (handle as any).createWritable();
   await writable.write(text);
   await writable.close();

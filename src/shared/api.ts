@@ -30,6 +30,25 @@ export interface Live {
   stop(): void;
 }
 
+export type RouteMethod = "GET" | "HEAD" | "POST" | "PUT" | "PATCH" | "DELETE";
+
+/** A request to a plugin's route: the path is absolute, `form` holds a form's fields or a JSON body. */
+export interface RouteRequest {
+  method: RouteMethod;
+  path: string;
+  query: Record<string, string>;
+  form?: unknown;
+}
+
+/** What a route answers with: one of redirect (a 303), html (a page that runs no script), json or text, and an optional status. */
+export interface RouteResponse {
+  status?: number;
+  redirect?: string;
+  html?: string;
+  json?: unknown;
+  text?: string;
+}
+
 export interface Api {
   on(name: string, handler: (...args: any[]) => unknown): () => void;
   call(service: string, method: string, ...args: unknown[]): Promise<unknown>;
@@ -54,6 +73,13 @@ export interface Api {
   storage: {
     get(key: string): Promise<unknown>;
     set(key: string, value: unknown): Promise<unknown>;
+  };
+  /**
+   * Requests the plugin answers, for paths inside its own folder (only for plugins an app links).
+   * `add("POST", "snooze", (request) => ({ redirect: "./" }))` answers a form posted to `snooze`.
+   */
+  routes: {
+    add(method: RouteMethod, path: string, handler: (request: RouteRequest) => RouteResponse | undefined | Promise<RouteResponse | undefined>): () => void;
   };
   traced(): Api;
   log(text: string, level?: "info" | "error"): void;

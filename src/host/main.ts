@@ -5,17 +5,22 @@
 //
 // The page is an app: an app.html that links its plugins with
 // <link rel="plugin" href="…">. The host fetches each one and asks the
-// kernel to run it, and shows only the views those plugins draw. A page that
-// links no plugins is the platform's workbench (workbench/index.html), which shows
-// every view along with the trace and the plugins panel.
+// kernel to run it, along with the plugins the person added to this app
+// themselves, and shows only the views those plugins draw: in the page's
+// slots, or in places their manifests name (places.ts). The platform's own
+// workbench (workbench/index.html, the page with the trace) shows every view along
+// with the trace and the plugins panel.
 
-import type { Command, HostToKernel, KernelToHost, Slot, TraceEvent, View } from "../shared/protocol";
+import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
+import { customize } from "./customize";
+import { places as makePlaces } from "./places";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn, onElementError } from "./elements";
 import { morphChildren } from "./morph";
 import { sanitize } from "./sanitize";
+import { serviceWorker } from "./service-worker";
 import { cleanCss, installPluginStyle } from "./plugin-styles";
-import { fill, loadedFile, loadFile, styleOf } from "./templates";
+import { fill, forgetFiles, loadedFile, loadFile, styleOf } from "./templates";
 import { workbench } from "./workbench";
 
 const tab = Math.random().toString(36).slice(2, 8);
@@ -90,7 +95,7 @@ function element(view: View, owner: string): HTMLElement {
       installPluginStyle(pluginOf(owner), view.src, styleOf(file));
       const el = document.createElement("div");
       el.className = "html-view";
-      el.append(sanitize(fill(file, view.id, view.data), owner, { remote: view.remote === true }));
+      el.append(sanitize(fill(file, view.id, view.data), owner, { remote: view.remote === true, base: view.src }));
       return el;
     }
     case "stack": {
@@ -278,8 +283,12 @@ function listen(entry: Entry) {
 
 /** The plugins this page's app links; the kernel answers with their ids. */
 const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"]')].map((link) => link.href);
+/** The platform's own page, with the trace. Every other page is an app, even one that links no plugins. */
+const isWorkbench = !!document.getElementById("devtools");
+/** The app's folder, which names where the person's own plugins for it are kept: `demos/trip` for /demos/trip/app.html. */
+const app = location.pathname.replace(/\/[^/]*$/, "").replace(/^\/+/, "") || "root";
 /** Whose views this page shows: its app's plugins, or (on the workbench) everyone's. */
-let shown: Set<string> | "all" = links.length ? new Set() : "all";
+let shown: Set<string> | "all" = isWorkbench ? "all" : new Set();
 /** Review cards always show: the person must see what a plugin wants to change. */
 const ALWAYS = new Set(["review", "secrets"]);
 /** A tab-scoped plugin's views come from an instance such as `drawing@tab1`; the app linked `drawing`. */
@@ -304,17 +313,50 @@ async function openApp() {
     url.searchParams.delete("reset");
     history.replaceState(history.state, "", url);
   }
-  send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })), reset });
+  send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })), reset, app });
 }
 
-function opened(plugins: { href: string; id?: string; error?: string }[]) {
-  for (const p of plugins) if (p.error) notice(`${p.href.split("/").pop()}: ${p.error}`);
+/** The plugins running for this app, as the kernel last said: the Customize panel lists them. */
+let running: Opened[] = [];
+
+function opened(plugins: Opened[]) {
+  for (const p of plugins) if (p.error && !running.some((r) => r.href === p.href && r.error === p.error)) notice(`${p.href.split("/").pop()}: ${p.error}`);
+  running = plugins;
+  // The person may have added a plugin again with new files: load its templates afresh.
+  forgetFiles(`/user/${app}/`);
+  const before = shown;
   shown = new Set(plugins.flatMap((p) => (p.id && !p.error ? [p.id] : [])));
+  // A plugin that is no longer shown (turned off) takes its views with it.
+  if (before !== "all") for (const id of before) if (!shown.has(id)) clearOwner(id);
+  // Places first, so held views that go to a place find it.
+  pagePlaces.configure(plugins);
   for (const [id, message] of held) {
     if (!showing(message.owner)) continue;
     held.delete(id);
     render(message.slot, message.key, message.owner, message.order, message.view);
   }
+  panel?.refresh();
+}
+
+/**
+ * Removes everything a plugin drew in this page. Its views are held, as if they had come while it was
+ * hidden: if another tab keeps the plugin running, it won't draw them again when it is shown here again.
+ * If it stops, the kernel takes its views away, and they go from what is held too.
+ */
+function clearOwner(plugin: string) {
+  for (const [id, message] of drawn) if (pluginOf(message.owner) === plugin) {
+    held.set(id, message);
+    drawn.delete(id);
+  }
+  for (const [id, args] of placeRenders) if (pluginOf(args[2]) === plugin) placeRenders.delete(id);
+  for (const [slot, entries] of slots)
+    for (const [key, entry] of entries) {
+      if (pluginOf(entry.owner) !== plugin) continue;
+      entry.el.remove();
+      entries.delete(key);
+      const container = containerOf.get(entry);
+      if (container) afterChange(container, slot);
+    }
 }
 
 // ---- Slots ----
@@ -323,18 +365,54 @@ function opened(plugins: { href: string; id?: string; error?: string }[]) {
 // slot is its fallback, shown until some plugin draws there.
 
 const fallbacks = new Map<HTMLElement, HTMLElement>();
-function slotFor(name: Slot, owner: string): HTMLElement | null {
+function withFallback(container: HTMLElement): HTMLElement {
+  if (!fallbacks.has(container)) {
+    const fallback = document.createElement("span");
+    fallback.className = "fallback";
+    fallback.append(...container.childNodes);
+    container.append(fallback);
+    fallbacks.set(container, fallback);
+  }
+  return container;
+}
+
+/**
+ * Where a view for `name` goes: the page's <slot name>, or else the containers of the owner's place of
+ * that name (a place with `each` has one per match). Each comes with the id its entries are kept under.
+ */
+function slotFor(name: Slot, owner: string): [string, HTMLElement][] {
   let slot = document.querySelector<HTMLElement>(`slot[name="${CSS.escape(name)}"]`);
   // A review card must be seen, even in an app with no slot of that name.
   if (!slot && ALWAYS.has(owner)) slot = document.getElementById("review") ?? document.body.appendChild(Object.assign(document.createElement("section"), { id: "review" }));
-  if (slot && !fallbacks.has(slot)) {
-    const fallback = document.createElement("span");
-    fallback.className = "fallback";
-    fallback.append(...slot.childNodes);
-    slot.append(fallback);
-    fallbacks.set(slot, fallback);
-  }
-  return slot;
+  if (slot) return [[name, withFallback(slot)]];
+  return (pagePlaces.containers(pluginOf(owner), name) ?? []).map(([id, c]) => [id, withFallback(c)]);
+}
+
+// ---- Places ----
+//
+// A render to a name the page has no slot for may be for one of the
+// owner's places. Those renders are remembered, so the view can be drawn
+// once the place is ready (after a review card, say) and drawn again if it
+// is set up anew (the person unlocked it).
+
+const placeRenders = new Map<string, [Slot, string, string, number, View]>();
+const containerOf = new WeakMap<Entry, HTMLElement>();
+const pagePlaces = makePlaces({
+  ask: (plugin, place, target, what) => command("place:ask", { app, plugin, place, target, what }).then(Boolean),
+  changed: (plugin, name) => {
+    // That place's containers are new: forget the entries that were in its old ones, then draw it again.
+    for (const id of [...slots.keys()]) if (id.startsWith(`${plugin}/${name}#`)) slots.delete(id);
+    for (const args of [...placeRenders.values()]) if (pluginOf(args[2]) === plugin && args[0].split("#")[0] === name) render(...args);
+  },
+  report: (text) => report("place", text),
+});
+
+/** After a container's entries change: show its fallback when empty, and tell its place. */
+function afterChange(container: HTMLElement, _slot: string) {
+  const count = container.querySelectorAll(":scope > [data-key]").length;
+  const fallback = fallbacks.get(container);
+  if (fallback) fallback.hidden = count > 0;
+  pagePlaces.sync(container, count);
 }
 
 /** The plugin an owner is an instance of: "month@tab-1" is an instance of "month". */
@@ -348,6 +426,8 @@ function templateFiles(view: View): string[] {
 }
 
 const waitingForFile = new Map<string, [Slot, string, string, number, View]>();
+/** The views drawn in this page, as they came, so a plugin turned off here can be shown again. */
+const drawn = new Map<string, Extract<KernelToHost, { t: "render" }>>();
 
 function render(slot: Slot, key: string, owner: string, order: number, view: View | null) {
   const id = `${slot}/${key}`;
@@ -380,15 +460,36 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     return;
   }
   waitingForFile.delete(id);
-  const container = slotFor(slot, owner);
-  if (!container) return;
+  if (view) drawn.set(id, { t: "render", slot, key, owner, order, view });
+  else drawn.delete(id);
+  const targets = slotFor(slot, owner);
+  // Not a slot in this page: remember it, in case it is for a place that isn't ready yet.
+  const isPlace = !document.querySelector(`slot[name="${CSS.escape(slot)}"]`) && !ALWAYS.has(owner);
+  if (isPlace) {
+    // A view to every match replaces what was drawn to one of them, so drawing again later gives the same page.
+    if (!slot.includes("#")) for (const [other, args] of placeRenders) if (args[1] === key && pluginOf(args[2]) === pluginOf(owner) && args[0].startsWith(`${slot}#`)) placeRenders.delete(other);
+    // Latest last: it is drawn again in this order.
+    placeRenders.delete(id);
+    if (view) placeRenders.set(id, [slot, key, owner, order, view]);
+  }
+  // A view to `name` also clears what was drawn to `name#i`, and the other way round, so keys stay unique per container.
+  for (const [slotId, container] of targets) drawIn(slotId, container, key, owner, order, view);
+  if (isPlace && !view && !slot.includes("#")) for (const [slotId, entries] of slots) if (slotId.startsWith(`${pluginOf(owner)}/${slot.split("#")[0]}#`) && entries.has(key)) {
+    const entry = entries.get(key)!;
+    entry.el.remove();
+    entries.delete(key);
+    afterChange(containerOf.get(entry)!, slotId);
+  }
+}
+
+function drawIn(slot: string, container: HTMLElement, key: string, owner: string, order: number, view: View | null) {
   const entries = slots.get(slot) ?? new Map<string, Entry>();
   slots.set(slot, entries);
   const old = entries.get(key);
   if (!view) {
     old?.el.remove();
     entries.delete(key);
-    fallbacks.get(container)!.hidden = entries.size > 0;
+    afterChange(container, slot);
     return;
   }
   const next = document.createElement("div");
@@ -406,11 +507,12 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     next.dataset.key = key;
     setOwner(next, owner);
     entry = { owner, order, el: next };
+    containerOf.set(entry, container);
     listen(entry);
     entries.set(key, entry);
     const sorted = [...entries.values()].sort((a, b) => a.order - b.order);
     container.append(...sorted.map((e) => e.el));
-    fallbacks.get(container)!.hidden = true;
+    afterChange(container, slot);
   }
   defineElementsIn(entry.el);
   for (const placeholder of entry.el.querySelectorAll<HTMLCanvasElement>("canvas[data-canvas]")) {
@@ -443,6 +545,7 @@ const audioStats = { played: 0, state: "none" as string };
 
 async function bridge(service: string, method: string, args: unknown[]): Promise<unknown> {
   if (service === "host" && method === "workerCount") return workers.size;
+  if (service === "page" && method === "matches") return pagePlaces.matches(String(args[0]), String(args[1]));
   if (service === "audio" && method === "registerProcessor") {
     const [name, source] = args as [string, string];
     processors.set(name, { source });
@@ -489,10 +592,12 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
 
 /** The trace, benchmarks and demo links, on the workbench page only. */
 const bench = document.getElementById("devtools") ? workbench(command) : undefined;
+serviceWorker(command, report);
 const traces: TraceEvent[] = [];
 function showTrace(events: TraceEvent[]) {
   traces.push(...events);
-  if (traces.length > 1000) traces.splice(0, traces.length - 1000);
+  // Kept generously: the tests look back to events from the first seconds after a long run.
+  if (traces.length > 5000) traces.splice(0, traces.length - 5000);
   bench?.trace(events);
 }
 
@@ -552,8 +657,10 @@ const folder = await navigator.storage.getDirectory().catch(() => undefined);
 send({ t: "hello", tab, folder });
 introduced = true;
 for (const message of unsent.splice(0)) send(message);
-if (links.length) await openApp();
+/** Every app gets the Customize button, where the person adds their own plugins. */
+const panel = isWorkbench ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status() });
+if (!isWorkbench) await openApp();
 
 // For tests and poking around in the console.
 // Tests reach the template filler and the CSS cleaner here, to check them without a plugin.
-Object.assign(window, { __host: { tab, command, traces, audioStats, workers, fill, cleanCss, report, get spawner() { return spawner; } } });
+Object.assign(window, { __host: { tab, app, command, traces, audioStats, workers, fill, cleanCss, report, places: () => pagePlaces.status(), get spawner() { return spawner; } } });
