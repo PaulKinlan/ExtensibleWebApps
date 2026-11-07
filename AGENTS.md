@@ -27,6 +27,7 @@ Copy [`demos/habits/`](demos/habits/) to start: it is the smallest complete app,
 - Get the person's actions with `data-action` on buttons, inputs and forms, and `ctx.ui.onEvent((action, value) => …)`. Put an id in the action (`tick:{{i.id}}`) for repeated controls, and a `key="{{i.id}}"` on repeated elements.
 - Style with the design tokens (`var(--space-2)`, `var(--fg-2)`, `var(--accent)`…). The page's own CSS overrides any plugin's.
 - Give every file a comment at the top saying what it shows. The code is read as documentation.
+- To call a web API, name its host (`network:api.example.com`) and use `ctx.call("net", "fetch", …)`. For its key, ask with `secrets.request` and put `{ secret: name }` in a header: the plugin never sees the key. See [API keys and web requests](docs/guide/keys-and-requests.md).
 
 ## How to check it
 

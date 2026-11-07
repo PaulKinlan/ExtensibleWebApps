@@ -13,11 +13,13 @@ import { catalog } from "./catalog";
 import { changeLog } from "./changes";
 import { checkPath, PathError } from "./paths";
 import { allowed, reviews as makeReviews } from "./review";
+import { net } from "./net";
 import { notesApp } from "./notes";
 import { grants } from "./gate";
 import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
+import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { record, recent, setSink, startedAt, tap } from "./trace";
 
@@ -233,8 +235,14 @@ const services: Record<string, ServiceProvider> = {
 };
 
 const remote = new RemotePlugins(root, hosts, services);
+const secrets = makeSecrets(store, hosts, (instance) => remote.installed.get(base(instance))?.manifest.name ?? base(instance));
+services.secrets = secrets.service;
+services.net = net(secrets, (instance) => remote.installed.get(base(instance))?.caps ?? new Set());
 const plugins = catalog(remote, store, hosts, log, reviews);
-remote.onDispose = (instance) => reviews.cancelInstance(instance);
+remote.onDispose = (instance) => {
+  reviews.cancelInstance(instance);
+  secrets.cancelInstance(instance);
+};
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
@@ -299,6 +307,7 @@ hosts.onMessage = async (host, message) => {
     case "event":
       if (message.owner === "notes") return void notes.event(message.action, message.value, message.trace);
       if (message.owner === "review") return reviews.event(message.action, message.trace);
+      if (message.owner === "secrets") return secrets.event(message.action, message.value);
       if (message.owner === "plugins") return void plugins.event(message.action, message.value, message.trace);
       return remote.deliver(message.owner, { t: "event", action: message.action, value: message.value, trace: message.trace });
     case "spawned":
