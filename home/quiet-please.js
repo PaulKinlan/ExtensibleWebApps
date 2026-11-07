@@ -18,6 +18,7 @@ export const manifest = {
 export default function (ctx) {
   ctx.on("data:beforeWrite:learning", (change) => {
     const letters = (change.after?.text ?? "").replace(/[^\p{L}]/gu, "");
-    if (letters.length >= 5 && letters === letters.toUpperCase()) return { block: "Quiet please is on, and that note is all capitals" };
+    // Shouting needs letters that have a case: Chinese or Arabic, say, have none, and are never blocked.
+    if (letters.length >= 5 && letters === letters.toUpperCase() && letters !== letters.toLowerCase()) return { block: "Quiet please is on, and that note is all capitals" };
   });
 }

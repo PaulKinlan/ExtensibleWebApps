@@ -21,7 +21,8 @@ export default function (ctx) {
     views.render("chapters", "chapter", { on: example?.enabled ?? false }, { order: 2 });
   };
   draw();
-  ctx.on("plugins:changed", ({ id }) => id === EXAMPLE && draw());
+  // Its plugin was switched, or this tab's app finished opening (before that, the list is empty).
+  ctx.on("plugins:changed", ({ change, id }) => (id === EXAMPLE || change === "open") && draw());
   ctx.ui.onEvent(async (action, value) => {
     if (action === "toggle") await ctx.call("plugins", "setEnabled", EXAMPLE, value === true);
   });

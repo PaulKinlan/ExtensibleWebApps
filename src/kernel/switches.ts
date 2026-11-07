@@ -16,10 +16,10 @@ defineHook("plugins:changed", {
   mode: "emit",
   needs: "plugins:read",
   args: "{ change, id }",
-  description: "A plugin was installed, removed, or turned on or off. `change` is install, uninstall, enable or disable.",
+  description: "A plugin was installed, removed, or turned on or off (`change` is install, uninstall, enable or disable, and `id` is the plugin), or a tab opened its app (`change` is open, and `id` is the tab), so plugins.app() may answer differently.",
 });
 
-export function switches(root: any, remote: RemotePlugins, apps: Apps): ServiceProvider {
+export function switches(root: any, remote: RemotePlugins, apps: Apps): { service: ServiceProvider; opened(tab: string): void } {
   // The plugins panel already listens for changes; this adds the hook alongside it.
   const before = remote.onChange;
   remote.onChange = (change, id) => {
@@ -35,7 +35,7 @@ export function switches(root: any, remote: RemotePlugins, apps: Apps): ServiceP
     return apps.linkedBy(tab) ?? [];
   };
 
-  return {
+  const service: ServiceProvider = {
     description: "The plugins in the caller's app, and a switch for each. The caller must be tab-scoped; hear changes with the `plugins:changed` hook.",
     methods: {
       app: {
@@ -66,6 +66,14 @@ export function switches(root: any, remote: RemotePlugins, apps: Apps): ServiceP
         return remote.setEnabled(id, enabled === true);
       }
       throw new Error(`plugins.${method} is not a method`);
+    },
+  };
+
+  return {
+    service,
+    /** A tab finished opening its app. Its tab-scoped plugins can start before that, and get an empty list until then. */
+    opened(tab: string) {
+      root.emit({ trace: `plugins:open:${tab}` }, "plugins:changed", { change: "open", id: tab });
     },
   };
 }

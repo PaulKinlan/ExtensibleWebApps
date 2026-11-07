@@ -29,6 +29,19 @@ export default async function ({ check, context, URL, errors }) {
   const blocked = await page.waitForSelector(`${notes} >> text=Quiet please is on`, { timeout: 5000 }).then(() => true, () => false);
   check("Quiet please stops a note in capitals through data:beforeWrite:learning", blocked);
 
+  await page.fill(`${notes} textarea[name="text"]`, "今天学习了插件");
+  await page.click(`${notes} button[type="submit"]`);
+  const uncased = await page.waitForSelector(`${notes} >> text=今天学习了插件`, { timeout: 5000 }).then(() => true, () => false);
+  check("Quiet please lets through notes in scripts without capitals", uncased);
+
+  // A second tab: its tab-scoped plugins start before its app has opened, and catch up when it has.
+  const second = await own.newPage();
+  await second.goto(URL);
+  const listed = await second.waitForFunction(() => document.querySelectorAll('slot[name="switchboard"] input[data-action^="switch:"]').length === 9, null, { timeout: 8000 }).then(() => true, () => false);
+  const ticked = await second.waitForFunction(() => document.querySelector('[data-plugin="chapter-2-plugins"] input[data-action="toggle"]')?.checked, null, { timeout: 5000 }).then(() => true, () => false);
+  check("a second homepage tab lists the plugins and shows the chapters' switches as on", listed && ticked);
+  await second.close({ runBeforeUnload: true });
+
   // Chapter 2's switch turns Note stats off, and the switchboard hears it.
   await page.click('[data-plugin="chapter-2-plugins"] input[data-action="toggle"]');
   await page.waitForSelector(key("note-stats"), { state: "detached", timeout: 5000 }).catch(() => {});

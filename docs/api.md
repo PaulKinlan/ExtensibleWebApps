@@ -392,7 +392,7 @@ Listeners get `{ path, url, title, siteName, text, bodyStart, selection, unsaved
 
 ### `plugins:changed`
 
-A plugin was installed, removed, or turned on or off. `change` is install, uninstall, enable or disable.
+A plugin was installed, removed, or turned on or off (`change` is install, uninstall, enable or disable, and `id` is the plugin), or a tab opened its app (`change` is open, and `id` is the tab), so plugins.app() may answer differently.
 
 Mode: `emit`. Listening needs `plugins:read`.
 
