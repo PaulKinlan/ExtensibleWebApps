@@ -2,7 +2,7 @@
 
 A platform for malleable web apps: a small kernel, and everything else is a plugin. That includes the UI shell, storage and, later, the AI app builder. Plugins run in their own workers, can only do what their manifest asks for, and draw their UI as plain HTML.
 
-**Try it:** https://extensible-web-apps.paulkinlan.workers.dev/ is the workbench. The demo apps are in [`demos/`](demos/): a reading list, spending, recipes, contacts and a calendar.
+**Try it:** https://extensible-web-apps.kinlan-test.workers.dev/ is the workbench. The demo apps are in [`demos/`](demos/): a reading list, spending, recipes, contacts and a calendar.
 
 ![The reading list demo](docs/images/collections.png)
 
