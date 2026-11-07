@@ -66,7 +66,7 @@ export default async function ({ a, check, openTab, URL }) {
   // The invoice: open, review and locked.
   const invoice = await withSamples("demos/invoice", ["memo", "tip", "pay-later"]);
   for (const id of ["memo", "tip", "pay-later"]) await turn(invoice, "demos/invoice", id, true);
-  const memo = await invoice.waitForSelector('body > header + .place[data-place="memo/note"] form', { timeout: 8000 }).then(() => true, () => false);
+  const memo = await invoice.waitForSelector('main > .place:first-child[data-place="memo/note"] form', { timeout: 8000 }).then(() => true, () => false);
   check("a place in an open area is drawn at once", memo);
   const card = await invoice.waitForSelector('[data-key^="review:"] >> text=Add a tip wants to change', { timeout: 8000 }).then(() => true, () => false);
   const tipBefore = await invoice.$('#lines .place[data-place="tip/line"]');

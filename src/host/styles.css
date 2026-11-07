@@ -114,6 +114,8 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 #notice p { margin: 4px 0 0; padding: 8px 12px; border-radius: var(--radius); background: var(--fg); color: var(--bg); }
 /* Places: a plugin's views in a page that left no slot for them (places.ts). */
 .place { display: contents; }
+/* The default app layout puts body's children in named areas; a place right in <body> would land after the footer, so it spans the page instead. Target inside <main> or <header> to place it exactly. */
+body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
 [hidden] { display: none !important; }
 .place-pending { outline: 2px dashed var(--accent); outline-offset: 4px; }
 /* The Customize button and panel, on every app page. */
@@ -129,7 +131,8 @@ dialog.customize p { margin: var(--space-1) 0; }
 .customize-places code { font: var(--text-sm) var(--mono); }
 .customize-places button { margin-left: var(--space-2); height: 24px; }
 .customize-actions, .customize-url { display: flex; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
-.customize-add { display: grid; gap: var(--space-2); }
+.customize-add { display: grid; gap: var(--space-2); justify-items: start; }
+.customize-add textarea, .customize-add .customize-url { justify-self: stretch; }
 .customize-add textarea { min-height: 96px; font: var(--text-sm)/1.5 var(--mono); }
 .customize-url input { flex: 1; min-width: 0; font: inherit; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
 .customize-close { margin-top: var(--space-4); }

@@ -1,6 +1,5 @@
-// Private memo: a note only the person sees, after the invoice's header.
-// The header isn't marked, so the place is open and the memo is drawn at
-// once. The note is kept in the plugin's own storage, on this device.
+// Private memo: a note only the person sees, at the top of the invoice.
+// <main> isn't marked, so the place is open and the memo is drawn at once. The note is kept in the plugin's own storage, on this device.
 
 export const manifest = {
   id: "memo",
@@ -9,7 +8,7 @@ export const manifest = {
   version: "1.0.0",
   permissions: ["ui"],
   places: {
-    note: { at: "body > header", put: "after" },
+    note: { at: "main", put: "prepend" },
   },
   files: ["memo.html"],
 };

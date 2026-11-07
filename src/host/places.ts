@@ -62,10 +62,18 @@ export function places(host: PlacesHost) {
     return mark && STRICTNESS.includes(mark) ? mark : "open";
   }
 
+  /** How a review card names an element: its label or heading, as the person sees it, then how the page names it. */
   function describe(el: Element): string {
-    const text = (el.textContent ?? "").trim().replace(/\s+/g, " ");
+    const labelledBy = el.getAttribute("aria-labelledby");
+    const name =
+      el.getAttribute("aria-label") ??
+      (labelledBy ? document.getElementById(labelledBy)?.textContent : undefined) ??
+      el.querySelector("h1, h2, h3, h4, h5, h6")?.textContent ??
+      el.textContent ??
+      "";
+    const words = name.trim().replace(/\s+/g, " ");
     const what = el.id ? `#${el.id}` : el.localName;
-    return text ? `${what} “${text.length > 40 ? `${text.slice(0, 40)}…` : text}”` : what;
+    return words ? `“${words.length > 40 ? `${words.slice(0, 40)}…` : words}” (${what})` : what;
   }
 
   const verbs: Record<Place["put"], string> = {

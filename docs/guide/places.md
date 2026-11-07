@@ -41,6 +41,7 @@ Try it in the [trip](../../demos/trip/app.html), [menu](../../demos/menu/app.htm
 
 - A view in a place is wrapped like any slot's view, with `data-plugin`, so the plugin's own `<style>` reaches it ([Styling](styling.md)).
 - Turning a plugin off undoes everything its places did, so the page is back as the author wrote it.
+- The platform's default app layout puts `<body>`'s own children (`header`, `main`, `aside`, `footer`) in a grid. A view placed right in `<body>`, before or after one of those, spans the page below them, so place inside `main` or `header` when the spot matters.
 
 ## Choosing a selector that lasts
 
