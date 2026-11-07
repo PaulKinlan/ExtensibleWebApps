@@ -57,10 +57,14 @@ const importAll = async (dir) => {
   const files = existsSync(folder) ? readdirSync(folder).filter((f) => f.endsWith(".mjs")).sort() : [];
   return new Map(await Promise.all(files.map(async (f) => [f.slice(0, -4), await import(new globalThis.URL(f, folder))])));
 };
-const demoTests = await importAll("./demos/");
-const featureTests = await importAll("./checks/");
+let demoTests = new Map();
+let featureTests = new Map();
 
 try {
+  // Loaded inside the try, so a broken test file is reported and the browser and server still close.
+  demoTests = await importAll("./demos/");
+  featureTests = await importAll("./checks/");
+
   // ---- One tab ----
   const a = await openTab();
   t.a = a;
