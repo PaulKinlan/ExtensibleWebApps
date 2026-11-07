@@ -16,9 +16,29 @@ import { record } from "./trace";
 type Link = { href: string; source: string };
 type Opened = { href: string; id?: string; error?: string };
 
-export function apps(remote: RemotePlugins, hosts: Hosts) {
+export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) => Promise<boolean>) {
   /** For each plugin an app linked: the tabs that have that app open. */
   const users = new Map<string, Set<string>>();
+  /** Installs under way, so two tabs opening the same app share one. */
+  const installing = new Map<string, Promise<string | undefined>>();
+
+  /** Stops an app plugin once no open tab needs it. */
+  function release(id: string, tab: string): void {
+    const tabs = users.get(id);
+    if (!tabs?.delete(tab) || tabs.size) return;
+    users.delete(id);
+    if (remote.installed.get(id)?.origin === "app") remote.uninstall(id);
+  }
+
+  /** Installs and starts an app plugin; resolves to an error, or undefined if it runs (or is off by choice). */
+  async function start(id: string, source: string): Promise<string | undefined> {
+    // Turning a plugin off in the workbench is saved; reopening its app keeps it off.
+    const enabled = !(await isOff(id));
+    const result = await remote.install(source, { origin: "app", enabled });
+    if (!result.ok) return result.error;
+    if (enabled && !result.started) return "It didn't start; the trace says why";
+    return undefined;
+  }
 
   async function openOne(host: Host, { href, source }: Link): Promise<Opened> {
     let id: string;
@@ -29,12 +49,24 @@ export function apps(remote: RemotePlugins, hosts: Hosts) {
     }
     const running = remote.installed.get(id);
     if (running && running.source !== source) return { href, id, error: `Another plugin with the id “${id}” is already running` };
-    if (!running) {
-      const result = await remote.install(source, { origin: "app" });
-      if (!result.ok) return { href, error: result.error };
-    }
+    // The tab counts as a user before anything is awaited, so a tab that
+    // closes while the plugin starts still lets it stop.
     if (!users.has(id)) users.set(id, new Set());
     users.get(id)!.add(host.tab);
+    if (running && !installing.has(id)) return { href, id };
+
+    let pending = installing.get(id);
+    if (!pending) {
+      pending = start(id, source).finally(() => installing.delete(id));
+      installing.set(id, pending);
+    }
+    const error = await pending;
+    if (error) {
+      release(id, host.tab);
+      return { href, id, error };
+    }
+    // Every tab using it closed while it started, before it was installed: stop it now.
+    if (!users.has(id) && remote.installed.get(id)?.origin === "app") remote.uninstall(id);
     return { href, id };
   }
 
@@ -48,11 +80,7 @@ export function apps(remote: RemotePlugins, hosts: Hosts) {
 
     /** A tab closed: stop the app plugins no open tab needs any more. */
     hostLeft(host: Host): void {
-      for (const [id, tabs] of users) {
-        if (!tabs.delete(host.tab) || tabs.size) continue;
-        users.delete(id);
-        if (remote.installed.get(id)?.origin === "app") remote.uninstall(id);
-      }
+      for (const id of [...users.keys()]) release(id, host.tab);
     },
   };
 }

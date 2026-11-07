@@ -201,7 +201,7 @@ const plugins = catalog(remote, store, hosts, log, reviews);
 remote.onDispose = (instance) => reviews.cancelInstance(instance);
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
-const apps = makeApps(remote, hosts);
+const apps = makeApps(remote, hosts, plugins.isOff);
 remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;
