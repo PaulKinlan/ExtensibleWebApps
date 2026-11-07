@@ -151,7 +151,7 @@ Use the design tokens (`--space-2`, `--border`, `--ok`) so the plugin matches wh
 | `The module has no manifest`, or a manifest error with a line number | `export const manifest` isn't the first statement, or isn't a plain literal (no spreads, calls or template strings). |
 | `denied` in the trace | The manifest doesn't ask for that permission. |
 | An attribute or element missing from your view | The sanitiser removed it: no `style` attributes, scripts, iframes or event handlers. See the [allowed HTML](../api.md#html-views). |
-| `Couldn't load habits.html` | The template file isn't next to the plugin, or the plugin isn't linked from an `app.html`. |
+| `Couldn't load habits.html` | The path, read relative to the plugin file, doesn't lead to that file, or the plugin isn't linked from an `app.html`. |
 | A view that doesn't update | It was drawn with `render`, not `live`, and nothing draws it again. Use `live`, or call `render` again when your state changes. |
 
 Next: [Views and templates](views-and-templates.md).

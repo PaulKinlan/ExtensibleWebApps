@@ -260,7 +260,7 @@ function template(view: Extract<View, { type: "template" }>, remote: boolean, ba
   if (typeof view.src !== "string" || typeof view.id !== "string" || !/^[\w-]{1,64}$/.test(view.id)) throw new Error("A template view needs a file and an id of letters, digits, - and _");
   const from = new URL(base);
   const src = new URL(view.src, from);
-  if (src.origin !== from.origin || !src.pathname.endsWith(".html") || src.search || src.hash) throw new Error(`${view.src} isn't an .html file next to the plugin`);
+  if (src.origin !== from.origin || !src.pathname.endsWith(".html") || src.search || src.hash) throw new Error(`${view.src} isn't an .html file on the plugin's own site`);
   const data = view.data === undefined ? undefined : JSON.parse(JSON.stringify(view.data));
   if (JSON.stringify(data ?? null).length > HTML_MAX) throw new Error(`A template's data is limited to ${HTML_MAX} characters`);
   return { type: "template", src: src.href, id: view.id, data, remote };

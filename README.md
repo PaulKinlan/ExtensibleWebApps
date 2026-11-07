@@ -32,22 +32,22 @@ sequenceDiagram
 
     Note over P,H: Drawing
     P->>K: views.render(slot, template id, data)
-    K->>K: checks the ui permission and that the template file sits next to the plugin
+    K->>K: checks the ui permission, and that the template is an .html file on the plugin's own site
     K->>H: the view
     H->>H: fill holes as text, sanitise to the HTML allowlist, morph only what changed
 
     Note over P,H: Acting
     H->>K: a click on data-action, or a form submit
-    K->>P: ctx.ui.onEvent(action, value), sent only to the plugin that drew the view
+    K->>P: the action and its value, delivered to the onEvent handler of the plugin that drew the view
 
     Note over P,H: Data
     P->>K: ctx.call("data", "put", collection, record)
     K->>K: owner, or data:write plus a review card the person accepts, then schema check and save
-    K-->>P: data:changed:collection, to every plugin listening
+    K-->>P: data:changed:{collection}, to every plugin listening
     K-->>H: new records, pushed to bound ui-table and ui-form
 ```
 
-Bound elements update on their own. A plugin's own views update the same way when it draws them with `live`: `views.live(slot, id, (ctx) => data)` notes which collections and settings the function reads, and runs it again when any of them changes. A plugin can also listen to `data:changed` itself and draw again.
+Bound elements update on their own. A plugin's own views update the same way when it draws them with `live`: `views.live(slot, id, (ctx) => data)` notes which collections and settings the function reads, and runs it again when any of them changes. A plugin can also listen to `data:changed:<collection>` itself and draw again.
 
 Three kinds of code, each in its own place:
 
