@@ -1,0 +1,24 @@
+<!--
+  The switchboard. switchboard.js sends { plugins, on, all }: each plugin is
+  { id, name, description, enabled }; on and all count them. Each checkbox
+  sends "switch:<id>" with true or false.
+-->
+<style>
+  .switches { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .switches label { display: grid; grid-template-columns: auto 1fr; gap: 0 var(--space-2); align-items: start; padding: var(--space-1) 0; }
+  .switches input { margin-top: 3px; }
+  .switches small { grid-column: 2; color: var(--fg-2); }
+  .count { color: var(--fg-2); font-weight: normal; font-size: var(--text-sm); }
+</style>
+<template id="switches">
+  <ui-card>
+    <h2>Switchboard <span class="count">{{on}} of {{all}} on</span></h2>
+    <ul class="switches">
+      <template for="p of plugins">
+        <li key="{{p.id}}">
+          <label><input type="checkbox" data-action="switch:{{p.id}}" checked="{{p.enabled}}"> <span>{{p.name}}</span> <small>{{p.description}}</small></label>
+        </li>
+      </template>
+    </ul>
+  </ui-card>
+</template>

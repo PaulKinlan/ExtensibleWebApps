@@ -1,0 +1,13 @@
+<!--
+  Reset. reset.js sends { off }: the names of the plugins that are off. The
+  button sends "reset".
+-->
+<style>
+  .reset p { margin: 0 0 var(--space-2); }
+</style>
+<template id="reset">
+  <ui-card tone="warn" class="reset">
+    <p>Switched off: <template for="name of off"><span key="{{name}}">{{name}}. </span></template></p>
+    <button type="button" data-action="reset">Turn them all back on</button>
+  </ui-card>
+</template>

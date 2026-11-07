@@ -304,6 +304,26 @@ Needs: `data:write:<collection>`, and the person's review.
 
 Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection.
 
+### plugins
+
+The plugins in the caller's app, and a switch for each. The caller must be tab-scoped; hear changes with the `plugins:changed` hook.
+
+#### plugins.app
+
+`plugins.app()` → [{ id, name, description, enabled }]
+
+Needs: `plugins:read`.
+
+Every plugin the caller's app links, in the order its app.html lists them. Empty until the tab has opened its app.
+
+#### plugins.setEnabled
+
+`plugins.setEnabled(id, enabled)` → true if it changed
+
+Needs: `plugins:manage`.
+
+Turns one of the app's plugins on or off. Saved, and applies in every tab, as the plugins panel's switch does.
+
 ## Hooks
 
 ### `bench:ping`
@@ -370,6 +390,14 @@ Mode: `emit`. Listening needs `hook:listen:note:save`.
 
 Listeners get `{ path, url, title, siteName, text, bodyStart, selection, unsaved }`.
 
+### `plugins:changed`
+
+A plugin was installed, removed, or turned on or off (`change` is install, uninstall, enable or disable, and `id` is the plugin), or a tab opened its app (`change` is open, and `id` is the tab), so plugins.app() may answer differently.
+
+Mode: `emit`. Listening needs `plugins:read`.
+
+Listeners get `{ change, id }`.
+
 ### Dispatch modes
 
 | Mode | What happens |
@@ -397,6 +425,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `debug:read` | Call debug.recent, debug.app. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
+| `plugins:read` | Call plugins.app. |
+| `plugins:manage` | Call plugins.setEnabled. |
 
 Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
 
