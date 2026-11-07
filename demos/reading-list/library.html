@@ -1,0 +1,23 @@
+<!--
+  The library's view. library.js sends { open } (the id of the book being
+  edited, or null) and the host fills this in. <ui-form> and <ui-table> do
+  the rest from the collection's schema.
+-->
+<template id="books">
+  <ui-toolbar>
+    <h2>Books</h2>
+    <ui-spacer></ui-spacer>
+    <template if="open"><button data-action="close">Add a book instead</button></template>
+  </ui-toolbar>
+  <ui-card>
+    <template if="open">
+      <h3>Edit book</h3>
+      <ui-form collection="library" record="{{open}}" submit="Save changes" action="saved"></ui-form>
+    </template>
+    <template if="!open">
+      <h3>Add a book</h3>
+      <ui-form collection="library" fields="title,author,year,shelf,due" submit="Add book"></ui-form>
+    </template>
+  </ui-card>
+  <ui-table collection="library" columns="title,author,year,shelf,due" sort="title" row-action="open" deletable empty="No books yet."></ui-table>
+</template>

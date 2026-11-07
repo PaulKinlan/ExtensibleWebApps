@@ -13,22 +13,9 @@ export const manifest = {
 };
 
 export default async function (ctx) {
-  const html = ctx.ui.html;
+  const views = ctx.ui.views("book-import.html");
   let status = "";
-
-  const draw = () =>
-    ctx.ui.render(
-      "side",
-      "book-import",
-      html`
-        <h3>Import books</h3>
-        <form data-action="import">
-          <label>One per line, as “Title by Author”
-            <textarea name="list" rows="4" placeholder="Middlemarch by George Eliot"></textarea>
-          </label>
-          <ui-toolbar>${status ? html`<small role="status">${status}</small>` : ""}<ui-spacer></ui-spacer><button type="submit">Import</button></ui-toolbar>
-        </form>`,
-    );
+  const draw = () => views.render("side", "form", { status });
 
   ctx.ui.onEvent(async (action, value) => {
     if (action !== "import") return;

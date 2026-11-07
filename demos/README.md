@@ -1,11 +1,11 @@
 # Demos
 
-Each folder here is an app. An app is an `app.html` page plus its plugins, one file each. The files are written to be read: each starts with a comment saying what it shows. Nothing is built; the browser runs them as they are.
+Each folder here is an app. An app is an `app.html` page plus its plugins: one `.js` file each, and usually a `.html` file of view templates next to it. The files are written to be read: each starts with a comment saying what it shows. Nothing is built; the browser runs them as they are.
 
 | App | Plugins | Open it |
 | --- | --- | --- |
-| [`reading-list/`](reading-list/) | `library.js` owns the books; `due-soon.js` reads them; `book-import.js` adds to them, with review | [hosted](https://extensible-web-apps.paulkinlan.workers.dev/demos/reading-list/app.html) |
-| [`spending/`](spending/) | `expenses.js` owns the expenses; `budget.js` and `categories.js` read them | [hosted](https://extensible-web-apps.paulkinlan.workers.dev/demos/spending/app.html) |
+| [`reading-list/`](reading-list/) | `library` owns the books; `due-soon` reads them; `book-import` adds to them, with review | [hosted](https://extensible-web-apps.paulkinlan.workers.dev/demos/reading-list/app.html) |
+| [`spending/`](spending/) | `expenses` owns the expenses; `budget` and `categories` read them | [hosted](https://extensible-web-apps.paulkinlan.workers.dev/demos/spending/app.html) |
 
 Locally, run `npm run dev` and open `http://localhost:5173/demos/reading-list/app.html`.
 
@@ -33,7 +33,26 @@ Locally, run `npm run dev` and open `http://localhost:5173/demos/reading-list/ap
 - **`slot name`** is where plugins draw. What's inside a slot shows until a plugin draws there. The page's layout is yours: plain HTML and CSS.
 - The page shows only its own plugins' views. Review cards, where the person allows or declines a change, always show.
 
-## A plugin is one file
+## A plugin is a script and its templates
+
+A plugin's views are HTML templates in a file next to it. The plugin sends data; the host fills the template:
+
+```html
+<!-- library.html -->
+<template id="books">
+  <h2>Books</h2>
+  <template if="open">
+    <ui-form collection="library" record="{{open}}" submit="Save changes"></ui-form>
+  </template>
+  <ul>
+    <template for="book of books"><li>{{book.title}}</li></template>
+  </ul>
+</template>
+```
+
+`{{path}}` holes go in text and attribute values and are filled as text, never as HTML. `<template for="x of path">` repeats and `<template if="path">` keeps or drops its content; a path is names joined by dots, optionally starting with `!`. There are no other expressions, so the logic stays in the script. The filled HTML is checked like any other view.
+
+The script is one ES module with two exports:
 
 ```js
 // 1. A manifest, which must be the first statement. The kernel reads it as
@@ -48,12 +67,11 @@ export const manifest = {
 // 2. A function that gets a `ctx`. It runs in its own worker; every call on
 //    ctx is a message the kernel checks against the manifest.
 export default async function (ctx) {
-  const html = ctx.ui.html; // a tagged template that escapes every value
+  const views = ctx.ui.views("library.html");  // the templates next to this file
+  views.render("main", "books", { open: null }); // slot, template id, data
 
-  ctx.ui.render("main", "library", html`
-    <h2>Books</h2>
-    <ui-form collection="library"></ui-form>
-    <ui-table collection="library" row-action="open"></ui-table>`);
+  // Or build HTML in code, for views computed from data (categories.js does this):
+  // ctx.ui.render("side", "chart", ctx.ui.html`<meter value="${n}"></meter>`);
 
   ctx.ui.onEvent((action, value) => { /* data-action clicks and form submits */ });
   ctx.on("data:changed:library", () => { /* any write to the collection */ });
@@ -79,10 +97,11 @@ The full API, generated from the running kernel, is in [docs/api.md](../docs/api
 
 ## Which to read first
 
-1. **`reading-list/app.html`**, then **`library.js`**: almost no code. A schema in the manifest, and two bound elements in one line of HTML.
+1. **`reading-list/app.html`**, then **`library.js`** and **`library.html`**: almost no code. A schema in the manifest, and a template with two bound elements.
 2. **`due-soon.js`** and **`book-import.js`**: two more plugins that use the library without owning it, one reading and one writing with review.
-3. **`spending/expenses.js`**: the same data model with a view written by hand, a table and a form that saves through the `data` service.
+3. **`spending/expenses.js`** and **`expenses.html`**: the same data model with a view written by hand, a table and a form that saves through the `data` service.
 4. **`spending/budget.js`**: a setting, and a dashboard computed from another plugin's data.
-5. **`../plugins/tone.js`** and **`../plugins/bars.js`**: audio in an AudioWorklet and drawing on an OffscreenCanvas, without plugin code on the main thread.
+5. **`spending/categories.js`**: a view built in code with `ctx.ui.html` instead of a template.
+6. **`../plugins/tone.js`** and **`../plugins/bars.js`**: audio in an AudioWorklet and drawing on an OffscreenCanvas, without plugin code on the main thread.
 
 The files in `plugins/` are the platform's own test plugins and run on the workbench (`/`), not in apps.

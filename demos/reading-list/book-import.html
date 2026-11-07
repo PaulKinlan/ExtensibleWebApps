@@ -1,0 +1,17 @@
+<!--
+  The import form. Submitting it sends the "import" action with the form's
+  fields; book-import.js sends back { status } to show how it went.
+-->
+<template id="form">
+  <h3>Import books</h3>
+  <form data-action="import">
+    <label>One per line, as “Title by Author”
+      <textarea name="list" rows="4" placeholder="Middlemarch by George Eliot"></textarea>
+    </label>
+    <ui-toolbar>
+      <template if="status"><small role="status">{{status}}</small></template>
+      <ui-spacer></ui-spacer>
+      <button type="submit">Import</button>
+    </ui-toolbar>
+  </form>
+</template>

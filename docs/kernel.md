@@ -65,6 +65,8 @@ The host parses the HTML inertly and keeps only the elements and attributes in `
 
 ![An HTML view built only from plain HTML and the host's components](images/html-view.png)
 
+A plugin that an app links can also keep its views in an `.html` file next to it, as `<template id>` elements, and send only data: `ctx.ui.views("library.html").render("main", "books", { open })`. The kernel resolves the file against the plugin's own URL and refuses any other origin; the host fills `{{path}}` holes as text, repeats `<template for="x of path">` and keeps `<template if="path">`, then sanitises the result like any HTML view ([`src/host/templates.ts`](../src/host/templates.ts)).
+
 ## Collections: data with a schema
 
 A plugin declares the records it keeps in its manifest, with a small JSON Schema subset (no `pattern`, so a plugin can't stall the kernel with a regular expression):

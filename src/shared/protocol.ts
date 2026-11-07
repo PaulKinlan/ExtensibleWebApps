@@ -11,6 +11,11 @@
 export type View =
   /** Plain HTML, using the elements and components in shared/html.ts. `remote` is set by the kernel, never the plugin. */
   | { type: "html"; html: string; remote?: boolean }
+  /**
+   * A template from an .html file next to the plugin, filled with data by the host: `src` is the file
+   * (made absolute by the kernel), `id` the template's id in it. `remote` is set by the kernel, as for html.
+   */
+  | { type: "template"; src: string; id: string; data?: unknown; remote?: boolean }
   | { type: "stack"; children: View[]; direction?: "row" | "column" }
   | { type: "heading"; text: string }
   | { type: "text"; text: string; title?: string; tone?: "muted" | "error" | "ok" }

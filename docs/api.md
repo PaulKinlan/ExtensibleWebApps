@@ -10,6 +10,7 @@ Printed by the kernel from its own registries (`npm run reference` writes this f
 | `ctx.call(service, method, ...args) → Promise` | What the method needs (see Services) | Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses. |
 | `ctx.ui.render(slot, key, view, order?)` | `ui` | Draws a view in a slot, under a key of the plugin's own: an HTML string (see HTML views), a JSON view, or null to remove it. Drawing again updates it in place. Plugins never touch the DOM. |
 | `ctx.ui.html`…${value}…` → view` | Nothing | Builds an HTML view from a template, escaping every value (arrays are joined, nested html results go in as they are). Use it whenever text comes from data. |
+| `ctx.ui.views(file) → { render(slot, id, data?, { key?, order? }?) }` | `ui` (to render) | The `<template id>` elements in an .html file next to the plugin (only for plugins an app links). `render` draws one, filled with `data`: `{{path}}` holes in text and attribute values, `<template for="x of path">` and `<template if="path">`. Values go in as text, and the result is checked like any HTML view. |
 | `ctx.ui.onEvent((action, value) => …) → off()` | Nothing | Hears the person use the plugin's views: a button's or field's `action`, with a field's new value. |
 | `ctx.ui.onCanvas(id, (canvas) => …)` | Nothing | Receives the OffscreenCanvas for a canvas view the plugin rendered. Use scope "tab" for plugins that draw. |
 | `ctx.settings.get() → Promise<values>` | Nothing | The plugin's own settings: saved values over the manifest's defaults. |
@@ -278,6 +279,7 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | View | Shape |
 | --- | --- |
 | `html` | { html }: plain HTML (see HTML views). The usual way to build UI; a string passed to ctx.ui.render becomes one. |
+| `template` | { src, id, data? }: a template from an .html file next to the plugin, filled with data. Made by ctx.ui.views(file).render(). |
 | `stack` | { children, direction? }: views in a column, or a row. |
 | `heading` | { text } |
 | `text` | { text, title?, tone? }: tone is muted, error or ok. |

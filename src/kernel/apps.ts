@@ -30,7 +30,7 @@ export function apps(remote: RemotePlugins, hosts: Hosts) {
     const running = remote.installed.get(id);
     if (running && running.source !== source) return { href, id, error: `Another plugin with the id “${id}” is already running` };
     if (!running) {
-      const result = await remote.install(source, { origin: "app" });
+      const result = await remote.install(source, { origin: "app", href });
       if (!result.ok) return { href, error: result.error };
     }
     if (!users.has(id)) users.set(id, new Set());
