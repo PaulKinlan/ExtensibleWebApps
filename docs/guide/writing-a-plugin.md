@@ -142,7 +142,7 @@ Use the design tokens (`--space-2`, `--border`, `--ok`) so the plugin matches wh
 
 ## 6. Check it
 
-- **The trace** on the workbench (`/`) shows every message from your plugin, every refusal, and anything you `ctx.log()`. A missing permission shows up there as `denied`.
+- **The trace** on the workbench (`/workbench/`) shows every message from your plugin, every refusal, and anything you `ctx.log()`. A missing permission shows up there as `denied`.
 - **The API reference** button on the workbench lists every call and what it needs; [`docs/api.md`](../api.md) is the same thing.
 - **The tests**: `npm test` opens every app in `demos/` and checks that each plugin it links draws. Add checks of your own in a new file, `tests/demos/<app>.mjs`; [the Habits one](../../tests/demos/habits.mjs) adds a habit, ticks it and waits for the streak.
 

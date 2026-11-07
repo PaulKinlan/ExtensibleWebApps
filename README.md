@@ -2,7 +2,7 @@
 
 A platform for malleable web apps: a small kernel, and everything else is a plugin. That includes the UI shell, storage and, later, the AI app builder. Plugins run in their own workers, can only do what their manifest asks for, and draw their UI as plain HTML.
 
-**Try it:** https://extensible-web-apps.kinlan-test.workers.dev/ is the workbench. The demo apps are in [`demos/`](demos/): a reading list, spending, recipes, contacts and a calendar.
+**Try it:** https://extensible-web-apps.kinlan-test.workers.dev/ explains the platform with a page made of plugins you can switch off and change ([`index.html`](index.html) and [`home/`](home/README.md)). The workbench, with every plugin, the trace and the benchmarks, is at [`/workbench/`](workbench/index.html). The demo apps are in [`demos/`](demos/): a reading list, spending, recipes, contacts, a calendar and habits.
 
 ![The reading list demo](docs/images/collections.png)
 
@@ -11,7 +11,7 @@ A platform for malleable web apps: a small kernel, and everything else is a plug
 | If you want to… | Read |
 | --- | --- |
 | Build an app or a plugin | The [developer guide](docs/guide/README.md), or [`AGENTS.md`](AGENTS.md) for the short version |
-| See what writing an app looks like | [`demos/`](demos/), starting with [`demos/README.md`](demos/README.md) |
+| See what writing an app looks like | [`demos/`](demos/), starting with [`demos/README.md`](demos/README.md), and the homepage in [`home/`](home/README.md) |
 | Look up an API | [`docs/api.md`](docs/api.md), generated from the running kernel |
 | Understand how the kernel works | [`docs/kernel.md`](docs/kernel.md) |
 | Know why it is built this way | [`docs/spike.md`](docs/spike.md) and the [plan](https://claude.ai/artifact/S7NdMrp2PkNSqHZFNdqGrC) |
@@ -55,7 +55,7 @@ Each kind of code has its own place:
   - [`sanitize.ts`](src/host/sanitize.ts) keeps only the HTML listed in [`src/shared/html.ts`](src/shared/html.ts)
   - [`morph.ts`](src/host/morph.ts) updates a view in place
   - [`templates.ts`](src/host/templates.ts) fills a plugin's view templates with its data
-  - [`workbench.ts`](src/host/workbench.ts) is the trace and benchmarks on the platform's own page
+  - [`workbench.ts`](src/host/workbench.ts) is the trace and benchmarks on the workbench page (`workbench/index.html`)
   - [`elements.ts`](src/host/elements.ts) loads the `ui-*` elements from [`elements/`](elements/)
   - [`bindings.ts`](src/host/bindings.ts) connects `<ui-form>` and `<ui-table>` to collections
   - [`service-worker.ts`](src/host/service-worker.ts) starts the service worker and passes its questions to the kernel
@@ -76,6 +76,7 @@ Each kind of code has its own place:
     - [`review.ts`](src/kernel/review.ts) shows a diff before a plugin changes data it doesn't own
     - [`changes.ts`](src/kernel/changes.ts) is the log of what changed
     - [`catalog.ts`](src/kernel/catalog.ts) is the plugins panel
+    - [`switches.ts`](src/kernel/switches.ts) is the `plugins` service, which lets a plugin list and switch the plugins in its own app
   - **Built in:**
     - [`notes.ts`](src/kernel/notes.ts) is the notes app
     - [`reference.ts`](src/kernel/reference.ts) is the API reference
@@ -100,7 +101,7 @@ Plugins live in two places:
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173 is the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
+npm run dev        # http://localhost:5173 is the homepage, /workbench/ the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
 npm test           # build, then every check in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run typecheck

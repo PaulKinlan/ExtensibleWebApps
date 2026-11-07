@@ -256,6 +256,15 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
       await savedRead;
       return saved.off.includes(id);
     },
+    /** Turns plugins back on, whether or not they are installed yet: an app's plugins are installed only once it opens. */
+    async turnOn(ids: string[]): Promise<void> {
+      await savedRead;
+      const wasOff = ids.filter((id) => saved.off.includes(id));
+      if (!wasOff.length) return;
+      saved.off = saved.off.filter((id) => !ids.includes(id));
+      for (const id of wasOff) if (remote.installed.has(id)) void remote.setEnabled(id, true);
+      await persist().catch(() => {});
+    },
     /** Installs the built-in plugins and the ones in the data folder, then draws the panel. */
     async load(builtIn: string[]) {
       saved = valid(await store.readJson<unknown>(FILE, null));

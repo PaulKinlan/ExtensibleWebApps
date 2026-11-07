@@ -33,7 +33,7 @@ Copy [`demos/habits/`](demos/habits/) to start: it is the smallest complete app,
 
 ```sh
 npm install
-npm run dev          # open http://localhost:5173/demos/<app>/app.html; the workbench at / has the trace
+npm run dev          # open http://localhost:5173/demos/<app>/app.html; the workbench at /workbench/ has the trace
 npm test             # builds, then opens every app in demos/ and checks each linked plugin draws
 npm run typecheck
 npm run reference    # after changing the kernel's API: rewrites docs/api.md (the tests check it)
