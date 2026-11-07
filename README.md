@@ -103,6 +103,8 @@ npm install
 npm run dev        # http://localhost:5173 is the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
 npm test           # build, then every check in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
 npm run reference  # rewrite docs/api.md from the running kernel
+npm run check      # find mistakes in every app in demos/ (or the folders you name) without a browser; --json for tools
+npm run new-app -- my-app   # copy starter/ to demos/my-app/, a small app to begin from
 npm run typecheck
 ```
 

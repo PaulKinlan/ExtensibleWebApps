@@ -1,0 +1,18 @@
+<!doctype html>
+<!--
+  An app with a mistake of every kind `npm run check` finds. The checks in
+  tests/checks/app-check.mjs expect each one; nothing serves this folder.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Broken</title>
+  <link rel="plugin" href="careless.js">
+  <link rel="plugin" href="twin.js">
+  <link rel="plugin" href="missing.js">
+  <link rel="plugin" href="not-first.js">
+</head>
+<body>
+  <slot name="main"></slot>
+</body>
+</html>

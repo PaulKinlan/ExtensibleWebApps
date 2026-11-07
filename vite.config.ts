@@ -33,6 +33,7 @@ const AS_WRITTEN = [
   "demos",
   "elements",
   "index.html",
+  "starter",
   "std",
   "sw",
   "sw.js",

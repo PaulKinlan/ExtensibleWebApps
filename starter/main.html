@@ -1,0 +1,29 @@
+<!--
+  The list. main.js sends { items }, each { id, title, done }.
+
+  checked="{{item.done}}" is one whole hole, so the box is ticked only when
+  the item is done. The <style> is this plugin's own: the host scopes it to
+  these views, under the page's own styles.
+-->
+<style>
+  .items { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .item { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .item label { flex: 1; display: flex; align-items: center; gap: var(--space-2); }
+  .item[data-done] label { color: var(--fg-2); text-decoration: line-through; }
+</style>
+<template id="items">
+  <template if="items.length">
+    <ul class="items">
+      <template for="item of items">
+        <li class="item" key="{{item.id}}" data-done="{{item.done}}">
+          <label><input type="checkbox" checked="{{item.done}}" data-action="done:{{item.id}}"> {{item.title}}</label>
+          <button data-action="remove:{{item.id}}" aria-label="Remove {{item.title}}">Remove</button>
+        </li>
+      </template>
+    </ul>
+  </template>
+  <template if="!items.length"><ui-empty heading="Nothing yet"><p>Add the first item below.</p></ui-empty></template>
+  <ui-card>
+    <ui-form collection="items" fields="title" submit="Add"></ui-form>
+  </ui-card>
+</template>
