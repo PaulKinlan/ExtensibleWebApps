@@ -37,6 +37,7 @@ const errors = [];
 let importedBook = false;
 let spentItems = false;
 let templateText = {};
+const proof = {};
 
 async function openTab(url = URL) {
   const page = await context.newPage();
@@ -261,7 +262,7 @@ export default async (ctx) => {
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 
   // The demos: each folder in demos/ is an app whose app.html links its plugins.
-  const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort(); // sorted: calendar runs before contacts
   const linkedIds = (name) => {
     const page = readFileSync(new globalThis.URL(`../demos/${name}/app.html`, import.meta.url), "utf8");
     // An href is relative to the app's folder, or (for standard plugins) to the site: /std/debug-console.js.
@@ -302,6 +303,38 @@ export default async (ctx) => {
       await page.waitForSelector('[data-key^="review:"] >> text=Accept', { timeout: 8000 });
       await page.click('[data-key^="review:"] >> text=Accept');
       importedBook = await page.waitForSelector('[data-key="library:books"] ui-table >> text=Middlemarch', { timeout: 8000 }).then(() => true, () => false);
+    }
+    if (name === "calendar") {
+      // The contacts app hasn't run yet, so the agenda has no contacts to read, and says so.
+      proof.noContacts = await page.waitForSelector('[data-key="agenda:agenda"] >> text=Open the Contacts app once', { timeout: 5000 }).then(() => true, () => false);
+      // The month grid is two nested template loops: a row per week, seven days each.
+      proof.grid = await page.evaluate(() => [...document.querySelectorAll('[data-key="month:grid"] tbody tr')].map((tr) => tr.children.length));
+    }
+    if (name === "contacts") {
+      const people = '[data-key="people:people"]';
+      await page.fill(`${people} input[type=search]`, "priya");
+      proof.search = await page.waitForFunction((sel) => document.querySelectorAll(`${sel} ul li`).length === 1 && !document.querySelector(`${sel} ui-table`), people, { timeout: 5000 }).then(() => true, () => false);
+      // A pasted vCard becomes a contact once the person accepts the review card.
+      await page.fill('[data-key="vcard-import:form"] textarea', "BEGIN:VCARD\nVERSION:3.0\nFN:Katherine Johnson\nEMAIL;TYPE=work:katherine@example.com\nBDAY:19180826\nEND:VCARD");
+      await page.click('[data-key="vcard-import:form"] button[type=submit]');
+      await page.click('[data-key^="review:"] >> text=Accept', { timeout: 8000 });
+      proof.vcard = await page.waitForSelector('[data-key="vcard-import:form"] >> text=Added 1 of 1', { timeout: 8000 }).then(() => true, () => false);
+    }
+    if (name === "recipes") {
+      const book = '[data-key="cookbook:cookbook"]';
+      await page.click(`${book} ui-table >> text=Pancakes`);
+      await page.waitForSelector(`${book} input[data-action=serves]`, { timeout: 5000 });
+      await page.fill(`${book} input[data-action=serves]`, "6");
+      await page.press(`${book} input[data-action=serves]`, "Tab");
+      await page.waitForSelector(`${book} li >> text=300 g flour`, { timeout: 5000 }).catch(() => {});
+      proof.scaled = await page.locator(`${book} ul li`).allTextContents();
+      // The shopping list fills from a recipe it reads but doesn't own, then ticks an item off.
+      const list = '[data-key="shopping:list"]';
+      await page.selectOption(`${list} select`, { label: "Pancakes" });
+      await page.click(`${list} button[type=submit] >> text=Add its ingredients`);
+      await page.waitForFunction((sel) => document.querySelectorAll(`${sel} input[type=checkbox]`).length === 4, list, { timeout: 5000 }).catch(() => {});
+      await page.check(`${list} input[type=checkbox] >> nth=0`);
+      proof.ticked = await page.waitForSelector(`${list} s`, { timeout: 5000 }).then(() => true, () => false);
     }
     await page.close({ runBeforeUnload: true });
   }
@@ -353,6 +386,16 @@ export default async (ctx) => {
   check("a template that would make too many nodes stops early instead of freezing the page", /wasn't drawn/.test(tooBig.html), `${tooBig.ms}ms: ${tooBig.html}`);
   check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
   check("a plugin in an app writing another plugin's collection is reviewed in that app, then lands", importedBook);
+  check("a month grid from nested template loops has seven days in every week", proof.grid?.length >= 4 && proof.grid.every((n) => n === 7), JSON.stringify(proof.grid));
+  check("a search box with data-live redraws the plugin's own list", proof.search);
+  check("a vCard import writes a contact after review", proof.vcard);
+  check("a recipe scales its ingredients to the servings typed in", JSON.stringify(proof.scaled) === JSON.stringify(["300 g flour", "3 eggs", "450 ml milk", "1.5 pinch salt"]), JSON.stringify(proof.scaled));
+  check("a shopping list fills from a recipe and ticks an item off", proof.ticked);
+  // The calendar reads the contacts app's collection, though no contacts plugin is running now.
+  const calendar = await openTab(`${URL}demos/calendar/app.html`);
+  const birthday = await calendar.waitForSelector('[data-key="agenda:agenda"] >> text=Priya Shah', { timeout: 8000 }).then(() => true, () => false);
+  await calendar.close({ runBeforeUnload: true });
+  check("one app reads another app's collection while that app is closed", proof.noContacts && birthday, `before contacts ran: ${proof.noContacts}, after: ${birthday}`);
   // Closing an app's last tab stops its plugins.
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 8000 }).catch(() => {});
   check("closing an app's last tab stops the plugins it linked", (await a.evaluate(() => window.__host.workers.size)) === before, `${await a.evaluate(() => window.__host.workers.size)} workers, expected ${before}`);

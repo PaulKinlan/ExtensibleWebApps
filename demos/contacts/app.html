@@ -1,0 +1,40 @@
+<!doctype html>
+<!--
+  Contacts: an app made of three plugins, each its own file.
+
+  people.js       owns the `contacts` collection, and draws the form and table
+  birthdays.js    reads the contacts and lists the birthdays coming up
+  vcard-import.js adds people from pasted vCards; the contacts aren't its
+                  own, so the person reviews each one
+
+  The calendar app reads these contacts too, for its birthdays, even when
+  this app isn't open: see ../calendar/agenda.js.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contacts</title>
+  <meta name="description" content="People, and their birthdays.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="people.js">
+  <link rel="plugin" href="birthdays.js">
+  <link rel="plugin" href="vcard-import.js">
+  <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
+  <link rel="plugin" href="/std/debug-console.js">
+</head>
+<body>
+  <header>
+    <h1>Contacts</h1>
+    <a href="/">Workbench</a>
+  </header>
+  <main>
+    <slot name="main"><p>Finding your people…</p></slot>
+  </main>
+  <aside>
+    <slot name="side"></slot>
+  </aside>
+  <slot name="debug"></slot>
+</body>
+</html>

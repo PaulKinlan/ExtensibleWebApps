@@ -291,7 +291,9 @@ hosts.onMessage = async (host, message) => {
     case "record":
       return records.fromView(host, message.id, message.owner, message.collection, message.recordId, message.fields, message.trace);
     case "open":
-      return apps.open(host, message.plugins);
+      // An app's plugins may read collections whose owners aren't running: know those first.
+      // The tab may have closed while waiting; then there's nothing to open.
+      return records.ready.then(() => (hosts.list.includes(host) ? apps.open(host, message.plugins) : undefined));
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
     case "command": {

@@ -1,0 +1,35 @@
+<!--
+  The month grid. month.js sends { title, days, weeks, away }: weeks is a
+  list of seven-day lists, and each day has { date, day, other, current,
+  events }. Two nested loops lay it out; app.html's <style> does the rest.
+-->
+<template id="grid">
+  <ui-toolbar>
+    <h2>{{title}}</h2>
+    <ui-spacer></ui-spacer>
+    <button data-action="prev" aria-label="Previous month">‹</button>
+    <template if="away"><button data-action="today">Today</button></template>
+    <button data-action="next" aria-label="Next month">›</button>
+  </ui-toolbar>
+  <table>
+    <thead>
+      <tr><template for="name of days"><th scope="col">{{name}}</th></template></tr>
+    </thead>
+    <tbody>
+      <template for="week of weeks">
+        <tr>
+          <template for="d of week">
+            <td data-other="{{d.other}}" aria-current="{{d.current}}">
+              <time datetime="{{d.date}}">{{d.day}}</time>
+              <template if="d.events.length">
+                <ul>
+                  <template for="e of d.events"><li title="{{e.title}}"><time>{{e.start}}</time> {{e.title}}</li></template>
+                </ul>
+              </template>
+            </td>
+          </template>
+        </tr>
+      </template>
+    </tbody>
+  </table>
+</template>
