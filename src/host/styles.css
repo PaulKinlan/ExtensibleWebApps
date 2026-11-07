@@ -1,3 +1,12 @@
+/*
+ * The platform's styles. Three levels decide how a view looks, lowest first:
+ *   1. @layer platform: this file, the design tokens and the defaults;
+ *   2. @layer plugins: each plugin's own <style>, reaching only its views;
+ *   3. the page's own <style>, in no layer, so the app has the last word.
+ */
+@layer platform, plugins;
+
+@layer platform {
 :root {
   --bg: light-dark(#fbfaf8, #1c1b1a);
   --bg-2: light-dark(#f2f0ec, #252321);
@@ -151,3 +160,14 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 /* Each ui-* element brings its own style from /elements/. Until its file has loaded, a layout element shows as a plain block. */
 :where(ui-stack, ui-grid, ui-card, ui-toolbar, ui-stat, ui-empty, ui-table, ui-form):not(:defined) { display: block; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* Each view entry is drawn by one plugin (data-plugin, set by the host). Containment keeps what it draws inside it. */
+[data-plugin] { contain: layout paint; overflow-clip-margin: 4px; }
+
+/* The "debug" slot floats: what is drawn there (std/debug-console.js's bug) stays in a corner of the screen, where <ui-debug corner> says. */
+slot[name="debug"] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); }
+slot[name="debug"] > [data-plugin]:has(ui-debug[corner="bottom-right"]) { inset: auto var(--space-4) var(--space-4) auto; }
+slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-left"]) { inset: var(--space-4) auto auto var(--space-4); }
+slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-right"]) { inset: var(--space-4) var(--space-4) auto auto; }
+slot[name="debug"] > [data-plugin]:has(ui-debug[corner="inline"]) { position: static; }
+}

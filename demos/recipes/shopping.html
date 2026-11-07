@@ -1,8 +1,8 @@
 <!--
   The shopping list. shopping.js sends { items, recipes, ticked }. Each
   checkbox's data-action is "tick:" and the item's id, so one handler knows
-  which item changed. A template can't add an attribute only sometimes, so
-  ticked and unticked boxes are two small branches. Each row has a key, so
+  which item changed. checked="{{i.done}}" is one whole hole, so the box is
+  ticked only when the item is done. Each row has a key, so
   when a ticked item moves down the list its checkbox moves with it.
 -->
 <template id="list">
@@ -22,8 +22,9 @@
       <template for="i of items">
         <li key="{{i.id}}">
           <label>
-            <template if="i.done"><input type="checkbox" checked data-action="tick:{{i.id}}"> <s>{{i.item}}</s></template>
-            <template if="!i.done"><input type="checkbox" data-action="tick:{{i.id}}"> {{i.item}}</template>
+            <input type="checkbox" checked="{{i.done}}" data-action="tick:{{i.id}}">
+            <template if="i.done"><s>{{i.item}}</s></template>
+            <template if="!i.done">{{i.item}}</template>
             <template if="i.from"> <small>· {{i.from}}</small></template>
           </label>
         </li>

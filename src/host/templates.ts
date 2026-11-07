@@ -11,7 +11,9 @@
 //   </template>
 //
 // {{path}} holes go in text and attribute values, and are filled as text,
-// never parsed as HTML. A path is names joined by dots (book.title,
+// never parsed as HTML. An attribute that is a single hole is left out when
+// its value is false, null or missing, and present with no value when it is
+// true: checked="{{done}}". A path is names joined by dots (book.title,
 // books.length), optionally starting with !. `for="x of path"` repeats its
 // content for each item; `if="path"` keeps its content when the value is
 // truthy. There are no other expressions, so there is no code in a template.
@@ -46,6 +48,10 @@ export function loadFile(src: string): Promise<Document> {
 
 type Scope = Record<string, unknown>;
 const HOLE = /\{\{\s*(!?[A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*\}\}/g;
+const WHOLE = /^\s*\{\{\s*(!?[A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*\}\}\s*$/;
+
+/** The file's own CSS: every <style> outside its templates. The host scopes it to the plugin's views. */
+export const styleOf = (file: Document) => [...file.querySelectorAll("style")].map((style) => style.textContent ?? "").join("\n");
 
 /** Fills template `id` from `file` with `data`, and returns the HTML, for the sanitiser to check. */
 export function fill(file: Document, id: string, data: unknown): string {
@@ -88,7 +94,16 @@ function render(from: ParentNode, scope: Scope, budget: Budget): DocumentFragmen
       if (lookup(scope, node.getAttribute("if")!.trim())) fragment.append(render(node.content, scope, budget));
     } else if (node instanceof Element) {
       const copy = inert.createElement(node.localName);
-      for (const attr of node.attributes) copy.setAttribute(attr.name, attr.value.replace(HOLE, (_, path: string) => text(lookup(scope, path))));
+      for (const attr of node.attributes) {
+        // An attribute that is one whole hole comes and goes with its value: false, null or
+        // missing leaves it out, true makes it present (checked="{{done}}"). Anything else is text.
+        const whole = WHOLE.exec(attr.value);
+        if (whole) {
+          const value = lookup(scope, whole[1]);
+          if (value === false || value === null || value === undefined) continue;
+          copy.setAttribute(attr.name, value === true ? "" : text(value));
+        } else copy.setAttribute(attr.name, attr.value.replace(HOLE, (_, path: string) => text(lookup(scope, path))));
+      }
       copy.append(render(node instanceof HTMLTemplateElement ? node.content : node, scope, budget));
       fragment.append(copy);
     }

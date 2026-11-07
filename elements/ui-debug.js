@@ -64,7 +64,9 @@ export default class UiDebug extends HTMLElement {
     if (!root || open === this.open) return;
     this.open = open;
     this.stick = true;
-    /** @type {HTMLElement} */ (root.querySelector("#panel")).hidden = !open;
+    const panel = /** @type {HTMLElement} */ (root.querySelector("#panel"));
+    if (open) panel.showPopover();
+    else panel.hidePopover();
     root.querySelector(".bug")?.setAttribute("aria-expanded", String(open));
     const action = this.getAttribute("toggle");
     if (action) this.dispatchEvent(new CustomEvent("ui-action", { bubbles: true, detail: { action, value: open } }));

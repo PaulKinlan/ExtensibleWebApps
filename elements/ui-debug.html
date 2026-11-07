@@ -2,7 +2,8 @@
   ui-debug: a bug button that stays on screen and opens a panel. What the
   view puts inside the element is the panel's content.
   Attributes: corner="bottom-left|bottom-right|top-left|top-right|inline"
-  (inline sits wherever the view is, in the page's flow), problems (a count
+  (where the bug floats when drawn in the "debug" slot, which the platform
+  pins to a corner; inline leaves it in the page's flow), problems (a count
   shown on the bug, which turns red above 0), label (the button's name),
   toggle (an action sent with true or false when the panel opens or closes).
 
@@ -15,11 +16,8 @@
 <template>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
-    :host { position: fixed; z-index: 1000; bottom: var(--space-4); left: var(--space-4); }
-    :host([corner="bottom-right"]) { left: auto; right: var(--space-4); }
-    :host([corner="top-left"]) { bottom: auto; top: var(--space-4); }
-    :host([corner="top-right"]) { bottom: auto; left: auto; top: var(--space-4); right: var(--space-4); }
-    :host([corner="inline"]) { position: relative; inset: auto; display: inline-block; }
+    /* The bug sits where its view is drawn. The platform keeps the "debug" slot in a corner of the screen (see host.css). */
+    :host { display: inline-block; }
 
     .bug { display: inline-flex; align-items: center; gap: var(--space-1); height: 40px; min-width: 40px; padding: 0 var(--space-2); justify-content: center; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--fg-2); box-shadow: var(--shadow-1), 0 4px 12px rgb(0 0 0 / 0.12); cursor: pointer; font: 600 var(--text-sm) var(--font); }
     :host([corner="inline"]) .bug { height: 28px; box-shadow: none; }
@@ -29,10 +27,12 @@
     .bug.problems { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 50%, var(--border)); }
     .count:empty { display: none; }
 
-    #panel { position: fixed; z-index: 1000; left: var(--space-4); bottom: 64px; width: min(760px, calc(100vw - 2 * var(--space-4))); max-height: min(70vh, 640px); display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: 0 8px 32px rgb(0 0 0 / 0.2); }
-    #panel[hidden] { display: none; }
-    :host([corner="bottom-right"]) #panel, :host([corner="top-right"]) #panel, :host([corner="inline"]) #panel { left: auto; right: var(--space-4); }
-    :host([corner="top-left"]) #panel, :host([corner="top-right"]) #panel { bottom: auto; top: 64px; }
+    /* The panel is a popover, so it opens in the top layer, above the page and outside its view's containment. */
+    #panel { position: fixed; margin: 0; inset: auto auto 64px var(--space-4); width: min(760px, calc(100vw - 2 * var(--space-4))); max-height: min(70vh, 640px); display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: 0 8px 32px rgb(0 0 0 / 0.2); }
+    #panel:not(:popover-open) { display: none; }
+    :host([corner="bottom-right"]) #panel, :host([corner="inline"]) #panel { inset: auto var(--space-4) 64px auto; }
+    :host([corner="top-left"]) #panel { inset: 64px auto auto var(--space-4); }
+    :host([corner="top-right"]) #panel { inset: 64px var(--space-4) auto auto; }
     header { display: flex; align-items: center; gap: var(--space-2); }
     header strong { font-size: var(--text-md); }
     #status { flex: 1; color: var(--ok); font-size: var(--text-sm); }
@@ -48,7 +48,7 @@
     </svg>
     <span class="count"></span>
   </button>
-  <section id="panel" role="dialog" hidden>
+  <section id="panel" role="dialog" popover="manual">
     <header>
       <strong id="title"></strong>
       <span id="status" role="status"></span>

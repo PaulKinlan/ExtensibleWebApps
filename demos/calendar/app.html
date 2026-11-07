@@ -7,9 +7,9 @@
   agenda.js  the next two weeks: events, plus birthdays read from the
              contacts app's collection, which this app doesn't own
 
-  The month grid is styled by this page: plugins draw plain HTML with
-  aria-current and data-* attributes, and the <style> below decides how it
-  looks.
+  The month grid brings its own styles, in month.html: they reach only that
+  plugin's views. A <style> here would still win over them, so the page
+  always has the last word on how its plugins look.
 -->
 <html lang="en">
 <head>
@@ -24,19 +24,6 @@
   <link rel="plugin" href="agenda.js">
   <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
   <link rel="plugin" href="/std/debug-console.js">
-  <style>
-    [data-key="month:grid"] table { table-layout: fixed; }
-    [data-key="month:grid"] td { height: 5.5rem; vertical-align: top; padding: var(--space-1); }
-    [data-key="month:grid"] td[data-other="true"] { color: var(--fg-2); opacity: 0.6; }
-    [data-key="month:grid"] td[aria-current="date"] time { background: var(--accent); color: var(--accent-fg); border-radius: 999px; padding: 0 0.4em; }
-    [data-key="month:grid"] td ul { list-style: none; margin: var(--space-1) 0 0; padding: 0; font-size: var(--text-sm); }
-    [data-key="month:grid"] td li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    @media (max-width: 40rem) {
-      [data-key="month:grid"] td { height: 3.5rem; }
-      [data-key="month:grid"] td li { font-size: 0.7rem; }
-      [data-key="month:grid"] td li time { display: none; }
-    }
-  </style>
 </head>
 <body>
   <header>
