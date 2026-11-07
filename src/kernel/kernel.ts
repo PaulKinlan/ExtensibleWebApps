@@ -22,6 +22,7 @@ import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { Store } from "./store";
 import { switches } from "./switches";
+import { authoring } from "./authoring";
 import { record, recent, setSink, startedAt, tap } from "./trace";
 import { checkApp, userPlugins } from "./user-plugins";
 import type { Opened } from "../shared/protocol";
@@ -331,6 +332,7 @@ remote.collectionOwner = (name) => records.registry.get(name)?.owner;
 services.data = records.service;
 const pluginSwitches = switches(root, remote, apps);
 services.plugins = pluginSwitches.service;
+services.authoring = authoring(remote, apps);
 
 /** The kernel's API reference, built from the registries above as they are now. */
 const describe = () => reference(services, remote);

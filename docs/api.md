@@ -344,6 +344,34 @@ Needs: `plugins:manage`.
 
 Turns one of the app's plugins on or off. Saved, and applies in every tab, as the plugins panel's switch does.
 
+### authoring
+
+Helps a plugin editor: reads the code of the plugins in the caller's app and files next to the caller, and checks a draft's manifest. The caller must be tab-scoped.
+
+#### authoring.check
+
+`authoring.check(code)` → { ok: true, manifest: { id, name, description, scope }, permissions: [{ name, about }] } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do.
+
+#### authoring.file
+
+`authoring.file(path)` → the file's text
+
+Needs: `plugins:author`.
+
+A .js file in the caller's own folder or below it, such as the starting templates beside std/plugin-editor.js.
+
+#### authoring.source
+
+`authoring.source(id)` → { id, name, code }
+
+Needs: `plugins:author`.
+
+The code of a plugin the caller's app links.
+
 ## Hooks
 
 ### `bench:ping`
@@ -449,6 +477,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `plugins:read` | Call plugins.app. |
 | `plugins:manage` | Call plugins.setEnabled. |
+| `plugins:author` | Call authoring.source, authoring.file, authoring.check. |
 
 Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
 
@@ -476,7 +505,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin's view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
-Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`.
+Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`, `authoring`.
 
 Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`.
 
@@ -523,6 +552,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-form>` | collection, fields="title,author", record, submit, action | A form built from the collection's schema: labels, input types, required fields and errors from the kernel's checks, beside the control they are about. A list field gets a row per item with Add and Remove buttons, and a group gets a fieldset, two levels deep. Saves a new record, or edits `record`; sends `action` with the saved record's id. |
 | `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
 | `<ui-spacer>` |  | Takes up the free space in a row. |
+| `<ui-code>` | name, label, rows="20", readonly, revision | A plain code editor: a textarea with line numbers, where Tab indents (Escape, then Tab, leaves it). Its text content is the starting code; edits survive redraws until `revision` changes. In a `form` it is sent under its `name`. |
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
 
 ### Actions

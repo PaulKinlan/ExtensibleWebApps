@@ -27,6 +27,13 @@ data with three DOM events (`ui-owner`, `ui-bind`, `ui-save`). The host works
 out the plugin from where the element sits, so the element files import
 nothing from the host and can't act for another plugin.
 
+## Form fields
+
+[`ui-code`](ui-code.html) is a form-associated element: in a
+`<form data-action>` it is sent with the other fields under its `name`, like
+a textarea. Its text content is the starting value, and a redraw keeps what
+the person typed until the view changes its `revision` attribute.
+
 ## Adding an element
 
 1. Write `elements/ui-name.html` with a `<template>`.
