@@ -15,7 +15,8 @@
 // hook's failure policy when it doesn't come. The trace id rides along as
 // Cordis's `thisArg`, so it survives awaits.
 
-import type { Dispatch, KernelToPlugin, Manifest, PluginToKernel, Slot } from "../shared/protocol";
+import type { Dispatch, KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
+import { HTML_MAX } from "../shared/html";
 import { capabilities, check } from "./gate";
 import { capabilityFor, hooks, type HookSpec } from "./hooks";
 import type { Host, Hosts } from "./hosts";
@@ -223,6 +224,22 @@ export class RemotePlugins {
   }
 }
 
+/**
+ * Checks a plugin's view before it reaches a tab and marks each HTML view
+ * with whether its plugin may load remote images. The mark is the kernel's,
+ * so a plugin can't set it for itself.
+ */
+function stamp(view: View, remote: boolean, depth = 0): View {
+  if (!view || typeof view !== "object" || depth > 64) throw new Error("A view must be an object, nested at most 64 deep");
+  if (view.type === "html") {
+    if (typeof view.html !== "string") throw new Error("An html view needs html");
+    if (view.html.length > HTML_MAX) throw new Error(`An html view is limited to ${HTML_MAX} characters`);
+    return { type: "html", html: view.html, remote };
+  }
+  if (view.type === "stack") return { ...view, children: (Array.isArray(view.children) ? view.children : []).map((child) => stamp(child, remote, depth + 1)) };
+  return view;
+}
+
 export class Remote {
   private ctx: any;
   private fiber: any;
@@ -308,7 +325,14 @@ export class Remote {
       }
       case "render":
         if (!check(this.instance, this.caps, "ui")) return;
-        this.manager.hosts.render(this.instance, message.slot as Slot, `${this.instance}:${message.key}`, message.view, message.order ?? this.plugin.manifest.order, this.tab);
+        let view: View | null;
+        try {
+          view = message.view && stamp(message.view, this.caps.has("network"));
+        } catch (error) {
+          record({ kind: "error", name: "ui:refused", plugin: this.instance, trace: message.trace, detail: String(error instanceof Error ? error.message : error) });
+          return;
+        }
+        this.manager.hosts.render(this.instance, message.slot as Slot, `${this.instance}:${message.key}`, view, message.order ?? this.plugin.manifest.order, this.tab);
         return;
       case "call":
         return this.call(message.id, message.service, message.method, message.args, message.trace);

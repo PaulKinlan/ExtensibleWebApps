@@ -21,23 +21,21 @@ export default async function (ctx) {
   let status = "";
   const counts = (await ctx.storage.get("counts")) ?? { tidied: 0, exported: 0 };
 
-  const draw = (api = ctx) =>
-    api.ui.render("app.side", "tidy", {
-      type: "stack",
-      children: [
-        { type: "heading", text: "Tidy" },
-        ...(note
-          ? [
-              { type: "stack", direction: "row", children: [
-                { type: "button", label: "Tidy this note", action: "tidy" },
-                { type: "button", label: "Export as Markdown", action: "export" },
-              ] },
-            ]
-          : [{ type: "text", text: "Open a note to tidy or export it.", tone: "muted" }]),
-        ...(status ? [{ type: "text", text: status, tone: status.startsWith("Not") || status.startsWith("The person") ? "error" : "muted" }] : []),
-        { type: "text", text: `Tidied ${counts.tidied} · exported ${counts.exported}`, tone: "muted" },
-      ],
-    });
+  // An HTML view: plain HTML with the host's components, values escaped by ctx.ui.html.
+  const draw = (api = ctx) => {
+    const html = api.ui.html;
+    const failed = status.startsWith("Not") || status.startsWith("The person");
+    api.ui.render(
+      "app.side",
+      "tidy",
+      html`<h2>Tidy</h2>
+        ${note
+          ? html`<ui-toolbar><button data-action="tidy">Tidy this note</button><button data-action="export">Export as Markdown</button></ui-toolbar>`
+          : html`<p><small>Open a note to tidy or export it.</small></p>`}
+        ${status ? html`<p role="status"><ui-badge tone="${failed ? "danger" : "neutral"}">${status}</ui-badge></p>` : ""}
+        <p><small>Tidied ${counts.tidied} · exported ${counts.exported}</small></p>`,
+    );
+  };
 
   const track = (snapshot) => {
     note = snapshot;

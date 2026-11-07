@@ -50,6 +50,21 @@ The full API is in [api.md](api.md), which the kernel prints about itself: every
 
 `npm run reference` rewrites api.md, and `npm test` fails when it falls behind. Plugins get the same thing as data from `ctx.call("kernel", "reference")`, which is what a plugin builder will read. In the app, **API reference** in the trace panel shows it with what is installed and which hooks each running plugin listens to.
 
+## Views: plain HTML
+
+Plugins describe their UI as plain HTML, because that is what models and people already write well:
+
+```js
+const html = ctx.ui.html; // escapes every value
+ctx.ui.render("app.main", "spending", html`
+  <ui-grid min="10rem"><ui-stat label="Spent" value="${total}"></ui-stat></ui-grid>
+  <form data-action="add"><label>Item <input name="item" required></label><button type="submit">Add</button></form>`);
+```
+
+The host parses the HTML inertly and keeps only the elements and attributes in `src/shared/html.ts`: no script, no style or class attributes, no frames, no event attributes, no `javascript:` links. An `https:` image is a request, so only plugins with the `network` capability may show one. Styling comes from the design tokens in `styles.css`, so plain HTML already looks like the app, and the host's components (`ui-stack`, `ui-grid`, `ui-card`, `ui-stat`, `ui-badge`, `ui-empty`, `ui-toolbar`) cover layout. Controls report through `data-action`; a form with `data-action` sends all its named fields, typed. Drawing again morphs the old DOM into the new one, so focus, typing, scroll and open `<details>` survive. The JSON views from phase 1 still work and are drawn the same way. The full list is in [api.md](api.md#html-views).
+
+![An HTML view built only from plain HTML and the host's components](images/html-view.png)
+
 ## Change review
 
 A write outside a plugin's own data is shown to the person before it happens (`src/kernel/review.ts`). Notes belong to the notes app, and files are in the data folder, so a plugin's `store.put` or `files.write` opens a card above the editor. The card shows the plugin's name, its reason, and a line diff of the change, with three choices:

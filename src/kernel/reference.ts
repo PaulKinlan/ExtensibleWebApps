@@ -13,6 +13,7 @@ import type { Api, ApiMember } from "../shared/api";
 import type { Command, Slot, View } from "../shared/protocol";
 import { EDITOR_PERMISSIONS } from "./gate";
 import { capabilityFor, hooks, type Mode } from "./hooks";
+import { ACTIONS, COMPONENTS, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, HTML_MAX, INPUT_TYPES } from "../shared/html";
 import { MANIFEST_FIELDS, RESERVED } from "./manifest";
 import { PLATFORM } from "./paths";
 import type { RemotePlugins, ServiceProvider } from "./remote";
@@ -35,7 +36,12 @@ const CTX: Record<ApiMember<Api>, Doc> = {
   "ui.render": {
     signature: "ctx.ui.render(slot, key, view, order?)",
     needs: "`ui`",
-    description: "Draws a view in a slot, under a key of the plugin's own; null removes it. Plugins never touch the DOM.",
+    description: "Draws a view in a slot, under a key of the plugin's own: an HTML string (see HTML views), a JSON view, or null to remove it. Drawing again updates it in place. Plugins never touch the DOM.",
+  },
+  "ui.html": {
+    signature: "ctx.ui.html`…${value}…` → view",
+    needs: "",
+    description: "Builds an HTML view from a template, escaping every value (arrays are joined, nested html results go in as they are). Use it whenever text comes from data.",
   },
   "ui.onEvent": {
     signature: "ctx.ui.onEvent((action, value) => …) → off()",
@@ -80,6 +86,7 @@ const CTX: Record<ApiMember<Api>, Doc> = {
 };
 
 const VIEWS: Record<View["type"], string> = {
+  html: "{ html }: plain HTML (see HTML views). The usual way to build UI; a string passed to ctx.ui.render becomes one.",
   stack: "{ children, direction? }: views in a column, or a row.",
   heading: "{ text }",
   text: "{ text, title?, tone? }: tone is muted, error or ok.",
@@ -129,6 +136,14 @@ export interface Reference {
   reservedIds: string[];
   platformPaths: string[];
   views: { type: string; about: string }[];
+  html: {
+    maxLength: number;
+    elements: { tag: string; attributes: string[]; about: string }[];
+    globalAttributes: string[];
+    inputTypes: string[];
+    components: { tag: string; attributes: string; about: string }[];
+    actions: string[];
+  };
   slots: { slot: string; about: string }[];
   commands: { name: string; about: string }[];
   /** What is installed right now. Not part of the contract, so not in docs/api.md. */
@@ -162,6 +177,14 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
     reservedIds: [...RESERVED],
     platformPaths: [...PLATFORM],
     views: Object.entries(VIEWS).map(([type, about]) => ({ type, about })),
+    html: {
+      maxLength: HTML_MAX,
+      elements: Object.entries(ELEMENTS).map(([tag, about]) => ({ tag, attributes: ELEMENT_ATTRIBUTES[tag] ?? [], about })),
+      globalAttributes: GLOBAL_ATTRIBUTES,
+      inputTypes: INPUT_TYPES,
+      components: Object.entries(COMPONENTS).map(([tag, c]) => ({ tag, ...c })),
+      actions: ACTIONS,
+    },
     slots: Object.entries(SLOTS).map(([slot, about]) => ({ slot, about })),
     commands: Object.entries(COMMANDS).map(([name, about]) => ({ name, about })),
     plugins: [...remote.installed.values()].map((p) => {
@@ -234,6 +257,24 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     `Reserved ids: ${ref.reservedIds.map(code).join(", ")}.`,
     "",
     `Paths that belong to the platform, which no plugin can read or write through \`files\`: ${ref.platformPaths.map(code).join(", ")}.`,
+    "",
+    "## HTML views",
+    "",
+    `Plugins describe UI as plain HTML, up to ${ref.html.maxLength.toLocaleString("en")} characters. The host parses it inertly and keeps only what is listed here: no script, no style or class attributes, no frames, no event attributes. Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app. Images load from https: only for plugins with the \`network\` capability; others can use data: images.`,
+    "",
+    "### Components",
+    "",
+    table(["Element", "Attributes", "What it does"], ref.html.components.map((c) => [code(`<${c.tag}>`), c.attributes, c.about])),
+    "",
+    "### Actions",
+    "",
+    ...ref.html.actions.map((a) => `- ${a}`),
+    "",
+    "### Plain elements",
+    "",
+    `Allowed on every element: ${ref.html.globalAttributes.map(code).join(", ")}, \`aria-*\` and \`data-*\`. Input types: ${ref.html.inputTypes.map(code).join(", ")}.`,
+    "",
+    table(["Element", "Its own attributes", "Notes"], ref.html.elements.map((e) => [code(`<${e.tag}>`), e.attributes.map(code).join(", "), e.about])),
     "",
     "## Views and slots",
     "",

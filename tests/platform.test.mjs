@@ -125,6 +125,50 @@ export default async (ctx) => {
   await a.evaluate(() => window.__host.command("uninstall", "reader"));
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 
+  // HTML views: plain HTML, sanitised, updated in place.
+  await a.evaluate(() => window.__host.command("install", `export const manifest = { id: 'htmlcheck', name: 'HTML check', permissions: ['ui'] };
+export default (ctx) => {
+  let n = 0;
+  const draw = () => ctx.ui.render('devtools', 'form', ctx.ui.html\`
+    <form data-action="save"><label>Name <input name="name" value="Ada"></label><label><input type="checkbox" name="ok" checked> OK</label><input type="number" name="count" value="3"><button type="submit">Save</button></form>
+    <p data-test="evil">safe<script>window.__pwned = 1</script><img src="https://example.com/x.png" onerror="window.__pwned = 2"><a href="javascript:window.__pwned = 3">bad link</a><iframe src="https://example.com"></iframe><blink>kept text</blink></p>
+    <p data-test="escaped">\${'<b>not bold</b>'}</p>
+    <input data-action="typed" data-live name="live" value="">
+    <ui-stat label="Ticks" value="\${n}"></ui-stat>\`);
+  draw();
+  setInterval(() => { n++; draw(); }, 100);
+  ctx.ui.onEvent((action, value) => ctx.log('html-event ' + action + ' ' + JSON.stringify(value)));
+};`));
+  const view = '#devtools [data-key="htmlcheck:form"]';
+  await a.waitForSelector(`${view} >> text=kept text`, { timeout: 5000 });
+  const cleaned = await a.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    const all = [...el.querySelectorAll("*")];
+    return {
+      script: !!el.querySelector("script, iframe, blink"),
+      handlers: all.some((x) => [...x.attributes].some((at) => at.name.startsWith("on"))),
+      remoteImage: [...el.querySelectorAll("img")].some((img) => img.hasAttribute("src")),
+      jsLink: [...el.querySelectorAll("a")].some((x) => x.hasAttribute("href")),
+      pwned: window.__pwned,
+      escaped: el.querySelector('[data-test="escaped"]').textContent,
+      bold: !!el.querySelector('[data-test="escaped"] b'),
+    };
+  }, view);
+  check("HTML views keep no script, frames, event attributes, javascript: links or remote images", !cleaned.script && !cleaned.handlers && !cleaned.remoteImage && !cleaned.jsLink && cleaned.pwned === undefined, JSON.stringify(cleaned));
+  check("ctx.ui.html escapes values", cleaned.escaped === "<b>not bold</b>" && !cleaned.bold, cleaned.escaped);
+  const htmlEvent = (prefix) => a.waitForFunction((p) => window.__host.traces.find((e) => e.plugin === "htmlcheck" && e.detail?.startsWith(p)), prefix, { timeout: 5000 }).then((h) => h.jsonValue()).then((e) => e.detail);
+  await a.click(`${view} >> text=Save`);
+  const saved = await htmlEvent("html-event save");
+  check("a form with data-action sends every named field, typed", saved === 'html-event save {"name":"Ada","ok":true,"count":3}', saved);
+  await a.focus(`${view} input[name="live"]`);
+  await a.keyboard.type("hello", { delay: 60 });
+  await a.waitForTimeout(500);
+  const kept = await a.evaluate((sel) => ({ focused: document.activeElement?.getAttribute("name"), value: document.querySelector(`${sel} input[name="live"]`).value, ticks: document.querySelector(`${sel} ui-stat`).getAttribute("value") }), view);
+  const typed = await htmlEvent('html-event typed "hello"');
+  check("typing and focus survive a view redrawn every 100 ms", kept.focused === "live" && kept.value === "hello" && Number(kept.ticks) > 5 && !!typed, JSON.stringify(kept));
+  await a.evaluate(() => window.__host.command("uninstall", "htmlcheck"));
+  await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
+
   // Worker content security policy.
   await a.waitForFunction(() => window.__host.traces.filter((e) => e.detail?.startsWith("network:")).length >= 2, null, { timeout: 5000 });
   const net = await a.evaluate(() => Object.fromEntries(window.__host.traces.filter((e) => e.detail?.startsWith("network:")).map((e) => [e.plugin, e.detail])));

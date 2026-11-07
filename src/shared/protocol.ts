@@ -9,6 +9,8 @@
 
 /** A declarative view. Plugins never touch the DOM; the host draws these. */
 export type View =
+  /** Plain HTML, using the elements and components in shared/html.ts. `remote` is set by the kernel, never the plugin. */
+  | { type: "html"; html: string; remote?: boolean }
   | { type: "stack"; children: View[]; direction?: "row" | "column" }
   | { type: "heading"; text: string }
   | { type: "text"; text: string; title?: string; tone?: "muted" | "error" | "ok" }

@@ -8,7 +8,8 @@ Printed by the kernel from its own registries (`npm run reference` writes this f
 | --- | --- | --- |
 | `ctx.on(hook, handler) → off()` | `hook:listen:<hook>` (emit, parallel) or `hook:intercept:<hook>` (serial, bail, waterfall) | Listens to a hook. In a `function` handler, `this` is a copy of ctx pinned to the action's trace. What it returns matters only for hooks that can change or stop an action. |
 | `ctx.call(service, method, ...args) → Promise` | What the method needs (see Services) | Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses. |
-| `ctx.ui.render(slot, key, view, order?)` | `ui` | Draws a view in a slot, under a key of the plugin's own; null removes it. Plugins never touch the DOM. |
+| `ctx.ui.render(slot, key, view, order?)` | `ui` | Draws a view in a slot, under a key of the plugin's own: an HTML string (see HTML views), a JSON view, or null to remove it. Drawing again updates it in place. Plugins never touch the DOM. |
+| `ctx.ui.html`…${value}…` → view` | Nothing | Builds an HTML view from a template, escaping every value (arrays are joined, nested html results go in as they are). Use it whenever text comes from data. |
 | `ctx.ui.onEvent((action, value) => …) → off()` | Nothing | Hears the person use the plugin's views: a button's or field's `action`, with a field's new value. |
 | `ctx.ui.onCanvas(id, (canvas) => …)` | Nothing | Receives the OffscreenCanvas for a canvas view the plugin rendered. Use scope "tab" for plugins that draw. |
 | `ctx.settings.get() → Promise<values>` | Nothing | The plugin's own settings: saved values over the manifest's defaults. |
@@ -140,10 +141,101 @@ Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings
 
 Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`.
 
+## HTML views
+
+Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it inertly and keeps only what is listed here: no script, no style or class attributes, no frames, no event attributes. Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app. Images load from https: only for plugins with the `network` capability; others can use data: images.
+
+### Components
+
+| Element | Attributes | What it does |
+| --- | --- | --- |
+| `<ui-stack>` | direction="row", gap="1"…"6", align="start\|center\|end\|stretch", justify="start\|center\|end\|between", wrap | Lays its children out in a column (or a row) with even spacing. |
+| `<ui-grid>` | min="12rem", gap="1"…"6" | As many columns as fit, each at least `min` wide. |
+| `<ui-card>` | tone="accent\|ok\|warn\|danger" | A bordered surface for one thing. |
+| `<ui-badge>` | tone="neutral\|accent\|ok\|warn\|danger" | A short status word. |
+| `<ui-stat>` | label, value, delta, tone | A number with its label, and an optional change. |
+| `<ui-empty>` | heading | What to show when there is nothing yet; put a sentence and a button inside. |
+| `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
+| `<ui-spacer>` |  | Takes up the free space in a row. |
+
+### Actions
+
+- A click on an element with `data-action` sends that action, with `data-value` as the value if it has one.
+- An `input`, `select` or `textarea` with `data-action` sends it when the change is committed, with the new value (a boolean for a checkbox, a number for a number). Add `data-live` to send it as the person types, after a 300 ms pause.
+- A `form` with `data-action` sends it on submit, with `{ name: value }` for every named field.
+- Give repeated elements a `key` attribute so an update moves them instead of redrawing them; focus, typing and scroll survive updates either way.
+
+### Plain elements
+
+Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, `key`, `aria-*` and `data-*`. Input types: `text`, `search`, `email`, `url`, `tel`, `number`, `range`, `date`, `time`, `datetime-local`, `month`, `week`, `color`, `checkbox`, `radio`, `hidden`.
+
+| Element | Its own attributes | Notes |
+| --- | --- | --- |
+| `<div>` |  | A block |
+| `<span>` |  | An inline run |
+| `<p>` |  | A paragraph |
+| `<h1>` |  | Headings; the host styles them to the app's scale |
+| `<h2>` |  |  |
+| `<h3>` |  |  |
+| `<h4>` |  |  |
+| `<strong>` |  | Text styles |
+| `<em>` |  |  |
+| `<small>` |  |  |
+| `<code>` |  |  |
+| `<pre>` |  |  |
+| `<kbd>` |  |  |
+| `<mark>` |  |  |
+| `<s>` |  |  |
+| `<sub>` |  |  |
+| `<sup>` |  |  |
+| `<br>` |  |  |
+| `<hr>` |  |  |
+| `<blockquote>` |  |  |
+| `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto: or # |
+| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: or a data: image |
+| `<figure>` |  |  |
+| `<figcaption>` |  |  |
+| `<ul>` |  | Lists |
+| `<ol>` | `start`, `reversed` |  |
+| `<li>` |  |  |
+| `<dl>` |  |  |
+| `<dt>` |  |  |
+| `<dd>` |  |  |
+| `<table>` |  | Tables; styled to the app's tokens |
+| `<caption>` |  |  |
+| `<thead>` |  |  |
+| `<tbody>` |  |  |
+| `<tfoot>` |  |  |
+| `<tr>` |  |  |
+| `<th>` | `colspan`, `rowspan`, `scope` |  |
+| `<td>` | `colspan`, `rowspan` |  |
+| `<section>` |  | Grouping |
+| `<header>` |  |  |
+| `<footer>` |  |  |
+| `<article>` |  |  |
+| `<aside>` |  |  |
+| `<nav>` |  |  |
+| `<details>` | `open` | A disclosure, with summary |
+| `<summary>` |  |  |
+| `<form>` | `novalidate` | A form; with data-action, submitting it sends the action with every named field's value |
+| `<label>` | `for` | Form controls; with data-action, a change sends the action with the new value |
+| `<input>` | `type`, `name`, `value`, `placeholder`, `checked`, `disabled`, `readonly`, `required`, `min`, `max`, `step`, `minlength`, `maxlength`, `pattern`, `autocomplete`, `id` |  |
+| `<select>` | `name`, `disabled`, `required`, `multiple`, `id` |  |
+| `<option>` | `value`, `selected`, `disabled` |  |
+| `<textarea>` | `name`, `placeholder`, `disabled`, `readonly`, `required`, `rows`, `minlength`, `maxlength`, `id` |  |
+| `<button>` | `type`, `disabled`, `name`, `value` | A button; with data-action, a click sends the action (and data-value, if set) |
+| `<fieldset>` | `disabled` |  |
+| `<legend>` |  |  |
+| `<progress>` | `value`, `max` |  |
+| `<meter>` | `value`, `min`, `max`, `low`, `high`, `optimum` |  |
+| `<time>` | `datetime` |  |
+| `<abbr>` |  |  |
+
 ## Views and slots
 
 | View | Shape |
 | --- | --- |
+| `html` | { html }: plain HTML (see HTML views). The usual way to build UI; a string passed to ctx.ui.render becomes one. |
 | `stack` | { children, direction? }: views in a column, or a row. |
 | `heading` | { text } |
 | `text` | { text, title?, tone? }: tone is muted, error or ok. |

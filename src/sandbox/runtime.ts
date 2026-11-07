@@ -57,9 +57,10 @@ function api(trace: () => string | undefined): Api {
     },
     call,
     ui: {
-      render(slot: Slot, key: string, view: View | null, order?: number) {
-        send({ t: "render", slot, key, view, order, trace: trace() });
+      render(slot: Slot, key: string, view: View | string | null, order?: number) {
+        send({ t: "render", slot, key, view: typeof view === "string" ? { type: "html", html: view } : view, order, trace: trace() });
       },
+      html,
       onEvent(handler: (action: string, value: unknown) => void) {
         eventHandlers.add(handler);
         return () => void eventHandlers.delete(handler);
@@ -86,6 +87,21 @@ function api(trace: () => string | undefined): Api {
     },
     log,
   };
+}
+
+const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+const escape = (value: unknown): string => {
+  if (value === null || value === undefined || value === false) return "";
+  if (Array.isArray(value)) return value.map(escape).join("");
+  if (typeof value === "object" && (value as View).type === "html") return (value as { html: string }).html;
+  return String(value).replace(/[&<>"']/g, (c) => ESCAPES[c]);
+};
+
+/** `html\`...\``: values are escaped, so a note titled "<b>" shows as text; nested `html` results and arrays of them go in as they are. */
+function html(strings: TemplateStringsArray, ...values: unknown[]): View {
+  let out = strings[0];
+  values.forEach((value, i) => (out += escape(value) + strings[i + 1]));
+  return { type: "html", html: out };
 }
 
 const ctx = api(() => activeTrace);
