@@ -1,15 +1,17 @@
-// Spending: plain HTML drawn from data. The expenses live in a collection;
-// the view is built with ctx.ui.html (which escapes every value) and drawn
-// again whenever the collection changes. The host updates the page in place,
-// so typing, focus and scroll survive each redraw. A form with data-action
-// sends all of its named fields, typed, and the plugin saves them.
+// Expenses: plain HTML drawn from data. The expenses live in a collection
+// this plugin owns; the view is built with ctx.ui.html (which escapes every
+// value) and drawn again whenever the collection changes. The host updates
+// the page in place, so typing, focus and scroll survive each redraw. A form
+// with data-action sends all of its named fields, typed, and the plugin
+// saves them.
 
 export const manifest = {
-  id: "spending",
-  name: "Spending",
-  description: "A monthly spending dashboard in plain HTML, backed by a collection.",
+  id: "expenses",
+  name: "Expenses",
+  description: "The expenses, in a table, with a form to add one.",
   version: "1.0.0",
   permissions: ["ui"],
+  order: 20,
   collections: {
     expenses: {
       title: "Expenses",
@@ -25,9 +27,6 @@ export const manifest = {
       },
     },
   },
-  settings: {
-    budget: { type: "number", title: "Monthly budget (£)", default: 2000 },
-  },
 };
 
 const SAMPLE = [
@@ -36,6 +35,7 @@ const SAMPLE = [
   { item: "Train pass", category: "Travel", amount: 96, repeats: true },
   { item: "Books", category: "Fun", amount: 34.99 },
 ];
+const CATEGORIES = manifest.collections.expenses.schema.properties.category.enum;
 const money = (n) => `£${n.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export default async function (ctx) {
@@ -49,21 +49,12 @@ export default async function (ctx) {
 
   const draw = async () => {
     const expenses = await ctx.call("data", "list", "expenses");
-    const budget = Number((await ctx.settings.get()).budget ?? 2000);
-    const spent = expenses.reduce((sum, e) => sum + e.amount, 0);
-    const biggest = expenses.reduce((top, e) => (!top || e.amount > top.amount ? e : top), null);
-    const over = spent > budget;
     ctx.ui.render(
-      "app.main",
-      "spending",
+      "main",
+      "expenses",
       html`
-        <ui-toolbar><h2>Spending</h2><ui-spacer></ui-spacer><ui-badge tone="${over ? "danger" : "ok"}">${over ? "Over budget" : "On budget"}</ui-badge></ui-toolbar>
-        <ui-grid min="10rem">
-          <ui-stat label="Spent" value="${money(spent)}" delta="${expenses.length} items"></ui-stat>
-          <ui-stat label="${over ? "Over by" : "Budget left"}" value="${money(Math.abs(budget - spent))}" tone="${over ? "danger" : "ok"}"></ui-stat>
-          <ui-stat label="Biggest" value="${biggest?.item ?? "None"}" delta="${biggest ? `${Math.round((biggest.amount / (spent || 1)) * 100)}% of spend` : ""}"></ui-stat>
-        </ui-grid>
         <ui-card>
+          <h2>Expenses</h2>
           <table>
             <thead><tr><th>Item</th><th>Category</th><th>Amount</th><th></th></tr></thead>
             <tbody>
@@ -77,7 +68,7 @@ export default async function (ctx) {
             <ui-grid min="12rem">
               <label>Item <input name="item" placeholder="Coffee" required></label>
               <label>Amount <input type="number" name="amount" step="0.01" min="0" required></label>
-              <label>Category <select name="category">${manifest.collections.expenses.schema.properties.category.enum.map((c) => html`<option>${c}</option>`)}</select></label>
+              <label>Category <select name="category">${CATEGORIES.map((c) => html`<option>${c}</option>`)}</select></label>
             </ui-grid>
             <label><input type="checkbox" name="repeats"> Repeats monthly</label>
             <ui-toolbar>${error ? html`<span role="alert">${error}</span>` : ""}<ui-spacer></ui-spacer><button type="submit">Add</button></ui-toolbar>
@@ -97,7 +88,5 @@ export default async function (ctx) {
   });
   // Every write to the collection, from this plugin or any other, redraws the view.
   ctx.on("data:changed:expenses", () => draw());
-  // The budget is a setting: the plugins panel draws a field for it from the manifest.
-  ctx.settings.onChange(() => draw());
   draw();
 }

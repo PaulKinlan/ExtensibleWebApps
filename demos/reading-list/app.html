@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+  The reading list: an app made of three plugins, each its own file.
+
+  library.js     owns the `library` collection, and draws the form and table
+  due-soon.js    reads the library and lists books due back soon
+  book-import.js adds books from a pasted list; the library isn't its own,
+                 so the person reviews each change
+
+  The plugins never call each other. They meet in the collection: when one
+  writes a book, the others hear `data:changed:library` and redraw.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reading list</title>
+  <meta name="description" content="Books to read, and when they're due back.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="library.js">
+  <link rel="plugin" href="due-soon.js">
+  <link rel="plugin" href="book-import.js">
+</head>
+<body>
+  <header>
+    <h1>Reading list</h1>
+    <a href="/">Workbench</a>
+  </header>
+  <main>
+    <slot name="main"><p>Loading your books…</p></slot>
+  </main>
+  <aside>
+    <slot name="side"></slot>
+  </aside>
+</body>
+</html>

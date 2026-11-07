@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+  Spending: an app made of three plugins, each its own file.
+
+  expenses.js    owns the `expenses` collection; a hand-written table and form
+  budget.js      a monthly budget setting, and how spending compares with it
+  categories.js  where the money goes, by category
+
+  budget.js and categories.js only read the expenses. They redraw when they
+  hear `data:changed:expenses`, whichever plugin made the change.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Spending</title>
+  <meta name="description" content="A monthly spending dashboard.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="budget.js">
+  <link rel="plugin" href="expenses.js">
+  <link rel="plugin" href="categories.js">
+</head>
+<body>
+  <header>
+    <h1>Spending</h1>
+    <a href="/">Workbench</a>
+  </header>
+  <main>
+    <slot name="main"><p>Adding up…</p></slot>
+  </main>
+  <aside>
+    <slot name="side"></slot>
+  </aside>
+</body>
+</html>

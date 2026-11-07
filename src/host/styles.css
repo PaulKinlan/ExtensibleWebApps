@@ -32,23 +32,44 @@
   color-scheme: light dark;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); display: grid; grid-template-rows: auto 1fr auto auto; grid-template-columns: minmax(0, 1fr); min-height: 100vh; }
-header .spacer { flex: 1; }
-header .demo-pick { display: flex; gap: var(--space-2); align-items: center; font-size: var(--text-sm); color: var(--fg-2); }
-header .demo-pick select { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 28px; }
-header { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
-main { display: grid; grid-template-columns: 220px 1fr 260px; min-height: 360px; }
-main > * { min-width: 0; padding: 12px 16px; overflow: auto; display: flex; flex-direction: column; gap: var(--space-4); }
-nav { border-right: 1px solid var(--border); }
-aside { border-left: 1px solid var(--border); }
-footer { display: flex; gap: 16px; flex-wrap: wrap; padding: 6px 16px; border-top: 1px solid var(--border); background: var(--bg-2); color: var(--fg-2); font-size: 12px; font-variant-numeric: tabular-nums; min-height: 30px; }
-/* Phones: one column, the app's main view first, the notes list and side panels after it. */
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); min-height: 100vh; }
+/* A <slot name> in the page is where plugins draw; what the page put inside it shows until one does. */
+slot, .fallback { display: contents; }
+.fallback[hidden] { display: none; }
+
+/* ---- App pages (app.html): header, main, an optional aside, footer. One column on phones. ---- */
+body:not(.workbench) { display: grid; grid-template: "header header" auto "main aside" 1fr "footer footer" auto / minmax(0, 1fr) minmax(0, 320px); }
+body:not(.workbench):not(:has(> aside)) { grid-template: "header" auto "main" 1fr "footer" auto / minmax(0, 1fr); }
+body:not(.workbench) > header { grid-area: header; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+body:not(.workbench) > header h1 { margin: 0; font-size: var(--text-lg); }
+body:not(.workbench) > main, body:not(.workbench) > aside { min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: var(--space-4); }
+body:not(.workbench) > main { grid-area: main; }
+body:not(.workbench) > aside { grid-area: aside; border-left: 1px solid var(--border); }
+body:not(.workbench) > footer { grid-area: footer; padding: 6px 16px; border-top: 1px solid var(--border); color: var(--fg-2); font-size: var(--text-sm); }
 @media (max-width: 800px) {
-  main { grid-template-columns: minmax(0, 1fr); }
-  main > section { order: -1; }
-  nav, aside { border: 0; border-top: 1px solid var(--border); }
+  body:not(.workbench) { grid-template: "header" auto "main" auto "aside" auto "footer" auto / minmax(0, 1fr); }
+  body:not(.workbench) > aside { border-left: 0; border-top: 1px solid var(--border); }
+}
+
+/* ---- The workbench (index.html): notes, every plugin's views, the plugins panel and the trace ---- */
+.workbench { display: grid; grid-template-rows: auto 1fr auto auto; grid-template-columns: minmax(0, 1fr); }
+.workbench header { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
+.workbench header .spacer { flex: 1; }
+.workbench header .demos { display: flex; gap: var(--space-3); font-size: var(--text-sm); }
+.workbench header .demos a { color: var(--accent); }
+.workbench main { display: grid; grid-template-columns: 220px 1fr 260px; min-height: 360px; }
+.workbench main > * { min-width: 0; padding: 12px 16px; overflow: auto; display: flex; flex-direction: column; gap: var(--space-4); }
+.workbench main > nav { border-right: 1px solid var(--border); }
+.workbench main > aside { border-left: 1px solid var(--border); }
+.workbench footer { display: flex; gap: 16px; flex-wrap: wrap; padding: 6px 16px; border-top: 1px solid var(--border); background: var(--bg-2); color: var(--fg-2); font-size: 12px; font-variant-numeric: tabular-nums; min-height: 30px; }
+/* Phones: one column, the main view first, the notes list and side panels after it. */
+@media (max-width: 800px) {
+  .workbench main { grid-template-columns: minmax(0, 1fr); }
+  .workbench main > section { order: -1; }
+  .workbench main > nav, .workbench main > aside { border: 0; border-top: 1px solid var(--border); }
   #mode { display: none; }
 }
+#review { padding: 16px; }
 .muted { color: var(--fg-2); }
 .error { color: var(--danger); }
 .ok { color: var(--ok); }

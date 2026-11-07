@@ -56,12 +56,12 @@ Plugins describe their UI as plain HTML, because that is what models and people 
 
 ```js
 const html = ctx.ui.html; // escapes every value
-ctx.ui.render("app.main", "spending", html`
+ctx.ui.render("main", "spending", html`
   <ui-grid min="10rem"><ui-stat label="Spent" value="${total}"></ui-stat></ui-grid>
   <form data-action="add"><label>Item <input name="item" required></label><button type="submit">Add</button></form>`);
 ```
 
-The host parses the HTML inertly and keeps only the elements and attributes in `src/shared/html.ts`: no script, no style or class attributes, no frames, no event attributes, no `javascript:` links. An `https:` image is a request, so only plugins with the `network` capability may show one. Styling comes from the design tokens in `styles.css`, so plain HTML already looks like the app, and the host's components (`ui-stack`, `ui-grid`, `ui-card`, `ui-stat`, `ui-badge`, `ui-empty`, `ui-toolbar`) cover layout. Controls report through `data-action`; a form with `data-action` sends all its named fields, typed. Drawing again morphs the old DOM into the new one, so focus, typing, scroll and open `<details>` survive. The JSON views from phase 1 still work and are drawn the same way. The full list is in [api.md](api.md#html-views).
+The host parses the HTML inertly and keeps only the elements and attributes in `src/shared/html.ts`: no script, no style or class attributes, no frames, no event attributes, no `javascript:` links. An `https:` image is a request, so only plugins with the `network` capability may show one. Styling comes from the design tokens in `styles.css`, so plain HTML already looks like the app, and the elements in [`elements/`](../elements/) (`ui-stack`, `ui-grid`, `ui-card`, `ui-stat`, `ui-badge`, `ui-empty`, `ui-toolbar`) cover layout. Controls report through `data-action`; a form with `data-action` sends all its named fields, typed. Drawing again morphs the old DOM into the new one, so focus, typing, scroll and open `<details>` survive. The JSON views from phase 1 still work and are drawn the same way. The full list is in [api.md](api.md#html-views).
 
 ![An HTML view built only from plain HTML and the host's components](images/html-view.png)
 

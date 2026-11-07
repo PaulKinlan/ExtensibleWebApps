@@ -27,29 +27,43 @@ function workerPolicy(): Plugin {
   };
 }
 
-// Folders the browser runs as written: served untouched in development (no
+// Files the browser runs as written: served untouched in development (no
 // transforms, no injected scripts) and copied unchanged into the build.
-const AS_WRITTEN = ["elements"];
+const AS_WRITTEN = ["elements", "demos", "index.html"];
+// Two stable URLs every page uses: the platform's stylesheet and its host
+// script. In development the script redirects to the TypeScript source (so
+// its relative worker URLs resolve); in the build it is emitted at this path.
+const HOST_CSS = "src/host/styles.css";
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".md": "text/markdown" };
 
 function asWritten(): Plugin {
   const root = process.cwd();
-  const files = (dir: string): string[] =>
-    readdirSync(join(root, dir)).flatMap((name) => (statSync(join(root, dir, name)).isDirectory() ? files(join(dir, name)) : [join(dir, name)]));
+  const files = (path: string): string[] =>
+    statSync(join(root, path)).isDirectory() ? readdirSync(join(root, path)).flatMap((name) => files(join(path, name))) : [path];
+  const serve = (res: { setHeader(k: string, v: string): void }, file: string) => {
+    res.setHeader("Content-Type", TYPES[extname(file)] ?? "application/octet-stream");
+    return createReadStream(file).pipe(res as any);
+  };
   return {
     name: "as-written",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const path = decodeURIComponent(new URL(req.url ?? "/", "http://host").pathname);
-        const dir = AS_WRITTEN.find((d) => path.startsWith(`/${d}/`));
+        if (path === "/platform/host.js") {
+          res.statusCode = 302;
+          res.setHeader("Location", "/src/host/main.ts");
+          return res.end();
+        }
+        if (path === "/platform/host.css") return serve(res, resolve(root, HOST_CSS));
+        const top = AS_WRITTEN.find((d) => statSync(join(root, d)).isDirectory() && path.startsWith(`/${d}/`));
         const file = resolve(root, `.${path}`);
-        if (!dir || !file.startsWith(resolve(root, dir) + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
-        res.setHeader("Content-Type", TYPES[extname(file)] ?? "application/octet-stream");
-        createReadStream(file).pipe(res);
+        if (!top || !file.startsWith(resolve(root, top) + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
+        return serve(res, file);
       });
     },
     generateBundle() {
-      for (const dir of AS_WRITTEN) for (const file of files(dir)) this.emitFile({ type: "asset", fileName: file.split(sep).join("/"), source: readFileSync(join(root, file)) });
+      for (const path of AS_WRITTEN) for (const file of files(path)) this.emitFile({ type: "asset", fileName: file.split(sep).join("/"), source: readFileSync(join(root, file)) });
+      this.emitFile({ type: "asset", fileName: "platform/host.css", source: readFileSync(join(root, HOST_CSS)) });
     },
   };
 }
@@ -57,5 +71,9 @@ function asWritten(): Plugin {
 export default defineConfig({
   plugins: [workerPolicy(), asWritten()],
   worker: { format: "es" },
-  build: { target: "es2022" },
+  build: {
+    target: "es2022",
+    // The host is the one entry: /platform/host.js, which every page loads. Pages themselves are copied as written.
+    rollupOptions: { input: { host: "src/host/main.ts" }, output: { entryFileNames: "platform/[name].js" } },
+  },
 });

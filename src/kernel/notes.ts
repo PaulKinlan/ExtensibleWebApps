@@ -24,7 +24,7 @@ export function notesApp(ctx: any, store: Store, hosts: Hosts) {
   const titleOf = (text: string) => text.split("\n")[0].replace(/^#+\s*/, "").trim().slice(0, 60) || "Untitled";
 
   const render = () => {
-    hosts.render("notes", "app.nav", "notes:list", {
+    hosts.render("notes", "nav", "notes:list", {
       type: "stack",
       children: [
         { type: "heading", text: "Notes" },
@@ -32,7 +32,7 @@ export function notesApp(ctx: any, store: Store, hosts: Hosts) {
         { type: "list", items: store.list().map((n) => ({ label: n.title, action: `open:${n.id}`, selected: n.id === openId })) },
       ],
     }, 10);
-    hosts.render("notes", "app.main", "notes:editor", openId
+    hosts.render("notes", "main", "notes:editor", openId
       ? {
           type: "stack",
           children: [

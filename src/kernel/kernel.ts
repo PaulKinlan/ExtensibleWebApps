@@ -8,6 +8,7 @@
 import { Context } from "cordis";
 import { defineHook, hooks } from "./hooks";
 import { Hosts } from "./hosts";
+import { apps as makeApps } from "./apps";
 import { catalog } from "./catalog";
 import { changeLog } from "./changes";
 import { checkPath, PathError } from "./paths";
@@ -200,6 +201,7 @@ const plugins = catalog(remote, store, hosts, log, reviews);
 remote.onDispose = (instance) => reviews.cancelInstance(instance);
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
+const apps = makeApps(remote, hosts);
 remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;
@@ -229,6 +231,7 @@ hosts.onHello = (host, folder) => {
 hosts.onLeave = (host) => {
   remote.hostLeft(host);
   records.hostLeft(host);
+  apps.hostLeft(host);
 };
 
 hosts.onSpawnerChange = (host) => {
@@ -259,6 +262,8 @@ hosts.onMessage = async (host, message) => {
       return records.unbind(host, message.id);
     case "record":
       return records.fromView(host, message.id, message.owner, message.collection, message.recordId, message.fields, message.trace);
+    case "open":
+      return apps.open(host, message.plugins);
     case "command": {
       const value = await command(message.name, message.arg);
       return hosts.send(host, { t: "command:result", id: message.id, value });

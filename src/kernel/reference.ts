@@ -100,11 +100,12 @@ const VIEWS: Record<View["type"], string> = {
   field: "{ name, label, kind, value, action, options?, description? }: kind is text, number, checkbox or select; sends `action` with the new value.",
 };
 
+/** The slots the platform's own page has. An app names its own with `<slot name>` in its app.html. */
 const SLOTS: Record<Slot, string> = {
-  "app.nav": "The column on the left.",
-  "app.main": "The middle of the page.",
-  "app.side": "The column on the right, where the plugins panel is.",
-  statusbar: "The bar at the bottom.",
+  nav: "The column on the left.",
+  main: "The middle of the page. Review cards appear here too.",
+  side: "The column on the right, where the plugins panel is.",
+  status: "The bar at the bottom.",
   devtools: "Inside the trace panel, under its buttons.",
 };
 

@@ -34,6 +34,8 @@ await new Promise((resolve, reject) => {
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 const context = await browser.newContext();
 const errors = [];
+let importedBook = false;
+let spentItems = false;
 
 async function openTab(url = URL) {
   const page = await context.newPage();
@@ -65,7 +67,7 @@ try {
   // `late` also has a button whose handler makes a call before and after an await.
   const lateSource = `export const manifest = { id: 'late', name: 'Late', permissions: ['ui'], settings: { "mode:loud": { type: "boolean", title: "Loud" } } };
 export default (ctx) => {
-  ctx.ui.render('statusbar', 'late', { type: 'stack', direction: 'row', children: [{ type: 'text', text: 'late plugin here' }, { type: 'button', label: 'Ping twice', action: 'ping' }] });
+  ctx.ui.render('status', 'late', { type: 'stack', direction: 'row', children: [{ type: 'text', text: 'late plugin here' }, { type: 'button', label: 'Ping twice', action: 'ping' }] });
   ctx.ui.onEvent(async () => {
     const here = ctx.traced();
     await here.call('kernel', 'ping');
@@ -117,7 +119,7 @@ export default async (ctx) => {
   ctx.ui.render('devtools', 'reader', { type: 'text', text: 'reader sees ' + ref.services.length + ' services' });
   ctx.log('reader: ' + JSON.stringify(refused));
 };`));
-  await a.waitForSelector('#devtools [data-slot="devtools"] >> text=reader sees 7 services', { timeout: 5000 });
+  await a.waitForSelector('#devtools slot[name="devtools"] >> text=reader sees 7 services', { timeout: 5000 });
   check("a plugin can read the reference, and draw in the devtools slot", true);
   await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")), null, { timeout: 5000 });
   const refusedCalls = await a.evaluate(() => JSON.parse(window.__host.traces.find((e) => e.plugin === "reader" && e.detail?.startsWith("reader:")).detail.slice(8)));
@@ -191,7 +193,7 @@ export default (ctx) => {
   await plugin(`export const manifest = { id: 'books', name: 'Books', permissions: ['ui'], collections: { books: { title: 'Books', schema: { type: 'object', required: ['title'], properties: {
   title: { type: 'string', title: 'Title' }, author: { type: 'string' }, year: { type: 'integer', minimum: 1450 }, shelf: { type: 'string', enum: ['to read', 'reading', 'done'] } } } } } };
 export default (ctx) => {
-  ctx.ui.render('app.main', 'books', '<h2>Books</h2><ui-form collection="books" fields="title,author,year" action="added"></ui-form><ui-table collection="books" columns="title,author,year" sort="title" row-action="open" deletable></ui-table>');
+  ctx.ui.render('main', 'books', '<h2>Books</h2><ui-form collection="books" fields="title,author,year" action="added"></ui-form><ui-table collection="books" columns="title,author,year" sort="title" row-action="open" deletable></ui-table>');
   ctx.ui.onEvent((action, value) => ctx.log('books-event ' + action + ' ' + JSON.stringify(value)));
 };`);
   const books = 'main [data-key="books:books"]';
@@ -257,25 +259,48 @@ export default async (ctx) => {
   for (const id of ["books", "shelf", "nosy", "lender", "squatter"]) await a.evaluate((i) => window.__host.command("uninstall", i), id);
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 
-  // The demos in demos/ install and draw.
-  const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url)).filter((f) => f.endsWith(".js")).map((f) => f.slice(0, -3));
+  // The demos: each folder in demos/ is an app whose app.html links its plugins.
+  const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name);
+  const linkedIds = (name) => {
+    const page = readFileSync(new globalThis.URL(`../demos/${name}/app.html`, import.meta.url), "utf8");
+    return [...page.matchAll(/<link rel="plugin" href="([^"]+)">/g)].map(([, href]) => readFileSync(new globalThis.URL(`../demos/${name}/${href}`, import.meta.url), "utf8").match(/id: "([^"]+)"/)[1]);
+  };
   const drawn = [];
+  const leaks = [];
   let gridMin;
   for (const name of demoNames) {
-    const source = readFileSync(new globalThis.URL(`../demos/${name}.js`, import.meta.url), "utf8");
-    const outcome = await plugin(source);
-    const ok = outcome?.ok && (await a.waitForSelector(`main [data-key="${name}:${name}"] h2`, { timeout: 5000 }).then(() => true, () => false));
-    drawn.push(`${name}: ${ok ? "drawn" : JSON.stringify(outcome)}`);
+    const page = await openTab(`${URL}demos/${name}/app.html`);
+    const ids = linkedIds(name);
+    const missing = [];
+    for (const id of ids) if (!(await page.waitForSelector(`slot [data-key^="${id}:"]`, { timeout: 8000 }).then(() => true, () => false))) missing.push(id);
+    drawn.push(`${name}: ${missing.length ? `missing ${missing.join(", ")}` : `${ids.length} plugins drawn`}`);
+    // An app shows only its own plugins' views, not the workbench's notes or panel.
+    if (await page.$('[data-key^="notes:"], [data-key^="plugins:"]')) leaks.push(name);
+    // Readers redraw once the owner has added its samples: the budget counts every expense.
     if (name === "spending") {
+      spentItems = await page.waitForSelector('[data-key="budget:budget"] ui-stat[delta="4 items"]', { timeout: 8000 }).then(() => true, () => false);
       // ui-grid's behaviour is a script inline in elements/ui-grid.html.
-      await a.waitForFunction(() => customElements.get("ui-grid"), null, { timeout: 5000 }).catch(() => {});
-      gridMin = await a.evaluate(() => document.querySelector('main [data-key="spending:spending"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent);
+      await page.waitForFunction(() => document.querySelector('[data-key="budget:budget"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent, null, { timeout: 5000 }).catch(() => {});
+      gridMin = await page.evaluate(() => document.querySelector('[data-key="budget:budget"] ui-grid')?.shadowRoot?.getElementById("min")?.textContent);
     }
-    await a.evaluate((i) => window.__host.command("uninstall", i), name);
+    if (name === "reading-list") {
+      // book-import writes to a collection it doesn't own: the review card shows in the app, and the book lands once accepted.
+      await page.fill('[data-key="book-import:book-import"] textarea[name="list"]', "Middlemarch by George Eliot");
+      await page.click('[data-key="book-import:book-import"] button[type="submit"]');
+      await page.waitForSelector('[data-key^="review:"] >> text=Accept', { timeout: 8000 });
+      await page.click('[data-key^="review:"] >> text=Accept');
+      importedBook = await page.waitForSelector('[data-key="library:library"] ui-table >> text=Middlemarch', { timeout: 8000 }).then(() => true, () => false);
+    }
+    await page.close({ runBeforeUnload: true });
   }
-  await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
-  check("every demo installs and draws", demoNames.length >= 2 && drawn.every((d) => d.endsWith("drawn")), drawn.join(", "));
+  check("every demo app draws a view from each plugin it links", demoNames.length >= 2 && drawn.every((d) => d.endsWith("drawn")), drawn.join("; "));
+  check("an app page shows only its own plugins' views", leaks.length === 0, leaks.join(", "));
+  check("a plugin that reads another's collection hears its changes and redraws", spentItems);
   check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
+  check("a plugin in an app writing another plugin's collection is reviewed in that app, then lands", importedBook);
+  // Closing an app's last tab stops its plugins.
+  await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 8000 }).catch(() => {});
+  check("closing an app's last tab stops the plugins it linked", (await a.evaluate(() => window.__host.workers.size)) === before, `${await a.evaluate(() => window.__host.workers.size)} workers, expected ${before}`);
 
   // Worker content security policy.
   await a.waitForFunction(() => window.__host.traces.filter((e) => e.detail?.startsWith("network:")).length >= 2, null, { timeout: 5000 });

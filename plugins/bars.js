@@ -41,7 +41,7 @@ export default async function (ctx) {
     canvas = offscreen;
     requestAnimationFrame(frame);
   });
-  ctx.ui.render("app.side", "bars", {
+  ctx.ui.render("side", "bars", {
     type: "stack",
     children: [
       { type: "heading", text: "Note lengths" },

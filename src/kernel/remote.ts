@@ -44,8 +44,8 @@ export interface ServiceProvider {
   call(plugin: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown> | unknown;
 }
 
-/** Where a plugin came from: bundled with the app, or kept in the data folder. */
-export type Origin = "built-in" | "data";
+/** Where a plugin came from: bundled with the platform, kept in the data folder, or linked by an open app's app.html. */
+export type Origin = "built-in" | "data" | "app";
 
 export interface Installed {
   id: string;

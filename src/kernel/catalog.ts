@@ -129,7 +129,7 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
           direction: "row",
           children: [
             { type: "text", text: manifest.name, title: manifest.description },
-            { type: "text", text: origin === "built-in" ? "built in" : "with the data", tone: "muted" },
+            { type: "text", text: origin === "built-in" ? "built in" : origin === "app" ? "from an open app" : "with the data", tone: "muted" },
             ...(enabled ? [] : [{ type: "text" as const, text: "off", tone: "muted" as const }]),
           ],
         },
@@ -155,21 +155,26 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
     };
   };
 
-  const draw = (id: string) => hosts.render("plugins", "app.side", `plugins:${id}`, view(id), ORDER + 1);
+  const draw = (id: string) => hosts.render("plugins", "side", `plugins:${id}`, view(id), ORDER + 1);
   const drawAll = () => {
-    hosts.render("plugins", "app.side", "plugins:heading", { type: "heading", text: "Plugins" }, ORDER);
+    hosts.render("plugins", "side", "plugins:heading", { type: "heading", text: "Plugins" }, ORDER);
     for (const id of remote.installed.keys()) draw(id);
   };
 
   reviews.onGrants = (id) => draw(id);
 
+  /** Where each installed plugin came from, kept so it is still known once the plugin is gone. */
+  const origins = new Map<string, string>();
+
   remote.onChange = (change, id) => {
     if (!booting || change !== "install") void log.append({ kind: change, plugin: id });
+    if (change === "install") origins.set(id, remote.installed.get(id)?.origin ?? "data");
     if (change === "uninstall" || change === "disable") reviews.cancel(id);
     if (change === "uninstall") {
-      hosts.render("plugins", "app.side", `plugins:${id}`, null, ORDER + 1);
-      // A plugin that leaves (removed, or stopped for lying about its manifest) leaves the data folder too.
-      void enqueue(`remove ${id}`, () => store.removePlugin(id)).catch(() => {});
+      hosts.render("plugins", "side", `plugins:${id}`, null, ORDER + 1);
+      // A plugin kept with the data that leaves (removed, or stopped for lying about its manifest) leaves the data folder too.
+      if (origins.get(id) === "data") void enqueue(`remove ${id}`, () => store.removePlugin(id)).catch(() => {});
+      origins.delete(id);
       return;
     }
     if (loaded && (change === "enable" || change === "disable")) {

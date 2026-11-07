@@ -5,23 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light dark" />
     <title>Extensible Web Apps</title>
-    <link rel="stylesheet" href="/src/host/styles.css" />
+    <!-- The platform: its stylesheet and the host. Every app.html starts with the same two lines. -->
+    <link rel="stylesheet" href="/platform/host.css" />
+    <script type="module" src="/platform/host.js"></script>
   </head>
-  <body>
+  <body class="workbench">
+    <!-- The workbench: this page links no plugins, so it shows every running plugin's views. -->
     <header>
       <strong>Extensible Web Apps</strong>
       <span id="mode" class="muted"></span>
       <span class="spacer"></span>
-      <label class="demo-pick">Demo
-        <select id="demo"><option value="">Pick one…</option></select>
-      </label>
+      <nav class="demos" aria-label="Demo apps">
+        <a href="/demos/reading-list/app.html">Reading list</a>
+        <a href="/demos/spending/app.html">Spending</a>
+      </nav>
     </header>
     <main>
-      <nav data-slot="app.nav"></nav>
-      <section data-slot="app.main"></section>
-      <aside data-slot="app.side"></aside>
+      <nav><slot name="nav"></slot></nav>
+      <section><slot name="main"></slot></section>
+      <aside><slot name="side"></slot></aside>
     </main>
-    <footer data-slot="statusbar"></footer>
+    <footer><slot name="status"></slot></footer>
     <details id="devtools" open>
       <summary>Trace</summary>
       <div class="row">
@@ -31,10 +35,9 @@
         <span id="result" class="muted"></span>
       </div>
       <pre id="reference-text" hidden></pre>
-      <div data-slot="devtools"></div>
+      <slot name="devtools"></slot>
       <ol id="trace"></ol>
     </details>
     <div id="notice" role="status"></div>
-    <script type="module" src="/src/host/main.ts"></script>
   </body>
 </html>
