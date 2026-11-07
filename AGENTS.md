@@ -38,7 +38,7 @@ npm run typecheck
 npm run reference    # after changing the kernel's API: rewrites docs/api.md (the tests check it)
 ```
 
-A new app in `demos/` is picked up by the tests automatically. Add a check for what it does to [`tests/platform.test.mjs`](tests/platform.test.mjs), next to the other demo checks.
+A new app in `demos/` is picked up by the tests automatically. Put checks for what it does in a new file, `tests/demos/<app>.mjs` (copy [`tests/demos/habits.mjs`](tests/demos/habits.mjs)), and checks for a platform feature in `tests/checks/<feature>.mjs`. The runner finds both, so you never edit [`tests/platform.test.mjs`](tests/platform.test.mjs) to add a check.
 
 ## Changing the platform without getting in anyone's way
 
