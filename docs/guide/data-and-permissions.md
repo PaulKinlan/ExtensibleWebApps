@@ -110,7 +110,7 @@ sequenceDiagram
     participant Person as The person
     participant O as Library (the owner)
 
-    P->>K: data.put("library", record, reason)
+    P->>K: ctx.call("data", "put", "library", record, reason)
     K->>K: the gate (data:write:library?), then the schema check
     K->>Person: a review card: the plugin, its reason, and a diff
     alt Accept, or Always allow

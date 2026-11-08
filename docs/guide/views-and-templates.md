@@ -38,7 +38,7 @@ Only the data crosses from the plugin's worker. The page does the rest:
 
 ```mermaid
 flowchart LR
-    Plugin["The plugin<br/>views.render(slot, id, data)"] -->|the file's name, the id and the data| Kernel["The kernel<br/>ui permission, and a file<br/>on the plugin's own site"]
+    Plugin["The plugin<br/>views.render(slot, id, data)"] -->|the file's name, the id and the data| Kernel["The kernel checks the ui permission,<br/>and that the file is on<br/>the plugin's own site"]
     Kernel --> Host["The host<br/>fills the holes as text"]
     File[("shopping.html")] -.->|fetched once| Host
     Host --> Clean["Sanitised to<br/>the HTML allowlist"]
