@@ -95,11 +95,16 @@ export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServicePr
     root.on(`data:changed:${name}`, () => root.emit({}, "transfer:changed", { collection: name }));
   };
 
+  /** The plugins in the caller's app: for a tab's instance, only the app open in its tab (as in history.ts). */
+  const nearOf = (instance: string) => {
+    const tab = instance.split("@")[1];
+    return tab ? new Set(apps.linkedBy(tab) ?? []) : apps.alongside(instance);
+  };
   /** Whether a collection is owned by a plugin in the caller's app (any, for a plugin no app links). */
   const mine = (instance: string, name: unknown) => {
     const collection = typeof name === "string" ? collections.registry.get(name) : undefined;
     if (!collection) throw new Error(`No collection named ${String(name)}`);
-    const near = apps.alongside(instance);
+    const near = nearOf(instance);
     if (near && !near.has(collection.owner)) throw new Error(`${collection.title} isn't part of this app`);
     return collection;
   };
@@ -233,7 +238,7 @@ export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServicePr
     call: async (instance, method, args, dispatch) => {
       await collections.ready;
       if (method === "collections") {
-        const near = apps.alongside(instance);
+        const near = nearOf(instance);
         const out = [];
         for (const c of collections.registry.values()) {
           if (near && !near.has(c.owner)) continue;
