@@ -8,6 +8,10 @@
 // It also answers two addresses next to it, through the platform's service
 // worker: books.json is the whole list, for anything that wants it as data,
 // and a form posted to add-book adds a book, as plain HTML would.
+//
+// And it names three things it does as commands. The command palette lists
+// the first two, with their keys; the third takes a title, so it is for
+// whatever can fill one in, such as an agent with the `commands` permission.
 
 export const manifest = {
   id: "library",
@@ -76,5 +80,32 @@ export default async function (ctx) {
     const result = await ctx.call("data", "put", "library", { title: String(form?.title ?? ""), ...(form?.author && { author: String(form.author) }) });
     return result.ok ? { redirect: "./" } : { status: 400, text: JSON.stringify(result.errors ?? result.error) };
   });
+
+  // Commands: what the library can do, for the palette, a shortcut or an agent.
+  const shelf = async (from) => (await ctx.call("data", "list", "library")).filter((b) => (b.shelf ?? "to read") === from);
+  const move = async (book, to) => {
+    // A write can be refused (a plugin intercepting it, or the book changing meanwhile): fail the command, don't claim it moved.
+    const result = await ctx.call("data", "put", "library", { ...book, shelf: to });
+    if (!result.ok) throw new Error(`Couldn't move ${book.title}: ${result.error ?? JSON.stringify(result.errors)}`);
+  };
+  ctx.commands.add({ id: "start-next", title: "Start the next book", group: "Books", description: "Moves the book due back soonest from “to read” to “reading”.", keys: ["Alt+N"] }, async () => {
+    const [next] = (await shelf("to read")).sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.title.localeCompare(b.title));
+    if (!next) return "Nothing left to read";
+    await move(next, "reading");
+    return `Started ${next.title}`;
+  });
+  ctx.commands.add({ id: "finish", title: "Mark what I'm reading as done", group: "Books", keys: ["Alt+D"] }, async () => {
+    const reading = await shelf("reading");
+    for (const book of reading) await move(book, "done");
+    return reading.length ? `Finished ${reading.map((b) => b.title).join(", ")}` : "You aren't reading anything";
+  });
+  ctx.commands.add(
+    { id: "add", title: "Add a book", group: "Books", args: { type: "object", required: ["title"], properties: { title: { type: "string" }, author: { type: "string" } } } },
+    async ({ title, author }) => {
+      const result = await ctx.call("data", "put", "library", { title, ...(author && { author }) });
+      if (!result.ok) throw new Error(JSON.stringify(result.errors ?? result.error));
+      return result.id;
+    },
+  );
   draw();
 }
