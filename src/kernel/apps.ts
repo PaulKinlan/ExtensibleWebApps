@@ -97,6 +97,22 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
       return ids && [...ids];
     },
 
+    /**
+     * The plugins in the same app as a plugin instance: every plugin linked by an app open in its
+     * tab, or by any open app that links it. Undefined for a plugin no open app links (one the
+     * workbench installed), which belongs to no app.
+     */
+    alongside(instance: string): Set<string> | undefined {
+      const [id, tab] = instance.split("@");
+      let out: Set<string> | undefined;
+      for (const [open, ids] of linked) {
+        if (open !== tab && !ids.has(id)) continue;
+        out ??= new Set();
+        for (const other of ids) out.add(other);
+      }
+      return out;
+    },
+
     /** A tab closed: stop the app plugins no open tab needs any more. */
     hostLeft(host: Host): void {
       linked.delete(host.tab);

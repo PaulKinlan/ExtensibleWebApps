@@ -326,19 +326,27 @@ Ask a language model, through whichever provider plugin the app has (std/llm/ant
 
 #### llm.complete
 
-`llm.complete({ messages, system?, tools?, schema?, model?, maxTokens?, provider? })` → { text, json?, toolCalls, stop, usage: { input, output }, provider, model }
+`llm.complete({ messages, system?, tools?, schema?, model?, maxTokens?, provider? })` → { text, json?, toolCalls, stop, usage: { input, output }, provider, model, message }
 
-Needs: nothing.
+Needs: `llm`.
 
-Asks a model. messages are { role: "user" | "assistant", content }, an assistant's { toolCalls: [{ id, name, args }] }, or a tool's answer { role: "tool", id, name, content }. tools are [{ name, description, parameters }]; schema asks for an answer of that JSON Schema, in json. Without provider, the first ready one answers. Needs llm.
+Asks a model. messages are { role: "user" | "assistant", content }, an assistant's { toolCalls: [{ id, name, args }], state }, or a tool's answer { role: "tool", id, name, content }; add each answer's message to messages to go on. tools are [{ name, description, parameters }]; schema (the platform's JSON Schema subset, as collections use) asks for an answer of that shape, in json, checked before it's returned. model is an id or a tier: best, balanced or fast (the default is the provider's setting). Without provider, the first ready one answers.
+
+#### llm.models
+
+`llm.models(provider?)` → { models: [{ id, name? }], tiers: { best, balanced, fast }, provider }
+
+Needs: `llm`.
+
+The models a provider's vendor serves now (the first ready provider's, without one), and the model each tier stands for.
 
 #### llm.providers
 
 `llm.providers()` → [{ id, name, model?, ready }]
 
-Needs: nothing.
+Needs: `llm`.
 
-The providers in the app; ready means it has its key. Needs llm.
+The providers the caller's app links; ready means it has its key.
 
 ### net
 
@@ -506,6 +514,14 @@ Mode: `bail`, 660000 ms per listener, fails open. Listening needs `provide:llm`.
 
 Listeners get `request, with provider set to the id of the provider that should answer`.
 
+### `llm:models`
+
+Asks the provider named in provider which models its vendor serves. Answer { models: [{ id, name? }], tiers: { best, balanced, fast } }, or { error }. Listening needs provide:llm.
+
+Mode: `bail`, 30000 ms per listener, fails open. Listening needs `provide:llm`.
+
+Listeners get `{ provider }`.
+
 ### `llm:providers`
 
 Asks which language models are available. A provider returns { providers: [...providers, itself] }. Listening needs provide:llm.
@@ -582,6 +598,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:notes` | Call store.put. |
 | `debug:read` | Call debug.recent, debug.app. |
 | `files:<folder>` | Call files.read, files.write. |
+| `llm` | Call llm.providers, llm.models, llm.complete. |
 | `network:<host>` | Call net.fetch. |
 | `plugins:author` | Call authoring.source, authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file, authoring.check. |
 | `plugins:manage` | Call plugins.setEnabled. |

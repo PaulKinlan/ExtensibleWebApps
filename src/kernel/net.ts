@@ -24,7 +24,8 @@ import { grants } from "./gate";
 import { record } from "./trace";
 
 const MAX = 4_000_000;
-const TIMEOUT = 120_000;
+// Ten minutes: a model that reasons before it answers can take several.
+const TIMEOUT = 600_000;
 const LOCAL = new Set(["localhost", "127.0.0.1", "[::1]"]);
 /** Headers a plugin may not set: the browser's own, and ones that would change who is asking. */
 const FORBIDDEN = /^(cookie|host|origin|referer|connection|content-length|proxy-.*|sec-.*)$/i;
