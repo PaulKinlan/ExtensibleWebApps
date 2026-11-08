@@ -197,7 +197,10 @@ async function openApp() {
 
 /** The screen this tab shows, from the address's hash: `#/book/42?tab=notes`. The router service hands it to plugins. */
 function sendUrl() {
-  const [path, search = ""] = location.hash.replace(/^#/, "").split("?", 2);
+  const hash = location.hash.replace(/^#/, "");
+  // Only the first ? starts the query: a value may hold another (?next=/book/42?tab=notes).
+  const at = hash.indexOf("?");
+  const [path, search] = at < 0 ? [hash, ""] : [hash.slice(0, at), hash.slice(at + 1)];
   send({ t: "url", path: path.startsWith("/") ? path : "/", query: Object.fromEntries(new URLSearchParams(search)) });
 }
 

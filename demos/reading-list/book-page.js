@@ -26,7 +26,13 @@ export default async function (ctx) {
     const { path } = await ctx.call("router", "current");
     const [, screen, id] = path.split("/");
     if (screen !== "book" || !id) return { book: null, shown: false };
-    const book = await ctx.call("data", "get", "library", decodeURIComponent(id));
+    let key;
+    try {
+      key = decodeURIComponent(id);
+    } catch {
+      return { book: null, shown: true, missing: true }; // #/book/% isn't an id
+    }
+    const book = await ctx.call("data", "get", "library", key);
     return { book, shown: true, missing: !book };
   });
   ctx.on("router:changed", () => page.refresh());

@@ -34,11 +34,15 @@ type Query = Record<string, string>;
 /** Set when the service is made: what happens when a tab says where it is. */
 let changed: ((host: Host, path: string, query: Query, app?: string) => void) | undefined;
 
+/** A screen the kernel keeps: a path, and at most 50 query values of text. `router.go` holds to the same, so the page and the kernel can't disagree. */
+function isScreen(path: unknown, fields: [string, unknown][]): path is string {
+  return typeof path === "string" && path.startsWith("/") && path.length <= 2000 && fields.length <= 50 && fields.every(([, v]) => typeof v === "string" && v.length <= 2000);
+}
+
 /** The tab's address changed (kernel.ts hears it from the page). Anything that isn't a path and some text values is ignored. */
 export function routed(host: Host, path: unknown, query: unknown, app?: string): void {
-  if (typeof path !== "string" || !path.startsWith("/") || path.length > 2000) return;
   const fields = query && typeof query === "object" ? Object.entries(query as Record<string, unknown>) : [];
-  if (fields.length > 50 || fields.some(([, v]) => typeof v !== "string" || v.length > 2000)) return;
+  if (!isScreen(path, fields)) return;
   changed?.(host, path, Object.fromEntries(fields) as Query, app);
 }
 
@@ -83,7 +87,9 @@ export default ({ root, hosts, apps }: Kernel): ServiceProvider => {
       if (method === "current") return { tab: host.tab, path: host.url?.path ?? "/", query: host.url?.query ?? {} };
       if (method !== "go") throw new Error(`router.${method} is not a method`);
       const [path, options] = args as [unknown, { replace?: unknown } | undefined];
-      if (typeof path !== "string" || !path.startsWith("/") || path.length > 2000) throw new Error("router.go takes a path that starts with /");
+      const [screen, search] = typeof path === "string" ? [path.split("?")[0], path.slice(path.split("?")[0].length + 1)] : [path, ""];
+      if (typeof path !== "string" || !String(screen).startsWith("/")) throw new Error("router.go takes a path that starts with /");
+      if (!isScreen(screen, [...new URLSearchParams(search)])) throw new Error("router.go takes a path of at most 2000 characters, with at most 50 query values of 2000");
       await hosts.bridge("router", "go", [path, !!options?.replace], dispatch, host);
       return true;
     },

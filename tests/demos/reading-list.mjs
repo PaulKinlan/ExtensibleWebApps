@@ -28,5 +28,8 @@ export default async function (page, { check, openTab, URL }) {
   await link?.click();
   const back = await fresh.waitForSelector(card, { state: "detached", timeout: 8000 }).then(() => true, () => false);
   check("following a link to #/ goes back to the list", back && fresh.url().endsWith("#/"), fresh.url());
+  await fresh.evaluate(() => (location.hash = "#/book/%"));
+  const odd = await fresh.waitForSelector(`${card} >> text=isn't in the library`, { timeout: 8000 }).then(() => true, () => false);
+  check("an address that isn't a book's id says so, rather than showing the last book", odd);
   await fresh.close({ runBeforeUnload: true });
 }
