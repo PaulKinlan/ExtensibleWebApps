@@ -8,6 +8,7 @@
 // minutes the sign-in takes, then thrown away with it.
 
 import { b64url } from "../webauthn.ts";
+import { capped } from "./resolve.ts";
 
 /** An EC key as a JWK: the public point (x, y), and with `d`, the private part. */
 export interface Jwk {
@@ -53,27 +54,31 @@ export async function proof(key: Jwk, method: string, url: string, nonce?: strin
 /**
  * A form POST with a DPoP proof. A server that wants a nonce first says so (400 or 401,
  * `use_dpop_nonce`, with the nonce in a DPoP-Nonce header); this asks once more with it.
- * Gives the answer and the server's latest nonce, for the next request to the same server.
+ * Gives the answer, read (up to the size limit), and the server's latest nonce, for the next
+ * request to the same server.
  */
 export async function post(key: Jwk, url: string, form: Record<string, string>, nonce: string | undefined, send: typeof fetch) {
-  let answer: Response | undefined;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    answer = await send(url, {
+  for (let attempt = 0; ; attempt++) {
+    const answer = await send(url, {
       method: "POST",
       redirect: "manual",
       headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json", dpop: await proof(key, "POST", url, nonce) },
       body: new URLSearchParams(form),
     });
     const given = answer.headers.get("dpop-nonce") ?? undefined;
-    const retry = (answer.status === 400 || answer.status === 401) && given && given !== nonce && (await wantsNonce(answer.clone()));
+    // Read once, and never more than the limit, whatever the server sends.
+    const text = await capped(answer);
+    const retry = attempt === 0 && (answer.status === 400 || answer.status === 401) && given && given !== nonce && wantsNonce(answer, text);
     nonce = given ?? nonce;
-    if (!retry) break;
+    if (!retry) return { ok: answer.ok, status: answer.status, text, nonce };
   }
-  return { answer: answer!, nonce };
 }
 
-const wantsNonce = async (answer: Response) => {
+const wantsNonce = (answer: Response, text: string) => {
   if (/use_dpop_nonce/.test(answer.headers.get("www-authenticate") ?? "")) return true;
-  const body = (await answer.json().catch(() => null)) as { error?: unknown } | null;
-  return body?.error === "use_dpop_nonce";
+  try {
+    return (JSON.parse(text) as { error?: unknown })?.error === "use_dpop_nonce";
+  } catch {
+    return false;
+  }
 };
