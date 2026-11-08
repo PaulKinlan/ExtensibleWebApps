@@ -25,7 +25,7 @@ export default function (ctx) { ... }
 
 ## Where plugins come from, and settings
 
-Built-in plugins ship with the app. A plugin installed at run time is kept in the data folder as `plugins/<id>.js`, so it travels with the data, and the next kernel to open that folder loads it again. A plugin in the data folder replaces the built-in one with the same id. Ids the kernel uses for its own views and services (`kernel`, `host`, `notes`, `plugins`, `store`, `settings`, `audio`) are refused, so a plugin can't pass for the kernel's own panels.
+The kernel has no plugins of its own: a page runs the plugins it links, and the workbench links the demo plugins in `plugins/`. A plugin installed at run time is kept in the data folder as `plugins/<id>.js`, so it travels with the data, and the next kernel to open that folder loads it again. Ids the kernel uses for its own views and services (`kernel`, `host`, `notes`, `plugins`, `store`, `settings`, `audio`) are refused, so a plugin can't pass for the kernel's own panels.
 
 The plugins panel (`src/kernel/catalog.ts`, in the side bar) lists every plugin and where it came from. Any plugin can be turned off, which stops its workers but keeps it installed. Plugins kept with the data can also be removed, which deletes their file. A plugin stopped for changing its manifest is removed the same way.
 
