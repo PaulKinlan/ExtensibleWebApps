@@ -27,6 +27,8 @@ type Kept<T> = T & { dup?: () => T };
 /** What the supervisor gives the kernel: where plugins run, and the site's files. */
 export interface SpaceHost extends IsolateHost {
   site(url: string): Promise<Response>;
+  /** The space's members' email addresses (the email service mails only these). */
+  addresses(): Promise<string[]>;
   /** Sets the space's alarm for the earliest scheduled job, or clears it. */
   wake(at: number | undefined): Promise<void>;
 }
@@ -91,6 +93,7 @@ export class SpaceKernel extends DurableObject {
         ...(host && {
           isolates: remoteIsolates(host, (name, error) => console.error(`Plugin ${name}:`, error)),
           site: (url: string) => host.site(url),
+          addresses: () => host.addresses(),
         }),
         onError: (report) => {
           addEventListener("error", (e) => report("kernel:error", String((e as ErrorEvent).message ?? e)));
