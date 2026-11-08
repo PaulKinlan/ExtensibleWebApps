@@ -320,6 +320,34 @@ Needs: nothing.
 
 This API reference, as the kernel describes itself.
 
+### llm
+
+Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js). The caller never holds a key.
+
+#### llm.complete
+
+`llm.complete({ messages, system?, tools?, schema?, model?, maxTokens?, provider? })` → { text, json?, toolCalls, stop, usage: { input, output }, provider, model, message }
+
+Needs: `llm`.
+
+Asks a model. messages are { role: "user" | "assistant", content }, an assistant's { toolCalls: [{ id, name, args }], state }, or a tool's answer { role: "tool", id, name, content }; add each answer's message to messages to go on. tools are [{ name, description, parameters }]; schema (the platform's JSON Schema subset, as collections use) asks for an answer of that shape, in json, checked before it's returned. model is an id or a tier: best, balanced or fast (the default is the provider's setting). Without provider, the first ready one answers.
+
+#### llm.models
+
+`llm.models(provider?)` → { models: [{ id, name? }], tiers: { best, balanced, fast }, provider }
+
+Needs: `llm`.
+
+The models a provider's vendor serves now (the first ready provider's, without one), and the model each tier stands for.
+
+#### llm.providers
+
+`llm.providers()` → [{ id, name, model?, ready }]
+
+Needs: `llm`.
+
+The providers the caller's app links; ready means it has its key.
+
 ### net
 
 Web requests the kernel makes for a plugin, to the hosts its manifest names. A header can hold a secret the plugin never sees.
@@ -478,6 +506,30 @@ Mode: `emit`. Listening needs `debug:read`.
 
 Listeners get `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]`.
 
+### `llm:complete`
+
+Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }. Listening needs provide:llm.
+
+Mode: `bail`, 660000 ms per listener, fails open. Listening needs `provide:llm`.
+
+Listeners get `request, with provider set to the id of the provider that should answer`.
+
+### `llm:models`
+
+Asks the provider named in provider which models its vendor serves. Answer { models: [{ id, name? }], tiers: { best, balanced, fast } }, or { error }. Listening needs provide:llm.
+
+Mode: `bail`, 30000 ms per listener, fails open. Listening needs `provide:llm`.
+
+Listeners get `{ provider }`.
+
+### `llm:providers`
+
+Asks which language models are available. A provider returns { providers: [...providers, itself] }. Listening needs provide:llm.
+
+Mode: `waterfall`, 2000 ms per listener, fails open. Listening needs `provide:llm`.
+
+Listeners get `{ providers: [{ id, name, model?, ready }] }`.
+
 ### `note:change`
 
 The person typed in the open note (unsaved is true).
@@ -546,6 +598,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:notes` | Call store.put. |
 | `debug:read` | Call debug.recent, debug.app. |
 | `files:<folder>` | Call files.read, files.write. |
+| `llm` | Call llm.providers, llm.models, llm.complete. |
 | `network:<host>` | Call net.fetch. |
 | `plugins:author` | Call authoring.source, authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file, authoring.check. |
 | `plugins:manage` | Call plugins.setEnabled. |
@@ -588,6 +641,7 @@ Reserved ids, which no plugin can take:
 - `files`
 - `host`
 - `kernel`
+- `llm`
 - `net`
 - `notes`
 - `page`
