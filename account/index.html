@@ -93,7 +93,12 @@
         $("in").hidden = !user;
         $("out").hidden = !!user;
         $("who").textContent = user?.name ?? "";
-        if (!user) return;
+        // An invite made before signing out isn't for whoever signs in next.
+        if (!user) {
+          $("invite-link").hidden = true;
+          $("invite-url").value = "";
+          return;
+        }
         // Signed in with an invite in the address: join that space, once.
         const invite = new URLSearchParams(location.search).get("invite");
         if (invite) {

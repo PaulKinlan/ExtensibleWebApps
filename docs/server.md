@@ -57,7 +57,7 @@ What isn't there yet:
 - **Plugins don't run on the server.** On a server no client starts plugin workers. The `isolate` seam does that, with server plugins (step 7).
 - **Tabs don't sync with a space yet.** That's step 6.
 
-Options: `node src/server/serve.ts --port 8787 --host 127.0.0.1 --spaces .spaces --site dist`. [`tests/server/run.mjs`](../tests/server/run.mjs) checks it (`npm run test:server`, or `node tests/server/run.mjs node` for this host only), and `npm test` runs those checks too.
+Options: `node src/server/serve.ts --port 8787 --host 127.0.0.1 --spaces .spaces --site dist`. Behind a proxy that speaks HTTPS, add `--origin https://your.host` (or set `PUBLIC_ORIGIN`), so sign-in sees the address people use. [`tests/server/run.mjs`](../tests/server/run.mjs) checks it (`npm run test:server`, or `node tests/server/run.mjs node` for this host only), and `npm test` runs those checks too.
 
 ## The Cloudflare host
 
@@ -105,6 +105,8 @@ A space holds people and their data (collections and plugins), and any app can o
 | `POST /auth/spaces/<name>/invite` | A one-time invite, for a week (its owner only). `/account/?invite=<token>` accepts it once the person signs in or makes an account. |
 | `POST /auth/invites/accept` | `{ token }` joins the space the invite is for, and uses the invite up. |
 | `POST /auth/spaces/<name>/leave` | Leaves it. Its owner can give `{ user }` to remove someone, and can't leave it. |
+
+Every change under `/auth/` runs one at a time, so a challenge or an invite is used once and a name gets one owner, on both hosts. Someone who leaves a space, or is removed, is disconnected from it at once.
 
 What the kernel of a space doesn't know yet is *which* member a client is. That arrives with sync (step 6), where changes carry who made them.
 

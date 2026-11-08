@@ -41,6 +41,8 @@ export interface Options {
   kernel: string;
   /** Other sites to sign in with (src/server/auth/providers.ts); run directly, they come from the environment. */
   providers?: Provider[];
+  /** The address people reach this server at, such as https://example.com, when a proxy in front of it speaks HTTPS. */
+  origin?: string;
 }
 
 /** Starts the server; resolves once it is listening, with a way to stop it. */
@@ -49,7 +51,13 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
   const spaces = new Map<string, Promise<Worker>>();
   const rules = headerRules(join(site, "_headers"));
   // Accounts sit beside the spaces, in a folder no space's name can match.
-  const auth = accounts(nodeFiles(join(resolve(options.spaces), "_accounts")), options.providers ?? []);
+  /** Each open client's space and member, so someone who leaves a space is let go at once. */
+  const clients = new Map<{ close(code?: number, reason?: string): void }, { space: string; user: string }>();
+  const auth = accounts(nodeFiles(join(resolve(options.spaces), "_accounts")), options.providers ?? [], {
+    left(space, user) {
+      for (const [socket, who] of clients) if (who.space === space && who.user === user) socket.close(4403, "You're no longer in this space");
+    },
+  });
 
   /** The space's kernel, started on first use. */
   const space = (name: string): Promise<Worker> => {
@@ -106,7 +114,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     const headers = new Headers();
     for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
     const body = request.method === "GET" || request.method === "HEAD" ? undefined : Buffer.concat(chunks);
-    const answer = await auth.handle(new Request(`http://${request.headers.host ?? "localhost"}${request.url}`, { method: request.method, headers, body }));
+    const answer = await auth.handle(new Request(`${options.origin?.replace(/\/$/, "") ?? `http://${request.headers.host ?? "localhost"}`}${request.url}`, { method: request.method, headers, body }));
     if (!answer) return void response.writeHead(404).end();
     // Each cookie its own header: joined into one, the browser would read only the first.
     const out: Record<string, string | string[]> = Object.fromEntries([...answer.headers].filter(([name]) => name !== "set-cookie"));
@@ -144,7 +152,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     if (!sameOrigin(request.headers.origin, request.headers.host)) return void raw.end("HTTP/1.1 403 Forbidden\r\n\r\n");
     // Only the space's members may join it.
     const cookie = typeof request.headers.cookie === "string" ? request.headers.cookie : "";
-    const member = await auth.member(new Request(`http://${request.headers.host ?? "localhost"}/`, { headers: { cookie } }), match[1]).catch(() => null);
+    const member = await auth.member(new Request("http://localhost/", { headers: { cookie } }), match[1]).catch(() => null);
     if (!member) return void raw.end("HTTP/1.1 403 Forbidden\r\n\r\n");
     let kernel: Worker;
     try {
@@ -155,7 +163,11 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     const socket = accept(request, raw);
     if (!socket) return;
     open.add(raw);
-    raw.on("close", () => open.delete(raw));
+    clients.set(socket, { space: match[1], user: member.user.id });
+    raw.on("close", () => {
+      open.delete(raw);
+      clients.delete(socket);
+    });
     // One port per client, as a tab gets one; messages cross as JSON.
     const { port1, port2 } = new MessageChannel();
     kernel.postMessage({ t: "connect", port: port2 }, [port2]);
@@ -236,6 +248,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     site: arg("site", "dist"),
     kernel: arg("kernel", ".build/server/space.js"),
     providers: providersFrom(process.env),
+    origin: arg("origin", process.env.PUBLIC_ORIGIN ?? "") || undefined,
   });
   console.log(`Serving ${arg("site", "dist")} at ${url}; spaces at ${url.replace("http", "ws")}/s/<space>/kernel, kept in ${arg("spaces", ".spaces")}/`);
 }

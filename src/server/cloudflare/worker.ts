@@ -38,7 +38,18 @@ interface KernelStub {
   leave(client: string): Promise<void>;
 }
 
+/** The header the Worker names a space's client's member with, for the space to know them by. */
+const MEMBER = "x-ewa-member";
+
 export class Space extends DurableObject<Env> {
+  /** The open clients, by the member each one is. */
+  private clients = new Map<WebSocket, string>();
+
+  /** Someone left the space, or was removed: their connections close at once. */
+  async revoke(user: string): Promise<void> {
+    for (const [socket, who] of this.clients) if (who === user) socket.close(4403, "You're no longer in this space");
+  }
+
   /** The space's kernel, a facet running the kernel's class from its own isolate. */
   private kernel(space: string): KernelStub {
     const worker = this.env.LOADER.get(`space:${space}:${KERNEL_VERSION}`, async () => ({
@@ -57,6 +68,7 @@ export class Space extends DurableObject<Env> {
     const kernel = this.kernel(space);
     const { 0: client, 1: server } = new WebSocketPair();
     server.accept();
+    this.clients.set(server, request.headers.get(MEMBER) ?? "");
     const id = crypto.randomUUID();
     // The client's messages wait for the kernel to be ready for them, in order.
     let ready = kernel.join(id, url.origin, (text) => server.send(text));
@@ -64,7 +76,10 @@ export class Space extends DurableObject<Env> {
     server.addEventListener("message", (e) => {
       ready = ready.then(() => kernel.deliver(id, String(e.data))).catch(() => server.close(1011, "The kernel stopped"));
     });
-    server.addEventListener("close", () => void ready.then(() => kernel.leave(id)).catch(() => {}));
+    server.addEventListener("close", () => {
+      this.clients.delete(server);
+      void ready.then(() => kernel.leave(id)).catch(() => {});
+    });
     return new Response(null, { status: 101, webSocket: client });
   }
 }
@@ -72,15 +87,17 @@ export class Space extends DurableObject<Env> {
 /** Every account, their passkeys and sessions: one object, so a passkey is only ever registered once. */
 export class Accounts extends DurableObject<Env> {
   // Other sites to sign in with come from the Worker's vars (AUTH_PROVIDERS) and secrets (<ID>_CLIENT_SECRET).
-  private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql), providersFrom(this.env as unknown as Record<string, unknown>));
+  private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql), providersFrom(this.env as unknown as Record<string, unknown>), {
+    left: (space, user) => this.env.SPACE.getByName(space).revoke(user),
+  });
 
   async fetch(request: Request): Promise<Response> {
     return (await this.auth.handle(request)) ?? new Response("Not found", { status: 404 });
   }
 
-  /** Whether the session in a cookie header is one of a space's members. */
-  async member(cookie: string, space: string): Promise<boolean> {
-    return !!(await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space));
+  /** Which member of a space the session in a cookie header is, if it's one. */
+  async member(cookie: string, space: string): Promise<string | null> {
+    return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.user.id ?? null;
   }
 }
 
@@ -94,7 +111,10 @@ export default {
     // client must come from this site's own pages. A client that isn't a browser sends no Origin.
     const origin = request.headers.get("origin");
     if (origin !== null && origin !== new URL(request.url).origin) return new Response("Not from this site", { status: 403 });
-    if (!(await env.ACCOUNTS.getByName("accounts").member(request.headers.get("cookie") ?? "", space))) return new Response("Only the space's members may join it", { status: 403 });
-    return env.SPACE.getByName(space).fetch(request);
+    const member = await env.ACCOUNTS.getByName("accounts").member(request.headers.get("cookie") ?? "", space);
+    if (!member) return new Response("Only the space's members may join it", { status: 403 });
+    const forward = new Request(request);
+    forward.headers.set(MEMBER, member);
+    return env.SPACE.getByName(space).fetch(forward);
   },
 } satisfies ExportedHandler<Env>;
