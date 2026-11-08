@@ -5,11 +5,15 @@
 -->
 <template>
   <style>
-    :host { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-4); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); min-width: 0; }
-    :host([tone="accent"]) { border-color: var(--accent); }
-    :host([tone="ok"]) { border-color: var(--ok); }
-    :host([tone="warn"]) { border-color: var(--warn); }
-    :host([tone="danger"]) { border-color: var(--danger); }
+    /* A tone is a stripe along the top edge, drawn inside the border so the card keeps its shape. */
+    :host { --tone: transparent; display: flex; flex-direction: column; gap: var(--space-3); padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1), inset 0 3px 0 var(--tone); min-width: 0; }
+    :host([tone="accent"]) { --tone: var(--accent); }
+    :host([tone="ok"]) { --tone: var(--ok); }
+    :host([tone="warn"]) { --tone: var(--warn); }
+    :host([tone="danger"]) { --tone: var(--danger); }
+    ::slotted(:is(h2, h3, h4)) { margin: 0; font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.01em; }
+    ::slotted(p) { margin: 0; }
+    @media (max-width: 600px) { :host { padding: var(--space-4); } }
   </style>
   <slot></slot>
 </template>
