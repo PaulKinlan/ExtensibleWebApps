@@ -1,7 +1,8 @@
 <!--
   The cookbook. cookbook.js sends { open, editing, recipe }: with a recipe
   open, recipe has its fields plus people (who it's scaled for), lines (the
-  scaled ingredients) and steps.
+  scaled ingredients) and steps. The open recipe declares a slot,
+  cookbook.recipe.actions, that other plugins fill.
 -->
 <template id="cookbook">
   <template if="recipe">
@@ -23,6 +24,8 @@
           <ui-spacer></ui-spacer>
           <template if="recipe.minutes"><ui-badge>{{recipe.minutes}} min</ui-badge></template>
         </ui-toolbar>
+        <!-- A room other plugins fill (timer.js puts a button here); data-* says which recipe it is for. -->
+        <slot name="cookbook.recipe.actions" data-id="{{open}}" data-title="{{recipe.title}}" data-minutes="{{recipe.minutes}}"></slot>
         <h3>Ingredients</h3>
         <ul><template for="line of recipe.lines"><li>{{line}}</li></template></ul>
         <template if="recipe.steps.length">

@@ -256,7 +256,11 @@ hosts.onMessage = async (host, message) => {
       if (message.owner === "review") return reviews.event(message.action, message.trace);
       if (message.owner === "secrets") return secrets.event(message.action, message.value);
       if (message.owner === "plugins") return void plugins.event(message.action, message.value, message.trace);
-      return remote.deliver(message.owner, { t: "event", action: message.action, value: message.value, trace: message.trace });
+      {
+        // The page may name a plugin rather than its instance (it tells a plugin its place changed): a tab-scoped one is this tab's.
+        const owner = remote.live.has(message.owner) || message.owner.includes("@") ? message.owner : `${message.owner}@${host.tab}`;
+        return remote.deliver(remote.live.has(owner) ? owner : message.owner, { t: "event", action: message.action, value: message.value, trace: message.trace });
+      }
     case "spawned":
       return remote.attach(message.plugin, host, message.port);
     case "canvas":

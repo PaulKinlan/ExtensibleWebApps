@@ -562,7 +562,7 @@ Fetches `url` (https:, or http: on localhost) and returns the answer as text, up
 
 ### page
 
-The app's own page, as far as a plugin's places reach into it.
+The app's own page, as far as a plugin's places reach into it, and the slots plugins declare in their views.
 
 #### page.matches
 
@@ -570,7 +570,15 @@ The app's own page, as far as a plugin's places reach into it.
 
 Needs: `ui`.
 
-What one of the plugin's places matches in the page: each element's text (up to 500 characters) and its data-* attributes, in page order. A plugin with `each: true` draws a view per match by rendering to `<place>#<index>`.
+What one of the plugin's places matches in the page: each element's text (up to 500 characters) and its data-* attributes, in page order. A plugin with `each: true` draws a view per match by rendering to `<place>#<index>`. When a transform's matches change (the plugin it changes drew again), the plugin hears the event "place:changed" with { place }.
+
+#### page.slots
+
+`page.slots(name)` → [{ data }]
+
+Needs: `ui`.
+
+The slots of a name that plugins declared in their views (`<slot name="cookbook.recipe.actions" data-id="7">`): each one's data-* attributes, in page order. Rendering to the name draws in every one; rendering to `<name>#<index>` draws in one. From then on, the plugin hears the event "slot:changed" with { slot } when those slots come, go or change.
 
 ### plugins
 
@@ -1005,6 +1013,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `ui` | Draw views with ctx.ui.render. |
 | `routes` | Answer requests for paths in the plugin's own folder with ctx.routes.add. |
 | `network` | Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere. |
+| `ui:transform:<plugin>` | Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `agents:run:<agent>` | Call agents.run. |
@@ -1032,7 +1041,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `share` | Call share.send, share.take. |
 | `transfer` | Call transfer.collections, transfer.export, transfer.import. |
-| `ui` | Call page.matches. |
+| `ui` | Call page.matches, page.slots. |
 
 Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
 
@@ -1057,7 +1066,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
 | `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
-| `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin's view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
+| `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin's view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
 Reserved ids, which no plugin can take:
@@ -1210,6 +1219,7 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<meter>` | `value`, `min`, `max`, `low`, `high`, `optimum` |  |
 | `<time>` | `datetime` |  |
 | `<abbr>` |  |  |
+| `<slot>` | `name` | A room in this view that other plugins fill: `<slot name="<your plugin id>.<room>" data-id="…">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md |
 
 ## Views and slots
 

@@ -128,12 +128,14 @@ export interface Opened {
 /**
  * Where a plugin's view goes in a page that has no slot for it: `at` is a CSS selector run against the
  * app's own page, and `put` says what happens there. The view is drawn by rendering to the place's name,
- * as to a slot. `each` uses every match instead of the first.
+ * as to a slot. `each` uses every match instead of the first. With `in`, the selector runs inside that
+ * plugin's views instead (a view transform), which needs the permission `ui:transform:<in>`.
  */
 export interface Place {
   at: string;
   put: "before" | "after" | "prepend" | "append" | "replace" | "hide";
   each?: boolean;
+  in?: string;
 }
 
 // kernel <-> plugin worker

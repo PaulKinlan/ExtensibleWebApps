@@ -46,7 +46,7 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   collections: "Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking.",
   settings: "Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form.",
   places:
-    'Optional. Up to 20 places in the app\'s page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin\'s view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md.',
+    'Optional. Up to 20 places in the app\'s page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin\'s view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md.',
   files:
     "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app.",
 };
@@ -104,10 +104,14 @@ function validatePlaces(places: unknown, permissions: string[]) {
   for (const [name, spec] of entries) {
     if (!/^[a-z][\w-]{0,63}$/.test(name)) throw new ManifestError(`Place ${name}: names are lowercase letters, digits, - and _`);
     const p = spec as Record<string, unknown>;
-    if (!p || typeof p !== "object" || Array.isArray(p)) throw new ManifestError(`Place ${name} must be { at, put, each? }`);
+    if (!p || typeof p !== "object" || Array.isArray(p)) throw new ManifestError(`Place ${name} must be { at, put, each?, in? }`);
     if (typeof p.at !== "string" || !p.at.trim() || p.at.length > 300) throw new ManifestError(`Place ${name} needs \`at\`, a CSS selector of up to 300 characters`);
     if (!PUTS.includes(p.put as (typeof PUTS)[number])) throw new ManifestError(`Place ${name}: \`put\` is one of ${PUTS.join(", ")}`);
     if (p.each !== undefined && typeof p.each !== "boolean") throw new ManifestError(`Place ${name}: \`each\` is true or false`);
+    if (p.in !== undefined) {
+      if (typeof p.in !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(p.in)) throw new ManifestError(`Place ${name}: \`in\` is the id of the plugin whose views it changes`);
+      if (!permissions.includes(`ui:transform:${p.in}`)) throw new ManifestError(`Place ${name} changes ${p.in}'s views, which needs the permission ui:transform:${p.in}`);
+    }
   }
 }
 

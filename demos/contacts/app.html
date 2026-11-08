@@ -6,6 +6,8 @@
   birthdays.js    reads the contacts and lists the birthdays coming up
   vcard-import.js adds people from pasted vCards; the contacts aren't its
                   own, so the person reviews each one
+  next-meeting.js changes the birthdays plugin's view (a view transform):
+                  it adds each person's next calendar event to their row
 
   The calendar app reads these contacts too, for its birthdays, even when
   this app isn't open: see ../calendar/agenda.js.
@@ -21,6 +23,7 @@
   <link rel="plugin" href="people.js">
   <link rel="plugin" href="birthdays.js">
   <link rel="plugin" href="vcard-import.js">
+  <link rel="plugin" href="next-meeting.js">
   <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
   <link rel="plugin" href="/std/debug-console.js">
 </head>

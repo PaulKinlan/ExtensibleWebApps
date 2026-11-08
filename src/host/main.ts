@@ -240,6 +240,9 @@ function clearOwner(plugin: string) {
       const container = containerOf.get(entry);
       if (container) afterChange(container, slot);
     }
+  // Its views went, and with them the slots it declared and what other plugins' transforms matched in them.
+  pagePlaces.redo(plugin);
+  syncDeclared(plugin);
 }
 
 // ---- Slots ----
@@ -266,9 +269,73 @@ function withFallback(container: HTMLElement): HTMLElement {
 function slotFor(name: Slot, owner: string): [string, HTMLElement][] {
   // A review card must be seen, wherever the person is on the page: it goes in a dialog of the host's own.
   if (ALWAYS.has(owner)) return [["#review", reviewDialog()]];
-  const slot = document.querySelector<HTMLElement>(`slot[name="${CSS.escape(name)}"]`);
+  const slot = pageSlot(name);
   if (slot) return [[name, withFallback(slot)]];
-  return (pagePlaces.containers(pluginOf(owner), name) ?? []).map(([id, c]) => [id, withFallback(c)]);
+  return (pagePlaces.containers(pluginOf(owner), name) ?? declaredSlots(name)).map(([id, c]) => [id, withFallback(c)]);
+}
+
+/** The page's own <slot name>, not one a plugin declared in its view. */
+const pageSlot = (name: Slot) => [...document.querySelectorAll<HTMLElement>(`slot[name="${CSS.escape(name)}"]`)].find((slot) => !slot.closest("[data-plugin]"));
+
+// ---- Slots plugins declare ----
+//
+// A plugin's view may hold <slot name="cookbook.recipe.actions" data-id="7">:
+// a room other plugins fill, named for the plugin that declared it (the
+// sanitiser drops any other name). A render to that name draws in every such
+// slot on the page, and a render to `name#2` in the third; page.slots tells
+// a plugin each one's data-* attributes. Morphing a view leaves what is in
+// its slots alone. When the slots of a name come, go or change, the plugins
+// that drew there hear "slot:changed", so they can draw for each again.
+
+/** The slots of a name that plugins declared, in page order, each with the id its entries are kept under. */
+function declaredSlots(name: Slot): [string, HTMLElement][] {
+  const [base, index] = name.split("#");
+  const declarer = base.split(".")[0];
+  if (!base.includes(".")) return [];
+  const all = [...document.querySelectorAll<HTMLElement>(`slot[name="${CSS.escape(base)}"]`)].filter((slot) => slot.closest<HTMLElement>("[data-plugin]")?.dataset.plugin === declarer);
+  const ids = all.map((slot, i): [string, HTMLElement] => [`${base}#${i}`, slot]);
+  return index === undefined ? ids : ids.filter((_, i) => String(i) === index);
+}
+
+/** What each declared slot of a name holds, for page.slots: its data-* attributes. */
+const slotData = (name: Slot) => declaredSlots(name).map(([, slot]) => ({ data: { ...slot.dataset } as Record<string, string> }));
+
+/** The plugins that asked page.slots about a name: they hear when its slots change, even before they draw there. */
+const slotWatchers = new Map<Slot, Set<string>>();
+
+/** What the slots of each name looked like when last drawn into. */
+const slotsSeen = new Map<Slot, string>();
+
+/** After a plugin's view changed: fill the slots it declares that are new, and tell the fillers if they changed. */
+function syncDeclared(plugin: string) {
+  const names = new Set<Slot>([...slotsSeen.keys()].filter((name) => name.startsWith(`${plugin}.`)));
+  for (const slot of document.querySelectorAll<HTMLElement>(`[data-plugin="${CSS.escape(plugin)}"] slot[name^="${CSS.escape(plugin)}."]`)) names.add(slot.getAttribute("name")!);
+  for (const name of names) {
+    const seen = JSON.stringify(slotData(name));
+    if (seen === slotsSeen.get(name)) continue;
+    slotsSeen.set(name, seen);
+    if (seen === "[]") slotsSeen.delete(name);
+    const now = new Map(declaredSlots(name));
+    // Entries whose slot went, or now has another index, go; they are drawn again below.
+    for (const [id, entries] of slots) {
+      if (!id.startsWith(`${name}#`)) continue;
+      for (const [key, entry] of entries)
+        if (now.get(id) !== containerOf.get(entry)) {
+          entry.el.remove();
+          entries.delete(key);
+        }
+      if (!entries.size) slots.delete(id);
+    }
+    const owners = new Set<string>();
+    for (const args of [...placeRenders.values()])
+      if (args[0].split("#")[0] === name) {
+        owners.add(args[2]);
+        render(...args);
+      }
+    // A plugin that asked by its id is told by its id, unless one of its instances drew here.
+    for (const plugin of slotWatchers.get(name) ?? []) if (![...owners].some((o) => pluginOf(o) === plugin)) owners.add(plugin);
+    for (const owner of owners) send({ t: "event", owner, action: "slot:changed", value: { slot: name }, trace: newTrace() });
+  }
 }
 
 // ---- Places ----
@@ -282,10 +349,17 @@ const placeRenders = new Map<string, [Slot, string, string, number, View]>();
 const containerOf = new WeakMap<Entry, HTMLElement>();
 const pagePlaces = makePlaces({
   ask: (plugin, place, target, what) => command("place:ask", { app, plugin, place, target, what }).then(Boolean),
-  changed: (plugin, name) => {
+  changed: (plugin, name, moved) => {
     // That place's containers are new: forget the entries that were in its old ones, then draw it again.
     for (const id of [...slots.keys()]) if (id.startsWith(`${plugin}/${name}#`)) slots.delete(id);
-    for (const args of [...placeRenders.values()]) if (pluginOf(args[2]) === plugin && args[0].split("#")[0] === name) render(...args);
+    const owners = new Set<string>();
+    for (const args of [...placeRenders.values()])
+      if (pluginOf(args[2]) === plugin && args[0].split("#")[0] === name) {
+        owners.add(args[2]);
+        render(...args);
+      }
+    // What it matches changed (a transformed view drew again): the plugin may want to draw for each match anew.
+    if (moved) for (const owner of owners.size ? owners : [plugin]) send({ t: "event", owner, action: "place:changed", value: { place: name }, trace: newTrace() });
   },
   report: (text) => report("place", text),
 });
@@ -368,7 +442,7 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
   else drawn.delete(id);
   const targets = slotFor(slot, owner);
   // Not a slot in this page: remember it, in case it is for a place that isn't ready yet.
-  const isPlace = !ALWAYS.has(owner) && !document.querySelector(`slot[name="${CSS.escape(slot)}"]`);
+  const isPlace = !ALWAYS.has(owner) && !pageSlot(slot);
   if (isPlace) {
     // A view to every match replaces what was drawn to one of them, so drawing again later gives the same page.
     if (!slot.includes("#")) for (const [other, args] of placeRenders) if (args[1] === key && pluginOf(args[2]) === pluginOf(owner) && args[0].startsWith(`${slot}#`)) placeRenders.delete(other);
@@ -378,7 +452,7 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
   }
   // A view to `name` also clears what was drawn to `name#i`, and the other way round, so keys stay unique per container.
   for (const [slotId, container] of targets) drawIn(slotId, container, key, owner, order, view);
-  if (isPlace && !view && !slot.includes("#")) for (const [slotId, entries] of slots) if (slotId.startsWith(`${pluginOf(owner)}/${slot.split("#")[0]}#`) && entries.has(key)) {
+  if (isPlace && !view && !slot.includes("#")) for (const [slotId, entries] of slots) if ((slotId.startsWith(`${pluginOf(owner)}/${slot}#`) || slotId.startsWith(`${slot}#`)) && entries.has(key)) {
     const entry = entries.get(key)!;
     entry.el.remove();
     entries.delete(key);
@@ -390,10 +464,13 @@ function drawIn(slot: string, container: HTMLElement, key: string, owner: string
   const entries = slots.get(slot) ?? new Map<string, Entry>();
   slots.set(slot, entries);
   const old = entries.get(key);
+  const plugin = pluginOf(owner);
   if (!view) {
     old?.el.remove();
     entries.delete(key);
     afterChange(container, slot);
+    pagePlaces.redo(plugin);
+    syncDeclared(plugin);
     return;
   }
   const next = document.createElement("div");
@@ -404,6 +481,8 @@ function drawIn(slot: string, container: HTMLElement, key: string, owner: string
   if (entry) {
     setOwner(entry.el, owner);
     entry.el.dataset.plugin = next.dataset.plugin;
+    // Other plugins' changes to this view come off while it updates, and go back on after.
+    pagePlaces.lift(plugin);
     morphChildren(entry.el, next);
     entry.owner = owner;
     entry.order = order;
@@ -423,6 +502,8 @@ function drawIn(slot: string, container: HTMLElement, key: string, owner: string
     const live = canvases.get(placeholder.dataset.canvas!);
     if (live && live !== placeholder) placeholder.replaceWith(live);
   }
+  pagePlaces.redo(plugin);
+  syncDeclared(plugin);
 }
 
 // ---- Plugin workers (spawner tab only) ----
@@ -443,7 +524,14 @@ function spawn(plugin: string, source: string, network: boolean) {
 
 // ---- Bridges to page-only APIs: a file each in bridges/ ----
 
-const bridge = bridges({ workers, places: pagePlaces });
+const bridge = bridges({
+  workers,
+  places: pagePlaces,
+  declared: (plugin, name) => {
+    slotWatchers.set(name, (slotWatchers.get(name) ?? new Set()).add(plugin));
+    return slotData(name);
+  },
+});
 
 function notice(text: string, reported = true) {
   if (reported) report("notice", text);

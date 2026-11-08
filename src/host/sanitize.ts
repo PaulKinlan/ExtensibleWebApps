@@ -56,6 +56,11 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
     const el = child as Element;
     const tag = el.localName;
     if (DROPPED_WITH_CONTENT.has(tag)) continue;
+    // A slot is a room the plugin opens to others, so its name must be the plugin's own: `cookbook.recipe.actions`.
+    if (tag === "slot" && !(el.getAttribute("name") ?? "").startsWith(`${owner.split("@")[0]}.`)) {
+      copy(el, into, owner, remote, base);
+      continue;
+    }
     if (!(tag in ELEMENTS) && !(tag in COMPONENTS)) {
       copy(el, into, owner, remote, base); // unwrap: keep the text, lose the element
       continue;
