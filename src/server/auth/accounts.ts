@@ -38,20 +38,57 @@ interface Challenge {
   /** For a registration: the account it adds to (new or signed in), and that account's name. */
   user?: string;
   name?: string;
+  /** For one more passkey on an account: the session that asked, which must still be signed in. */
+  session?: string;
 }
 
 const COOKIE = "ewa-session";
 const SESSION_MS = 30 * 24 * 3600_000;
 const CHALLENGE_MS = 5 * 60_000;
-const ID = /^[A-Za-z0-9_-]{1,512}$/;
+const ID = /^[A-Za-z0-9_-]{1,1400}$/;
+const MAX_BODY = 64 * 1024;
+const SWEEP_MS = 10 * 60_000;
 
 const random = (n: number) => b64url(crypto.getRandomValues(new Uint8Array(n)));
 const hash = async (text: string) => b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))));
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
 
+/** A request's body, read only up to `limit` bytes: null if it's longer. */
+async function bodyOf(request: Request, limit: number): Promise<string | null> {
+  if (Number(request.headers.get("content-length") ?? 0) > limit) return null;
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > limit) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) all.set(chunk, (at += chunk.byteLength) - chunk.byteLength);
+  return new TextDecoder().decode(all);
+}
+
 /** The routes, for a host to call with each request under /auth/. */
 export function accounts(files: Files) {
+  // Every change runs one at a time: a check and the write that follows it
+  // (a challenge used once, a passkey's counter, a new name) can't interleave
+  // with another request's, on either host.
+  let queue: Promise<unknown> = Promise.resolve();
+  const serial = <T>(task: () => Promise<T>): Promise<T> => {
+    const run = queue.then(task, task);
+    queue = run.catch(() => {});
+    return run;
+  };
+
   const read = async <T>(path: string): Promise<T | null> => {
     const text = await files.readText(path);
     return text === null ? null : (JSON.parse(text) as T);
@@ -85,8 +122,11 @@ export function accounts(files: Files) {
     return json({ user }, 200, { "set-cookie": `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure}` });
   };
 
-  /** Clears challenges and sessions that have run out, so they don't pile up. */
+  /** Clears challenges and sessions that have run out, so they don't pile up: at most every ten minutes. */
+  let swept = 0;
   const sweep = async () => {
+    if (Date.now() - swept < SWEEP_MS) return;
+    swept = Date.now();
     for (const path of [...(await files.list("challenges/")), ...(await files.list("sessions/"))]) {
       const found = await read<{ expires: number }>(path);
       if (!found || found.expires < Date.now()) await files.remove(path);
@@ -106,7 +146,6 @@ export function accounts(files: Files) {
     async handle(request: Request): Promise<Response | undefined> {
       const url = new URL(request.url);
       const route = `${request.method} ${url.pathname}`;
-      const where = { origin: url.origin, rpId: url.hostname };
 
       if (route === "GET /auth/me") {
         const current = await session(request);
@@ -115,83 +154,16 @@ export function accounts(files: Files) {
       if (request.method !== "POST" || !url.pathname.startsWith("/auth/")) return undefined;
       // Only this site's own pages may sign in or out (a form on another site can't).
       if (request.headers.get("origin") !== url.origin) return json({ error: "Not from this site" }, 403);
+      const text = await bodyOf(request, MAX_BODY);
+      if (text === null) return json({ error: "Too big" }, 413);
       let body: Record<string, unknown> = {};
       try {
-        const text = await request.text();
-        if (text.length > 64 * 1024) return json({ error: "Too big" }, 413);
         if (text) body = JSON.parse(text);
       } catch {
         return json({ error: "JSON only" }, 400);
       }
-
-      switch (url.pathname) {
-        case "/auth/register/options": {
-          const current = await session(request);
-          const name = current?.user.name ?? String(body.name ?? "").trim().slice(0, 64);
-          if (!name) return json({ error: "A name, please" }, 400);
-          const user = current?.user.id ?? random(16);
-          const challenge = random(32);
-          await sweep();
-          await write(`challenges/${challenge}.json`, { kind: "register", expires: Date.now() + CHALLENGE_MS, user, name } satisfies Challenge);
-          const existing = current ? await credentials(user) : [];
-          return json({
-            challenge,
-            rp: { id: where.rpId, name: "Extensible Web Apps" },
-            user: { id: user, name, displayName: name },
-            pubKeyCredParams: ALGORITHMS.map((alg) => ({ type: "public-key", alg })),
-            authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
-            attestation: "none",
-            excludeCredentials: existing.map((c) => ({ type: "public-key", id: c.id })),
-            timeout: CHALLENGE_MS,
-          });
-        }
-        case "/auth/register": {
-          const credential = body as unknown as CredentialJSON;
-          const challenge = clientChallenge(credential);
-          const found = await take(challenge, "register");
-          if (!found?.user || !found.name) return json({ error: "That registration has expired; try again" }, 400);
-          let made;
-          try {
-            made = await verifyRegistration(credential, { challenge: challenge!, ...where });
-          } catch (error) {
-            return json({ error: String((error as Error).message ?? error) }, 400);
-          }
-          if (await files.readText(`credentials/${made.id}.json`)) return json({ error: "That passkey is already registered" }, 409);
-          const user = (await read<User>(`users/${found.user}.json`)) ?? { id: found.user, name: found.name, created: Date.now() };
-          await write(`users/${user.id}.json`, user);
-          await write(`credentials/${made.id}.json`, { id: made.id, user: user.id, key: made.key, counter: made.counter, created: Date.now() } satisfies Credential);
-          return signIn(request, user);
-        }
-        case "/auth/signin/options": {
-          const challenge = random(32);
-          await sweep();
-          await write(`challenges/${challenge}.json`, { kind: "signin", expires: Date.now() + CHALLENGE_MS } satisfies Challenge);
-          return json({ challenge, rpId: where.rpId, userVerification: "preferred", allowCredentials: [], timeout: CHALLENGE_MS });
-        }
-        case "/auth/signin": {
-          const credential = body as unknown as CredentialJSON;
-          const challenge = clientChallenge(credential);
-          if (!(await take(challenge, "signin"))) return json({ error: "That sign-in has expired; try again" }, 400);
-          const stored = typeof credential.id === "string" && ID.test(credential.id) ? await read<Credential>(`credentials/${credential.id}.json`) : null;
-          const user = stored ? await read<User>(`users/${stored.user}.json`) : null;
-          if (!stored || !user) return json({ error: "This site doesn't know that passkey" }, 401);
-          // A passkey names its account; it must be the one we registered it for.
-          if (credential.response?.userHandle && credential.response.userHandle !== user.id) return json({ error: "That passkey is for another account" }, 401);
-          try {
-            const { counter } = await verifyAssertion(credential, stored.key, stored.counter, { challenge: challenge!, ...where });
-            await write(`credentials/${stored.id}.json`, { ...stored, counter });
-          } catch (error) {
-            return json({ error: String((error as Error).message ?? error) }, 401);
-          }
-          return signIn(request, user);
-        }
-        case "/auth/signout": {
-          const current = await session(request);
-          if (current) await files.remove(`sessions/${current.key}.json`);
-          return json({ ok: true }, 200, { "set-cookie": `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0` });
-        }
-      }
-      return undefined;
+      if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "A JSON object, please" }, 400);
+      return serial(() => change(request, url, body));
     },
 
     /** Who a request is signed in as, for a host to ask when a client joins a space. */
@@ -199,7 +171,86 @@ export function accounts(files: Files) {
       return (await session(request))?.user ?? null;
     },
   };
+
+  /** A POST under /auth/, run one at a time. */
+  async function change(request: Request, url: URL, body: Record<string, unknown>): Promise<Response | undefined> {
+    const where = { origin: url.origin, rpId: url.hostname };
+    switch (url.pathname) {
+      case "/auth/register/options": {
+        const current = await session(request);
+        const name = current?.user.name ?? String(body.name ?? "").trim().slice(0, 64);
+        if (!name) return json({ error: "A name, please" }, 400);
+        const user = current?.user.id ?? random(16);
+        const challenge = random(32);
+        await sweep();
+        await write(`challenges/${challenge}.json`, { kind: "register", expires: Date.now() + CHALLENGE_MS, user, name, session: current?.key } satisfies Challenge);
+        const existing = current ? await credentials(user) : [];
+        return json({
+          challenge,
+          rp: { id: where.rpId, name: "Extensible Web Apps" },
+          user: { id: user, name, displayName: name },
+          pubKeyCredParams: ALGORITHMS.map((alg) => ({ type: "public-key", alg })),
+          authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+          attestation: "none",
+          excludeCredentials: existing.map((c) => ({ type: "public-key", id: c.id })),
+          timeout: CHALLENGE_MS,
+        });
+      }
+      case "/auth/register": {
+        const credential = body as unknown as CredentialJSON;
+        const challenge = clientChallenge(credential);
+        const found = await take(challenge, "register");
+        if (!found?.user || !found.name) return json({ error: "That registration has expired; try again" }, 400);
+        // One more passkey for an account needs the session that asked for it, still signed in.
+        if (found.session && (await session(request))?.key !== found.session) return json({ error: "Sign in again to add a passkey" }, 401);
+        if (!found.session && (await files.readText(`users/${found.user}.json`))) return json({ error: "That registration has expired; try again" }, 400);
+        let made;
+        try {
+          made = await verifyRegistration(credential, { challenge: challenge!, ...where });
+        } catch (error) {
+          return json({ error: String((error as Error).message ?? error) }, 400);
+        }
+        if (await files.readText(await credentialPath(made.id))) return json({ error: "That passkey is already registered" }, 409);
+        const user = (await read<User>(`users/${found.user}.json`)) ?? { id: found.user, name: found.name, created: Date.now() };
+        await write(`users/${user.id}.json`, user);
+        await write(await credentialPath(made.id), { id: made.id, user: user.id, key: made.key, counter: made.counter, created: Date.now() } satisfies Credential);
+        return signIn(request, user);
+      }
+      case "/auth/signin/options": {
+        const challenge = random(32);
+        await sweep();
+        await write(`challenges/${challenge}.json`, { kind: "signin", expires: Date.now() + CHALLENGE_MS } satisfies Challenge);
+        return json({ challenge, rpId: where.rpId, userVerification: "preferred", allowCredentials: [], timeout: CHALLENGE_MS });
+      }
+      case "/auth/signin": {
+        const credential = body as unknown as CredentialJSON;
+        const challenge = clientChallenge(credential);
+        if (!(await take(challenge, "signin"))) return json({ error: "That sign-in has expired; try again" }, 400);
+        const stored = typeof credential.id === "string" && ID.test(credential.id) ? await read<Credential>(await credentialPath(credential.id)) : null;
+        const user = stored ? await read<User>(`users/${stored.user}.json`) : null;
+        if (!stored || !user) return json({ error: "This site doesn't know that passkey" }, 401);
+        // A passkey names its account; it must be the one we registered it for.
+        if (credential.response?.userHandle && credential.response.userHandle !== user.id) return json({ error: "That passkey is for another account" }, 401);
+        try {
+          const { counter } = await verifyAssertion(credential, stored.key, stored.counter, { challenge: challenge!, ...where });
+          await write(await credentialPath(stored.id), { ...stored, counter });
+        } catch (error) {
+          return json({ error: String((error as Error).message ?? error) }, 401);
+        }
+        return signIn(request, user);
+      }
+      case "/auth/signout": {
+        const current = await session(request);
+        if (current) await files.remove(`sessions/${current.key}.json`);
+        return json({ ok: true }, 200, { "set-cookie": `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0` });
+      }
+    }
+    return undefined;
+  }
 }
+
+/** Where a passkey is kept: by a hash of its id, which can be up to 1023 bytes, too long for a file's name. */
+const credentialPath = async (id: string) => `credentials/${await hash(id)}.json`;
 
 /** The challenge a credential's client data answers, read before it's checked, to find its record. */
 function clientChallenge(credential: CredentialJSON): string | undefined {

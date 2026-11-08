@@ -38,6 +38,8 @@ export interface Options {
   spaces: string;
   site: string;
   kernel: string;
+  /** The address people reach this server at, such as https://example.com, when a proxy in front of it speaks HTTPS. */
+  origin?: string;
 }
 
 /** Starts the server; resolves once it is listening, with a way to stop it. */
@@ -103,7 +105,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     const headers = new Headers();
     for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
     const body = request.method === "GET" || request.method === "HEAD" ? undefined : Buffer.concat(chunks);
-    const answer = await auth.handle(new Request(`http://${request.headers.host ?? "localhost"}${request.url}`, { method: request.method, headers, body }));
+    const answer = await auth.handle(new Request(`${options.origin?.replace(/\/$/, "") ?? `http://${request.headers.host ?? "localhost"}`}${request.url}`, { method: request.method, headers, body }));
     if (!answer) return void response.writeHead(404).end();
     response.writeHead(answer.status, Object.fromEntries(answer.headers));
     response.end(Buffer.from(await answer.arrayBuffer()));
@@ -224,6 +226,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     spaces: arg("spaces", ".spaces"),
     site: arg("site", "dist"),
     kernel: arg("kernel", ".build/server/space.js"),
+    origin: arg("origin", process.env.PUBLIC_ORIGIN ?? "") || undefined,
   });
   console.log(`Serving ${arg("site", "dist")} at ${url}; spaces at ${url.replace("http", "ws")}/s/<space>/kernel, kept in ${arg("spaces", ".spaces")}/`);
 }

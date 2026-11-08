@@ -170,6 +170,32 @@ async function signInChecks(base, check) {
     results[alg] = `${made.status}/${again.status}`;
   }
   check("sign-in: passkeys that sign with Ed25519 or RSA work too, and ones that keep no counter", Object.values(results).every((r) => r === "200/200"), JSON.stringify(results));
+
+  // Two answers to one challenge at once, from a passkey that keeps no counter: only one signs in.
+  cookie = "";
+  const still = authenticator({ counting: false });
+  await call("/auth/register", await still.create((await call("/auth/register/options", { name: "Still" })).body, base));
+  cookie = "";
+  const twice = await still.get((await call("/auth/signin/options", {})).body, base);
+  const both = await Promise.all([call("/auth/signin", twice, { keep: false }), call("/auth/signin", twice, { keep: false })]);
+  check("sign-in: one answer sent twice at once signs in only once", both.filter((r) => r.status === 200).length === 1, JSON.stringify(both.map((r) => r.status)));
+
+  // Options for one more passkey, asked for while signed in, don't work once that session has ended.
+  await call("/auth/signin", await still.get((await call("/auth/signin/options", {})).body, base));
+  const addLater = (await call("/auth/register/options", {})).body;
+  await call("/auth/signout", {});
+  const late = await call("/auth/register", await authenticator().create(addLater, base), { keep: false });
+  const nullBody = await fetch(`${base}/auth/register/options`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: "null" });
+  const huge = await fetch(`${base}/auth/register/options`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify({ name: "x".repeat(70_000) }) });
+  check("sign-in: adding a passkey needs the session that asked to still be signed in; a body that isn't an object, or is too big, is refused", late.status === 401 && nullBody.status === 400 && huge.status === 413, JSON.stringify([late.status, nullBody.status, huge.status]));
+
+  // A passkey's id can be up to 1023 bytes: far too long for a file's name.
+  cookie = "";
+  const long = authenticator();
+  const longMade = await call("/auth/register", await long.create((await call("/auth/register/options", { name: "Long" })).body, base, { idLength: 600 }));
+  cookie = "";
+  const longBack = await call("/auth/signin", await long.get((await call("/auth/signin/options", {})).body, base));
+  check("sign-in: a passkey with a long id registers and signs in", longMade.status === 200 && longBack.status === 200, JSON.stringify([longMade.status, longBack.body?.error ?? longBack.status]));
 }
 
 async function suite(name, make) {
