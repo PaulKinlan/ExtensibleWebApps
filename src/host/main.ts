@@ -14,13 +14,15 @@
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
 import { customize } from "./customize";
 import { places as makePlaces } from "./places";
+import { bridges } from "./bridges";
+import { audioStats } from "./bridges/audio";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn, onElementError } from "./elements";
 import { morphChildren } from "./morph";
-import { sanitize } from "./sanitize";
 import { serviceWorker } from "./service-worker";
-import { cleanCss, installPluginStyle } from "./plugin-styles";
-import { fill, forgetFiles, loadedFile, loadFile, styleOf } from "./templates";
+import { cleanCss } from "./plugin-styles";
+import { fill, forgetFiles, loadedFile, loadFile } from "./templates";
+import { drawView } from "./views";
 import { workbench } from "./workbench";
 
 const tab = Math.random().toString(36).slice(2, 8);
@@ -80,136 +82,9 @@ type Entry = { owner: string; order: number; el: HTMLElement };
 const slots = new Map<Slot, Map<string, Entry>>();
 const canvases = new Map<string, HTMLCanvasElement>();
 
+// Each kind of view is drawn by its own file in views/, named after its type.
 function element(view: View, owner: string): HTMLElement {
-  switch (view.type) {
-    case "html": {
-      const el = document.createElement("div");
-      el.className = "html-view";
-      el.append(sanitize(view.html, owner, { remote: view.remote === true }));
-      return el;
-    }
-    case "template": {
-      // render() has made sure the file is loaded. Filled, it is HTML like any other view.
-      // The file's <style>, if it has one, is scoped to this plugin's views (see plugin-styles.ts).
-      const file = loadedFile(view.src)!;
-      installPluginStyle(pluginOf(owner), view.src, styleOf(file));
-      const el = document.createElement("div");
-      el.className = "html-view";
-      el.append(sanitize(fill(file, view.id, view.data), owner, { remote: view.remote === true, base: view.src }));
-      return el;
-    }
-    case "stack": {
-      const el = document.createElement("div");
-      el.className = `stack${view.direction === "row" ? " row" : ""}`;
-      for (const child of view.children) el.append(element(child, owner));
-      return el;
-    }
-    case "heading": {
-      const el = document.createElement("h2");
-      el.textContent = view.text;
-      return el;
-    }
-    case "text": {
-      const el = document.createElement("span");
-      el.textContent = view.text;
-      if (view.title) el.title = view.title;
-      if (view.tone) el.className = view.tone;
-      return el;
-    }
-    case "button": {
-      const el = document.createElement("button");
-      el.textContent = view.label;
-      if (view.primary) el.className = "primary";
-      el.dataset.action = view.action;
-      return el;
-    }
-    case "list": {
-      const el = document.createElement("ul");
-      el.className = "list";
-      for (const item of view.items) {
-        const li = document.createElement("li");
-        const button = document.createElement("button");
-        button.textContent = item.label;
-        button.setAttribute("aria-current", String(Boolean(item.selected)));
-        button.dataset.action = item.action;
-        li.append(button);
-        el.append(li);
-      }
-      return el;
-    }
-    case "textarea": {
-      const el = document.createElement("textarea");
-      el.name = view.name;
-      el.value = view.value;
-      el.textContent = view.value;
-      if (view.placeholder) el.placeholder = view.placeholder;
-      // Plugins see edits after a short pause, as editor extensions do.
-      el.dataset.action = view.action;
-      el.dataset.live = "";
-      return el;
-    }
-    case "field": {
-      const label = document.createElement("label");
-      label.className = `field ${view.kind}`;
-      const caption = document.createElement("span");
-      caption.textContent = view.label;
-      if (view.description) caption.title = view.description;
-      let input: HTMLInputElement | HTMLSelectElement;
-      if (view.kind === "select") {
-        input = document.createElement("select");
-        for (const option of view.options ?? []) input.append(new Option(option, option, option === view.value, option === view.value));
-      } else {
-        input = document.createElement("input");
-        input.type = view.kind;
-        if (view.kind === "checkbox") {
-          if (view.value) input.setAttribute("checked", "");
-        } else if (view.kind === "password") input.autocomplete = "off";
-        else input.setAttribute("value", String(view.value));
-      }
-      input.name = view.name;
-      // Sent when the change is committed (blur, Enter, or a click), not on every key.
-      input.dataset.action = view.action;
-      if (view.kind === "checkbox") label.append(input, caption);
-      else label.append(caption, input);
-      return label;
-    }
-    case "diff": {
-      const el = document.createElement("pre");
-      el.className = "diff";
-      for (const line of view.lines) {
-        const span = document.createElement("span");
-        span.className = line.op;
-        span.textContent = `${line.op === "add" ? "+ " : line.op === "del" ? "- " : "  "}${line.text}`;
-        el.append(span);
-      }
-      return el;
-    }
-    case "canvas": {
-      // A canvas can only go to a worker this tab created: handing an
-      // OffscreenCanvas to another tab's worker crashed the renderer
-      // (Chromium 153). Plugins that draw use `scope: "tab"`.
-      if (!owner.endsWith(`@${tab}`)) {
-        const note = document.createElement("span");
-        note.className = "muted";
-        note.textContent = "Plugins that draw need scope: \"tab\".";
-        return note;
-      }
-      const key = `${owner}/${view.id}`;
-      if (!canvases.has(key)) {
-        const el = document.createElement("canvas");
-        el.width = view.width;
-        el.height = view.height;
-        el.dataset.canvas = key;
-        const offscreen = el.transferControlToOffscreen();
-        send({ t: "canvas", owner, id: view.id, canvas: offscreen }, [offscreen]);
-        canvases.set(key, el);
-      }
-      // A stand-in; the live canvas takes its place once the view is drawn.
-      const placeholder = document.createElement("canvas");
-      placeholder.dataset.canvas = key;
-      return placeholder;
-    }
-  }
+  return drawView(view, { owner, tab, send, canvases, element: (child) => element(child, owner) });
 }
 
 /** The value a control holds, as a plugin wants it. */
@@ -562,37 +437,9 @@ function spawn(plugin: string, source: string, network: boolean) {
   send({ t: "spawned", plugin, port: channel.port1 }, [channel.port1]);
 }
 
-// ---- Bridges to page-only APIs ----
+// ---- Bridges to page-only APIs: a file each in bridges/ ----
 
-let audio: AudioContext | undefined;
-const processors = new Map<string, { source: string; added?: Promise<void> }>();
-const audioStats = { played: 0, state: "none" as string };
-
-async function bridge(service: string, method: string, args: unknown[]): Promise<unknown> {
-  if (service === "host" && method === "workerCount") return workers.size;
-  if (service === "page" && method === "matches") return pagePlaces.matches(String(args[0]), String(args[1]));
-  if (service === "audio" && method === "registerProcessor") {
-    const [name, source] = args as [string, string];
-    processors.set(name, { source });
-    return true;
-  }
-  if (service === "audio" && method === "play") {
-    const [{ processor, ms = 300, options = {} }] = args as [{ processor: string; ms?: number; options?: Record<string, unknown> }];
-    const entry = processors.get(processor);
-    if (!entry) throw new Error(`No audio processor named ${processor}`);
-    audio ??= new AudioContext();
-    if (audio.state === "suspended") await audio.resume();
-    entry.added ??= audio.audioWorklet.addModule(URL.createObjectURL(new Blob([entry.source], { type: "text/javascript" })));
-    await entry.added;
-    const node = new AudioWorkletNode(audio, processor, { processorOptions: options });
-    node.connect(audio.destination);
-    setTimeout(() => node.disconnect(), ms);
-    audioStats.played++;
-    audioStats.state = audio.state;
-    return { ...audioStats };
-  }
-  throw new Error(`The host has no ${service}.${method}`);
-}
+const bridge = bridges({ workers, places: pagePlaces });
 
 function notice(text: string, reported = true) {
   if (reported) report("notice", text);
