@@ -149,7 +149,7 @@ function checkApp(file, rules, reference) {
   if (!links.some((t) => rels(t).includes("stylesheet") && t.attributes.href === "/platform/host.css")) report("warning", file, 0, 'app.html doesn\'t link the platform\'s styles: add <link rel="stylesheet" href="/platform/host.css">');
   const slots = new Set(tags(html, "slot").map((t) => t.attributes.name).filter(Boolean));
   const plugins = links.filter((t) => rels(t).includes("plugin"));
-  if (!plugins.length) report("warning", file, 0, 'app.html links no plugins: add <link rel="plugin" href="my-plugin.js">');
+  // No plugins is fine: an app can be plain HTML that people extend with their own (see demos/trip).
 
   const ids = new Map();
   for (const link of plugins) {
