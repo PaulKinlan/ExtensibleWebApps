@@ -62,3 +62,13 @@ It draws a button in the slot, opens with Cmd K on a Mac or Ctrl K elsewhere (it
 ## How it works
 
 `ctx.commands.add` sends two messages. `commands.add` gives the kernel the title, keys and arguments ([`src/kernel/services/commands.ts`](../../src/kernel/services/commands.ts)). A listener on `command:<id>` is where runs arrive; the kernel names that hook after the plugin's own instance ([`src/kernel/remote.ts`](../../src/kernel/remote.ts)), so no other plugin can listen for it, and a command is only listed while its plugin is listening. A plugin with one instance per tab answers runs from its own tab.
+
+```mermaid
+flowchart LR
+    Palette["The palette"] --> Run["commands.run(name, args)"]
+    Keys["A shortcut"] --> Run
+    Agent["An agent's tool"] --> Run
+    Run --> Kernel["The kernel<br/>checks args against the schema"]
+    Kernel -->|"command:&lt;id&gt;"| Owner["The plugin that added it<br/>runs with its own rights"]
+    Owner -->|the result| Run
+```
