@@ -52,6 +52,14 @@ Needs: `hook:listen:<hook>` (emit, parallel) or `hook:intercept:<hook>` (serial,
 
 Listens to a hook. In a `function` handler, `this` is a copy of ctx pinned to the action's trace. What it returns matters only for hooks that can change or stop an action.
 
+### ctx.provide
+
+`ctx.provide(name, { method: (...args, { caller }) => result }) → off()`
+
+Needs: provide:<name>.
+
+Answers the calls to a service the plugin provides: its manifest's `provides` describes the service and its methods, and other plugins call it with `ctx.call(name, method, ...args)`. Each handler gets the call's arguments, then `{ caller }`, the plugin that called; what it returns goes back to the caller, and throwing fails the call. A service name the kernel or another plugin already has is refused. See docs/layers.md.
+
 ### ctx.routes.add
 
 `ctx.routes.add(method, path, (request) => response) → off()`
@@ -1228,6 +1236,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `theme` | Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only --bg, --bg-2, --surface, --fg, --fg-2, --border, --accent, --accent-fg, --ok, --warn, --danger, --radius-sm, --radius, --radius-lg, --shadow-1, --font, --mono, color-scheme, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md. |
 | `hooks` | Optional. Up to 20 hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook `<id>:<key>` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (1000 ms if not given, at most 5000); an agent that checks it has agentTimeoutMs (at most 30 s; without one, agents can't check it). A hook lasts while its plugin is installed. |
 | `services` | Optional. Up to 30 services the plugin calls that not every site runs, by name: ["llm", "bus"]. The kernel's own services (data, storage, settings and the rest) are always there and needn't be listed. A plugin that lists a service the site doesn't run isn't started, and says which one is missing, so an app that needs it fails when it opens rather than on its first call. The site lists the services it runs in kernel.json (docs/layers.md). |
+| `provides` | Optional. Up to 5 services the plugin provides, by name: { mail: { description, methods: { send: { args?, returns?, description, needs? } } } }. Each needs the permission provide:<name>, and the plugin answers its calls with ctx.provide (shared plugins only, not scope "tab"). Other plugins call it with ctx.call(name, method, ...args) and the permission <name>, or what a method's `needs` says. A name the kernel or another plugin already has is refused. See docs/layers.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
 Reserved ids, which no plugin can take:

@@ -275,11 +275,12 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
       const off = new Set(saved.off);
       const storedIds = new Set(stored.map(idOf));
       drawAll();
+      const started = remote.expect([...builtIn, ...stored]);
       await Promise.all([
         // A plugin in the data folder replaces the built-in one with the same id.
         ...builtIn.filter((source) => !storedIds.has(idOf(source))).map((source) => remote.install(source, { origin: "built-in", enabled: !off.has(idOf(source)) })),
         ...stored.map((source) => remote.install(source, { origin: "data", enabled: !off.has(idOf(source)) })),
-      ]);
+      ]).finally(started);
       booting = false;
       record({ kind: "lifecycle", name: "plugins:loaded", detail: `${builtIn.length} built in, ${stored.length} with the data, ${off.size} off` });
     },

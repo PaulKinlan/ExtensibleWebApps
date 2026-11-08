@@ -50,6 +50,11 @@ const CTX: Record<ApiMember<Api>, Doc> = {
     needs: "",
     description: "Adds a command the plugin answers: a palette lists it, its `keys` run it, and plugins with `commands` (an agent, through its tools) run it with `commands.run(\"<plugin>/<id>\")`. The handler runs with this plugin's own rights; `by` says which plugin ran it, and what it returns goes back to the caller. Throwing fails the run. See the commands service.",
   },
+  provide: {
+    signature: "ctx.provide(name, { method: (...args, { caller }) => result }) → off()",
+    needs: "provide:<name>",
+    description: "Answers the calls to a service the plugin provides: its manifest's `provides` describes the service and its methods, and other plugins call it with `ctx.call(name, method, ...args)`. Each handler gets the call's arguments, then `{ caller }`, the plugin that called; what it returns goes back to the caller, and throwing fails the call. A service name the kernel or another plugin already has is refused. See docs/layers.md.",
+  },
   "schedule.every": {
     signature: "ctx.schedule.every(name, ms, handler) → off()",
     needs: "schedule",
