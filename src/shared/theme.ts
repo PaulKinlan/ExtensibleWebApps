@@ -39,6 +39,17 @@ export function badThemeValue(value: unknown): string | undefined {
   if (value.length > MAX) return `a value is at most ${MAX} characters`;
   if (/[;{}<>@!\\]/.test(value)) return "a value can't hold ; { } < > @ ! or \\";
   if (/\b(url|src|image-set|image|element|cross-fade|attr|env)\s*\(/i.test(value)) return "a value can't load anything or read attributes";
+  // Nothing left open to swallow what follows it: no comments, and every quote and bracket closed.
+  if (/\/\*|\*\//.test(value)) return "a value can't hold comments";
+  const open: string[] = [];
+  let quote = "";
+  for (const c of value) {
+    if (quote) quote = c === quote ? "" : quote;
+    else if (c === '"' || c === "'") quote = c;
+    else if (c === "(" || c === "[") open.push(c);
+    else if ((c === ")" && open.pop() !== "(") || (c === "]" && open.pop() !== "[")) return "a value's brackets must match";
+  }
+  if (quote || open.length) return "a value's quotes and brackets must close";
   return undefined;
 }
 

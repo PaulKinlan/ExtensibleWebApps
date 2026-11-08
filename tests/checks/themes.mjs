@@ -12,6 +12,16 @@ export default async function ({ a, check, openTab, URL }) {
     [noPermission.error, loads.error, unknown.error, breaks.error].join(" | "),
   );
 
+  // A value left open (a comment, a bracket, a quote) would swallow the next theme's declarations.
+  const { themeCss } = await import("../../src/shared/theme.ts");
+  const open = ["red/*", "rgb(", '"Inter', "a)"].map((v) => themeCss([{ "--accent": v }, { "--fg": "blue" }]));
+  const closed = themeCss([{ "--font": '"Inter", sans-serif' }, { "--fg": "blue" }]);
+  check(
+    "a theme value can't leave a comment, quote or bracket open, so a second theme still applies",
+    open.every((css) => !css.includes("--accent") && css.includes("--fg: blue;")) && closed.includes('--font: "Inter", sans-serif;') && closed.includes("--fg: blue;"),
+    JSON.stringify(open),
+  );
+
   const page = await openTab(`${URL}demos/trip/app.html`);
   const accent = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
   const before = await accent();
