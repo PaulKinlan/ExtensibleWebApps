@@ -35,9 +35,10 @@
 //
 // Streaming answers come next, with the chat plugin that needs them.
 
-import type { ServiceProvider } from "./remote";
-import { defineHook } from "./hooks";
-import { record } from "./trace";
+import type { ServiceProvider } from "../remote";
+import { defineHook } from "../hooks";
+import { record } from "../trace";
+import type { Kernel } from "./index";
 
 const MAX = 4_000_000;
 const TOOL = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -118,7 +119,7 @@ function cleanAnswer(value: Record<string, unknown>, provider: string) {
   return answer;
 }
 
-export function llm(root: any) {
+export default ({ root }: Kernel): ServiceProvider => {
   defineHook("llm:providers", {
     mode: "waterfall",
     timeoutMs: 2000,
@@ -188,4 +189,4 @@ export function llm(root: any) {
     },
   };
   return service;
-}
+};

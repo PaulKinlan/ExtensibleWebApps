@@ -15,7 +15,23 @@ export class ManifestError extends Error {}
 
 const ID = /^[a-z][a-z0-9-]{0,63}$/;
 /** Owners of the kernel's own views and services; a plugin with one of these ids could pass for them. */
-export const RESERVED = new Set(["kernel", "host", "notes", "plugins", "review", "store", "settings", "storage", "files", "audio", "data", "debug", "net", "secrets", "llm"]);
+// Ids no plugin may take. The kernel also adds every service's name when it starts, so a new service needn't be listed here.
+export const RESERVED = new Set([
+  "audio",
+  "data",
+  "debug",
+  "files",
+  "host",
+  "kernel",
+  "net",
+  "notes",
+  "plugins",
+  "review",
+  "secrets",
+  "settings",
+  "storage",
+  "store",
+]);
 
 /** What each manifest field means. Typed against Manifest, so a new field can't go undocumented. */
 export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {

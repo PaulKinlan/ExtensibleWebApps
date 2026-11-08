@@ -14,7 +14,7 @@
 // api.anthropic.com (src/kernel/secrets.ts, src/kernel/net.ts).
 //
 // This file translates between the platform's request and answer
-// (src/kernel/llm.ts) and Anthropic's Messages API.
+// (src/kernel/services/llm.ts) and Anthropic's Messages API.
 
 export const manifest = {
   id: "llm-anthropic",

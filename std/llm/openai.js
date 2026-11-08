@@ -23,7 +23,7 @@
 // that service's host.
 //
 // This file translates between the platform's request and answer
-// (src/kernel/llm.ts) and the Chat Completions API.
+// (src/kernel/services/llm.ts) and the Chat Completions API.
 
 export const manifest = {
   id: "llm-openai",

@@ -1,0 +1,74 @@
+<!--
+  The plugin editor. plugin-editor.js sends:
+    { rev, code, from, starts, check, trace, status, own }
+  starts is every starting point, the templates and then a copy of each
+  plugin on the page, each { value, label }; check is
+  { ok, manifest?, permissions?, error? } from authoring.check(); trace is
+  the draft's recent trace lines, each { key, kind, text }.
+  status is what the last save said; waiting is true while a review is open; own is set when the draft is one of
+  the person's saved plugins. The picker sends "start" with a value; the
+  form sends "check" or "save" (its submit buttons) with { code }, and
+  Remove sends "remove".
+-->
+<style>
+  .editor-head { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; justify-content: space-between; margin-bottom: var(--space-2); }
+  .editor-head h2 { margin: 0; }
+  .editor-head label { display: grid; gap: 2px; font-size: var(--text-sm); color: var(--fg-2); }
+  .editor-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-2); }
+  .asks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .asks code { font-size: var(--text-sm); }
+  .asks span { display: block; color: var(--fg-2); font-size: var(--text-sm); }
+  .problem { color: var(--danger); margin: 0; }
+  .status { margin: var(--space-2) 0 0; color: var(--fg-2); }
+  .trace { margin: 0; max-height: 14rem; overflow: auto; font: var(--text-sm)/1.5 var(--mono); white-space: pre-wrap; }
+  .trace .error, .trace .denied { color: var(--danger); }
+</style>
+<template id="editor">
+  <ui-card>
+    <div class="editor-head">
+      <h2>Plugin editor</h2>
+      <label>Start from
+        <select data-action="start" aria-label="Start from">
+          <option value="">{{from}}</option>
+          <template for="s of starts"><option key="{{s.value}}" value="{{s.value}}">{{s.label}}</option></template>
+        </select>
+      </label>
+    </div>
+    <form data-action="save">
+      <ui-code name="code" label="Plugin code" rows="22" revision="{{rev}}">{{code}}</ui-code>
+      <div class="editor-actions">
+        <button type="submit" disabled="{{waiting}}">Save and run</button>
+        <button type="submit" data-action="check" class="secondary" disabled="{{waiting}}">Check</button>
+        <template if="own"><button type="button" data-action="remove" class="secondary" disabled="{{waiting}}">Remove it</button></template>
+      </div>
+    </form>
+    <template if="status"><p class="status" role="status">{{status}}</p></template>
+  </ui-card>
+</template>
+
+<template id="asks">
+  <ui-card tone="accent">
+    <template if="check.ok">
+      <h3>{{check.manifest.name}} asks to</h3>
+      <ul class="asks">
+        <template for="p of check.permissions"><li key="{{p.name}}">{{p.about}} <span><code>{{p.name}}</code></span></li></template>
+      </ul>
+      <template if="!check.permissions.length"><p>Nothing: it can run, but can't draw, read or change anything.</p></template>
+    </template>
+    <template if="!check.ok">
+      <h3>It can't run yet</h3>
+      <p class="problem">{{check.error}}</p>
+    </template>
+  </ui-card>
+</template>
+
+<template id="trace">
+  <ui-card>
+    <h3>What it did</h3>
+    <template if="!trace.length"><p>Nothing yet. Its logs, errors and refused permissions show here once it runs.</p></template>
+    <template if="trace.length">
+      <pre class="trace"><template for="t of trace"><span key="{{t.key}}" class="{{t.kind}}">{{t.text}}
+</span></template></pre>
+    </template>
+  </ui-card>
+</template>

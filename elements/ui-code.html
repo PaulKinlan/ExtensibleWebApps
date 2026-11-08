@@ -1,0 +1,33 @@
+<!--
+  ui-code: a plain code editor. A textarea with line numbers, where Tab
+  indents instead of leaving the field. No highlighting and no libraries:
+  the browser runs this file as written.
+
+  Attributes: name (the field's name in a form), label (its accessible
+  name), rows (height in lines, 20 by default), readonly, revision.
+
+  The code to start with is the element's text content:
+
+    <ui-code name="source" revision="{{rev}}">{{code}}</ui-code>
+
+  Edits are kept while the view redraws. To replace them with the text
+  content (a template was picked, or a file loaded), change `revision`.
+
+  In a <form data-action>, the code is sent with the other fields under its
+  `name`. The behaviour is in ui-code.js, linked below.
+-->
+<template>
+  <style>
+    :host { display: block; }
+    .editor { display: grid; grid-template-columns: auto minmax(0, 1fr); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+    .editor:focus-within { outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 1px; }
+    .lines, textarea { margin: 0; padding: var(--space-2); font: var(--text-sm)/1.6 var(--mono); tab-size: 2; }
+    .lines { min-width: 3.5ch; text-align: right; color: var(--fg-2); background: var(--bg-2); user-select: none; overflow: hidden; white-space: pre; }
+    textarea { width: 100%; border: 0; resize: vertical; color: var(--fg); background: transparent; white-space: pre; overflow: auto; outline: none; }
+  </style>
+  <div class="editor">
+    <pre class="lines" aria-hidden="true">1</pre>
+    <textarea spellcheck="false" autocapitalize="off" autocomplete="off" wrap="off"></textarea>
+  </div>
+</template>
+<script type="module" src="ui-code.js"></script>

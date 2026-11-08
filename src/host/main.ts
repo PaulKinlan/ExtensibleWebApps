@@ -249,6 +249,8 @@ function listen(entry: Entry) {
   el.addEventListener("click", (e) => {
     const target = (e.target as Element).closest("[data-action]");
     if (!target || !el.contains(target) || target.matches(`${CONTROLS}, form`)) return;
+    // A submit button in a form sends its action with the form's fields, on submit.
+    if (target instanceof HTMLButtonElement && target.type === "submit" && target.form?.hasAttribute("data-action")) return;
     event(target.getAttribute("data-action")!, target.getAttribute("data-value") ?? undefined);
   });
   el.addEventListener("change", (e) => {
@@ -274,8 +276,10 @@ function listen(entry: Entry) {
     // Never let a plugin's form navigate the page.
     e.preventDefault();
     const form = e.target as HTMLFormElement;
-    const action = form.getAttribute("data-action");
-    if (action) event(action, formValues(form));
+    // The button that sent it may name its own action, so one form can be checked or saved.
+    if (!form.hasAttribute("data-action")) return;
+    const action = (e as SubmitEvent).submitter?.getAttribute("data-action") ?? form.getAttribute("data-action")!;
+    event(action, formValues(form));
   });
 }
 
@@ -381,9 +385,9 @@ function withFallback(container: HTMLElement): HTMLElement {
  * that name (a place with `each` has one per match). Each comes with the id its entries are kept under.
  */
 function slotFor(name: Slot, owner: string): [string, HTMLElement][] {
-  let slot = document.querySelector<HTMLElement>(`slot[name="${CSS.escape(name)}"]`);
-  // A review card must be seen, even in an app with no slot of that name.
-  if (!slot && ALWAYS.has(owner)) slot = document.getElementById("review") ?? document.body.appendChild(Object.assign(document.createElement("section"), { id: "review" }));
+  // A review card must be seen, wherever the person is on the page: it goes in a dialog of the host's own.
+  if (ALWAYS.has(owner)) return [["#review", reviewDialog()]];
+  const slot = document.querySelector<HTMLElement>(`slot[name="${CSS.escape(name)}"]`);
   if (slot) return [[name, withFallback(slot)]];
   return (pagePlaces.containers(pluginOf(owner), name) ?? []).map(([id, c]) => [id, withFallback(c)]);
 }
@@ -407,9 +411,30 @@ const pagePlaces = makePlaces({
   report: (text) => report("place", text),
 });
 
+/**
+ * The dialog that holds review cards. It isn't modal, so the person can still read the page (and the
+ * code being reviewed) while it is open, but it stays in view, and focus moves to it when a card arrives.
+ */
+function reviewDialog(): HTMLDialogElement {
+  const found = document.getElementById("review");
+  if (found instanceof HTMLDialogElement) return found;
+  const dialog = Object.assign(document.createElement("dialog"), { id: "review" });
+  dialog.setAttribute("aria-label", "Waiting for your answer");
+  return document.body.appendChild(dialog);
+}
+
+/** Opens the review dialog when it holds a card, and closes it when the last one is answered. */
+function syncReview(dialog: HTMLDialogElement, count: number) {
+  if (count && !dialog.open) {
+    dialog.show();
+    dialog.querySelector<HTMLElement>("button")?.focus();
+  } else if (!count && dialog.open) dialog.close();
+}
+
 /** After a container's entries change: show its fallback when empty, and tell its place. */
 function afterChange(container: HTMLElement, _slot: string) {
   const count = container.querySelectorAll(":scope > [data-key]").length;
+  if (container.id === "review" && container instanceof HTMLDialogElement) return syncReview(container, count);
   const fallback = fallbacks.get(container);
   if (fallback) fallback.hidden = count > 0;
   pagePlaces.sync(container, count);
@@ -464,7 +489,7 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
   else drawn.delete(id);
   const targets = slotFor(slot, owner);
   // Not a slot in this page: remember it, in case it is for a place that isn't ready yet.
-  const isPlace = !document.querySelector(`slot[name="${CSS.escape(slot)}"]`) && !ALWAYS.has(owner);
+  const isPlace = !ALWAYS.has(owner) && !document.querySelector(`slot[name="${CSS.escape(slot)}"]`);
   if (isPlace) {
     // A view to every match replaces what was drawn to one of them, so drawing again later gives the same page.
     if (!slot.includes("#")) for (const [other, args] of placeRenders) if (args[1] === key && pluginOf(args[2]) === pluginOf(owner) && args[0].startsWith(`${slot}#`)) placeRenders.delete(other);

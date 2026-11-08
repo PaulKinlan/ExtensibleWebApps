@@ -195,7 +195,7 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
     { name: "network", about: "Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere." },
     { name: "hook:listen:<hook>", about: "Listen to an emit or parallel hook." },
     { name: "hook:intercept:<hook>", about: "Listen to a hook that can change or stop an action (serial, bail, waterfall)." },
-    ...[...needs].map(([name, methods]) => ({ name, about: `Call ${methods.join(", ")}.` })),
+    ...[...needs].sort(([a], [b]) => a.localeCompare(b, "en")).map(([name, methods]) => ({ name, about: `Call ${methods.join(", ")}.` })),
   ];
   return {
     modes: Object.entries(MODES).map(([mode, about]) => ({ mode, about })),
@@ -205,7 +205,7 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
     capabilities,
     editorPermissions: Object.entries(EDITOR_PERMISSIONS).map(([permission, caps]) => ({ permission, capabilities: caps })),
     manifest: Object.entries(MANIFEST_FIELDS).map(([field, about]) => ({ field, about })),
-    reservedIds: [...RESERVED],
+    reservedIds: [...RESERVED].sort(),
     schema: Object.entries(SCHEMA_KEYWORDS).map(([keyword, about]) => ({ keyword, about })),
     recordFields: RECORD_FIELDS,
     platformPaths: [...PLATFORM],
@@ -267,7 +267,7 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     "",
     "Called with `ctx.call(service, method, ...args)`. A method not listed here doesn't exist. Reviewed methods show the person a diff with the plugin's reason first; they accept once, allow that plugin in that place from then on, or decline.",
   ];
-  for (const s of ref.services) {
+  for (const s of [...ref.services].sort(byName((s) => s.name))) {
     out.push("", `### ${s.name}`, "", s.description);
     for (const m of [...s.methods].sort(byName((m) => m.name))) {
       const needs = (code(m.needs ?? "") || "nothing") + (m.reviewed ? ", and the person's review" : "");
@@ -306,7 +306,9 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     "",
     table(["Field", "Meaning"], ref.manifest.map((m) => [code(m.field), m.about])),
     "",
-    `Reserved ids: ${ref.reservedIds.map(code).join(", ")}.`,
+    "Reserved ids, which no plugin can take:",
+    "",
+    ...ref.reservedIds.map((id) => `- ${code(id)}`),
     "",
     `Paths that belong to the platform, which no plugin can read or write through \`files\`: ${ref.platformPaths.map(code).join(", ")}.`,
     "",

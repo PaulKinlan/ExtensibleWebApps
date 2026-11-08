@@ -14,7 +14,7 @@
 // generativelanguage.googleapis.com (src/kernel/secrets.ts, src/kernel/net.ts).
 //
 // This file translates between the platform's request and answer
-// (src/kernel/llm.ts) and the Gemini API's generateContent.
+// (src/kernel/services/llm.ts) and the Gemini API's generateContent.
 
 export const manifest = {
   id: "llm-gemini",
