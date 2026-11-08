@@ -65,9 +65,13 @@ export function providersFrom(env: Record<string, unknown>): Provider[] {
   }
   const out: Provider[] = [];
   for (const entry of Array.isArray(entries) ? entries : []) {
-    const id = String(entry?.id ?? "");
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      console.warn("An AUTH_PROVIDERS entry isn't an object, so it's skipped");
+      continue;
+    }
+    const id = String(entry.id ?? "");
     const secret = env[`${id.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_CLIENT_SECRET`];
-    const preset = PRESETS[id] ?? (entry.authorize && entry.token && entry.user ? plain(entry) : undefined);
+    const preset = (Object.hasOwn(PRESETS, id) ? PRESETS[id] : undefined) ?? (entry.authorize && entry.token && entry.user ? plain(entry) : undefined);
     if (!/^[a-z0-9-]{1,32}$/.test(id) || !preset || !entry.clientId || typeof secret !== "string") {
       console.warn(`Sign-in provider ${id || "(no id)"} is missing a part, so it's off`);
       continue;

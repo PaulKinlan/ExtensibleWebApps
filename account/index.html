@@ -76,12 +76,15 @@
         return { status: res.status, ...data };
       }
 
+      // An invite in the address, kept for signing in with another site, which comes back to /account/.
+      const pendingInvite = new URLSearchParams(location.search).get("invite");
+
       /** Other sites this server lets people sign in with: a link each, which signs in (or, signed in, links that account to yours). */
       async function providers() {
         const { providers = [] } = await fetch("/auth/providers").then((r) => (r.ok ? r.json() : {}), () => ({}));
         for (const holder of document.querySelectorAll(".providers")) {
           holder.replaceChildren(
-            ...providers.map(({ id, name }) => Object.assign(document.createElement("a"), { href: `/auth/oauth/${id}/start`, className: "button", textContent: holder.hasAttribute("data-link") ? `Link your ${name} account` : `Sign in with ${name}` })),
+            ...providers.map(({ id, name }) => Object.assign(document.createElement("a"), { href: `/auth/oauth/${id}/start${pendingInvite ? `?invite=${encodeURIComponent(pendingInvite)}` : ""}`, className: "button", textContent: holder.hasAttribute("data-link") ? `Link your ${name} account` : `Sign in with ${name}` })),
           );
         }
       }

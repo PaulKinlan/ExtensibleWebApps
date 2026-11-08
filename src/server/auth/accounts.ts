@@ -52,6 +52,8 @@ interface Challenge {
   /** For another site's sign-in: which provider, and the PKCE verifier its code needs. */
   provider?: string;
   verifier?: string;
+  /** An invite to accept once back on /account/, so signing in with another site doesn't lose it. */
+  invite?: string;
   expires: number;
   /** For a registration: the account it adds to (new or signed in), and that account's name. */
   user?: string;
@@ -77,6 +79,7 @@ const COOKIE = "ewa-session";
 const SESSION_MS = 30 * 24 * 3600_000;
 const CHALLENGE_MS = 5 * 60_000;
 const ID = /^[A-Za-z0-9_-]{1,1400}$/;
+const INVITE = /^[A-Za-z0-9_-]{20,100}$/;
 const MAX_BODY = 64 * 1024;
 const SWEEP_MS = 10 * 60_000;
 
@@ -162,25 +165,25 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
 
   const signIn = async (request: Request, user: User): Promise<Response> => json({ user }, 200, { "set-cookie": await sessionCookie(request, user) });
 
-  /**
-   * Another site's sign-in (OAuth 2 with PKCE). `start` sends the browser there with a state that is
-   * kept here and in a cookie only this browser has, so a callback someone else started is refused.
-   * The callback trades the code for a token, asks who it belongs to, and finds (or makes) the account
-   * that identity belongs to. Signed in already, it links the identity to that account instead.
-   */
   /** Who is asking, if they're signed in: their account, and the session they asked from. */
   const asker = async (request: Request) => {
     const current = await session(request);
     return current ? { user: current.user.id, session: current.key } : {};
   };
 
+  /**
+   * Another site's sign-in (OAuth 2 with PKCE). `start` sends the browser there with a state that is
+   * kept here and in a cookie only this browser has, so a callback someone else started is refused.
+   * The callback trades the code for a token, asks who it belongs to, and finds (or makes) the account
+   * that identity belongs to. Signed in already, it links the identity to that account instead.
+   */
   const oauth = async (request: Request, url: URL, id: string, step: string): Promise<Response | undefined> => {
     const provider = providers.find((p) => p.id === id);
     if (!provider) return json({ error: "No such provider" }, 404);
     const back = `${url.origin}/auth/oauth/${id}/callback`;
     const secure = url.protocol === "https:" ? "; Secure" : "";
-    const toAccount = (headers: Headers, error?: string) => {
-      headers.set("location", error ? `/account/?error=${encodeURIComponent(error)}` : "/account/");
+    const toAccount = (headers: Headers, error?: string, invite?: string) => {
+      headers.set("location", error ? `/account/?error=${encodeURIComponent(error)}` : invite ? `/account/?invite=${invite}` : "/account/");
       headers.append("set-cookie", `ewa-oauth=; Path=/auth/oauth/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
       return new Response(null, { status: 303, headers });
     };
@@ -188,9 +191,10 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     if (step === "start") {
       const state = random(24);
       const verifier = random(48);
+      const invite = url.searchParams.get("invite") ?? "";
       const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
       await sweep();
-      await write(`challenges/${state}.json`, { kind: "oauth", provider: id, verifier, ...(await asker(request)), expires: Date.now() + CHALLENGE_MS } satisfies Challenge);
+      await write(`challenges/${state}.json`, { kind: "oauth", provider: id, verifier, ...(await asker(request)), ...(INVITE.test(invite) ? { invite } : {}), expires: Date.now() + CHALLENGE_MS } satisfies Challenge);
       const to = new URL(provider.authorize);
       for (const [k, v] of Object.entries({ client_id: provider.clientId, redirect_uri: back, state, scope: provider.scope, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" })) if (v) to.searchParams.set(k, v);
       return new Response(null, { status: 302, headers: { location: to.href, "set-cookie": `ewa-oauth=${state}; Path=/auth/oauth/; HttpOnly; SameSite=Lax; Max-Age=${CHALLENGE_MS / 1000}${secure}` } });
@@ -243,7 +247,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       }
       const headers = new Headers();
       headers.append("set-cookie", await sessionCookie(request, user));
-      return toAccount(headers);
+      return toAccount(headers, undefined, found.invite);
     });
   };
 

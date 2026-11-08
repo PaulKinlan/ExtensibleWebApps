@@ -147,10 +147,11 @@ async function oauthChecks(base, check) {
   const cookie = () => [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
   const get = async (url, extra = {}) => keep(await fetch(url, { redirect: "manual", headers: { cookie: cookie(), ...extra } }));
   /** Start, go to the provider, come back: where the callback sends the browser. */
-  const signIn = async ({ dropState = false } = {}) => {
-    const start = await get(`${base}/auth/oauth/fake/start`);
+  const signIn = async ({ dropState = false, query = "", meanwhile } = {}) => {
+    const start = await get(`${base}/auth/oauth/fake/start${query}`);
     const atProvider = await get(start.headers.get("location"));
     if (dropState) jar.delete("ewa-oauth");
+    await meanwhile?.();
     const back = await get(atProvider.headers.get("location"));
     return { status: back.status, location: back.headers.get("location") };
   };
@@ -194,6 +195,25 @@ async function oauthChecks(base, check) {
     linker?.name === "Linker" && link.status === 303 && link.location === "/account/" && stillLinker && viaProvider && /error=/.test(taken.location ?? "") && stillLinkerAfter,
     JSON.stringify({ linker, link, stillLinker, viaProvider, taken, stillLinkerAfter }),
   );
+
+  // Linking started, then signed out before coming back: nothing is linked.
+  fake.as = { id: 9, name: "Too Late" };
+  const late = await signIn({ meanwhile: async () => keep(await fetch(`${base}/auth/signout`, { method: "POST", headers: { origin: base, cookie: cookie() } })) });
+  jar.clear();
+  const fresh = await signIn();
+  const notLinked = (await me())?.id !== linker?.id;
+  // An invite in /account/'s address goes along, and comes back to be accepted.
+  jar.clear();
+  const token = "i".repeat(24);
+  const invited = await signIn({ query: `?invite=${token}` });
+  check(
+    "other sites: a link finished after signing out is refused, and an invite comes back to /account/ after signing in",
+    /error=/.test(late.location ?? "") && fresh.status === 303 && notLinked && invited.location === `/account/?invite=${token}`,
+    JSON.stringify({ late, notLinked, invited }),
+  );
+
+  const parsed = providersFrom({ AUTH_PROVIDERS: JSON.stringify([null, { id: "constructor", clientId: "c", authorize: "https://a.example/a", token: "https://a.example/t", user: "https://a.example/u" }]), CONSTRUCTOR_CLIENT_SECRET: "s" });
+  check("other sites: a configuration entry that isn't an object is skipped, and any id without a preset uses its own URLs", parsed.length === 1 && parsed[0].authorize === "https://a.example/a", JSON.stringify(parsed.map((p) => p.authorize)));
 }
 
 /** Spaces with members (src/server/auth/accounts.ts): who may make, join, invite to and leave a space. */
