@@ -16,6 +16,8 @@
   /std/plugin-editor.js   write your own plugin, or change a copy of one
   /std/view-source.js     read any plugin's code, and what it may do
   /std/hook-tracer.js     the hooks each action runs, and what plugins said
+  /std/ask-the-page.js    ask a language model about the page's plugins
+  /std/llm/*.js           the language models it can ask; bring your own key
 
   If a plugin breaks the page, or you switch off the switchboard itself,
   add ?reset to the address: the host turns this page's plugins back on.
@@ -37,12 +39,19 @@
   <link rel="plugin" href="home/chapter-3-hooks.js">
   <link rel="plugin" href="home/chapter-4-make.js">
   <link rel="plugin" href="home/chapter-5-inspect.js">
+  <link rel="plugin" href="home/chapter-6-models.js">
   <link rel="plugin" href="/std/switchboard.js">
   <link rel="plugin" href="/std/reset.js">
   <link rel="plugin" href="/std/debug-console.js">
   <link rel="plugin" href="/std/plugin-editor.js">
   <link rel="plugin" href="/std/view-source.js">
   <link rel="plugin" href="/std/hook-tracer.js">
+  <link rel="plugin" href="/std/ask-the-page.js">
+  <!-- The language models Ask the page can use. Each asks for its own key the first time.
+       Ollama (/std/llm/openai-compatible.js) needs no key, so linked here it would answer first for everyone. -->
+  <link rel="plugin" href="/std/llm/anthropic.js">
+  <link rel="plugin" href="/std/llm/openai.js">
+  <link rel="plugin" href="/std/llm/gemini.js">
   <style>
     /* The page's own layout: the guided view, chapters beside the playground. One column on phones. */
     body { display: block; }
@@ -89,6 +98,7 @@
       <slot name="chapters"><p class="empty">This is where the chapters go. They're plugins, and they're either loading or switched off. <a href="?reset">Turn everything back on</a>.</p></slot>
       <slot name="editor"></slot>
       <slot name="inspect"></slot>
+      <slot name="ask"></slot>
     </section>
     <aside class="side">
       <slot name="playground"><p class="empty">Your learning notes go here, once their plugin is running.</p></slot>
