@@ -804,11 +804,11 @@ Listeners get `{ app, tab, path, query }`.
 
 ### `share:received`
 
-Something was shared to the app from elsewhere (it is installed as a share target). Call share.take() to have it.
+Something was shared to an app from elsewhere (it is installed as a share target). Call share.take() to have it, if it was shared to your app. It carries nothing itself, as every plugin with `share` hears it.
 
 Mode: `emit`. Listening needs `share`.
 
-Listeners get `{ app, tab, title?, text?, url? }`.
+Listeners get `{}`.
 
 ### `transfer:changed`
 

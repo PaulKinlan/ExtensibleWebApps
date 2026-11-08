@@ -13,7 +13,7 @@
 // — so a share opens the app at /demos/reading-list/share?title=…&url=…, an
 // address like any other screen (the router service). This service sees the
 // tab arrive there, keeps what was shared for that tab, and raises
-// `share:received`. A plugin takes it with `share.take()`, once: taking it
+// `share:received`, which carries nothing: what was shared goes only to a plugin of that app, through take(). A plugin takes it with `share.take()`, once: taking it
 // also moves the tab back to the app's own address, so a reload doesn't
 // share it again. A plugin that starts after the tab opened still finds it.
 //
@@ -29,8 +29,8 @@ import type { ServiceProvider } from "../remote";
 defineHook("share:received", {
   mode: "emit",
   needs: "share",
-  args: "{ app, tab, title?, text?, url? }",
-  description: "Something was shared to the app from elsewhere (it is installed as a share target). Call share.take() to have it.",
+  args: "{}",
+  description: "Something was shared to an app from elsewhere (it is installed as a share target). Call share.take() to have it, if it was shared to your app. It carries nothing itself, as every plugin with `share` hears it.",
 });
 
 /** What a share carries: any of a title, some text and a link. */
@@ -64,7 +64,7 @@ export default ({ root, hosts, apps }: Kernel): ServiceProvider => {
     const shared = fieldsOf(query);
     if (!shared) return;
     pending.set(tab, { ...shared, app });
-    root.emit({}, "share:received", { app, tab, ...shared });
+    root.emit({}, "share:received", {});
   });
 
   /** The tabs a plugin instance acts for: its own, or every tab with its app open (any, for a plugin no app links). */
