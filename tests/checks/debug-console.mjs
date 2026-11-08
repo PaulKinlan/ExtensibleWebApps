@@ -4,6 +4,11 @@ export default async function ({ a, check, context, URL, openTab, errors, plugin
   await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: URL });
   const debugPage = await openTab(`${URL}demos/spending/app.html`);
   await debugPage.waitForSelector("ui-debug .bug", { timeout: 8000 });
+  // The bug and the Customize button share a corner: the button moves up, so neither covers the other.
+  const boxes = await debugPage.evaluate(() => [document.querySelector("ui-debug")?.shadowRoot?.querySelector(".bug") ?? document.querySelector("ui-debug .bug"), document.querySelector(".customize-button")].map((el) => el?.getBoundingClientRect().toJSON()));
+  const [bug, button] = boxes;
+  const apart = !!bug && !!button && (button.bottom <= bug.top || bug.bottom <= button.top || button.right <= bug.left || bug.right <= button.left);
+  check("the debug console's bug and the Customize button don't overlap", apart, JSON.stringify(boxes));
   // An uncaught error in the page is reported to the kernel, and reaches the console through the trace.
   await debugPage.evaluate(() => setTimeout(() => { throw new Error("debug-test boom"); }));
   const counted = await debugPage.waitForFunction(() => Number(document.querySelector("ui-debug")?.getAttribute("problems")) > 0, null, { timeout: 5000 }).then(() => true, () => false);
