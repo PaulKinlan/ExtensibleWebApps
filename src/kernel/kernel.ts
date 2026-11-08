@@ -38,16 +38,6 @@ import { record, recent, setSink, startedAt, tap } from "./trace";
 import { checkApp, userPlugins } from "./user-plugins";
 import type { Opened } from "../shared/protocol";
 
-import wordCount from "../../plugins/word-count.js?raw";
-import editTimes from "../../plugins/edit-times.js?raw";
-import noShouting from "../../plugins/no-shouting.js?raw";
-import tone from "../../plugins/tone.js?raw";
-import bars from "../../plugins/bars.js?raw";
-import pinger from "../../plugins/pinger.js?raw";
-import sneaky from "../../plugins/sneaky.js?raw";
-import fetcher from "../../plugins/fetcher.js?raw";
-import offline from "../../plugins/offline.js?raw";
-import tidy from "../../plugins/tidy.js?raw";
 
 const where = env();
 const shared = where.kind === "shared";
@@ -244,18 +234,9 @@ Object.assign(services, loadServices({ root, store, hosts, remote, apps, reviewe
 for (const name of Object.keys(services)) RESERVED.add(name);
 
 // One per line, with a trailing comma, so two changes that add a plugin land on different lines.
-const BUILT_IN = [
-  wordCount,
-  editTimes,
-  noShouting,
-  tone,
-  bars,
-  tidy,
-  pinger,
-  sneaky,
-  fetcher,
-  offline,
-];
+// Every file in plugins/ is a built-in plugin, loaded in file-name order once a
+// tab can run workers. A new built-in is a new file there.
+const BUILT_IN = Object.values(import.meta.glob<string>("../../plugins/*.js", { query: "?raw", import: "default", eager: true }));
 
 let started = false;
 let loaded = false;
