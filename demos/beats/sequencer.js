@@ -185,6 +185,8 @@ export default async function (ctx) {
   let startedAt = 0;
   let timer = null;
   let last = -1; // the count of the last step sent since startedAt (it sounds up to AHEAD ms later)
+  let lastDue = 0; // when that step sounds (ms since the epoch)
+  const lights = new Set(); // timers that light a sent step's column when it sounds
   let hits = 0;
 
   const load = async () => {
@@ -237,14 +239,16 @@ export default async function (ctx) {
     for (const t of TRACKS) {
       if (muted.has(t.id) || row(p, t.id)[i] !== "x") continue;
       const freq = t.id === "bell" ? BELL[i % 8] : t.id === "bass" ? BASS[i % 8] : undefined;
-      ctx.call("audio", "play", { processor: "beat-voice", ms: 1300, at: due, options: { voice: t.id, freq } }).catch(() => {});
+      // In the "transport" group, so Stop can take back hits that haven't sounded yet.
+      ctx.call("audio", "play", { processor: "beat-voice", ms: 1300, at: due, group: "transport", options: { voice: t.id, freq } }).catch(() => {});
       hits++;
     }
-    setTimeout(() => {
-      if (!playing) return;
+    const light = setTimeout(() => {
+      lights.delete(light);
       step = i;
       draw();
     }, Math.max(0, due - Date.now()));
+    lights.add(light);
   };
 
   /**
@@ -258,6 +262,7 @@ export default async function (ctx) {
     timer = setTimeout(() => {
       if (!playing) return;
       last = n;
+      lastDue = due;
       tick(n % STEPS, due);
       schedule(n + 1);
     }, Math.max(0, due - AHEAD - Date.now()));
@@ -274,6 +279,10 @@ export default async function (ctx) {
   const stop = async () => {
     playing = false;
     clearTimeout(timer);
+    // Hits and columns already sent but not yet due are taken back; a sound already playing rings out.
+    for (const light of lights) clearTimeout(light);
+    lights.clear();
+    ctx.call("audio", "cancel", { group: "transport" }).catch(() => {});
     step = -1;
     draw();
     await announce();
@@ -281,16 +290,25 @@ export default async function (ctx) {
 
   /**
    * When the tempo changes while playing (the slider, a command, another
-   * pattern), keeps the arm where it is in the bar: the time already into
-   * this step carries over at the new length, and the next step is
-   * scheduled from there. Then tells other plugins the new clock.
+   * pattern), keeps the arm where it is in the bar, and the clock other
+   * plugins read in step with what is heard. Steps already sent keep their
+   * time. If the last one has sounded, the time already into it carries
+   * over at the new length; if it hasn't, the new tempo starts from it.
+   * The next step is scheduled from there. Then tells other plugins.
    */
   const retime = (before) => {
-    if (!playing || before === sixteenth()) return;
+    const len = sixteenth();
+    if (!playing || before === len) return;
     const now = Date.now();
-    // The last step sent may not have sounded yet: the arm is between the one before it and it.
-    const pos = Math.min(Math.max((now - startedAt) / before, last - 1), last);
-    startedAt = now - pos * sixteenth();
+    if (last < 0) startedAt = now + AHEAD; // nothing sent yet
+    else if (now < lastDue) {
+      // Sent but not yet heard: that step is where the new tempo starts.
+      const swing = ((pattern()?.swing ?? 0) / 100) * before * 0.5;
+      startedAt = lastDue - (last % 2 ? swing : 0) - last * len;
+    } else {
+      const pos = Math.min(Math.max((now - startedAt) / before, last), last + 0.999);
+      startedAt = now - pos * len;
+    }
     clearTimeout(timer);
     schedule(last + 1);
     return announce();

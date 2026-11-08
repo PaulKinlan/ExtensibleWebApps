@@ -18,7 +18,7 @@ import { inspect } from "./inspect";
 import { themeCss } from "../shared/theme";
 import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
-import { audioStats } from "./bridges/audio";
+import { audioProbe, audioStats } from "./bridges/audio";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn, onElementError } from "./elements";
 import { morphChildren } from "./morph";
@@ -692,4 +692,4 @@ followLinks();
 
 // For tests and poking around in the console.
 // Tests reach the template filler and the CSS cleaner here, to check them without a plugin.
-Object.assign(window, { __host: { tab, app, command, traces, audioStats, workers, fill, cleanCss, report, places: () => pagePlaces.status(), inspect: () => inspector?.start(), get spawner() { return spawner; } } });
+Object.assign(window, { __host: { tab, app, command, traces, audioStats, audioProbe, workers, fill, cleanCss, report, places: () => pagePlaces.status(), inspect: () => inspector?.start(), get spawner() { return spawner; } } });

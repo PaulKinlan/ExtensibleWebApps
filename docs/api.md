@@ -232,13 +232,21 @@ For agents: tools.call, as the agent, told to the app as agent:toolResult.
 
 Sound, played by the tab that runs the plugin workers. Audio runs in an AudioWorklet, never through hooks.
 
+#### audio.cancel
+
+`audio.cancel({ group })` → { cancelled }
+
+Needs: `audio`.
+
+Takes back this plugin's sounds in `group` that haven't started yet, as a Stop button wants. One already sounding plays on to its end.
+
 #### audio.play
 
 `audio.play({ processor, ms?, at?, options? })` → { played, state }
 
 Needs: `audio`.
 
-Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions. With `at`, a time in ms since the epoch (Date.now()), it starts then on the audio clock: ask about 100 ms ahead. The processor's options get `start`, in the audio clock's seconds; output silence until currentTime reaches it to begin on the exact sample.
+Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions. With `at`, a time in ms since the epoch (Date.now()), it starts then on the audio clock: ask about 100 ms ahead. The processor's options get `start`, in the audio clock's seconds; output silence until currentTime reaches it to begin on the exact sample. With `group`, a name of the plugin's own, `cancel` can take it back before it starts.
 
 #### audio.registerProcessor
 
@@ -1143,7 +1151,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `agents:run:<agent>` | Call agents.run. |
-| `audio` | Call audio.registerProcessor, audio.play. |
+| `audio` | Call audio.registerProcessor, audio.play, audio.cancel. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |
 | `bus:inbox` | Call bus.receive, bus.reply. |
