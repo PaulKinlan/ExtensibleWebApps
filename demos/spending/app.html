@@ -31,7 +31,12 @@
   <header>
     <h1>Spending</h1>
     <slot name="history"></slot>
-    <a href="/workbench/">Workbench</a>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
   </header>
   <main>
     <slot name="main"><p>Adding up…</p></slot>
