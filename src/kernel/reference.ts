@@ -198,6 +198,7 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
     { name: "ui", about: "Draw views with ctx.ui.render." },
     { name: "routes", about: "Answer requests for paths in the plugin's own folder with ctx.routes.add." },
     { name: "network", about: "Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere." },
+    { name: "ui:theme", about: "Set design tokens for the whole app with the manifest's `theme`." },
     { name: "ui:transform:<plugin>", about: "Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md." },
     { name: "hook:listen:<hook>", about: "Listen to an emit or parallel hook." },
     { name: "hook:intercept:<hook>", about: "Listen to a hook that can change or stop an action (serial, bail, waterfall)." },

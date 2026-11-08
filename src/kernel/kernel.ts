@@ -156,7 +156,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
     // A plugin turned off (in the workbench, say) changes nothing in the page.
     const manifest = installed?.enabled ? installed.manifest : undefined;
     const unlocked = app ? reviews.grantsFor(o.id).flatMap((g) => (g.startsWith(`unlock:${app}#`) ? [g.split("#")[1]] : [])) : [];
-    return { ...o, name: installed?.manifest.name, places: manifest?.places, unlocked, user: ids.has(o.id) };
+    return { ...o, name: installed?.manifest.name, places: manifest?.places, theme: manifest?.theme, unlocked, user: ids.has(o.id) };
   };
   await apps.open(host, [...links, ...mine], describe);
 }

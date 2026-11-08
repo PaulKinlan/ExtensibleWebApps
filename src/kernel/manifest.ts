@@ -7,6 +7,7 @@
 // optional comments and trailing commas, and nothing after it but the end of
 // the statement. Anything else is refused.
 
+import { THEME_TOKENS, badThemeValue } from "../shared/theme";
 import type { Manifest } from "../shared/protocol";
 import { checkCollections } from "./records";
 import { checkSchema } from "./schema";
@@ -47,6 +48,8 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   settings: "Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form.",
   places:
     'Optional. Up to 20 places in the app\'s page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin\'s view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md.',
+  theme:
+    `Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only ${Object.keys(THEME_TOKENS).join(", ")}, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md.`,
   files:
     "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app.",
 };
@@ -73,6 +76,7 @@ function validate(value: unknown): Manifest {
   if (m.order !== undefined && typeof m.order !== "number") throw new ManifestError("`order` must be a number");
   if (m.settings !== undefined) validateSettings(m.settings);
   if (m.places !== undefined) validatePlaces(m.places, m.permissions as string[], m.id);
+  if (m.theme !== undefined) validateTheme(m.theme, m.permissions as string[]);
   if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 20 || m.files.some((f) => typeof f !== "string" || !FILE_NAME.test(f))))
     throw new ManifestError("`files` must be a list of up to 20 file names, with no folders");
   if (m.collections !== undefined) {
@@ -93,6 +97,16 @@ function validateSettings(settings: unknown) {
     const s = spec as Record<string, unknown>;
     if (!s || !["string", "number", "boolean"].includes(s.type as string)) throw new ManifestError(`Setting ${key} needs a type of string, number or boolean`);
     if (s.enum !== undefined && (!Array.isArray(s.enum) || s.type !== "string")) throw new ManifestError(`Setting ${key}: enum is a list, for string settings`);
+  }
+}
+
+function validateTheme(theme: unknown, permissions: string[]) {
+  if (!theme || typeof theme !== "object" || Array.isArray(theme)) throw new ManifestError("`theme` must be an object of design tokens");
+  if (!permissions.includes("ui:theme")) throw new ManifestError("`theme` needs the ui:theme permission");
+  for (const [token, value] of Object.entries(theme)) {
+    if (!(token in THEME_TOKENS)) throw new ManifestError(`Theme: ${token} isn't a token a theme may set (${Object.keys(THEME_TOKENS).join(", ")})`);
+    const why = badThemeValue(value);
+    if (why) throw new ManifestError(`Theme ${token}: ${why}`);
   }
 }
 

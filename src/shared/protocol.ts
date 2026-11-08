@@ -121,6 +121,7 @@ export interface Opened {
   error?: string;
   name?: string;
   places?: Record<string, Place>;
+  theme?: Record<string, string>;
   unlocked?: string[];
   user?: boolean;
 }
@@ -173,6 +174,8 @@ export interface Manifest {
   places?: Record<string, Place>;
   /** Other files next to the plugin that it needs (its templates, images), copied with it when a person adds it to an app. */
   files?: string[];
+  /** Design tokens it sets for the whole app, with the ui:theme permission: `{ "--accent": "#7c3aed" }` (shared/theme.ts). */
+  theme?: Record<string, string>;
 }
 
 /** Carried as Cordis's `thisArg` on every kernel dispatch, so listeners in any worker know which action they serve. */

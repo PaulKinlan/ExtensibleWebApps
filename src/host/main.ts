@@ -15,6 +15,7 @@ import { folder as appFolder, followLinks, screen } from "./router";
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
 import { customize } from "./customize";
 import { inspect } from "./inspect";
+import { themeCss } from "../shared/theme";
 import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
 import { audioStats } from "./bridges/audio";
@@ -222,12 +223,22 @@ function opened(plugins: Opened[]) {
   if (before !== "all") for (const id of before) if (!shown.has(id)) clearOwner(id);
   // Places first, so held views that go to a place find it.
   pagePlaces.configure(plugins);
+  applyThemes(plugins);
   for (const [id, message] of held) {
     if (!showing(message.owner)) continue;
     held.delete(id);
     render(message.slot, message.key, message.owner, message.order, message.view);
   }
   panel?.refresh();
+}
+
+/** The design tokens the app's plugins set (ui:theme), in the plugins layer: below the page's own styles. */
+function applyThemes(plugins: Opened[]) {
+  const css = themeCss(plugins.flatMap((p) => (p.id && !p.error && p.theme ? [p.theme] : [])));
+  let style = document.getElementById("plugin-themes");
+  if (!css) return void style?.remove();
+  if (!style) style = document.head.appendChild(Object.assign(document.createElement("style"), { id: "plugin-themes" }));
+  if (style.textContent !== css) style.textContent = css;
 }
 
 /**
