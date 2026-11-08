@@ -8,9 +8,13 @@ import { setEnv } from "./env";
 declare const SharedWorkerGlobalScope: { new (): unknown } | undefined;
 const shared = typeof SharedWorkerGlobalScope !== "undefined" && self instanceof SharedWorkerGlobalScope;
 
+// A page in a space (/s/<space>/…) starts a kernel of that space's own, named after it.
+const space = /^kernel:([a-z0-9][a-z0-9-]{0,62})$/.exec(self.name)?.[1];
+
 setEnv({
   kind: shared ? "shared" : "dedicated",
   origin: self.location.origin,
+  ...(space ? { space } : {}),
   connect(accept) {
     if (shared) (self as any).onconnect = (e: MessageEvent) => accept(e.ports[0]);
     else

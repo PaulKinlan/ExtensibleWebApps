@@ -222,6 +222,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     if (committed) return committed;
     root.emit(dispatch, `data:changed:${name}`, change);
     for (const heard of written) heard(change, instance);
+    for (const heard of local) heard(change);
     return { ok: true, id: recordId, ...(outcome ? { outcome } : {}) };
   }
 
@@ -229,6 +230,8 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
 
   /** Who hears every write by a plugin, with the plugin that made it (services/history.ts). */
   const written = new Set<(change: Change, instance: string) => void>();
+  /** Who hears every change made on this device (a write, or an undo), but not one from another device (sync-device.ts). */
+  const local = new Set<(change: Change) => void>();
 
   /**
    * Puts a record back as it was (`to`, or deleted when it is missing), for the person: no review,
@@ -258,7 +261,34 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     // A record that changed since can never be put back; anything else may work another time.
     if (failed) return { ok: false, error: failed, ...(failed === STALE ? { stale: true } : {}) };
     root.emit(dispatch, `data:changed:${name}`, change);
+    for (const heard of local) heard(change);
     return { ok: true };
+  }
+
+  /**
+   * Puts a record as another device made it (`after`, or deleted when it is null), for sync (sync.ts):
+   * no review, as the person who made it already did, and the collection needn't be known here yet.
+   * Views and `data:changed` listeners hear it as they hear any write.
+   */
+  async function apply(name: string, id: string, after: StoredRecord | null, dispatch: Dispatch = {}): Promise<Change> {
+    if (!NAME.test(name)) throw new Error(`${name} isn't a collection's name`);
+    const records = await load(name);
+    let change!: Change;
+    await serially(name, async () => {
+      const before = records.get(id);
+      change = { collection: name, id, before, ...(after ? { after } : {}) };
+      if (after) records.set(id, after);
+      else records.delete(id);
+      try {
+        await save(name, records);
+      } catch (error) {
+        if (before) records.set(id, before);
+        else records.delete(id);
+        throw error;
+      }
+    });
+    if (hooks.has(`data:changed:${name}`)) root.emit(dispatch, `data:changed:${name}`, change);
+    return change;
   }
 
   const service: ServiceProvider = {
@@ -342,7 +372,11 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     },
     registry,
     written,
+    local,
     restore,
+    apply,
+    /** One record, for a service that checks rights itself; null if there is none. */
+    record: async (name: string, id: string) => (await load(name)).get(id) ?? null,
     write,
     may,
     /** Every record in a collection, most recently changed first, for a service that checks rights itself. */

@@ -28,6 +28,8 @@ import { routed } from "./services/router";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
+import { syncHub } from "./sync";
+import { syncDevice } from "./sync-device";
 import { asPlugin } from "./agents/file";
 import { authoring } from "./authoring";
 import { record, recent, setSink, startedAt, tap } from "./trace";
@@ -110,7 +112,10 @@ remote.onDispose = (instance) => {
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
-const userAdded = userPlugins(store, where.origin);
+const sync = syncHub(root, store, records, hosts);
+/** In a browser kernel for a space (a page at /s/<space>/…): its sync with the space, once the folder is known. */
+let device: ReturnType<typeof syncDevice> | undefined;
+const userAdded = userPlugins(store, where.origin, where.kind === "server" ? undefined : where.space);
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
@@ -130,6 +135,8 @@ services.authoring = authoring(remote, apps, {
  * on. The tab hears each plugin's places, and which locked places the person let it into.
  */
 async function openApp(host: (typeof hosts.list)[number], links: { href: string; source: string }[], app?: string) {
+  // A device new to a space gets what the space has before its app starts, so the app sees the space's data.
+  await device?.ready;
   if (!hosts.list.includes(host)) return;
   let mine: { href: string; source: string }[] = [];
   let ids = new Set<string>();
@@ -177,7 +184,7 @@ remote.onChange = (change, id) => {
   }
 };
 
-const routes = makeRoutes(root, remote, shared);
+const routes = makeRoutes(root, remote, shared, where.space);
 remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;
@@ -219,6 +226,7 @@ hosts.onHello = (host, folder) => {
     started = true;
     store.use(where.folder ?? folder);
     void notes.start();
+    if (where.space && where.kind !== "server") device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
     return;
   }
   remote.hostJoined(host);
@@ -228,6 +236,7 @@ hosts.onLeave = (host) => {
   remote.hostLeft(host);
   records.hostLeft(host);
   apps.hostLeft(host);
+  sync.hostLeft(host);
   openApps.delete(host.tab);
 };
 
@@ -297,6 +306,8 @@ hosts.onMessage = async (host, message) => {
       return routed(host, message.path, message.query, openApps.get(host.tab)?.app);
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
+    case "sync":
+      return sync.handle(host, message);
     case "command": {
       const value = await command(message.name, message.arg);
       return hosts.send(host, { t: "command:result", id: message.id, value });
@@ -313,6 +324,7 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "trace") return recent();
   if (name === "route") return routes.answer(arg);
   if (name === "changes") return log.list();
+  if (name === "sync") return device ? device.state() : { space: false };
   // The panel's commands answer { ok: false, error } rather than throw, so the page always hears back.
   if (name.startsWith("user:") || name.startsWith("place:")) return customize(name, arg).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   if (name === "reference") {

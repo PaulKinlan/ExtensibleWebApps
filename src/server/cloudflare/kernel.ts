@@ -13,6 +13,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { setEnv } from "../../kernel/env";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
+import { signed } from "../signed.ts";
 
 type Send = (text: string) => void | Promise<void>;
 
@@ -52,7 +53,7 @@ async function whileLoading<T>(load: () => Promise<T>): Promise<T> {
 
 export class SpaceKernel extends DurableObject {
   private started?: Promise<(port: MessagePort) => void>;
-  private clients = new Map<string, { port: MessagePort; send: Send }>();
+  private clients = new Map<string, { port: MessagePort; send: Send; member: string }>();
 
   /** Starts the kernel the first time a client connects, with this space's folder. */
   private start(origin: string): Promise<(port: MessagePort) => void> {
@@ -76,7 +77,8 @@ export class SpaceKernel extends DurableObject {
     return this.started;
   }
 
-  async join(client: string, origin: string, send: Send): Promise<void> {
+  /** A client joins, as `member` of the space (which the supervisor's Worker checked). */
+  async join(client: string, origin: string, send: Send, member = ""): Promise<void> {
     const accept = await this.start(origin);
     // A function passed over RPC lasts only as long as the call, unless it is kept with dup().
     const kept = (send as Send & { dup?: () => Send }).dup?.() ?? send;
@@ -88,12 +90,14 @@ export class SpaceKernel extends DurableObject {
         // Something that isn't JSON (a canvas, a port) has no meaning to a remote client.
       }
     };
-    this.clients.set(client, { port: port1, send: kept });
+    this.clients.set(client, { port: port1, send: kept, member });
     accept(port2);
   }
 
   async deliver(client: string, text: string): Promise<void> {
-    this.clients.get(client)?.port.postMessage(JSON.parse(text));
+    const found = this.clients.get(client);
+    // The kernel learns who this client is from its hello, which only the supervisor may say.
+    found?.port.postMessage(signed(JSON.parse(text), found.member));
   }
 
   async leave(client: string): Promise<void> {

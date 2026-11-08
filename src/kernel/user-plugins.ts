@@ -41,7 +41,12 @@ export interface UserPlugin {
   error?: string;
 }
 
-export function userPlugins(store: Store, origin: string) {
+/**
+ * `space` is the space whose copy this kernel keeps, if it does: the person's plugins for an app in a
+ * space are kept in the space's folder, and served at /s/<space>/user/<app>/ (sw/routes/spaces.js).
+ */
+export function userPlugins(store: Store, origin: string, space?: string) {
+  const served = `${origin}${space ? `/s/${space}` : ""}/user`;
   /** For each app, the ids of the user plugins the person turned on. */
   let state: Record<string, string[]> | undefined;
   const load = async () => {
@@ -91,7 +96,7 @@ export function userPlugins(store: Store, origin: string) {
       for (const p of await list(app)) {
         if (!p.on) continue;
         const source = await store.readText(`user/${app}/${p.file}`);
-        if (source) links.push({ href: `${origin}/user/${app}/${p.file}`, source });
+        if (source) links.push({ href: `${served}/${app}/${p.file}`, source });
       }
       return links;
     },

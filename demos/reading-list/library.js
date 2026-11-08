@@ -39,19 +39,22 @@ export const manifest = {
   },
 };
 
+// Each sample has an id of its own, so devices sharing a space (/s/<space>/…) that each add them add the same three books.
 const SAMPLE = [
-  { title: "Dune", author: "Frank Herbert", year: 1965, shelf: "reading" },
-  { title: "The Left Hand of Darkness", author: "Ursula K. Le Guin", year: 1969, shelf: "to read", due: "2026-11-21" },
-  { title: "Piranesi", author: "Susanna Clarke", year: 2020, shelf: "done" },
+  { id: "sample-dune", title: "Dune", author: "Frank Herbert", year: 1965, shelf: "reading" },
+  { id: "sample-left-hand", title: "The Left Hand of Darkness", author: "Ursula K. Le Guin", year: 1969, shelf: "to read", due: "2026-11-21" },
+  { id: "sample-piranesi", title: "Piranesi", author: "Susanna Clarke", year: 2020, shelf: "done" },
 ];
 
 export default async function (ctx) {
   // The templates in library.html, next to this file.
   const views = ctx.ui.views("library.html");
   // The plugin owns `library`, so it reads and writes it without asking. The
-  // samples go in once; a flag in the plugin's own storage keeps deleted books deleted.
+  // samples go into an empty library, once; a flag in the plugin's own storage
+  // keeps deleted books deleted. In a space, the kernel has the space's books
+  // before this runs, so a new device doesn't add samples someone deleted.
   if (!(await ctx.storage.get("seeded"))) {
-    for (const book of SAMPLE) await ctx.call("data", "put", "library", book);
+    if (!(await ctx.call("data", "list", "library")).length) for (const book of SAMPLE) await ctx.call("data", "put", "library", book);
     await ctx.storage.set("seeded", true);
   }
 

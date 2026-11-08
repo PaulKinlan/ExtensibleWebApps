@@ -33,7 +33,7 @@ interface Env {
 }
 
 interface KernelStub {
-  join(client: string, origin: string, send: (text: string) => void): Promise<void>;
+  join(client: string, origin: string, send: (text: string) => void, member?: string): Promise<void>;
   deliver(client: string, text: string): Promise<void>;
   leave(client: string): Promise<void>;
 }
@@ -71,7 +71,7 @@ export class Space extends DurableObject<Env> {
     this.clients.set(server, request.headers.get(MEMBER) ?? "");
     const id = crypto.randomUUID();
     // The client's messages wait for the kernel to be ready for them, in order.
-    let ready = kernel.join(id, url.origin, (text) => server.send(text));
+    let ready = kernel.join(id, url.origin, (text) => server.send(text), this.clients.get(server) ?? "");
     ready.catch((e) => console.error(`Space ${space}: the kernel didn't start`, e?.stack ?? e));
     server.addEventListener("message", (e) => {
       ready = ready.then(() => kernel.deliver(id, String(e.data))).catch(() => server.close(1011, "The kernel stopped"));

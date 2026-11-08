@@ -31,13 +31,19 @@ import { workbench } from "./workbench";
 const tab = Math.random().toString(36).slice(2, 8);
 const params = new URLSearchParams(location.search);
 const useShared = typeof SharedWorker !== "undefined" && params.get("kernel") !== "dedicated";
+/**
+ * A page at /s/<space>/… is in a space that people share: it gets a kernel of that space's own, with a
+ * copy of its data kept apart from the person's own, which syncs with the space (src/kernel/sync-device.ts).
+ */
+const space = /^\/s\/([a-z0-9][a-z0-9-]{0,62})\//.exec(location.pathname)?.[1];
+const kernelName = space ? `kernel:${space}` : "kernel";
 
 let port: MessagePort;
 if (useShared) {
-  const kernel = new SharedWorker(new URL("../kernel/browser.ts", import.meta.url), { type: "module", name: "kernel" });
+  const kernel = new SharedWorker(new URL("../kernel/browser.ts", import.meta.url), { type: "module", name: kernelName });
   port = kernel.port;
 } else {
-  const kernel = new Worker(new URL("../kernel/browser.ts", import.meta.url), { type: "module", name: "kernel" });
+  const kernel = new Worker(new URL("../kernel/browser.ts", import.meta.url), { type: "module", name: kernelName });
   const channel = new MessageChannel();
   kernel.postMessage({ t: "connect" }, [channel.port2]);
   port = channel.port1;
@@ -176,7 +182,7 @@ const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"
 /** The platform's own page, with the trace. Every other page is an app, even one that links no plugins. */
 const isWorkbench = !!document.getElementById("devtools");
 /** The app's folder, which names where the person's own plugins for it are kept: `demos/trip` for /demos/trip/app.html, and for its screens, /demos/trip/day/2. */
-const app = appFolder.replace(/^\/+|\/+$/g, "") || "root";
+const app = appFolder.replace(/^\/s\/[^/]+\//, "/").replace(/^\/+|\/+$/g, "") || "root";
 /** Whose views this page shows: its app's plugins, or (on the workbench) everyone's. */
 let shown: Set<string> | "all" = isWorkbench ? "all" : new Set();
 /** Review cards always show: the person must see what a plugin wants to change. */
@@ -216,7 +222,7 @@ function opened(plugins: Opened[]) {
   for (const p of plugins) if (p.error && !running.some((r) => r.href === p.href && r.error === p.error)) notice(`${p.href.split("/").pop()}: ${p.error}`);
   running = plugins;
   // The person may have added a plugin again with new files: load its templates afresh.
-  forgetFiles(`/user/${app}/`);
+  forgetFiles(`${space ? `/s/${space}` : ""}/user/${app}/`);
   const before = shown;
   shown = new Set(plugins.flatMap((p) => (p.id && !p.error ? [p.id] : [])));
   // A plugin that is no longer shown (turned off) takes its views with it.
@@ -661,7 +667,11 @@ await new Promise<void>((held) => {
     return new Promise(() => {});
   });
 });
-const folder = await navigator.storage.getDirectory().catch(() => undefined);
+// A space's copy is kept in a folder of its own, beside the person's own data.
+const folder = await navigator.storage
+  .getDirectory()
+  .then(async (root) => (space ? (await root.getDirectoryHandle("spaces", { create: true })).getDirectoryHandle(space, { create: true }) : root))
+  .catch(() => undefined);
 send({ t: "hello", tab, folder });
 introduced = true;
 for (const message of unsent.splice(0)) send(message);

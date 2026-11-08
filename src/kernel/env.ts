@@ -20,6 +20,8 @@ export interface KernelEnv {
   onError(report: (name: string, detail: string) => void): void;
   /** The kernel's folder, when the host has one. Without it, the first tab to connect passes its folder handle. */
   folder?: Files;
+  /** In a browser, the space this kernel keeps a copy of and syncs with (sync-device.ts), if it isn't the person's own. */
+  space?: string;
 }
 
 let current: KernelEnv | undefined;

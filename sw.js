@@ -38,7 +38,7 @@ self.addEventListener("fetch", (event) => {
 
 /** @param {FetchEvent} event @param {URL} url */
 async function answer(event, url) {
-  const env = { fetch: (request) => cached(request, event), kernel: (name, arg) => kernel(event.clientId, name, arg) };
+  const env = { fetch: (request) => cached(request, event), kernel: (name, arg, space = "") => kernel(event.clientId, name, arg, space) };
   for (const route of routes) {
     if (route.prefix && !url.pathname.startsWith(route.prefix)) continue;
     try {
@@ -79,13 +79,16 @@ async function cached(request, event) {
  * (src/host/service-worker.ts): at once with { taken }, and later with the
  * answer. Only a tab that hasn't taken the question within a second is
  * passed over, so the kernel never runs one request twice. Rejects when no
- * tab takes it.
- * @param {string} clientId @param {string} name @param {unknown} arg
+ * tab takes it. A page in a space (/s/<space>/…) has a kernel of that space's
+ * own, so only its tabs are asked about it, and only the person's own tabs
+ * about their own kernel.
+ * @param {string} clientId @param {string} name @param {unknown} arg @param {string} [space]
  */
-async function kernel(clientId, name, arg) {
+async function kernel(clientId, name, arg, space = "") {
   const own = clientId ? await self.clients.get(clientId) : undefined;
   const windows = await self.clients.matchAll({ type: "window" });
-  const tabs = [own, ...windows.filter((w) => w.id !== clientId)].filter(Boolean);
+  const spaceOf = (/** @type {Client} */ tab) => /^\/s\/([a-z0-9][a-z0-9-]{0,62})\//.exec(new URL(tab.url).pathname)?.[1] ?? "";
+  const tabs = [own, ...windows.filter((w) => w.id !== clientId)].filter((tab) => tab && spaceOf(tab) === space);
   for (const tab of tabs) {
     const answer = await ask(tab, name, arg);
     if (answer === NOT_TAKEN) continue;

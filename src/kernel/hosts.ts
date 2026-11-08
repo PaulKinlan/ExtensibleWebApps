@@ -14,6 +14,8 @@ export interface Host {
   port: MessagePort;
   /** The screen the tab shows, from its address, and when it last changed (see services/router.ts). */
   url?: { path: string; query: Record<string, string>; at: number };
+  /** On a server: the member of the space this client is signed in as, which the server tells the kernel. */
+  member?: string;
 }
 
 type Rendered = { slot: Slot; key: string; owner: string; order: number; view: View | null; tab?: string };
@@ -45,7 +47,7 @@ export class Hosts {
     port.onmessage = (e: MessageEvent<HostToKernel>) => {
       const message = e.data;
       if (message.t === "hello") {
-        host = { tab: message.tab, port };
+        host = { tab: message.tab, port, ...(typeof message.member === "string" ? { member: message.member } : {}) };
         this.list.push(host);
         this.onHello?.(host, message.folder);
         // Each tab holds a Web Lock named after it for as long as it lives;

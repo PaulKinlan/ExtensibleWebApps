@@ -18,6 +18,7 @@ import { MessageChannel, Worker } from "node:worker_threads";
 import { nodeFiles } from "../seams/node.ts";
 import { accounts } from "./auth/accounts.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
+import { signed } from "./signed.ts";
 import { accept } from "./websocket.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -180,7 +181,8 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     });
     socket.onMessage = (text) => {
       try {
-        port1.postMessage(JSON.parse(text));
+        // The kernel learns who this client is from its hello, which only the server may say.
+        port1.postMessage(signed(JSON.parse(text), member.user.id));
       } catch {
         socket.close(1007, "JSON only");
       }

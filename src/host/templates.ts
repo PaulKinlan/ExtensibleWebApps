@@ -31,7 +31,7 @@ export const loadedFile = (src: string) => ready.get(src);
  * that, for up to three seconds.
  */
 function controlled(src: string): Promise<unknown> {
-  if (!new URL(src, location.href).pathname.startsWith("/user/") || !("serviceWorker" in navigator) || navigator.serviceWorker.controller) return Promise.resolve();
+  if (!/^(\/s\/[a-z0-9-]+)?\/user\//.test(new URL(src, location.href).pathname) || !("serviceWorker" in navigator) || navigator.serviceWorker.controller) return Promise.resolve();
   return Promise.race([
     new Promise((resolve) => navigator.serviceWorker.addEventListener("controllerchange", resolve, { once: true })),
     new Promise((resolve) => setTimeout(resolve, 3000)),
