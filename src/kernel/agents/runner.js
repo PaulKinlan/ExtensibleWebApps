@@ -14,7 +14,7 @@
 // against the agent's limits and tells the app what the agent did, in the
 // agent:* events, whatever this code says.
 
-/** Woken by its own writes, an agent would wake itself forever: changes it made in the last minute are not news. */
+/** Woken by its own writes, an agent would wake itself forever: the change a write of its own makes, within a minute, is not news. */
 const ECHO_MS = 60_000;
 /** Wakes that wait while a run is under way; past this, the oldest are dropped. */
 const QUEUE = 20;
@@ -24,7 +24,7 @@ const ANSWER = 20_000;
 export default async function (ctx) {
   const queue = [];
   let running = false;
-  /** `collection/id` of the records this agent wrote, and when. */
+  /** For each `collection/id` this agent wrote: what it wrote (null for a delete), and when. */
   const wrote = new Map();
 
   function wake(trigger) {
@@ -56,7 +56,7 @@ export default async function (ctx) {
   }
 
   async function run(trigger) {
-    const begun = await ctx.call("agents", "begin", { kind: trigger.kind, name: trigger.name, value: trigger.value ?? null });
+    const begun = await ctx.call("agents", "begin", { kind: trigger.kind, name: trigger.name });
     if (!begun.ok) return ctx.log(`${AGENT.name}: didn't run: ${begun.reason}`);
     const runId = begun.run;
     const tools = (await ctx.call("tools", "list")).slice(0, 64).map(({ name, description, parameters }) => ({ name, description, parameters }));
@@ -92,27 +92,38 @@ export default async function (ctx) {
     await ctx.call("agents", "end", runId, { stopReason, text, steps: Math.min(steps, AGENT.limits.steps) });
   }
 
-  /** Notes a record this agent wrote, so the change it causes doesn't wake it again. */
+  /** Notes a write this agent made, once it is committed, so the change it causes doesn't wake it again. */
   function remember(tool, args, value) {
     const m = /^data_(put|delete)(?:_(.+))?$/.exec(tool);
-    if (!m) return;
+    if (!m || value?.ok !== true || !value.id) return;
     const collection = m[2] ?? args.collection;
-    const id = value?.id ?? args.id ?? args.record?.id;
-    if (collection && id) wrote.set(`${collection}/${id}`, Date.now());
+    if (!collection) return;
+    const fields = m[1] === "put" ? Object.fromEntries(Object.entries(args.record ?? {}).filter(([k]) => k !== "id")) : null;
+    wrote.set(`${collection}/${value.id}`, { fields, at: Date.now() });
   }
 
+  /** True only for the change this agent's own write made: the same record, with what it wrote. Anyone else's edit is news. */
   function echo(change) {
+    for (const [k, w] of wrote) if (Date.now() - w.at > ECHO_MS) wrote.delete(k);
     const key = `${change?.collection}/${change?.id}`;
-    const at = wrote.get(key);
-    for (const [k, t] of wrote) if (Date.now() - t > ECHO_MS) wrote.delete(k);
-    return at !== undefined && Date.now() - at <= ECHO_MS;
+    const w = wrote.get(key);
+    if (!w) return false;
+    const after = change.after;
+    const same = w.fields === null
+      ? after === undefined
+      : !!after && Object.entries(w.fields).every(([k, v]) => (v === null || v === "" ? after[k] === undefined : JSON.stringify(after[k]) === JSON.stringify(v)));
+    // One write makes one change: once it is matched, the next change to the record wakes the agent.
+    if (same) wrote.delete(key);
+    return same;
   }
 
   for (const hook of AGENT.hooks) {
     ctx.on(hook, (value) => wake({ kind: "hook", name: hook, value }));
   }
-  // A command someone ran (agents.run): the kernel tells every agent, and the one it names runs it.
-  ctx.on("agent:run", (request) => {
-    if (request?.agent === AGENT.id && AGENT.commands.includes(request.command)) wake({ kind: "command", name: request.command, value: request.input, from: request.from });
+  // A command someone ran (agents.run). The event only names the agent; the command and its input are
+  // fetched from the kernel, which hands them only to the agent it made from this file.
+  ctx.on("agent:run", async (request) => {
+    if (request?.agent !== AGENT.id) return;
+    for (const c of await ctx.call("agents", "next")) wake({ kind: "command", name: c.command, value: c.input, from: c.from });
   });
 }

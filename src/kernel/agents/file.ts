@@ -23,6 +23,7 @@
 // The frontmatter is a small part of YAML: `key: value`, lists as `[a, b]` or
 // as `- item` lines, and maps as `{ a: 1 }` or indented lines.
 
+import { grants } from "../gate";
 import runner from "./runner.js?raw";
 
 export class AgentFileError extends Error {}
@@ -92,6 +93,13 @@ export function fromAgentFile(text: string): string {
     else if (kind === "command" && typeof value === "string" && COMMAND.test(value)) commands.push(value);
     else if (kind === "message") throw new AgentFileError("Waking on a message comes with the message bus");
     else throw new AgentFileError("Each entry in `on` is `- hook: <name>` or `- command: <name>` (lowercase letters, digits and dashes)");
+  }
+
+  // An agent can't own a collection, so hearing that one changed needs reading it.
+  const reads = new Set((permissions as string[]).filter((p) => p.startsWith("data:read:")));
+  for (const hook of hooks) {
+    const collection = /^data:changed:(.+)$/.exec(hook)?.[1];
+    if (collection && !grants(reads, `data:read:${collection}`)) throw new AgentFileError(`Waking on ${hook} needs data:read:${collection} in \`permissions\``);
   }
 
   const limits = { ...DEFAULT_LIMITS };

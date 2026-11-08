@@ -44,9 +44,9 @@ export default async function ({ a, check, openTab, URL, plugin, pluginLog }) {
     await page.click('[data-key^="review:"] >> text=Accept').catch(() => {});
     const filled = await page.waitForSelector('[data-key="library:books"] ui-table >> text=George Eliot', { timeout: 8000 }).then(() => true, () => false);
     check("the agent's tool call lands once the person accepts it", filled);
-    await page.waitForFunction(() => document.querySelector('[data-key="agent-activity:activity"]')?.textContent.includes("Filled in Middlemarch"), null, { timeout: 8000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelector('[data-key="agent-activity:activity"]')?.textContent.includes("65 tokens"), null, { timeout: 8000 }).catch(() => {});
     const log = await activity();
-    check("the app hears agent:wake, agent:toolResult and agent:done", /woke\s*librarian: data:changed:library/.test(log) && /librarian called data_put_library/.test(log) && /Filled in Middlemarch\. \(65 tokens\)/.test(log), log.replace(/\s+/g, " ").slice(0, 300));
+    check("the app hears agent:wake, agent:toolResult and agent:done", /woke\s*librarian: data:changed:library/.test(log) && /librarian called data_put_library/.test(log) && /librarian: 1 tool call, 65 tokens/.test(log), log.replace(/\s+/g, " ").slice(0, 300));
 
     // Give an echo time to arrive: the agent's own write must not wake it again.
     await page.waitForTimeout(1500);
@@ -63,7 +63,7 @@ export default async function ({ a, check, openTab, URL, plugin, pluginLog }) {
     await plugin(`export const manifest = { id: "agent-caller", name: "Agent caller", permissions: ["agents:run:librarian", "hook:listen:agent:*"] };
 export default async (ctx) => {
   const tryIt = (p) => p.then((v) => JSON.stringify(v), (e) => "error: " + e.message);
-  ctx.on("agent:done", (e) => ctx.log("caller-done " + e.stopReason + " " + e.text));
+  ctx.on("agent:done", (e) => ctx.log("caller-done " + e.stopReason + " " + JSON.stringify(Object.keys(e).sort())));
   ctx.on("agent:budget", (e) => ctx.log("caller-budget " + JSON.stringify(e)));
   try { ctx.on("agent:run", () => {}); } catch {}
   ctx.log("caller-unknown " + await tryIt(ctx.call("agents", "run", "librarian", "burn-it-down")));
@@ -73,9 +73,19 @@ export default async (ctx) => {
 };`);
     check("only an agent's own commands can be run, by a plugin with agents:run:<agent>", /error: Librarian has no command burn-it-down/.test(await pluginLog("agent-caller", "caller-unknown").catch(() => "")) && /error: .*agents:run:someone-else/.test(await pluginLog("agent-caller", "caller-other").catch(() => "")));
     check("the agent loop's own methods are only for agents", /error: agents.begin is for agents/.test(await pluginLog("agent-caller", "caller-inner").catch(() => "")));
-    check("a command runs the agent", (await pluginLog("agent-caller", "caller-done").catch(() => "")) === "caller-done completed Spent.");
+    check("a command runs the agent, and agent:done says how it ended, not what the model said", (await pluginLog("agent-caller", "caller-done").catch(() => "")) === 'caller-done completed ["agent","run","steps","stopReason","tools","usage"]');
     check("only agents hear agent:run", await a.evaluate(() => window.__host.traces.some((e) => e.kind === "denied" && e.plugin === "agent-caller" && e.name === "agent")));
     await a.evaluate(() => window.__host.command("uninstall", "agent-caller"));
+
+    // A plugin that claims the agent permission hears that an agent has a command, but never the command or its input.
+    await plugin(`export const manifest = { id: "fake-agent", name: "Fake agent", permissions: ["agent", "agents:run:librarian"] };
+export default async (ctx) => {
+  ctx.on("agent:run", (e) => ctx.log("fake-heard " + JSON.stringify(e)));
+  ctx.log("fake-next " + await ctx.call("agents", "next").then(JSON.stringify, (e) => "error: " + e.message));
+  await ctx.call("agents", "run", "librarian", "fill-missing", { secret: "hush" });
+};`);
+    check("an agent's command and input go only to that agent", (await pluginLog("fake-agent", "fake-heard").catch(() => "")) === 'fake-heard {"agent":"librarian"}' && /error: agents.next is for agents/.test(await pluginLog("fake-agent", "fake-next").catch(() => "")));
+    await a.evaluate(() => window.__host.command("uninstall", "fake-agent"));
 
     await plugin(`export const manifest = { id: "agent-caller-2", name: "Agent caller", permissions: ["agents:run:librarian", "hook:listen:agent:*"] };
 export default async (ctx) => {

@@ -164,6 +164,14 @@ Needs: nothing.
 
 The agents running now, what wakes them, their limits, and what they have used this hour (runs) and today (tokens).
 
+#### agents.next
+
+`agents.next()` → [{ command, input, from }]
+
+Needs: nothing.
+
+For agents: the commands waiting for this agent, which it runs in order.
+
 #### agents.run
 
 `agents.run(agent, command, input?)` → { ok: true }
@@ -560,23 +568,23 @@ An agent's run ended. stopReason is completed, steps (it reached its step limit)
 
 Mode: `emit`. Listening needs `hook:listen:agent:done`.
 
-Listeners get `{ agent, run, stopReason, text, steps, tools, usage: { input, output } }`.
+Listeners get `{ agent, run, stopReason, steps, tools, usage: { input, output } }`.
 
 ### `agent:run`
 
-Someone ran an agent's command (agents.run). Only agents hear it: the one named runs the command.
+Someone ran one of an agent's commands (agents.run). The named agent fetches it with agents.next, which only that agent may call.
 
 Mode: `emit`. Listening needs `agent`.
 
-Listeners get `{ agent, command, input?, from }`.
+Listeners get `{ agent }`.
 
 ### `agent:toolResult`
 
-An agent called one of its tools.
+An agent called one of its tools; ok is false if the call failed.
 
 Mode: `emit`. Listening needs `hook:listen:agent:toolResult`.
 
-Listeners get `{ agent, run, tool, args, ok, error? }`.
+Listeners get `{ agent, run, tool, ok }`.
 
 ### `agent:wake`
 
@@ -584,7 +592,7 @@ An agent began a run, woken by a hook or a command.
 
 Mode: `emit`. Listening needs `hook:listen:agent:wake`.
 
-Listeners get `{ agent, run, trigger: { kind, name, value } }`.
+Listeners get `{ agent, run, trigger: { kind, name } }`.
 
 ### `bench:ping`
 
