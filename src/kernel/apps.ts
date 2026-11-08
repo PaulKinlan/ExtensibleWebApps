@@ -107,7 +107,17 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     async open(host: Host, links: Link[], describe: (opened: Opened) => Opened = (o) => o): Promise<void> {
       const before = new Set(linked.get(host.tab));
       linked.set(host.tab, new Set());
-      const plugins = await Promise.all(links.map((link) => openOne(host, link)));
+      // The plugins this open will start: a server-only one isn't started here (openOne), so it provides nothing here.
+      const sources = links.flatMap((link) => {
+        try {
+          const source = asPlugin(link.href, link.source);
+          return readManifest(source).runs === "server" ? [] : [source];
+        } catch {
+          return [];
+        }
+      });
+      const started = remote.expect(sources);
+      const plugins = await Promise.all(links.map((link) => openOne(host, link))).finally(started);
       const now = linked.get(host.tab)!;
       for (const id of before) if (!now.has(id)) release(id, host.tab);
       record({ kind: "lifecycle", name: "app:open", detail: `${host.tab}: ${plugins.map((p) => p.id ?? `${p.href} (${p.error})`).join(", ")}` });

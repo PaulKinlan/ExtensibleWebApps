@@ -75,6 +75,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `network:<host>` | Send requests to one host through the kernel (`net.fetch`). | Narrower than `network`, and traced. |
 | `secret:<name>` | Use the key the person gave under that name, in requests to the hosts they agreed to. | The plugin never reads the key. See [API keys and web requests](guide/keys-and-requests.md). |
 | `llm` | Ask the app's language models, and list them. | The plugin never sees a key or a vendor's address. |
+| `provide:<service>` | Provide a service other plugins call, such as `provide:mail`: answer every call any app's plugins make to it. The manifest's `provides` describes it. | A plugin that adds a capability the site doesn't build in. See [the layers](layers.md#plugins-that-provide-services). |
 | `provide:llm` | Be a language model: answer the `llm` service's requests for one vendor. | What the plugins in [`/std/llm/`](../std/llm/README.md) ask for, beside their vendor's host and key. |
 | `share` | Hand something to the system's share sheet, or take what was shared to the app. | |
 | `email` | Send an email (`email.send`), to up to 10 addresses. | Only on a space's server; refused in a browser. At most 50 a day. Written to the space's outbox until the site sets up delivery. |

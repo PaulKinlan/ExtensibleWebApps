@@ -44,7 +44,7 @@ export const PLUGIN_HOOKS = {
 export const hookOwners = new Map<string, string>();
 
 /** Hook names the kernel reads in its own way: a plugin with one of these ids can't define hooks. */
-const SPECIAL = ["command", "schedule", "route", "internal"];
+const SPECIAL = ["command", "schedule", "route", "internal", "service"];
 
 /** True if `<id>:` starts any of the kernel's own hooks, so a plugin with that id can't define hooks of its own. */
 export function kernelPrefix(id: string): boolean {
