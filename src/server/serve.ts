@@ -10,7 +10,7 @@
 //
 //   node src/server/serve.ts [--port 8787] [--spaces .spaces] [--site dist] [--host 127.0.0.1]
 
-import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { type Duplex, Readable } from "node:stream";
@@ -255,6 +255,17 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
   await new Promise<void>((ready) => server.listen(options.port, options.host, ready));
   const address = server.address();
   const url = `http://${options.host}:${typeof address === "object" && address ? address.port : options.port}`;
+  // A space whose plugins scheduled jobs (src/kernel/services/schedule.ts) starts now, so they run
+  // with no one connected.
+  for (const name of existsSync(resolve(options.spaces)) ? readdirSync(resolve(options.spaces)) : []) {
+    if (!SPACE.test(name)) continue;
+    try {
+      const jobs = JSON.parse(readFileSync(join(resolve(options.spaces), name, "files", "schedule", "jobs.json"), "utf8"));
+      if (Array.isArray(jobs) && jobs.length) void space(name).catch(() => {});
+    } catch {
+      // No jobs.
+    }
+  }
   return {
     url,
     async stop() {

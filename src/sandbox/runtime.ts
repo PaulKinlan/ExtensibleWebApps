@@ -17,6 +17,8 @@ const handlers = new Map<number, (...args: any[]) => unknown>();
 const calls = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 const eventHandlers = new Set<(action: string, value: unknown) => void>();
 const canvasHandlers = new Map<string, (canvas: OffscreenCanvas) => void>();
+/** Each job's listener, by name, so setting a name again replaces the old handler (ctx.schedule). */
+const jobListeners = new Map<string, () => void>();
 /** Each command's listener, by id, so adding an id again replaces the old handler (ctx.commands.add). */
 const commandListeners = new Map<string, () => void>();
 const settingsHandlers = new Set<(values: Record<string, unknown>) => void>();
@@ -48,6 +50,24 @@ function api(trace: () => string | undefined): Api {
       send({ t: "call", id, service, method, args, trace: trace() });
     });
   };
+  /**
+   * Listens for a job's hook, then sets the job. Setting a name again replaces its handler. The `off()` stops
+   * listening; the job is kept until cancelled.
+   */
+  const scheduled = (name: string, handler: () => unknown, set: () => Promise<unknown>) => {
+    jobListeners.get(name)?.();
+    const off = self.on(`schedule:${name}`, async () => {
+      await handler();
+    });
+    jobListeners.set(name, off);
+    set().catch((error) => log(`Couldn't schedule ${name}: ${error instanceof Error ? error.message : error}`, "error"));
+    return () => {
+      // A replaced handler's off() leaves its replacement alone.
+      if (jobListeners.get(name) !== off) return;
+      jobListeners.delete(name);
+      off();
+    };
+  };
   const self: Api = {
     on(name: string, handler: (...args: any[]) => unknown): () => void {
       const listener = ++nextListener;
@@ -63,6 +83,15 @@ function api(trace: () => string | undefined): Api {
       add(method, path, handler) {
         return self.on(`route:${String(method).toUpperCase()} ${path}`, (request: RouteRequest) => handler(request));
       },
+    },
+    schedule: {
+      every(name, ms, handler) {
+        return scheduled(name, handler, () => call("schedule", "every", name, ms));
+      },
+      at(name, when, handler) {
+        return scheduled(name, handler, () => call("schedule", "at", name, when));
+      },
+      cancel: (name) => call("schedule", "cancel", name).then(() => {}),
     },
     commands: {
       add(command, handler) {

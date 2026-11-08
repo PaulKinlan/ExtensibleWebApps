@@ -84,6 +84,7 @@ const wake = () => {
   if (isolates) isolateHost(isolates, (own) => hosts.connect(own, { isolates: true }));
   isolates = undefined;
 };
+where.boot?.(wake);
 where.connect((port) => {
   wake();
   hosts.connect(port);

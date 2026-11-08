@@ -3,7 +3,8 @@
   An app with a plugin that runs on a space's server (tests/server/run.mjs):
   guard.js keeps the space's memos free of a word, for every device, with no
   app open anywhere. inbox.js answers public routes there, for a form on
-  any site. notes.js is the browser's side, and never runs there.
+  any site. ticker.js counts on a schedule, and mailer.js sends email.
+  notes.js is the browser's side, and never runs there.
 -->
 <html lang="en">
 <head>
@@ -12,6 +13,8 @@
   <link rel="plugin" href="guard.js">
   <link rel="plugin" href="inbox.js">
   <link rel="plugin" href="prober.js">
+  <link rel="plugin" href="ticker.js">
+  <link rel="plugin" href="mailer.js">
   <!-- <link rel="plugin" href="ghost.js"> (off: it must not start) -->
   <link rel="plugin" href="notes.js">
   <link rel="plugin" href="https://elsewhere.example/plugin.js">

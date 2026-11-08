@@ -207,6 +207,8 @@ async function syncChecks(base, check, owner, restart) {
     JSON.stringify({ stale, newer }),
   );
   check("sync: a device can't say it is another member: the server says who it is", byBea?.by === ids.bea, JSON.stringify(byBea));
+  const told = (d) => d.heard.find((m) => m.op === "changes")?.member;
+  check("sync: the space's answer to hello tells each device which member it is", told(phone) === ids.owner && told(laptop) === ids.bea, JSON.stringify({ phone: told(phone), laptop: told(laptop) }));
   const stamped = laptop.changes().find((c) => c.seq === 1)?.after;
   check("sync: a record sent without timestamps is stored with them, as every record has", typeof stamped?.createdAt === "string" && typeof stamped?.updatedAt === "string", JSON.stringify(stamped));
 
@@ -243,6 +245,8 @@ async function serverPluginChecks(base, check, owner, restart) {
   }
   const fine = await phone.push([{ collection: "memos", id: "fine", base: 0, after: { id: "fine", title: "A fine word" } }]);
   check("server plugins: an app's plugin with runs: \"server\" starts in the space when a device opens the app there, and its data:beforeWrite stops a device's change", /Guard: that word/.test(refused?.error ?? "") && fine?.[0]?.ok, JSON.stringify({ refused, fine }));
+  const ownerId = (await owner.call("/auth/me")).body?.user?.id;
+  check("server plugins: a server plugin's data:beforeWrite hears which member's device sent the change, as `by`", !!ownerId && refused?.error?.includes(`(from ${ownerId})`), JSON.stringify({ refused, ownerId }));
 
   await phone.settle();
   const reach = phone.changes().find((c) => c.id === "reach");
@@ -276,6 +280,27 @@ async function serverPluginChecks(base, check, owner, restart) {
     counted?.count === 1 && unrouted.status === 404 && nowhere.status === 404 && big.status === 413,
     JSON.stringify({ counted, unrouted: unrouted.status, nowhere: nowhere.status, big: big.status }),
   );
+  // Email: a server plugin with `email` sends it (written down in the space's outbox), checked, and only so much a day.
+  const notify = (body) => fetch(`${base}/s/guarded/server-app/notify`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json(), () => null);
+  const mailed = await notify({ to: "Sam@Example.com", subject: "3 new answers", text: "See them in the space." });
+  const badTo = await notify({ to: ["not an address"], subject: "x", text: "x" });
+  const badDomain = await notify({ to: ["sam@example..com"], subject: "x", text: "x" });
+  const badControl = await notify({ to: ["sam\u0000@example.com"], subject: "x", text: "x" });
+  const badSubject = await notify({ to: ["sam@example.com"], subject: "Two\nlines", text: "x" });
+  const tooMany = await notify({ to: Array.from({ length: 11 }, (_, i) => `p${i}@example.com`), subject: "x", text: "x" });
+  check(
+    "server plugins: a plugin with `email` sends a message; a bad address, a subject of two lines or more than 10 people is refused",
+    mailed?.ok === true && typeof mailed.id === "string" && /address/.test(badTo?.error) && /address/.test(badDomain?.error) && /address/.test(badControl?.error) && /one line/.test(badSubject?.error) && /at most 10/.test(tooMany?.error),
+    JSON.stringify({ mailed, badTo, badDomain, badControl, badSubject, tooMany }),
+  );
+  let day = 1;
+  let limited;
+  for (let tries = 0; tries < 60 && !limited; tries++) {
+    const answer = await notify({ to: "sam@example.com", subject: `Message ${day + 1}`, text: "x" });
+    if (answer?.ok) day++;
+    else limited = answer ?? { error: "no answer" };
+  }
+  check("server plugins: a plugin sends at most 50 messages a day", day === 50 && /50 messages a day/.test(limited?.error ?? ""), JSON.stringify({ day, limited }));
   const form = new FormData();
   form.append("text", "Sent as multipart");
   form.append("file", new Blob(["ignored"]), "note.txt");
@@ -287,6 +312,16 @@ async function serverPluginChecks(base, check, owner, restart) {
     multipart.status === 303 && head.status === 200 && head.headers.get("content-type")?.startsWith("application/json") && twice?.count === 2,
     JSON.stringify({ multipart: multipart.status, head: head.status, twice }),
   );
+  // A scheduled job runs on the server, and what it writes reaches devices.
+  let tick;
+  for (let i = 0; i < 40 && !(tick?.after?.n >= 2); i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    await phone.settle();
+    tick = phone.changes().filter((c) => c.collection === "ticks" && c.id === "count").at(-1);
+  }
+  check("server plugins: a job a server plugin schedules with ctx.schedule.every runs on the server, again and again", tick?.after?.n >= 2 && tick.by === "plugin:ticker", JSON.stringify(tick));
+  const tamper = phone.changes().find((c) => c.collection === "ticks" && c.id === "tamper")?.after;
+  check("server plugins: a plugin can't rewrite the space's jobs as a file, even with files:schedule", !!tamper?.refused, JSON.stringify(tamper));
   check("server plugins: a plugin linked only inside an HTML comment doesn't start on the server", !phone.changes().some((c) => c.collection === "ghosts"), JSON.stringify(phone.changes().filter((c) => c.collection === "ghosts")));
   phone.close();
 
@@ -306,10 +341,27 @@ async function serverPluginChecks(base, check, owner, restart) {
 
   // The space starts its apps' server plugins again when it restarts, with no device asking.
   const url = await restart();
-  // A request to a public route wakes the space, with no device connected.
-  const woken = await fetch(`${url}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
-  check("server plugins: a public route wakes a space that isn't running, and its plugin answers", woken?.count === 2, JSON.stringify(woken));
-  const later = await device(url, "guarded", owner.cookie);
+  const stoppedAt = Date.now();
+  // The ticker's job starts the space again by itself, with no device or request: a device that connects
+  // later finds ticks made after the restart.
+  await new Promise((r) => setTimeout(r, 4000));
+  const watcher = await device(url, "guarded", owner.cookie);
+  await watcher.hello(0);
+  const ticked = watcher.changes().filter((c) => c.collection === "ticks" && c.id === "count").at(-1);
+  const firstTick = watcher.changes().find((c) => c.collection === "ticks" && c.id === "count" && c.after?.at > stoppedAt);
+  check(
+    "server plugins: after a restart, a scheduled job starts the space by itself and keeps running, with no one connected",
+    !!firstTick && firstTick.after.at < Date.now() - 1000 && ticked?.after?.at > stoppedAt,
+    JSON.stringify({ firstTick, ticked, stoppedAt }),
+  );
+  watcher.close();
+  // With the ticker's job stopped, a restart leaves the space cold: a request to a public route wakes it,
+  // with no device connected.
+  const stopped = await fetch(`${url}/s/guarded/server-app/stop`, { method: "POST" }).then((r) => r.json(), () => null);
+  const coldUrl = await restart();
+  const woken = await fetch(`${coldUrl}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
+  check("server plugins: a public route wakes a space that isn't running, and its plugin answers", stopped?.stopped && woken?.count === 2, JSON.stringify({ stopped, woken }));
+  const later = await device(coldUrl, "guarded", owner.cookie);
   await later.hello(0);
   let again;
   for (let i = 0; i < 40 && !again; i++) {

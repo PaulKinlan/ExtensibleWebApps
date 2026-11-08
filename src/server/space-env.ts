@@ -23,6 +23,11 @@ setEnv({
       if (message?.t === "connect" && message.port) accept(message.port);
     });
   },
+  boot(start) {
+    // serve.ts starts a space with jobs when the server starts (src/kernel/services/schedule.ts): the
+    // kernel's folder is ready at once on Node, so it starts as soon as it has loaded.
+    setImmediate(start);
+  },
   serve(answer) {
     // A public route's request, which serve.ts passes on (src/server/routes.ts).
     parentPort!.on("message", async (message: { t?: string; id?: number; request?: Parameters<typeof answer>[0] }) => {
