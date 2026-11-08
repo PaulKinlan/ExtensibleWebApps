@@ -35,6 +35,11 @@ export class Hosts {
     return this.mode === "server" ? undefined : this.list[0];
   }
 
+  /** The clients that start tab-scoped plugins' workers: every tab, and none on a server. */
+  get workerHosts(): Host[] {
+    return this.mode === "server" ? [] : this.list;
+  }
+
   connect(port: MessagePort): void {
     let host: Host | undefined;
     port.onmessage = (e: MessageEvent<HostToKernel>) => {

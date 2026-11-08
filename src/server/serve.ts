@@ -10,9 +10,10 @@
 //
 //   node src/server/serve.ts [--port 8787] [--spaces .spaces] [--site dist] [--host 127.0.0.1]
 
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
+import type { Duplex } from "node:stream";
 import { MessageChannel, Worker } from "node:worker_threads";
 import { accept } from "./websocket.ts";
 
@@ -41,6 +42,7 @@ export interface Options {
 export async function serve(options: Options): Promise<{ url: string; stop(): Promise<void> }> {
   const site = resolve(options.site);
   const spaces = new Map<string, Promise<Worker>>();
+  const rules = headerRules(join(site, "_headers"));
 
   /** The space's kernel, started on first use. */
   const space = (name: string): Promise<Worker> => {
@@ -78,7 +80,10 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
       status = 404;
       if (!existsSync(full)) return void response.writeHead(404).end("Not found");
     }
-    response.writeHead(status, { "content-type": TYPES[extname(full)] ?? "application/octet-stream" });
+    const headers: Record<string, string> = { "content-type": TYPES[extname(full)] ?? "application/octet-stream" };
+    // The site's _headers apply here as on Cloudflare: plugin workers take their policy from them.
+    for (const rule of rules) if (rule.path.test(path)) Object.assign(headers, rule.headers);
+    response.writeHead(status, headers);
     createReadStream(full).pipe(response);
   };
 
@@ -87,9 +92,20 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     file(request, response);
   });
 
-  server.on("upgrade", async (request, raw) => {
-    const match = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url ?? "/", "http://x").pathname);
+  /** Open WebSockets, which server.close() would otherwise wait for. */
+  const open = new Set<Duplex>();
+
+  server.on("upgrade", async (request, raw: Duplex) => {
+    let match: RegExpExecArray | null;
+    try {
+      match = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url ?? "/", "http://x").pathname);
+    } catch {
+      return void raw.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+    }
     if (!match || !SPACE.test(match[1])) return void raw.end("HTTP/1.1 404 Not Found\r\n\r\n");
+    // A page on another site may open a WebSocket here (they aren't bound by CORS), so a browser's
+    // client must come from this server's own pages. A client that isn't a browser sends no Origin.
+    if (!sameOrigin(request.headers.origin, request.headers.host)) return void raw.end("HTTP/1.1 403 Forbidden\r\n\r\n");
     let kernel: Worker;
     try {
       kernel = await space(match[1]);
@@ -98,6 +114,8 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     }
     const socket = accept(request, raw);
     if (!socket) return;
+    open.add(raw);
+    raw.on("close", () => open.delete(raw));
     // One port per client, as a tab gets one; messages cross as JSON.
     const { port1, port2 } = new MessageChannel();
     kernel.postMessage({ t: "connect", port: port2 }, [port2]);
@@ -128,10 +146,41 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     url,
     async stop() {
       server.closeAllConnections();
+      for (const raw of open) raw.destroy();
       await new Promise((done) => server.close(done));
       for (const started of spaces.values()) await (await started.catch(() => undefined))?.terminate();
     },
   };
+}
+
+/**
+ * The rules of a Cloudflare `_headers` file: a path (where `*` matches anything) on a line of its
+ * own, then its headers, indented, one `Name: value` to a line. No file, no rules.
+ */
+export function headerRules(file: string): { path: RegExp; headers: Record<string, string> }[] {
+  if (!existsSync(file)) return [];
+  const rules: { path: RegExp; headers: Record<string, string> }[] = [];
+  for (const line of readFileSync(file, "utf8").split("\n")) {
+    if (!line.trim() || line.trim().startsWith("#")) continue;
+    if (!/^\s/.test(line)) {
+      const pattern = line.trim().split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
+      rules.push({ path: new RegExp(`^${pattern}$`), headers: {} });
+    } else if (rules.length) {
+      const at = line.indexOf(":");
+      if (at > 0) rules[rules.length - 1].headers[line.slice(0, at).trim().toLowerCase()] = line.slice(at + 1).trim();
+    }
+  }
+  return rules;
+}
+
+/** Whether a WebSocket's Origin, if it sent one, is this server (as the client reached it). */
+export function sameOrigin(origin: string | undefined, host: string | undefined): boolean {
+  if (origin === undefined) return true;
+  try {
+    return new URL(origin).host === host;
+  } catch {
+    return false;
+  }
 }
 
 // Run directly: read the options and start.
