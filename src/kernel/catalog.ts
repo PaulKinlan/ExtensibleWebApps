@@ -238,7 +238,7 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
   const service: ServiceProvider = {
     description: "The plugin's own settings, from the form the plugins panel builds out of its manifest.",
     methods: {
-      get: { args: "()", returns: "{ [key]: value }", description: "The plugin's settings: saved values over the manifest's defaults." },
+      get: { args: "()", returns: "{ [key]: value }", description: "The plugin's settings: saved values over the manifest's defaults.", params: [] },
     },
     capability: () => undefined,
     call: (instance, method) => {

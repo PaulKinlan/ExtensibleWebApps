@@ -21,7 +21,27 @@ import { capabilities, check } from "./gate";
 import { capabilityFor, hooks, type HookSpec } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import { ManifestError, readManifest } from "./manifest";
+import type { Schema } from "./schema";
 import { record } from "./trace";
+
+/**
+ * One argument of a service method, so a model can call it as a tool
+ * (services/tools.ts). The order of a method's params is the order of its
+ * arguments.
+ */
+export interface Param {
+  name: string;
+  /** What the value must be, in the collections' JSON Schema subset. No type means any JSON value. */
+  schema: Schema;
+  /** True if it may be left out. Only trailing arguments can be. */
+  optional?: boolean;
+  /**
+   * A capability prefix, such as `data:read:`, whose names this value must be
+   * one of. A tool list then offers only the names the caller holds (and, for
+   * `data:` prefixes, the collections its manifest owns).
+   */
+  names?: string;
+}
 
 /** One method of a service, as the API reference shows it. */
 export interface MethodDoc {
@@ -33,6 +53,8 @@ export interface MethodDoc {
   /** True if the person reviews the change before it happens. */
   reviewed?: boolean;
   description: string;
+  /** Its arguments, described for tools. A method without them isn't offered as a tool. */
+  params?: Param[];
 }
 
 export interface ServiceProvider {
@@ -481,26 +503,11 @@ export class Remote {
   }
 
   private async call(id: number, service: string, method: string, args: unknown[], trace?: string): Promise<void> {
-    // Own entries only: `toString` or `__proto__` would find the object's prototype instead.
-    const provider = Object.hasOwn(this.manager.services, service) ? this.manager.services[service] : undefined;
     const reply = (ok: boolean, value?: unknown, error?: string) => this.post({ t: "result", id, ok, value, error });
-    if (!provider) return reply(false, undefined, `No service named ${service}`);
-    if (!Object.hasOwn(provider.methods, method)) return reply(false, undefined, `${service}.${method} is not a method`);
-    let needed: string | undefined;
     try {
-      needed = provider.capability(method, args);
+      reply(true, await callService(this.manager.services, this.instance, this.caps, service, method, args, { trace }));
     } catch (error) {
-      return reply(false, undefined, String(error instanceof Error ? error.message : error));
-    }
-    if (needed && !check(this.instance, this.caps, needed)) return reply(false, undefined, `Missing capability ${needed}`);
-    const started = performance.now();
-    try {
-      reply(true, await provider.call(this.instance, method, args, { trace }));
-      record({ kind: "call", name: `${service}.${method}`, plugin: this.instance, trace, ms: ms(started) });
-    } catch (error) {
-      const message = String(error instanceof Error ? error.message : error);
-      reply(false, undefined, message);
-      record({ kind: "call", name: `${service}.${method}`, plugin: this.instance, trace, ms: ms(started), detail: `failed: ${message}` });
+      reply(false, undefined, String(error instanceof Error ? error.message : error));
     }
   }
 
@@ -518,5 +525,30 @@ export class Remote {
     if (routed) this.manager.onRoutes?.();
     void this.fiber?.dispose?.();
     this.port.close();
+  }
+}
+
+/**
+ * Calls a service method for a plugin instance, through the gate: the method
+ * must be listed, and the plugin must hold the capability it needs. Every
+ * plugin call comes through here, and so does every tool call
+ * (services/tools.ts), so a tool can never do more than its plugin could.
+ */
+export async function callService(services: Record<string, ServiceProvider>, instance: string, caps: Set<string>, service: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown> {
+  // Own entries only: `toString` or `__proto__` would find the object's prototype instead.
+  const provider = Object.hasOwn(services, service) ? services[service] : undefined;
+  if (!provider) throw new Error(`No service named ${service}`);
+  if (!Object.hasOwn(provider.methods, method)) throw new Error(`${service}.${method} is not a method`);
+  const needed = provider.capability(method, args);
+  if (needed && !check(instance, caps, needed)) throw new Error(`Missing capability ${needed}`);
+  const started = performance.now();
+  try {
+    const value = await provider.call(instance, method, args, dispatch);
+    record({ kind: "call", name: `${service}.${method}`, plugin: instance, trace: dispatch.trace, ms: ms(started) });
+    return value;
+  } catch (error) {
+    const message = String(error instanceof Error ? error.message : error);
+    record({ kind: "call", name: `${service}.${method}`, plugin: instance, trace: dispatch.trace, ms: ms(started), detail: `failed: ${message}` });
+    throw error;
   }
 }

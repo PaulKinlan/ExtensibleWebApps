@@ -10,7 +10,7 @@ export default ({ describe }: Kernel): ServiceProvider => {
     description: "The kernel itself.",
     methods: {
       ping: { args: "()", returns: '"pong"', description: "Answers at once; for checking the connection." },
-      hooks: { args: "()", returns: "{ [name]: { mode, timeoutMs?, onFailure?, args?, description? } }", description: "Every hook and its contract." },
+      hooks: { args: "()", returns: "{ [name]: { mode, timeoutMs?, onFailure?, args?, description? } }", description: "Every hook and its contract.", params: [] },
       reference: { args: "()", returns: "the reference, as data", description: "This API reference, as the kernel describes itself." },
     },
     capability: () => undefined,
