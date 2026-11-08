@@ -153,6 +153,30 @@ async function memberChecks(base, check, owner) {
   const removeOwner = await ada.call("/auth/spaces/family/leave", { user: members.find((m) => m.role === "owner")?.id });
   const left = await ada.call("/auth/spaces/family/leave", {});
   check("members: only the owner invites, no one removes the owner, and someone who leaves can't open it again", inviteByMember.status === 403 && removeOwner.status === 403 && left.status === 200 && !(await opens(base, "family", ada.cookie)), JSON.stringify([inviteByMember.status, removeOwner.status, left.status]));
+
+  // Asked for at the same moment: one name, one owner; one invite, one person.
+  const [dee, eve] = await Promise.all([person(base).account("Dee"), person(base).account("Eve")]);
+  const claims = await Promise.all([dee.call("/auth/spaces", { name: "contested" }), eve.call("/auth/spaces", { name: "contested" })]);
+  const once = (await owner.call("/auth/spaces/family/invite", {})).body?.token;
+  const accepts = await Promise.all([dee.call("/auth/invites/accept", { token: once }), eve.call("/auth/invites/accept", { token: once })]);
+  check(
+    "members: two people making one space at once get one owner, and two using one invite at once get one member",
+    claims.map((r) => r.status).sort().join() === "200,409" && accepts.map((r) => r.status).sort().join() === "200,404",
+    JSON.stringify({ claims: claims.map((r) => r.status), accepts: accepts.map((r) => r.status) }),
+  );
+
+  // Someone removed while connected is let go at once.
+  const cy = await person(base).account("Cy");
+  await cy.call("/auth/invites/accept", { token: (await owner.call("/auth/spaces/family/invite", {})).body?.token });
+  const closed = await new Promise((done) => {
+    const ws = new WebSocket(`${base.replace("http", "ws")}/s/family/kernel`, { headers: { cookie: cy.cookie } });
+    ws.onclose = (e) => done(e.code);
+    ws.onopen = async () => {
+      await owner.call("/auth/spaces/family/leave", { user: (await cy.call("/auth/me")).body?.user?.id });
+      setTimeout(() => done("still open"), 3000);
+    };
+  });
+  check("members: someone the owner removes from a space is disconnected from it at once", closed === 4403, String(closed));
 }
 
 /** Sign-in with passkeys (src/server/auth/), as a browser on this site would do it, and as others might try. */
@@ -205,6 +229,32 @@ async function signInChecks(base, check) {
     results[alg] = `${made.status}/${again.status}`;
   }
   check("sign-in: passkeys that sign with Ed25519 or RSA work too, and ones that keep no counter", Object.values(results).every((r) => r === "200/200"), JSON.stringify(results));
+
+  // Two answers to one challenge at once, from a passkey that keeps no counter: only one signs in.
+  someone.cookie = "";
+  const still = authenticator({ counting: false });
+  await call("/auth/register", await still.create((await call("/auth/register/options", { name: "Still" })).body, base));
+  someone.cookie = "";
+  const twice = await still.get((await call("/auth/signin/options", {})).body, base);
+  const both = await Promise.all([call("/auth/signin", twice, { keep: false }), call("/auth/signin", twice, { keep: false })]);
+  check("sign-in: one answer sent twice at once signs in only once", both.filter((r) => r.status === 200).length === 1, JSON.stringify(both.map((r) => r.status)));
+
+  // Options for one more passkey, asked for while signed in, don't work once that session has ended.
+  await call("/auth/signin", await still.get((await call("/auth/signin/options", {})).body, base));
+  const addLater = (await call("/auth/register/options", {})).body;
+  await call("/auth/signout", {});
+  const late = await call("/auth/register", await authenticator().create(addLater, base), { keep: false });
+  const nullBody = await fetch(`${base}/auth/register/options`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: "null" });
+  const huge = await fetch(`${base}/auth/register/options`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify({ name: "x".repeat(70_000) }) });
+  check("sign-in: adding a passkey needs the session that asked to still be signed in; a body that isn't an object, or is too big, is refused", late.status === 401 && nullBody.status === 400 && huge.status === 413, JSON.stringify([late.status, nullBody.status, huge.status]));
+
+  // A passkey's id can be up to 1023 bytes: far too long for a file's name.
+  someone.cookie = "";
+  const long = authenticator();
+  const longMade = await call("/auth/register", await long.create((await call("/auth/register/options", { name: "Long" })).body, base, { idLength: 600 }));
+  someone.cookie = "";
+  const longBack = await call("/auth/signin", await long.get((await call("/auth/signin/options", {})).body, base));
+  check("sign-in: a passkey with a long id registers and signs in", longMade.status === 200 && longBack.status === 200, JSON.stringify([longMade.status, longBack.body?.error ?? longBack.status]));
 }
 
 async function suite(name, make) {

@@ -77,9 +77,9 @@ export function authenticator({ alg = "ES256", counting = true } = {}) {
   let counter = 0;
   return {
     keys,
-    async create(options, origin, { rpId = options.rp.id, challenge = options.challenge, type = "webauthn.create" } = {}) {
+    async create(options, origin, { rpId = options.rp.id, challenge = options.challenge, type = "webauthn.create", idLength = 16 } = {}) {
       const pair = await subtle.generateKey(ALGS[alg].gen, true, ["sign", "verify"]);
-      const id = webcrypto.getRandomValues(new Uint8Array(16));
+      const id = webcrypto.getRandomValues(new Uint8Array(idLength));
       keys.set(b64url(id), { pair, user: options.user.id, rpId });
       const len = new Uint8Array([id.length >> 8, id.length & 255]);
       const attested = concat(new Uint8Array(16), len, id, cbor(await coseKey(alg, pair.publicKey)));
