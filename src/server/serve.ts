@@ -17,6 +17,7 @@ import type { Duplex } from "node:stream";
 import { MessageChannel, Worker } from "node:worker_threads";
 import { nodeFiles } from "../seams/node.ts";
 import { accounts } from "./auth/accounts.ts";
+import { type Provider, providersFrom } from "./auth/providers.ts";
 import { accept } from "./websocket.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -38,6 +39,8 @@ export interface Options {
   spaces: string;
   site: string;
   kernel: string;
+  /** Other sites to sign in with (src/server/auth/providers.ts); run directly, they come from the environment. */
+  providers?: Provider[];
 }
 
 /** Starts the server; resolves once it is listening, with a way to stop it. */
@@ -46,7 +49,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
   const spaces = new Map<string, Promise<Worker>>();
   const rules = headerRules(join(site, "_headers"));
   // Accounts sit beside the spaces, in a folder no space's name can match.
-  const auth = accounts(nodeFiles(join(resolve(options.spaces), "_accounts")));
+  const auth = accounts(nodeFiles(join(resolve(options.spaces), "_accounts")), options.providers ?? []);
 
   /** The space's kernel, started on first use. */
   const space = (name: string): Promise<Worker> => {
@@ -105,7 +108,11 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     const body = request.method === "GET" || request.method === "HEAD" ? undefined : Buffer.concat(chunks);
     const answer = await auth.handle(new Request(`http://${request.headers.host ?? "localhost"}${request.url}`, { method: request.method, headers, body }));
     if (!answer) return void response.writeHead(404).end();
-    response.writeHead(answer.status, Object.fromEntries(answer.headers));
+    // Each cookie its own header: joined into one, the browser would read only the first.
+    const out: Record<string, string | string[]> = Object.fromEntries([...answer.headers].filter(([name]) => name !== "set-cookie"));
+    const cookies = answer.headers.getSetCookie();
+    if (cookies.length) out["set-cookie"] = cookies;
+    response.writeHead(answer.status, out);
     response.end(Buffer.from(await answer.arrayBuffer()));
   };
 
@@ -228,6 +235,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     spaces: arg("spaces", ".spaces"),
     site: arg("site", "dist"),
     kernel: arg("kernel", ".build/server/space.js"),
+    providers: providersFrom(process.env),
   });
   console.log(`Serving ${arg("site", "dist")} at ${url}; spaces at ${url.replace("http", "ws")}/s/<space>/kernel, kept in ${arg("spaces", ".spaces")}/`);
 }

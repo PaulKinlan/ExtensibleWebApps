@@ -106,6 +106,30 @@ A space holds people and their data (collections and plugins), and any app can o
 | `POST /auth/invites/accept` | `{ token }` joins the space the invite is for, and uses the invite up. |
 | `POST /auth/spaces/<name>/leave` | Leaves it. Its owner can give `{ user }` to remove someone, and can't leave it. |
 
-What the kernel of a space doesn't know yet is *which* member a client is. That arrives with sync (step 6), where changes carry who made them. After that come GitHub and other providers, as configuration (5c).
+What the kernel of a space doesn't know yet is *which* member a client is. That arrives with sync (step 6), where changes carry who made them.
 
-[`tests/server/authenticator.mjs`](../tests/server/authenticator.mjs) is a passkey authenticator in software. The server checks use it on both hosts. They also try a used challenge, another page's origin, another site's passkey, a counter that went back, and a forged signature. They check who may make, open, invite to and leave a space. [`tests/checks/signin.mjs`](../tests/checks/signin.mjs) uses `/account/` in Chromium, with its virtual authenticator: it signs up, out and in, makes a space, and has a second person join it from the invite link.
+### Signing in with another site
+
+People can also sign in with an account they have elsewhere, over OAuth 2 with PKCE. A provider is configuration, not code: [`src/server/auth/providers.ts`](../src/server/auth/providers.ts) has GitHub as a preset, and another provider that speaks plain OAuth 2 is a few URLs. A host turns providers on from its environment (Node's `process.env`, or a Worker's vars and secrets):
+
+| Setting | What it holds |
+| --- | --- |
+| `AUTH_PROVIDERS` | JSON, such as `[{ "id": "github", "clientId": "Iv1..." }]`. A provider with no preset adds `authorize`, `token` and `user` URLs, and can add `scope` and `name`. |
+| `<ID>_CLIENT_SECRET` | Each provider's client secret, such as `GITHUB_CLIENT_SECRET`. Keep it as a secret, never in the JSON. |
+
+At the provider, register the callback URL `https://<your host>/auth/oauth/<id>/callback`. On Cloudflare, `AUTH_PROVIDERS` is a var and the secret is a Worker secret (`npx wrangler secret put GITHUB_CLIENT_SECRET`).
+
+| Route | What it does |
+| --- | --- |
+| `GET /auth/providers` | The providers that are on: `{ providers: [{ id, name }] }`. |
+| `GET /auth/oauth/<id>/start` | Sends the browser to the provider, with a state cookie and a PKCE challenge. |
+| `GET /auth/oauth/<id>/callback` | Checks the state against this browser's cookie, trades the code for a token, and asks the provider who it is. Someone signed out is signed in to the account that identity belongs to, or a new one. Someone signed in links that identity to their account, unless it's already someone else's. It goes back to `/account/`, with `?error=` if something was wrong. |
+
+The server keeps only who the person is at the provider (an id that never changes, and a name). It throws the provider's token away.
+
+Two other ways to sign in were looked at, and wait:
+
+- **Bluesky** signs in with OAuth too, but its own way: a client metadata URL as the client id, pushed authorization requests (PAR), DPoP-bound tokens, and a check that the account's DID points at the server that signed it in. That comes as a module of its own.
+- **FedCM** (the browser's own account chooser) is only in Chrome and Edge for now, and providers have to support it (Google does, GitHub doesn't). It's worth adding as a nicer front for providers that offer it, once more browsers have it.
+
+[`tests/server/authenticator.mjs`](../tests/server/authenticator.mjs) is a passkey authenticator in software. The server checks use it on both hosts. They also try a used challenge, another page's origin, another site's passkey, a counter that went back, and a forged signature. They check who may make, open, invite to and leave a space, and sign in with a provider in [`tests/server/fake-oauth.mjs`](../tests/server/fake-oauth.mjs): a sign-in this browser didn't start is refused, and an identity can't be linked to two accounts. [`tests/checks/signin.mjs`](../tests/checks/signin.mjs) uses `/account/` in Chromium, with its virtual authenticator: it signs up, out and in, makes a space, and has a second person join it from the invite link.

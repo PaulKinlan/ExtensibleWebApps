@@ -14,9 +14,13 @@ import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "../../src/server/serve.ts";
+import { providersFrom } from "../../src/server/auth/providers.ts";
 import { authenticator } from "./authenticator.mjs";
+import { fakeProvider } from "./fake-oauth.mjs";
 
 const results = [];
+// Another site to sign in with, which both hosts are configured to use.
+const fake = await fakeProvider();
 
 /** A free port on this machine. */
 const freePort = () =>
@@ -31,14 +35,14 @@ const freePort = () =>
 const hosts = {
   node: (spaces) => ({
     async start() {
-      return serve({ port: 0, host: "127.0.0.1", spaces, site: "dist", kernel: ".build/server/space.js" });
+      return serve({ port: 0, host: "127.0.0.1", spaces, site: "dist", kernel: ".build/server/space.js", providers: providersFrom(fake.env) });
     },
     wrote: (space) => existsSync(join(spaces, space, "files", "user", "demos", "contacts", "hello-space.js")),
   }),
   cloudflare: (spaces) => ({
     async start() {
       const port = await freePort();
-      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
+      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries(fake.env).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
       let log = "";
       await new Promise((ready, fail) => {
         const timer = setTimeout(() => fail(new Error(`wrangler dev didn't start: ${log.slice(-500)}`)), 60_000);
@@ -127,6 +131,70 @@ const opens = (base, space, cookie = "") =>
     ws.onopen = () => (ws.close(), done(true));
     ws.onerror = () => done(false);
   });
+
+/** Signing in with another site (src/server/auth/providers.ts), here the fake one: the redirects a browser follows, one by one. */
+async function oauthChecks(base, check) {
+  const jar = new Map();
+  const keep = (res) => {
+    for (const c of res.headers.getSetCookie?.() ?? []) {
+      const [pair] = c.split(";");
+      const [name, value] = pair.split("=");
+      if (value) jar.set(name, value);
+      else jar.delete(name);
+    }
+    return res;
+  };
+  const cookie = () => [...jar].map(([k, v]) => `${k}=${v}`).join("; ");
+  const get = async (url, extra = {}) => keep(await fetch(url, { redirect: "manual", headers: { cookie: cookie(), ...extra } }));
+  /** Start, go to the provider, come back: where the callback sends the browser. */
+  const signIn = async ({ dropState = false } = {}) => {
+    const start = await get(`${base}/auth/oauth/fake/start`);
+    const atProvider = await get(start.headers.get("location"));
+    if (dropState) jar.delete("ewa-oauth");
+    const back = await get(atProvider.headers.get("location"));
+    return { status: back.status, location: back.headers.get("location") };
+  };
+  const me = async () => (await (await get(`${base}/auth/me`)).json()).user;
+
+  const listed = await (await get(`${base}/auth/providers`)).json();
+  fake.as = { id: 7, name: "Fake Person" };
+  const first = await signIn();
+  const who = await me();
+  jar.clear();
+  const again = await signIn();
+  const sameAccount = (await me())?.id === who?.id;
+  check(
+    "other sites: a configured provider is listed, signs in with a new account named from its profile, and the same person comes back to it",
+    listed.providers?.some((p) => p.id === "fake" && p.name === "Fake") && first.status === 303 && first.location === "/account/" && who?.name === "Fake Person" && again.status === 303 && sameAccount,
+    JSON.stringify({ listed, first, who, again, sameAccount }),
+  );
+
+  jar.clear();
+  const forged = await signIn({ dropState: true });
+  check("other sites: a sign-in this browser didn't start is refused", forged.status === 303 && /error=/.test(forged.location ?? "") && !(await me()), JSON.stringify(forged));
+
+  // Linking: someone signed in with a passkey adds this provider's account to theirs.
+  jar.clear();
+  const key = authenticator();
+  const options = await (await fetch(`${base}/auth/register/options`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify({ name: "Linker" }) })).json();
+  keep(await fetch(`${base}/auth/register`, { method: "POST", headers: { origin: base, "content-type": "application/json" }, body: JSON.stringify(await key.create(options, base)) }));
+  const linker = await me();
+  fake.as = { id: 8, name: "Linker Elsewhere" };
+  const link = await signIn();
+  const stillLinker = (await me())?.id === linker?.id;
+  jar.clear();
+  await signIn();
+  const viaProvider = (await me())?.id === linker?.id;
+  // Signed in as Linker, Fake Person's identity (which has its own account) can't be linked too.
+  fake.as = { id: 7, name: "Fake Person" };
+  const taken = await signIn();
+  const stillLinkerAfter = (await me())?.id === linker?.id;
+  check(
+    "other sites: someone signed in can link a provider's account to theirs (not one that is someone else's), and then sign in with either",
+    linker?.name === "Linker" && link.status === 303 && link.location === "/account/" && stillLinker && viaProvider && /error=/.test(taken.location ?? "") && stillLinkerAfter,
+    JSON.stringify({ linker, link, stillLinker, viaProvider, taken, stillLinkerAfter }),
+  );
+}
 
 /** Spaces with members (src/server/auth/accounts.ts): who may make, join, invite to and leave a space. */
 async function memberChecks(base, check, owner) {
@@ -249,6 +317,7 @@ async function suite(name, make) {
     await signInChecks(server.url, check);
 
     await memberChecks(server.url, check, owner);
+    await oauthChecks(server.url, check);
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {
@@ -301,6 +370,7 @@ async function suite(name, make) {
 }
 
 const only = process.argv[2];
+process.on("exit", () => fake.close());
 for (const [name, make] of Object.entries(hosts)) if (!only || only === name) await suite(name, make);
 
 for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.what}${r.detail && !r.ok ? `  (${r.detail})` : ""}`);

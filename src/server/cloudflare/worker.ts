@@ -19,6 +19,7 @@ import { DurableObject } from "cloudflare:workers";
 import kernelSource from "../../../.build/cloudflare/kernel-source.js";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { accounts } from "../auth/accounts.ts";
+import { providersFrom } from "../auth/providers.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 /** A new kernel build gets a new isolate; spaces on the old one move over as they restart. */
@@ -70,7 +71,8 @@ export class Space extends DurableObject<Env> {
 
 /** Every account, their passkeys and sessions: one object, so a passkey is only ever registered once. */
 export class Accounts extends DurableObject<Env> {
-  private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql));
+  // Other sites to sign in with come from the Worker's vars (AUTH_PROVIDERS) and secrets (<ID>_CLIENT_SECRET).
+  private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql), providersFrom(this.env as unknown as Record<string, unknown>));
 
   async fetch(request: Request): Promise<Response> {
     return (await this.auth.handle(request)) ?? new Response("Not found", { status: 404 });

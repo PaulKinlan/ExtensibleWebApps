@@ -34,6 +34,7 @@
       <section id="out" hidden>
         <p>Sign in with a passkey: your phone or computer keeps it for this site, and unlocks it with your face, fingerprint or screen lock.</p>
         <button id="signin" type="button">Sign in with a passkey</button>
+        <p class="providers"></p>
         <h2>New here?</h2>
         <form id="register">
           <label for="name" class="visually-hidden">Your name</label>
@@ -48,6 +49,7 @@
           <button id="add" type="button">Add a passkey on another device</button>
           <button id="signout" type="button">Sign out</button>
         </p>
+        <p class="providers" data-link></p>
 
         <h2>Your spaces</h2>
         <p>A space holds people and their data, and any app can open in it. One with just you in it is your own.</p>
@@ -72,6 +74,16 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok && res.status !== 401) throw new Error(data.error ?? `The server answered ${res.status}`);
         return { status: res.status, ...data };
+      }
+
+      /** Other sites this server lets people sign in with: a link each, which signs in (or, signed in, links that account to yours). */
+      async function providers() {
+        const { providers = [] } = await fetch("/auth/providers").then((r) => (r.ok ? r.json() : {}), () => ({}));
+        for (const holder of document.querySelectorAll(".providers")) {
+          holder.replaceChildren(
+            ...providers.map(({ id, name }) => Object.assign(document.createElement("a"), { href: `/auth/oauth/${id}/start`, className: "button", textContent: holder.hasAttribute("data-link") ? `Link your ${name} account` : `Sign in with ${name}` })),
+          );
+        }
       }
 
       async function show() {
@@ -146,6 +158,13 @@
       $("new-space").addEventListener("submit", run(() => call("/auth/spaces", { name: $("space-name").value.trim() }), "Your space is made.", false));
       $("signout").addEventListener("click", run(() => call("/auth/signout", {}), "You're signed out.", false));
 
+      // Back from another site with a problem: say what it was, once.
+      const error = new URLSearchParams(location.search).get("error");
+      if (error) {
+        say(error);
+        history.replaceState(null, "", location.pathname);
+      }
+      providers();
       show();
     </script>
   </body>
