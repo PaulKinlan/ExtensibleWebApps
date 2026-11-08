@@ -5,17 +5,21 @@
 // Each provider below makes a fresh set of seams; `restart` makes the set a
 // host would have after starting again, to check what survives.
 
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { memoryEmail, memoryFiles, memoryRecords, memorySchedule, memorySecrets } from "../../src/server/seams/memory.ts";
 import { nodeFiles, nodeOutbox, nodeRecords, nodeSchedule, nodeSecrets } from "../../src/server/seams/node.ts";
 
+// A job that fails is reported, and the host keeps going: the checks count reports instead of logging them.
+const failures = [];
+const quietly = (jobs) => memorySchedule(jobs, (name) => failures.push(name));
+
 const providers = {
   memory: async () => {
     const files = memoryFiles();
     const records = memoryRecords();
-    const schedule = memorySchedule();
+    const schedule = quietly();
     return {
       seams: { files, records, schedule, secrets: memorySecrets({ OPENAI_KEY: "sk-test", QUOTED: "a b" }), email: memoryEmail() },
       // In memory, a restart keeps what a host's storage would keep.
@@ -26,18 +30,30 @@ const providers = {
   node: async () => {
     const dir = await mkdtemp(join(tmpdir(), "seams-"));
     await writeFile(join(dir, ".env"), '# keys\nOPENAI_KEY=sk-test\nQUOTED="a b"\n');
-    let schedule = await nodeSchedule(join(dir, "schedule.json"));
+    let schedule = await nodeSchedule(join(dir, "schedule.json"), (name) => failures.push(name));
     const open = () => ({ files: nodeFiles(join(dir, "files")), records: nodeRecords(join(dir, "records.sqlite")) });
     return {
       seams: { ...open(), schedule, secrets: await nodeSecrets(join(dir, ".env")), email: nodeOutbox(join(dir, "outbox")) },
       restart: async () => {
         schedule.stop();
-        schedule = await nodeSchedule(join(dir, "schedule.json"));
+        schedule = await nodeSchedule(join(dir, "schedule.json"), (name) => failures.push(name));
         return { ...open(), schedule };
       },
       done: async () => {
         schedule.stop();
         await rm(dir, { recursive: true, force: true });
+      },
+      // A link inside the folder to a folder outside it.
+      link: async () => {
+        await mkdir(join(dir, "elsewhere"), { recursive: true });
+        await writeFile(join(dir, "elsewhere", "private.txt"), "private");
+        await symlink(join(dir, "elsewhere"), join(dir, "files", "linked"));
+        return "linked/private.txt";
+      },
+      // A schedule file that is there but can't be read as one.
+      corrupt: async () => {
+        await writeFile(join(dir, "broken.json"), "{ not json");
+        return nodeSchedule(join(dir, "broken.json")).then(() => false, () => true);
       },
     };
   },
@@ -47,7 +63,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
 
 async function suite(name, make) {
-  const { seams, restart, done } = await make();
+  const { seams, restart, done, link, corrupt } = await make();
   const { files, records, schedule, secrets, email } = seams;
   const check = (what, ok, detail = "") => results.push({ provider: name, what, ok: !!ok, detail });
   const refuses = async (fn) => fn().then(() => false, () => true);
@@ -61,6 +77,10 @@ async function suite(name, make) {
     await files.remove("settings.json");
     await files.remove("never-was.json");
     check("files: a removed or missing file reads as null", (await files.readText("settings.json")) === null && (await files.read("nope/x")) === null);
+    if (link) {
+      const linked = await link();
+      check("files: a link inside the folder can't lead out of it", (await refuses(() => files.readText(linked))) && (await refuses(() => files.write(linked, "x"))) && !(await files.list("")).includes(linked));
+    }
     check("files: paths can't leave the folder", (await refuses(() => files.write("../escape.txt", "x"))) && (await refuses(() => files.read("/etc/passwd"))) && (await refuses(() => files.readText("a//b"))));
 
     // Records
@@ -101,14 +121,36 @@ async function suite(name, make) {
     check("schedule: a job that ran once is gone; a repeating one stays", JSON.stringify((await schedule.list()).map((j) => j.name)) === JSON.stringify(["later"]));
     check("schedule: a job repeats at most once a second", await refuses(() => schedule.set({ name: "busy", at: Date.now(), every: 10 })));
 
-    // What survives a restart
-    await schedule.set({ name: "missed", at: Date.now() + 100 });
+    // A failing job is reported, and doesn't stop the others.
+    schedule.onDue((name) => {
+      heard.push(name);
+      if (name === "fails") throw new Error("broken job");
+    });
+    await schedule.set({ name: "fails", at: Date.now() });
+    await schedule.set({ name: "after", at: Date.now() + 30 });
+    await wait(120);
+    check("schedule: a job that fails is reported, and the next still runs", heard.includes("fails") && heard.includes("after") && failures.includes("fails"), JSON.stringify({ heard, failures }));
+    // A wait longer than a timer can hold (about 24 days) waits, rather than running at once.
+    await schedule.set({ name: "next-month", at: Date.now() + 30 * 86_400_000 });
+    await wait(60);
+    check("schedule: a job a month away doesn't run now", !heard.includes("next-month"));
+    await schedule.cancel("next-month");
+
+    // What survives a restart: the host stops, a job comes due while it's down, and it starts again.
+    await schedule.set({ name: "missed", at: Date.now() + 50 });
+    await schedule.set({ name: "hourly", at: Date.now() + 50, every: 1000 });
+    schedule.stop();
+    await wait(2300);
     const back = await restart();
     const heardAfter = [];
     back.schedule.onDue((name) => void heardAfter.push(name));
     await wait(300);
+    const hourly = (await back.schedule.list()).find((j) => j.name === "hourly");
+    check("restart: a repeating job missed several times runs once, then waits for its next time", heardAfter.filter((n) => n === "hourly").length === 1 && hourly?.at > Date.now(), JSON.stringify({ heardAfter, hourly }));
+    await back.schedule.cancel("hourly");
     check("restart: files, records and jobs survive, and a job due while down still runs", (await back.files.readText("plugins/notes.js")) !== null && (await back.records.get("books", "b1"))?.value.title === "Dune Messiah" && (await back.records.changes(0)).length === 4 && heardAfter.includes("missed") && (await back.schedule.list()).some((j) => j.name === "later"), JSON.stringify(heardAfter));
     back.schedule.stop();
+    if (corrupt) check("restart: a schedule file that can't be read stops the host, rather than starting with no jobs", await corrupt());
 
     // Secrets and email
     check("secrets: reads values, quoted or not, and lists their names", (await secrets.get("OPENAI_KEY")) === "sk-test" && (await secrets.get("QUOTED")) === "a b" && (await secrets.get("NOPE")) === undefined && (await secrets.names()).includes("OPENAI_KEY"));

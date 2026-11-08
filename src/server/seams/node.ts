@@ -10,19 +10,37 @@
 //
 // Secrets come from an env file the deployment keeps outside the space.
 
-import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { lstat, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { checkPath, type Change, type Email, type Files, type Job, type Records, type Schedule, type Seams, type Secrets, type Stored } from "./index.ts";
 import { memorySchedule } from "./memory.ts";
 
+const missing = (error: unknown) => (error as NodeJS.ErrnoException)?.code === "ENOENT";
+
 export function nodeFiles(root: string): Files {
-  const full = (path: string) => join(root, ...checkPath(path).split("/"));
-  const missing = (error: unknown) => (error as NodeJS.ErrnoException)?.code === "ENOENT";
+  /**
+   * The file on disk for a path. The spelling is checked by checkPath; then no part of it under the root
+   * may be a symlink, which could lead out of the folder whatever the path says.
+   */
+  const full = async (path: string) => {
+    const parts = checkPath(path).split("/");
+    for (let i = 1; i <= parts.length; i++) {
+      const at = join(root, ...parts.slice(0, i));
+      try {
+        if ((await lstat(at)).isSymbolicLink()) throw new Error(`Not a path in the folder: ${JSON.stringify(path)} goes through a link`);
+      } catch (error) {
+        if (missing(error)) break;
+        throw error;
+      }
+    }
+    return join(root, ...parts);
+  };
   return {
     async read(path) {
       try {
-        return new Uint8Array(await readFile(full(path)));
+        return new Uint8Array(await readFile(await full(path)));
       } catch (error) {
         if (missing(error)) return null;
         throw error;
@@ -30,19 +48,19 @@ export function nodeFiles(root: string): Files {
     },
     async readText(path) {
       try {
-        return await readFile(full(path), "utf8");
+        return await readFile(await full(path), "utf8");
       } catch (error) {
         if (missing(error)) return null;
         throw error;
       }
     },
     async write(path, data) {
-      const file = full(path);
+      const file = await full(path);
       await mkdir(dirname(file), { recursive: true });
-      await writeFile(file, data);
+      await writeFile(await full(path), data);
     },
     async remove(path) {
-      await rm(full(path), { force: true });
+      await rm(await full(path), { force: true });
     },
     async list(prefix) {
       const all: string[] = [];
@@ -56,6 +74,7 @@ export function nodeFiles(root: string): Files {
         }
         for (const e of entries) {
           const path = join(dir, e.name);
+          // Links aren't followed: what they point at isn't in the folder.
           if (e.isDirectory()) await walk(path);
           else if (e.isFile()) all.push(relative(root, path).split(sep).join("/"));
         }
@@ -133,17 +152,28 @@ export function nodeRecords(file: string): Records {
 }
 
 /** Timers, with the jobs written to a JSON file after every change, and read back when the host starts. */
-export async function nodeSchedule(file: string): Promise<Schedule> {
+export async function nodeSchedule(file: string, onError?: (name: string, error: unknown) => void): Promise<Schedule> {
   const jobs = new Map<string, Job>();
+  let text: string | undefined;
   try {
-    for (const job of JSON.parse(await readFile(file, "utf8")) as Job[]) jobs.set(job.name, job);
-  } catch {
-    // No jobs yet.
+    text = await readFile(file, "utf8");
+  } catch (error) {
+    // No file is no jobs yet; a file that can't be read stops the host, rather than starting empty and writing over it.
+    if (!missing(error)) throw error;
   }
-  const inner = memorySchedule(jobs);
-  const save = async () => {
-    await mkdir(dirname(file), { recursive: true });
-    await writeFile(file, JSON.stringify([...jobs.values()], null, 2));
+  if (text !== undefined) for (const job of JSON.parse(text) as Job[]) jobs.set(job.name, job);
+  const inner = memorySchedule(jobs, onError);
+  // One save at a time, each written beside the file and renamed over it, so the file is always whole.
+  let saving: Promise<void> = Promise.resolve();
+  const save = () => {
+    const snapshot = JSON.stringify([...jobs.values()], null, 2);
+    saving = saving.catch(() => {}).then(async () => {
+      await mkdir(dirname(file), { recursive: true });
+      const temp = `${file}.${randomUUID()}.tmp`;
+      await writeFile(temp, snapshot);
+      await rename(temp, file);
+    });
+    return saving;
   };
   return {
     async set(job) {
@@ -192,11 +222,11 @@ export async function nodeSecrets(envFile: string): Promise<Secrets> {
 
 /** Email written to an outbox folder, one JSON file per message, for development. */
 export function nodeOutbox(dir: string): Email {
-  let n = 0;
   return {
     async send(message) {
       if (!message.to?.length || message.to.some((to) => !/^[^@\s]+@[^@\s]+$/.test(to))) return { ok: false, error: "Every recipient needs an email address" };
-      const id = `${Date.now()}-${++n}`;
+      // Time first, so the folder lists in the order mail was sent; random after, so two outboxes never share a name.
+      const id = `${Date.now()}-${randomUUID()}`;
       await mkdir(dir, { recursive: true });
       await writeFile(join(dir, `${id}.json`), JSON.stringify(message, null, 2));
       return { ok: true, id };

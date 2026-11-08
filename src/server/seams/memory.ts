@@ -67,8 +67,13 @@ export function memoryRecords(): Records {
   };
 }
 
-/** A schedule on timers. `restart()` gives a new schedule holding the same jobs, as a host would after a restart. */
-export function memorySchedule(jobs = new Map<string, Job>()): Schedule & { restart(): Schedule } {
+const MAX_WAIT = 2 ** 31 - 1;
+
+/**
+ * A schedule on timers. `restart()` gives a new schedule holding the same jobs, as a host would after a
+ * restart. A job whose handler fails is passed to `onError` (by default, logged).
+ */
+export function memorySchedule(jobs = new Map<string, Job>(), onError = (name: string, error: unknown) => console.error(`Job ${name} failed:`, error)): Schedule & { restart(): Schedule } {
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   let handler: (name: string) => void | Promise<void> = () => {};
   let stopped = false;
@@ -76,17 +81,26 @@ export function memorySchedule(jobs = new Map<string, Job>()): Schedule & { rest
     clearTimeout(timers.get(job.name));
     timers.set(
       job.name,
+      // A timer waits at most about 24 days, so a later job wakes on the way and waits again.
       setTimeout(async () => {
         timers.delete(job.name);
         if (stopped || jobs.get(job.name) !== job) return;
+        if (Date.now() < job.at) return arm(job);
         if (job.every) {
-          // The next run counts from when this one was due, so a slow handler doesn't drift the schedule.
-          const next = { ...job, at: Math.max(job.at + job.every, Date.now()) };
+          // The next run is the first one still ahead, counted from when this one was due: a slow handler
+          // doesn't drift the schedule, and a job missed many times while down runs once, not once per miss.
+          const missed = Math.floor((Date.now() - job.at) / job.every) + 1;
+          const next = { ...job, at: job.at + missed * job.every };
           jobs.set(job.name, next);
           arm(next);
         } else jobs.delete(job.name);
-        await handler(job.name);
-      }, Math.max(0, job.at - Date.now())),
+        try {
+          await handler(job.name);
+        } catch (error) {
+          // Nothing waits on a timer, so a failing job is reported here rather than taking the host down.
+          onError(job.name, error);
+        }
+      }, Math.min(MAX_WAIT, Math.max(0, job.at - Date.now()))),
     );
   };
   return {
@@ -115,7 +129,7 @@ export function memorySchedule(jobs = new Map<string, Job>()): Schedule & { rest
     },
     restart() {
       this.stop();
-      return memorySchedule(jobs);
+      return memorySchedule(jobs, onError);
     },
   };
 }

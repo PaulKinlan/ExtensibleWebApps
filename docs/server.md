@@ -39,6 +39,6 @@ This is how sync works until 2c brings CRDTs for live editing.
 
 ### Checks every provider passes
 
-[`tests/seams/run.mjs`](../tests/seams/run.mjs) runs the same checks against every provider: what is written reads back, paths can't leave the folder, stale writes are refused, the change log is complete and ordered, jobs run once and survive a restart, and email refuses what isn't an address. Run them with `npm run test:seams`. `npm test` runs them too.
+[`tests/seams/run.mjs`](../tests/seams/run.mjs) runs the same checks against every provider: what is written reads back, paths (and links) can't leave the folder, stale writes are refused, the change log is complete and ordered, jobs run once, survive a restart and catch up once after one, a failing job doesn't stop the rest, and email refuses what isn't an address. Run them with `npm run test:seams`. `npm test` runs them too.
 
 Server code is TypeScript that Node runs as it is (Node strips the types), so there is no build step on the server either. Its imports name their `.ts` files, and `tsconfig.server.json` checks it with Node's types: `npm run typecheck` checks both halves.
