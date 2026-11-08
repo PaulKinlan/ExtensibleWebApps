@@ -26,6 +26,7 @@ import { serviceWorker } from "./service-worker";
 import { cleanCss } from "./plugin-styles";
 import { watchCanvasTheme } from "./canvas-theme";
 import { fill, forgetFiles, loadedFile, loadFile } from "./templates";
+import { listenDrag } from "./drag";
 import { drawView } from "./views";
 import { workbench } from "./workbench";
 
@@ -168,6 +169,7 @@ function listen(entry: Entry) {
     const { action, value } = (e as CustomEvent<{ action: string; value: unknown }>).detail;
     event(action, value);
   });
+  listenDrag(el, ours, event);
   el.addEventListener("submit", (e) => {
     // Never let a plugin's form navigate the page.
     e.preventDefault();

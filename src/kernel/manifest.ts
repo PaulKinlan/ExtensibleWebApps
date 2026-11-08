@@ -108,7 +108,7 @@ function validateTheme(theme: unknown, permissions: string[]) {
   if (!permissions.includes("ui:theme")) throw new ManifestError("`theme` needs the ui:theme permission");
   for (const [token, value] of Object.entries(theme)) {
     if (!(token in THEME_TOKENS)) throw new ManifestError(`Theme: ${token} isn't a token a theme may set (${Object.keys(THEME_TOKENS).join(", ")})`);
-    const why = badThemeValue(value);
+    const why = badThemeValue(value, token);
     if (why) throw new ManifestError(`Theme ${token}: ${why}`);
   }
 }
