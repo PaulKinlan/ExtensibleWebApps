@@ -540,6 +540,26 @@ Needs: nothing.
 
 The plugin's settings: saved values over the manifest's defaults.
 
+### share
+
+Sharing a link or text out through the system's share sheet, and having what is shared to the app when it is installed as a share target.
+
+#### share.send
+
+`share.send({ title?, text?, url? })` → { ok, via: "share" | "clipboard" } or { ok: false, cancelled?, error? }
+
+Needs: `share`.
+
+Opens the system's share sheet with a link or some text, or copies it where there is none. Only right after the person clicks, as the browser asks.
+
+#### share.take
+
+`share.take()` → { title?, text?, url? } or null
+
+Needs: `share`.
+
+What was shared to the plugin's tab, once: it is gone after, and the tab moves back to the app's own address. null when nothing is waiting.
+
 ### storage
 
 The plugin's own data, kept in `plugin-data/<id>.json` with the app's data. Never reviewed, since it is the plugin's own.
@@ -782,6 +802,14 @@ Mode: `emit`. Listening needs `router`.
 
 Listeners get `{ app, tab, path, query }`.
 
+### `share:received`
+
+Something was shared to the app from elsewhere (it is installed as a share target). Call share.take() to have it.
+
+Mode: `emit`. Listening needs `share`.
+
+Listeners get `{ app, tab, title?, text?, url? }`.
+
 ### `transfer:changed`
 
 A record in a collection transfer.collections listed was written or deleted, so its count may have changed.
@@ -827,6 +855,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `plugins:read` | Call authoring.source, authoring.check, plugins.app. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
+| `share` | Call share.send, share.take. |
 | `transfer` | Call transfer.collections, transfer.export, transfer.import. |
 | `ui` | Call page.matches. |
 
@@ -876,6 +905,7 @@ Reserved ids, which no plugin can take:
 - `router`
 - `secrets`
 - `settings`
+- `share`
 - `storage`
 - `store`
 - `tools`

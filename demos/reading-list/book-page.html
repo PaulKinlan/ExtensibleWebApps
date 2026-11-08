@@ -1,6 +1,7 @@
 <!--
-  One book's screen. book-page.js sends { shown, book, missing }: shown is
-  false on every other screen, and then nothing is drawn.
+  One book's screen. book-page.js sends { shown, book, missing, shared }: shown
+  is false on every other screen, and then nothing is drawn; shared says what
+  the last Share did.
 -->
 <template id="book">
   <template if="shown">
@@ -11,6 +12,10 @@
         <p>{{book.author}} <template if="book.year">({{book.year}})</template></p>
         <p><ui-badge>{{book.shelf}}</ui-badge> <template if="book.due">Due back {{book.due}}</template></p>
         <template if="book.notes"><p>{{book.notes}}</p></template>
+        <p>
+          <button type="button" data-action="share" data-value="{{book.id}}">Share</button>
+          <template if="shared"><small role="status">{{shared}}</small></template>
+        </p>
       </template>
       <template if="missing">
         <p>That book isn't in the library any more.</p>
