@@ -7,8 +7,15 @@
 /** Splits CSV text into rows of fields. Blank lines are left out. */
 export function parseCsv(text: string): string[][] {
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  const firstLine = text.slice(0, text.search(/\r?\n|$/));
-  const count = (c: string) => firstLine.split(c).length - 1;
+  // The separator the header row uses most, counting only outside quotes ("Amount, in pounds" is one field).
+  let header = "";
+  for (let i = 0, quoted = false; i < text.length; i++) {
+    const c = text[i];
+    if (c === '"') quoted = !quoted;
+    else if (!quoted && (c === "\n" || c === "\r")) break;
+    else if (!quoted) header += c;
+  }
+  const count = (c: string) => header.split(c).length - 1;
   const sep = [",", ";", "\t"].reduce((best, c) => (count(c) > count(best) ? c : best), ",");
   const rows: string[][] = [];
   let row: string[] = [];
