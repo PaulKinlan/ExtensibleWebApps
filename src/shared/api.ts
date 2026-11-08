@@ -2,7 +2,7 @@
 // the kernel's API reference documents it against this type, so a member
 // added here can't go undocumented.
 
-import type { Slot, View } from "./protocol";
+import type { CanvasTheme, Slot, View } from "./protocol";
 
 /**
  * The API a sandboxed plugin gets. `trace` says which trace its calls carry:
@@ -74,7 +74,10 @@ export interface Api {
     /** The templates in an .html file next to the plugin: `views.render(slot, id, data)` draws one, filled with data. */
     views(file: string): Views;
     onEvent(handler: (action: string, value: unknown) => void): () => void;
-    onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void): void;
+    /** The OffscreenCanvas for a canvas view, with the page's theme: its colours resolved, its font, light or dark. */
+    onCanvas(id: string, handler: (canvas: OffscreenCanvas, theme?: CanvasTheme) => void): void;
+    /** The theme again, whenever it changes in a tab where the plugin has a canvas: redraw with it. */
+    onTheme(handler: (theme: CanvasTheme) => void): () => void;
   };
   /** The plugin's own settings, from the form the shell builds out of its manifest. */
   settings: {
