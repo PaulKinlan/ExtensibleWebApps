@@ -39,6 +39,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `data:read:<collection>` | List and get another plugin's records, and hear when they change. | Works before the collection exists: it reads as empty. See [Sharing data between apps](guide/sharing-data-between-apps.md). |
 | `plugins:read` | List the plugins the app links, and read their code. | What view source and Ask the page use. |
 | `debug:read` | Read the kernel's trace for the app. | The trace names every plugin and what it did. |
+| `reflect:read` | Read what runs in the kernel: every plugin's manifest and permissions, every hook and its listeners, every worker and tab, and plugins' code. | It sees every app open on this site, not just the caller's: give it only to developer tools such as the [debugger](../demos/debugger/app.html). |
 | `bus:read:<topic>` | Read the messages posted to a topic. | See [Agents](guide/agents.md). |
 | `hook:listen:<hook>` | Hear an `emit` or `parallel` hook: something happened. | It can't change what happened. |
 

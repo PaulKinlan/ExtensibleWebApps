@@ -652,6 +652,58 @@ Needs: `plugins:manage`.
 
 Turns one of the app's plugins on or off. Saved, and applies in every tab, as the plugins panel's switch does.
 
+### reflect
+
+What is running in the kernel, for debuggers: every plugin with its manifest and requested and granted permissions, every hook with its owner and listeners, every worker and every tab. Read only. It covers every app open in this kernel, so it needs `reflect:read`. Pair it with the `debug:trace` hook to see events as they fire.
+
+#### reflect.hooks
+
+`reflect.hooks()` → [{ name, defined, kind, owner?, mode?, timeoutMs?, onFailure?, args?, description?, listen, listeners, inKernel }]
+
+Needs: `reflect:read`.
+
+Every hook, and every name a plugin listens to before it is defined. `kind` is kernel, plugin (from a manifest's `hooks`) or collection; `owner` the plugin that defines it; `listen` the capability listening needs; `listeners` the plugin instances listening; `inKernel` how many of the kernel's own modules listen.
+
+#### reflect.plugins
+
+`reflect.plugins()` → [{ id, name, description, version, origin, href, enabled, scope, runs, manifest, requested, granted, always, secrets, defines, heard, routes, commands, instances: [{ instance, tab, runsIn, heard }], linkedBy }]
+
+Needs: `reflect:read`.
+
+Every plugin installed. `requested` is its manifest's permissions; `granted` the capabilities the gate holds it to; `always` the places the person let it change without asking; `secrets` each secret it may use and whether it is set; `defines` the hooks it owns; `heard` the hooks it listens to; `linkedBy` the tabs whose app links it.
+
+#### reflect.snapshot
+
+`reflect.snapshot()` → { kernel, plugins, hooks, workers, tabs }
+
+Needs: `reflect:read`.
+
+All of it at once: what `plugins`, `hooks`, `workers` and `tabs` return, and `kernel`: { mode, startedAt }.
+
+#### reflect.source
+
+`reflect.source(id)` → string
+
+Needs: `reflect:read`.
+
+A plugin's code, as installed.
+
+#### reflect.tabs
+
+`reflect.tabs()` → [{ tab, app?, folder?, path?, spawner, member?, workers }]
+
+Needs: `reflect:read`.
+
+Every open tab: the folder its app is in (from the plugins it links), the screen it shows within the app (`path`), whether it starts the shared plugins' workers (`spawner`), the plugins its app links (none for a page that opened no app), and how many workers run in it.
+
+#### reflect.workers
+
+`reflect.workers()` → [{ instance, plugin, scope, runsIn, tab?, hooks }]
+
+Needs: `reflect:read`.
+
+Every plugin worker running: the instance, the tab that started its worker (`runsIn`), the tab it serves if it is tab-scoped, and how many hooks it listens to.
+
 ### router
 
 The screen an app's tab shows, from its address (app/book/42), so screens can be bookmarked and shared, and back and forward work.
@@ -1172,6 +1224,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file. |
 | `plugins:manage` | Call plugins.setEnabled. |
 | `plugins:read` | Call authoring.source, authoring.check, plugins.app. |
+| `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `share` | Call share.send, share.take. |
@@ -1226,6 +1279,7 @@ Reserved ids, which no plugin can take:
 - `notes`
 - `page`
 - `plugins`
+- `reflect`
 - `review`
 - `router`
 - `schedule`

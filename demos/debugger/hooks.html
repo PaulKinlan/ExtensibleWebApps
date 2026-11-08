@@ -1,0 +1,68 @@
+<!--
+  The hooks panel. hooks.js sends { hooks, count, total, none, search, kindIs,
+  onlyHeard }. Each hook is { name, kind, tone, owner, waiting, mode, means,
+  limit, agent, listen, args, description, listeners, heard, inKernel,
+  fired, last }: kind is kernel, plugin or collection; waiting is true for
+  a name plugins listen to before it is defined.
+
+  The search box sends "search" as the person types, the select "kind", the
+  checkbox "only-heard", and Reset "reset-counts".
+-->
+<style>
+  .filters { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin: 0 0 var(--space-2); }
+  .filters input[type=search] { flex: 1; min-width: 12ch; }
+  .hooks { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .hook { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .hook > summary { cursor: pointer; padding: var(--space-1) var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .hook > summary code { font-weight: 600; overflow-wrap: anywhere; margin-right: auto; }
+  .hook .body { padding: 0 var(--space-3) var(--space-2); }
+  .hook dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px var(--space-3); font-size: var(--text-sm); }
+  .hook dt { color: var(--fg-2); }
+  .hook dd { margin: 0; overflow-wrap: anywhere; }
+  .count { font-variant-numeric: tabular-nums; color: var(--fg-2); font-size: var(--text-sm); }
+</style>
+<template id="hooks">
+  <section aria-label="Hooks">
+    <h2>Hooks <ui-badge>{{count}} of {{total}}</ui-badge></h2>
+    <div class="filters">
+      <input type="search" placeholder="Find a hook" aria-label="Find a hook" value="{{search}}" data-action="search" data-live>
+      <select aria-label="Which hooks" data-action="kind">
+        <option value="all" selected="{{kindIs.all}}">All kinds</option>
+        <option value="kernel" selected="{{kindIs.kernel}}">The kernel's</option>
+        <option value="plugin" selected="{{kindIs.plugin}}">Plugins' own</option>
+        <option value="collection" selected="{{kindIs.collection}}">Collections'</option>
+      </select>
+      <label><input type="checkbox" checked="{{onlyHeard}}" data-action="only-heard"> Only with listeners</label>
+      <button type="button" data-action="reset-counts">Reset counts</button>
+    </div>
+    <template if="none"><ui-empty heading="No hooks match"></ui-empty></template>
+    <ul class="hooks">
+      <template for="h of hooks">
+        <li key="{{h.name}}">
+          <details class="hook">
+            <summary>
+              <code>{{h.name}}</code>
+              <ui-badge tone="{{h.tone}}">{{h.kind}}</ui-badge>
+              <template if="h.waiting"><ui-badge tone="warn" title="Plugins listen, but the plugin that defines it isn't installed">waiting</ui-badge></template>
+              <ui-badge>{{h.mode}}</ui-badge>
+              <span class="count">{{h.heard}} listening · fired {{h.fired}}</span>
+            </summary>
+            <div class="body">
+              <dl>
+                <dt>Defined by</dt><dd>{{h.owner}}</dd>
+                <dt>What it does</dt><dd>{{h.description}}</dd>
+                <dt>Mode</dt><dd>{{h.mode}}: {{h.means}}</dd>
+                <template if="h.limit"><dt>Time limit</dt><dd>{{h.limit}}</dd></template>
+                <template if="h.agent"><dt>Agents</dt><dd>{{h.agent}}</dd></template>
+                <template if="h.args"><dt>Listeners get</dt><dd><code>{{h.args}}</code></dd></template>
+                <dt>Listening needs</dt><dd><code>{{h.listen}}</code></dd>
+                <dt>Listening now</dt><dd>{{h.listeners}} <template if="h.inKernel">(and {{h.inKernel}} in the kernel)</template></dd>
+                <template if="h.last"><dt>Last fired</dt><dd>{{h.last}}</dd></template>
+              </dl>
+            </div>
+          </details>
+        </li>
+      </template>
+    </ul>
+  </section>
+</template>
