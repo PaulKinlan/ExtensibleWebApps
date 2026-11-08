@@ -4,8 +4,8 @@
 // see a seam: they call services through the gate, and the kernel calls these.
 //
 // Every provider must pass the same checks, in tests/seams/. The browser's
-// own kernel keeps its OPFS folder for now; it moves onto the files seam when
-// the kernel core is shared (step 2 of docs/server.md).
+// kernel keeps its folder through the same files seam (opfs.ts), so the store
+// reads and writes the same way on every host.
 
 /** The kernel's folder: plugins, their files, settings, reviews, as paths like `plugins/notes.js`. */
 export interface Files {

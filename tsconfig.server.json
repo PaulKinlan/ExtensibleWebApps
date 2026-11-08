@@ -9,5 +9,5 @@
     "allowImportingTsExtensions": true
   },
   "include": ["src/server", "src/seams"],
-  "exclude": []
+  "exclude": ["src/seams/opfs.ts"]
 }

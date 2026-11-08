@@ -1,12 +1,16 @@
 // The store: a trusted plugin that provides the `store` service. Notes are
-// kept in one JSON file in a folder handle. The same folder holds the
+// kept in one JSON file in the kernel's folder. The same folder holds the
 // plugins installed with the data (`plugins/<id>.js`) and their settings
-// (`plugins.json`), so a folder carries its own extensions with it. The host passes the handle in
-// (here, the origin private file system) to show that folder handles cross
-// into workers; a folder the person picks works the same way.
+// (`plugins.json`), so a folder carries its own extensions with it.
+//
+// The folder is the `files` seam (src/seams/), so the same store works on any
+// host. In the browser the host passes a folder handle in (the origin private
+// file system, or a folder the person picked), which crosses into workers.
 
 import { Service } from "cordis";
 import type { Dispatch } from "../shared/protocol";
+import type { Files } from "../seams/index.ts";
+import { opfsFiles } from "../seams/opfs.ts";
 import { record } from "./trace";
 
 export interface Note {
@@ -28,28 +32,28 @@ const PLUGINS = "plugins";
 
 export class Store extends Service {
   notes = new Map<string, Note>();
-  private dir?: FileSystemDirectoryHandle;
+  private files?: Files;
   ready: Promise<void>;
-  private open!: (dir: FileSystemDirectoryHandle | undefined) => void;
+  private open!: (folder: FileSystemDirectoryHandle | Files | undefined) => void;
 
   constructor(ctx: any) {
     super(ctx, "store");
-    this.ready = new Promise<FileSystemDirectoryHandle | undefined>((resolve) => (this.open = resolve)).then((dir) => this.load(dir));
+    this.ready = new Promise<FileSystemDirectoryHandle | Files | undefined>((resolve) => (this.open = resolve)).then((folder) => this.load(folder));
   }
 
-  /** Called once, with the folder handle from the first tab (or nothing, to use this worker's own). */
-  use(dir: FileSystemDirectoryHandle | undefined): void {
-    this.open(dir);
+  /** Called once, with the folder: a handle from the first tab, a files seam from a server host, or nothing for this worker's own. */
+  use(folder: FileSystemDirectoryHandle | Files | undefined): void {
+    this.open(folder);
   }
 
-  private async load(dir: FileSystemDirectoryHandle | undefined): Promise<void> {
-    this.dir = dir ?? (await navigator.storage.getDirectory());
-    record({ kind: "lifecycle", name: "store:open", detail: dir ? "folder handle from the tab" : "worker's own OPFS" });
+  private async load(folder: FileSystemDirectoryHandle | Files | undefined): Promise<void> {
+    const handle = (f: typeof folder): f is FileSystemDirectoryHandle => typeof (f as FileSystemDirectoryHandle)?.getFileHandle === "function";
+    this.files = folder && !handle(folder) ? folder : opfsFiles(folder ?? (await navigator.storage.getDirectory()));
+    record({ kind: "lifecycle", name: "store:open", detail: !folder ? "worker's own OPFS" : handle(folder) ? "folder handle from the tab" : "files from the host" });
     try {
-      const file = await (await this.dir.getFileHandle(FILE)).getFile();
-      for (const note of JSON.parse(await file.text()) as Note[]) this.notes.set(note.id, note);
+      for (const note of JSON.parse((await this.files.readText(FILE)) ?? "[]") as Note[]) this.notes.set(note.id, note);
     } catch {
-      // First run.
+      // A notes file that can't be read starts empty, as before.
     }
   }
 
@@ -98,8 +102,7 @@ export class Store extends Service {
   async readText(path: string): Promise<string | undefined> {
     await this.ready;
     try {
-      const { folder, name } = await this.locate(path, false);
-      return await (await (await folder.getFileHandle(name)).getFile()).text();
+      return (await this.files!.readText(path)) ?? undefined;
     } catch {
       return undefined;
     }
@@ -111,102 +114,66 @@ export class Store extends Service {
    * asked for, so an older write never lands after a newer one.
    */
   writeText(path: string, text: string, expected?: string | null): Promise<void> {
-    const run = this.writes.then(async () => {
-      await this.ready;
+    return this.queue(async () => {
       // With `expected` (the contents the person reviewed, or null for "no such file"), only write if the file still matches.
       if (expected !== undefined && ((await this.readText(path)) ?? null) !== expected) throw new Error("The file changed while the review was open; nothing was written");
-      const { folder, name } = await this.locate(path, true);
-      await write(await folder.getFileHandle(name, { create: true }), text);
+      await this.files!.write(path, text);
     });
-    this.writes = run.catch(() => {});
-    return run;
   }
 
   private writes: Promise<void> = Promise.resolve();
 
-  /** The names of the files in a folder of the data folder, or none if there is no such folder. */
+  /** Runs a write after the ones asked for before it. */
+  private queue(write: () => Promise<void>): Promise<void> {
+    const run = this.writes.then(async () => {
+      await this.ready;
+      await write();
+    });
+    this.writes = run.catch(() => {});
+    return run;
+  }
+
+  /** The names of the files in a folder of the data folder (not in folders inside it), or none if there is no such folder. */
   async listFiles(path: string): Promise<string[]> {
     await this.ready;
-    const names: string[] = [];
     try {
-      let folder = this.dir!;
-      for (const part of path.split("/")) folder = await folder.getDirectoryHandle(part);
-      for await (const [name, handle] of (folder as any).entries() as AsyncIterable<[string, FileSystemHandle]>) if (handle.kind === "file") names.push(name);
+      const prefix = `${path}/`;
+      return (await this.files!.list(prefix)).map((p) => p.slice(prefix.length)).filter((name) => name && !name.includes("/"));
     } catch {
-      // No such folder yet.
+      return [];
     }
-    return names.sort();
   }
 
   /** Writes any file, text or binary (an image a plugin brings), in the same queue as writeText. */
   writeFile(path: string, data: Blob | string): Promise<void> {
-    const run = this.writes.then(async () => {
-      await this.ready;
-      const { folder, name } = await this.locate(path, true);
-      await write(await folder.getFileHandle(name, { create: true }), data);
-    });
-    this.writes = run.catch(() => {});
-    return run;
+    return this.queue(async () => this.files!.write(path, typeof data === "string" ? data : new Uint8Array(await data.arrayBuffer())));
   }
 
   /** Removes a file; one that is already gone is fine. */
   async removeFile(path: string): Promise<void> {
     await this.ready;
-    try {
-      const { folder, name } = await this.locate(path, false);
-      await folder.removeEntry(name);
-    } catch (error) {
-      if ((error as DOMException)?.name !== "NotFoundError") throw error;
-    }
-  }
-
-  private async locate(path: string, create: boolean): Promise<{ folder: FileSystemDirectoryHandle; name: string }> {
-    const parts = path.split("/");
-    const name = parts.pop()!;
-    let folder = this.dir!;
-    for (const part of parts) folder = await folder.getDirectoryHandle(part, { create });
-    return { folder, name };
+    await this.files!.remove(path);
   }
 
   /** The sources of the plugins kept in the data folder. */
   async pluginSources(): Promise<string[]> {
-    await this.ready;
-    const sources: string[] = [];
-    try {
-      const folder = await this.dir!.getDirectoryHandle(PLUGINS);
-      for await (const [name, handle] of (folder as any).entries() as AsyncIterable<[string, FileSystemHandle]>) {
-        if (handle.kind === "file" && name.endsWith(".js")) sources.push(await (await (handle as FileSystemFileHandle).getFile()).text());
-      }
-    } catch {
-      // No plugins folder yet.
-    }
-    return sources;
+    const names = (await this.listFiles(PLUGINS)).filter((name) => name.endsWith(".js"));
+    const sources = await Promise.all(names.map((name) => this.files!.readText(`${PLUGINS}/${name}`)));
+    return sources.filter((s): s is string => s !== null);
   }
 
   async savePlugin(id: string, source: string): Promise<void> {
     await this.ready;
-    const folder = await this.dir!.getDirectoryHandle(PLUGINS, { create: true });
-    await write(await folder.getFileHandle(`${id}.js`, { create: true }), source);
+    await this.files!.write(`${PLUGINS}/${id}.js`, source);
   }
 
   async removePlugin(id: string): Promise<void> {
     await this.ready;
-    try {
-      await (await this.dir!.getDirectoryHandle(PLUGINS)).removeEntry(`${id}.js`);
-    } catch (error) {
-      // Already gone is fine; anything else is reported.
-      if ((error as DOMException)?.name !== "NotFoundError") throw error;
-    }
+    await this.files!.remove(`${PLUGINS}/${id}.js`);
   }
 
   private async flush(): Promise<void> {
-    if (!this.dir) return;
-    await write(await this.dir.getFileHandle(FILE, { create: true }), JSON.stringify(this.list()));
+    if (!this.files) return;
+    await this.files.write(FILE, JSON.stringify(this.list()));
   }
-}
-
-async function write(handle: FileSystemFileHandle, text: Blob | string): Promise<void> {
-  const writable = await (handle as any).createWritable();
-  await writable.write(text);
-  await writable.close();
 }
