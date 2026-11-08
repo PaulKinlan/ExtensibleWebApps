@@ -1,0 +1,29 @@
+{
+  "name": "create-extensible-app",
+  "version": "0.1.0",
+  "description": "Make a customizable web app of your own on Extensible Web Apps: npm create extensible-app my-app",
+  "type": "module",
+  "bin": {
+    "create-extensible-app": "index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "extensible-web-apps",
+    "malleable-software",
+    "create",
+    "scaffold"
+  ],
+  "homepage": "https://extensibleweb.app/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PaulKinlan/ExtensibleWebApps.git",
+    "directory": "scripts/create-extensible-app"
+  },
+  "author": "Paul Kinlan"
+}
