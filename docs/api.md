@@ -1013,6 +1013,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `ui` | Draw views with ctx.ui.render. |
 | `routes` | Answer requests for paths in the plugin's own folder with ctx.routes.add. |
 | `network` | Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere. |
+| `ui:theme` | Set design tokens for the whole app with the manifest's `theme`. |
 | `ui:transform:<plugin>` | Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
@@ -1067,6 +1068,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin's view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
+| `theme` | Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only --bg, --bg-2, --surface, --fg, --fg-2, --border, --accent, --accent-fg, --ok, --warn, --danger, --radius-sm, --radius, --radius-lg, --shadow-1, --font, --mono, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
 Reserved ids, which no plugin can take:
