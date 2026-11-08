@@ -93,6 +93,25 @@ export interface Email {
   send(message: Message): Promise<{ ok: true; id: string } | { ok: false; error: string }>;
 }
 
+/**
+ * Starts plugins' code for a space's kernel, each in a sandbox of its own: no files, no other
+ * process, and no network unless `network`. The port speaks what a plugin's worker speaks in a
+ * browser (src/sandbox/runtime.ts).
+ */
+export interface Isolates {
+  /** Resolves to the kernel's end of the plugin's channel: a MessagePort where the host has them. */
+  start(name: string, source: string, options: { network: boolean }): Promise<IsolatePort>;
+  stop(name: string): void;
+  /** Stops them all, for a host that is shutting down. */
+  stopAll(): void;
+}
+
+/** A MessagePort, as far as a seam needs to say (the seams are typed without the browser's types). */
+export interface IsolatePort {
+  postMessage(message: unknown): void;
+  close(): void;
+}
+
 /** What a host provides. A space kernel is built on one of these. */
 export interface Seams {
   files: Files;

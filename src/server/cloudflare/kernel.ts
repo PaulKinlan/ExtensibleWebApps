@@ -9,13 +9,24 @@
 // `join` with a way to send to it (not `connect`, which every stub already
 // has, for sockets), then `deliver` for what the client says, and `leave` when
 // it goes. Inside, each client is a MessagePort, as a tab is.
+//
+// The supervisor also hands over `host`, where the space's server plugins run
+// (each a Dynamic Worker of its own, isolate.ts) and how the site's own files
+// are read.
 
 import { DurableObject } from "cloudflare:workers";
 import { setEnv } from "../../kernel/env";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
+import { type IsolateHost, remoteIsolates } from "../../seams/remote-isolates.ts";
 import { signed } from "../signed.ts";
 
 type Send = (text: string) => void | Promise<void>;
+type Kept<T> = T & { dup?: () => T };
+
+/** What the supervisor gives the kernel: where plugins run, and the site's files. */
+export interface SpaceHost extends IsolateHost {
+  site(url: string): Promise<Response>;
+}
 
 /**
  * Runs `load`, holding back the timers it sets until it is done, then setting them for real. A timer
@@ -56,14 +67,20 @@ export class SpaceKernel extends DurableObject {
   private clients = new Map<string, { port: MessagePort; send: Send; member: string }>();
 
   /** Starts the kernel the first time a client connects, with this space's folder. */
-  private start(origin: string): Promise<(port: MessagePort) => void> {
+  private start(origin: string, given?: SpaceHost): Promise<(port: MessagePort) => void> {
     this.started ??= (async () => {
       let accept!: (port: MessagePort) => void;
+      // Kept for as long as the kernel runs, not just this call.
+      const host = given && ((given as Kept<SpaceHost>).dup?.() ?? given);
       setEnv({
         kind: "server",
         origin,
         folder: durableFiles(this.ctx.storage.sql as unknown as Sql),
         connect: (a) => void (accept = a),
+        ...(host && {
+          isolates: remoteIsolates(host, (name, error) => console.error(`Plugin ${name}:`, error)),
+          site: (url: string) => host.site(url),
+        }),
         onError: (report) => {
           addEventListener("error", (e) => report("kernel:error", String((e as ErrorEvent).message ?? e)));
           addEventListener("unhandledrejection", (e) => report("kernel:unhandled", String((e as PromiseRejectionEvent).reason)));
@@ -78,8 +95,8 @@ export class SpaceKernel extends DurableObject {
   }
 
   /** A client joins, as `member` of the space (which the supervisor's Worker checked). */
-  async join(client: string, origin: string, send: Send, member = ""): Promise<void> {
-    const accept = await this.start(origin);
+  async join(client: string, origin: string, send: Send, member = "", host?: SpaceHost): Promise<void> {
+    const accept = await this.start(origin, host);
     // A function passed over RPC lasts only as long as the call, unless it is kept with dup().
     const kept = (send as Send & { dup?: () => Send }).dup?.() ?? send;
     const { port1, port2 } = new MessageChannel();

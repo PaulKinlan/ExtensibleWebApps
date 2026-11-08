@@ -30,6 +30,8 @@ import { Store } from "./store";
 import { switches } from "./switches";
 import { syncHub } from "./sync";
 import { syncDevice } from "./sync-device";
+import { isolateHost } from "./isolate-host";
+import { serverApps } from "./server-apps";
 import { asPlugin } from "./agents/file";
 import { authoring } from "./authoring";
 import { record, recent, setSink, startedAt, tap } from "./trace";
@@ -75,7 +77,14 @@ setSink((events) => {
 where.onError((name, detail) => record({ kind: "error", name, detail }));
 
 // Wire up connections first, so no tab's connect event is missed.
-where.connect((port) => hosts.connect(port));
+// On a server, the kernel's own client that starts its plugins in isolates. It connects with the first
+// client, not as the kernel loads: on Cloudflare, a module's top level can't read storage.
+let isolates = where.isolates;
+where.connect((port) => {
+  if (isolates) isolateHost(isolates, (own) => hosts.connect(own, { isolates: true }));
+  isolates = undefined;
+  hosts.connect(port);
+});
 
 // Constructing the store directly (rather than root.plugin) keeps it synchronous;
 // it is still a Cordis service on root.
@@ -112,7 +121,9 @@ remote.onDispose = (instance) => {
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
-const sync = syncHub(root, store, records, hosts);
+/** On a server that runs plugins: the apps opened in the space, whose server plugins it runs. */
+const onServer = where.isolates ? serverApps(remote, store, where.origin, where.site) : undefined;
+const sync = syncHub(root, store, records, hosts, (app) => onServer?.use(app));
 /** In a browser kernel for a space (a page at /s/<space>/…): its sync with the space, once the folder is known. */
 let device: ReturnType<typeof syncDevice> | undefined;
 const userAdded = userPlugins(store, where.origin, where.kind === "server" ? undefined : where.space);
@@ -143,6 +154,8 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
   try {
     if (app !== undefined) {
       checkApp(app);
+      // In a space, the space hears which app is open, so the plugins of it that run on the server start there.
+      device?.use(app);
       mine = await userAdded.links(app);
       ids = await userAdded.ids(app);
     }
@@ -264,6 +277,8 @@ hosts.onMessage = async (host, message) => {
         return remote.deliver(remote.live.has(owner) ? owner : message.owner, { t: "event", action: message.action, value: message.value, trace: message.trace });
       }
     case "spawned":
+      // On a server only the kernel's own isolate host starts plugins; a member's client can't hand it one.
+      if (hosts.mode === "server" && host !== hosts.spawner) return;
       return remote.attach(message.plugin, host, message.port);
     case "canvas":
       return remote.deliver(message.owner, { t: "canvas", id: message.id, canvas: message.canvas }, [message.canvas]);

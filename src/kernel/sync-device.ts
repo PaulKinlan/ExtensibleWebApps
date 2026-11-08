@@ -72,6 +72,8 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   let retry = 1000;
   let stopped = false;
   const status = { connected: false };
+  /** The apps opened on this device in the space, which the space hears of each time it connects. */
+  const using = new Set<string>();
   /**
    * Settles once a device new to the space has what the space has, or can't reach it (offline, a few
    * seconds at most): until then its app would see an empty copy, and add sample data the space has
@@ -231,6 +233,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       changed();
       ws.send(JSON.stringify({ t: "hello", tab: `sync-${Math.random().toString(36).slice(2, 8)}` }));
       ws.send(JSON.stringify({ t: "sync", op: "hello", since: state.seq }));
+      for (const app of using) ws.send(JSON.stringify({ t: "sync", op: "app", app }));
       trace({ kind: "lifecycle", name: "sync:connected", detail: `from ${state.seq}, ${Object.keys(state.pending).length} to send` });
     };
     ws.onmessage = (e) => {
@@ -254,6 +257,12 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   const api = {
     status,
     ready,
+    /** An app opened here: the space starts its plugins that run on the server. */
+    use(app: string) {
+      if (using.has(app)) return;
+      using.add(app);
+      if (socket?.readyState === 1) socket.send(JSON.stringify({ t: "sync", op: "app", app }));
+    },
     /** What this device has, for the page and for checks. */
     async state() {
       await loaded;

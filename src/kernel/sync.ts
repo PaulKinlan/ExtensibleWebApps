@@ -28,7 +28,8 @@ const chunkOf = (seq: number) => Math.floor((seq - 1) / CHUNK);
 const chunkFile = (chunk: number) => `sync/log/${String(chunk).padStart(8, "0")}.json`;
 const key = (collection: string, id: string) => `${collection}/${id}`;
 
-export function syncHub(root: any, store: Store, records: Collections, hosts: Hosts) {
+/** `onApp` hears each app a device opens in the space (server-apps.ts). */
+export function syncHub(root: any, store: Store, records: Collections, hosts: Hosts, onApp?: (app: string) => unknown) {
   /** The devices that said hello, and so hear every change. */
   const listening = new Set<Host>();
   let head: { seq: number; versions: Record<string, number> } = { seq: 0, versions: {} };
@@ -123,6 +124,21 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     await store.writeJson(HEAD, head);
   }
 
+  // On the server, a write the space's own plugins make (server-apps.ts) is a change like a device's:
+  // it takes the next number, goes in the log, and reaches every device.
+  if (hosts.mode === "server") {
+    records.written.add((change, instance) => {
+      void serially(async () => {
+        await loaded;
+        const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after: (change.after as SyncRecord | undefined) ?? null, by: `plugin:${instance}`, at: new Date().toISOString() };
+        head.seq = accepted.seq;
+        head.versions[key(change.collection, change.id)] = accepted.seq;
+        await record([accepted]);
+        for (const other of listening) hosts.send(other, { t: "sync", op: "changes", changes: [accepted], seq: head.seq });
+      }).catch((error) => trace({ kind: "error", name: "sync:server-write", detail: String(error) }));
+    });
+  }
+
   return {
     /** A sync message from a device. */
     async handle(host: Host, message: SyncToSpace & { member?: string }): Promise<void> {
@@ -137,6 +153,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
         });
         return;
       }
+      if (message.op === "app") return void onApp?.(message.app);
       if (message.op === "push") {
         const changes = Array.isArray(message.changes) ? message.changes.slice(0, MAX_PUSH) : [];
         const dispatch = { trace: `sync-${message.id}` };

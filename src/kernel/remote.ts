@@ -74,8 +74,9 @@ export interface ServiceProvider {
   call(plugin: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown> | unknown;
 }
 
-/** Where a plugin came from: bundled with the platform, kept in the data folder, or linked by an open app's app.html. */
-export type Origin = "built-in" | "data" | "app";
+/** Where a plugin came from: bundled with the platform, kept in the data folder, linked by an open app's app.html, or an app's server plugin. */
+/** "server": an app's plugin that runs on a space's server (server-apps.ts), the only kind that runs there. */
+export type Origin = "built-in" | "data" | "app" | "server";
 
 export interface Installed {
   id: string;
@@ -136,6 +137,12 @@ export class RemotePlugins {
       return { ok: false, error: message };
     }
     const previous = this.installed.get(manifest.id);
+    // A space's server plugin is replaced only by the site's own copy, never by one a member's client sent.
+    if (previous?.origin === "server" && options.origin !== "server") {
+      const message = `“${manifest.id}” is one of the space's server plugins`;
+      record({ kind: "error", name: "plugin:refused", detail: message });
+      return { ok: false, error: message };
+    }
     this.stop(manifest.id);
     const enabled = options.enabled ?? previous?.enabled ?? true;
     this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest), origin: options.origin ?? "data", enabled, href: options.href });
@@ -149,9 +156,18 @@ export class RemotePlugins {
   async start(id: string): Promise<boolean> {
     const plugin = this.installed.get(id);
     if (!plugin?.enabled) return false;
+    if (!this.runsHere(plugin)) return false;
     const targets = this.targets(plugin);
     const started = await Promise.all(targets.map(([instance, host]) => this.startInstance(plugin, instance, host)));
     return started.length > 0 && started.every(Boolean);
+  }
+
+  /**
+   * On a server only the plugins of the apps opened in the space run, as the site serves them
+   * (server-apps.ts): never source a member's client sent (an app it says it opened, a plugin it added).
+   */
+  private runsHere(plugin: Installed): boolean {
+    return this.hosts.mode !== "server" || plugin.origin === "server";
   }
 
   private targets(plugin: Installed): [string, Host][] {
@@ -261,7 +277,7 @@ export class RemotePlugins {
   /** The spawner tab changed: start the shared plugins again in the new one. */
   spawnerChanged(host: Host): void {
     for (const plugin of this.installed.values()) {
-      if (!plugin.enabled || plugin.manifest.scope === "tab") continue;
+      if (!plugin.enabled || plugin.manifest.scope === "tab" || !this.runsHere(plugin)) continue;
       if (this.live.get(plugin.id)?.host === host) continue;
       this.stopInstance(plugin.id, false);
       void this.startInstance(plugin, plugin.id, host);

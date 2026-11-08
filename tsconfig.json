@@ -12,5 +12,5 @@
     "types": ["vite/client"]
   },
   "include": ["src", "elements"],
-  "exclude": ["src/server", "src/seams/node.ts"]
+  "exclude": ["src/server", "src/seams/node.ts", "src/seams/node-isolates.ts"]
 }

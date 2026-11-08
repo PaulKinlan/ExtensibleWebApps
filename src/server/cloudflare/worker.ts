@@ -13,10 +13,18 @@
 //
 // Only a space's members may join it, which `Accounts` decides from the
 // request's session cookie.
+//
+// A space's server plugins (runs: "server" in their manifest) each run as a
+// Dynamic Worker of their own (isolate.ts, built into .build/cloudflare/), as
+// another facet of the space: with no outbound network unless the plugin has
+// `network`, nothing in their env, and no storage of the space's. The kernel
+// reaches them through the supervisor (PluginHost, below).
 
-import { DurableObject } from "cloudflare:workers";
+import { DurableObject, RpcTarget } from "cloudflare:workers";
 // The space kernel's built source, as text (npm run build:cloudflare writes it).
 import kernelSource from "../../../.build/cloudflare/kernel-source.js";
+// A plugin's sandbox, the same way.
+import isolateSource from "../../../.build/cloudflare/isolate-source.js";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
@@ -33,9 +41,75 @@ interface Env {
 }
 
 interface KernelStub {
-  join(client: string, origin: string, send: (text: string) => void, member?: string): Promise<void>;
+  join(client: string, origin: string, send: (text: string) => void, member?: string, host?: PluginHost): Promise<void>;
   deliver(client: string, text: string): Promise<void>;
   leave(client: string): Promise<void>;
+}
+
+type Send = ((message: unknown) => void) & { dup?: () => Send };
+/** Lets go of a function kept from an RPC call (Symbol.dispose, which this file's ES2022 types don't name). */
+const release = (kept: object | undefined) => (kept as Record<symbol, (() => void) | undefined> | undefined)?.[(Symbol as unknown as { dispose: symbol }).dispose]?.();
+
+interface IsolateStub {
+  start(source: string, network: boolean, send: Send): Promise<void>;
+  deliver(message: unknown): Promise<void>;
+}
+
+const hex = async (text: string) => [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 16);
+
+/**
+ * What a space's kernel calls to run its server plugins, and to read the site's own files (an app's
+ * app.html and plugins). Each plugin is a facet of the space, `plugin:<name>`, running isolate.ts with
+ * the plugin's source beside it.
+ */
+class PluginHost extends RpcTarget {
+  private running = new Map<string, { stub: IsolateStub; send: Send }>();
+
+  constructor(
+    private ctx: DurableObjectState,
+    private env: Env,
+    private space: string,
+  ) {
+    super();
+  }
+
+  async start(name: string, source: string, network: boolean, send: Send): Promise<void> {
+    await this.stop(name);
+    const kept = send.dup?.() ?? send;
+    const code = `plugin:${this.space}:${name}:${isolateSource.version}:${network ? "net" : "closed"}:${await hex(source)}`;
+    const worker = this.env.LOADER.get(code, () => ({
+      compatibilityDate: "2026-11-01",
+      // Node's compatibility is on by default from this date: off, there are no node: modules and no `process`.
+      compatibilityFlags: ["no_nodejs_compat", "no_nodejs_compat_v2"],
+      mainModule: isolateSource.main,
+      modules: { ...isolateSource.modules, "plugin.js": source },
+      env: {},
+      // No fetch() or connect() reaches anywhere, unless the plugin has `network`.
+      ...(network ? {} : { globalOutbound: null }),
+    }));
+    const stub = this.ctx.facets.get(`plugin:${name}`, () => ({ class: worker.getDurableObjectClass("PluginIsolate") })) as unknown as IsolateStub;
+    this.running.set(name, { stub, send: kept });
+    await stub.start(source, network, kept);
+  }
+
+  async post(name: string, message: unknown): Promise<void> {
+    await this.running.get(name)?.stub.deliver(message);
+  }
+
+  async stop(name: string): Promise<void> {
+    const one = this.running.get(name);
+    if (!one) return;
+    this.running.delete(name);
+    release(one.send);
+    try {
+      this.ctx.facets.delete(`plugin:${name}`);
+    } catch {}
+  }
+
+  site(url: string): Promise<Response> {
+    const { pathname, search } = new URL(url);
+    return this.env.ASSETS.fetch(new Request(`https://assets${pathname}${search}`));
+  }
 }
 
 /** The header the Worker names a space's client's member with, for the space to know them by. */
@@ -44,6 +118,7 @@ const MEMBER = "x-ewa-member";
 export class Space extends DurableObject<Env> {
   /** The open clients, by the member each one is. */
   private clients = new Map<WebSocket, string>();
+  private plugins?: PluginHost;
 
   /** Someone left the space, or was removed: their connections close at once. */
   async revoke(user: string): Promise<void> {
@@ -71,7 +146,8 @@ export class Space extends DurableObject<Env> {
     this.clients.set(server, request.headers.get(MEMBER) ?? "");
     const id = crypto.randomUUID();
     // The client's messages wait for the kernel to be ready for them, in order.
-    let ready = kernel.join(id, url.origin, (text) => server.send(text), this.clients.get(server) ?? "");
+    this.plugins ??= new PluginHost(this.ctx, this.env, space);
+    let ready = kernel.join(id, url.origin, (text) => server.send(text), this.clients.get(server) ?? "", this.plugins);
     ready.catch((e) => console.error(`Space ${space}: the kernel didn't start`, e?.stack ?? e));
     server.addEventListener("message", (e) => {
       ready = ready.then(() => kernel.deliver(id, String(e.data))).catch(() => server.close(1011, "The kernel stopped"));

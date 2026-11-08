@@ -9,5 +9,5 @@
     "allowImportingTsExtensions": true
   },
   "include": ["src/server", "src/seams"],
-  "exclude": ["src/seams/opfs.ts", "src/server/space.ts", "src/server/space-env.ts", "src/server/cloudflare"]
+  "exclude": ["src/seams/opfs.ts", "src/server/space.ts", "src/server/space-env.ts", "src/server/isolate.ts", "src/server/cloudflare"]
 }

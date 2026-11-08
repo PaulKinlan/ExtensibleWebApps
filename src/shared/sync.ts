@@ -41,7 +41,9 @@ export type Verdict =
 export type SyncToSpace =
   /** Start hearing changes, with every one after `since` first. */
   | { t: "sync"; op: "hello"; since: number }
-  | { t: "sync"; op: "push"; id: number; changes: Outgoing[] };
+  | { t: "sync"; op: "push"; id: number; changes: Outgoing[] }
+  /** An app was opened in the space (its folder, `demos/reading-list`): its plugins that run on the server start there. */
+  | { t: "sync"; op: "app"; app: string };
 
 // space -> device
 export type SyncToDevice =

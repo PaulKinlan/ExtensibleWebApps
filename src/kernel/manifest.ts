@@ -44,6 +44,7 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   permissions: "Required, may be empty. Capabilities, or editor-style permissions that stand for them (see Capabilities).",
   order: "Optional. Where the plugin's views go among others in the same slot; lower comes first.",
   scope: '"shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state.',
+  runs: '"browser" (the default): in the browser, on each device. "server": only in a space\'s kernel on its server, for an app opened in a space (/s/<space>/…), with no app open anywhere; it has no UI, no file system, and no network unless it asks for `network`. "both": in each. See docs/server.md.',
   collections: "Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking.",
   settings: "Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form.",
   places:
@@ -73,6 +74,8 @@ function validate(value: unknown): Manifest {
   if (typeof m.name !== "string" || !m.name) throw new ManifestError("`name` must be a string");
   if (!Array.isArray(m.permissions) || m.permissions.some((p) => typeof p !== "string")) throw new ManifestError("`permissions` must be a list of strings");
   if (m.scope !== undefined && m.scope !== "shared" && m.scope !== "tab") throw new ManifestError('`scope` must be "shared" or "tab"');
+  if (m.runs !== undefined && m.runs !== "browser" && m.runs !== "server" && m.runs !== "both") throw new ManifestError('`runs` must be "browser", "server" or "both"');
+  if (m.runs === "server" && m.scope === "tab") throw new ManifestError('A plugin that runs only on the server has no tabs: leave out `scope: "tab"`');
   if (m.order !== undefined && typeof m.order !== "number") throw new ManifestError("`order` must be a number");
   if (m.settings !== undefined) validateSettings(m.settings);
   if (m.places !== undefined) validatePlaces(m.places, m.permissions as string[], m.id);

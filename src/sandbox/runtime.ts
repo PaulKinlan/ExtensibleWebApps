@@ -267,7 +267,9 @@ function editorShim() {
 const isEditorExtension = (manifest: Manifest) => manifest.permissions.some((p) => p.startsWith("post:"));
 
 async function load(source: string) {
-  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  // On a Node server the host gives a data: URL instead (src/server/isolate.ts); Node can't import blob: URLs.
+  const moduleUrl = (globalThis as { __moduleUrl?: (source: string) => string }).__moduleUrl;
+  const url = moduleUrl ? moduleUrl(source) : URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
   lockdown();
   try {
     const module = await import(/* @vite-ignore */ url);
@@ -278,7 +280,7 @@ async function load(source: string) {
   } catch (error) {
     send({ t: "failed", error: String(error instanceof Error ? error.message : error) });
   } finally {
-    URL.revokeObjectURL(url);
+    if (!moduleUrl) URL.revokeObjectURL(url);
   }
 }
 
