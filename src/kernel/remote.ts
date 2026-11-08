@@ -136,6 +136,14 @@ export class RemotePlugins {
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }
+    // On a space's server only the site's own plugins are installed (server-apps.ts) and the kernel's
+    // built-in ones: not one a member's client sent (an app's link, a plugin they added), which could
+    // otherwise claim a collection before the space's own plugin does.
+    if (this.hosts.mode === "server" && (options.origin === "app" || options.origin === "data" || options.origin === undefined)) {
+      const message = `On a space's server only the site's own plugins are installed, not “${manifest.id}”`;
+      record({ kind: "error", name: "plugin:refused", detail: message });
+      return { ok: false, error: message };
+    }
     const previous = this.installed.get(manifest.id);
     // A space's server plugin is replaced only by the site's own copy, never by one a member's client sent.
     if (previous?.origin === "server" && options.origin !== "server") {
@@ -167,11 +175,18 @@ export class RemotePlugins {
    * (server-apps.ts): never source a member's client sent (an app it says it opened, a plugin it added).
    */
   private runsHere(plugin: Installed): boolean {
-    return this.hosts.mode !== "server" || plugin.origin === "server";
+    if (this.hosts.mode === "server") return plugin.origin === "server";
+    // And in a browser, never a plugin that runs only on the server, however it was installed.
+    return plugin.manifest.runs !== "server";
+  }
+
+  /** A plugin with an instance per tab. A server has no tabs: there one instance runs, as a shared plugin's does. */
+  private perTab(plugin: Installed): boolean {
+    return plugin.manifest.scope === "tab" && this.hosts.mode !== "server";
   }
 
   private targets(plugin: Installed): [string, Host][] {
-    if (plugin.manifest.scope === "tab") return this.hosts.workerHosts.map((host) => [`${plugin.id}@${host.tab}`, host]);
+    if (this.perTab(plugin)) return this.hosts.workerHosts.map((host) => [`${plugin.id}@${host.tab}`, host]);
     const spawner = this.hosts.spawner;
     return spawner ? [[plugin.id, spawner]] : [];
   }
@@ -265,7 +280,7 @@ export class RemotePlugins {
   hostJoined(host: Host): void {
     if (!this.hosts.workerHosts.includes(host)) return;
     for (const plugin of this.installed.values()) {
-      if (plugin.enabled && plugin.manifest.scope === "tab") void this.startInstance(plugin, `${plugin.id}@${host.tab}`, host);
+      if (plugin.enabled && this.perTab(plugin) && this.runsHere(plugin)) void this.startInstance(plugin, `${plugin.id}@${host.tab}`, host);
     }
   }
 
@@ -277,7 +292,7 @@ export class RemotePlugins {
   /** The spawner tab changed: start the shared plugins again in the new one. */
   spawnerChanged(host: Host): void {
     for (const plugin of this.installed.values()) {
-      if (!plugin.enabled || plugin.manifest.scope === "tab" || !this.runsHere(plugin)) continue;
+      if (!plugin.enabled || this.perTab(plugin) || !this.runsHere(plugin)) continue;
       if (this.live.get(plugin.id)?.host === host) continue;
       this.stopInstance(plugin.id, false);
       void this.startInstance(plugin, plugin.id, host);
@@ -351,7 +366,7 @@ export class Remote {
 
   /** The tab this instance belongs to, for tab-scoped plugins. */
   get tab(): string | undefined {
-    return this.plugin.manifest.scope === "tab" ? this.host.tab : undefined;
+    return this.plugin.manifest.scope === "tab" && this.manager.hosts.mode !== "server" ? this.host.tab : undefined;
   }
 
   private get caps() {

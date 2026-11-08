@@ -10,10 +10,16 @@
 //   <ID>_CLIENT_SECRET    each provider's secret (GITHUB_CLIENT_SECRET), kept as a secret, never in the JSON
 //
 // Bluesky (atproto) signs in with OAuth too, but its own way (a client
-// metadata URL, PAR, DPoP, and checking the account's DID): that comes as a
-// module of its own.
+// metadata URL, PAR, DPoP, and checking the account's DID), so it's a Flow:
+// a module with its own steps, in bluesky/. It's turned on the same way, with
+// { "id": "bluesky" } in AUTH_PROVIDERS, and needs no client id or secret.
 
-export interface Provider {
+import { bluesky } from "./bluesky/index.ts";
+
+/** Another site to sign in with: plain OAuth 2, or a flow with steps of its own. */
+export type Provider = OAuthProvider | Flow;
+
+export interface OAuthProvider {
   id: string;
   /** What the sign-in button says: "Sign in with GitHub". */
   name: string;
@@ -29,7 +35,27 @@ export interface Provider {
   name_: (profile: Record<string, unknown>) => string;
 }
 
-type Preset = Omit<Provider, "id" | "clientId" | "clientSecret">;
+/**
+ * A sign-in with its own steps, which accounts.ts runs at /auth/oauth/<id>/… in place of plain
+ * OAuth 2. It keeps the parts every sign-in shares: the state cookie, the PKCE verifier, linking,
+ * invites, and finding or making the account. A step throws an Error whose message the person sees.
+ */
+export interface Flow {
+  id: string;
+  name: string;
+  /** What the person types to start, sent to `start` as a query parameter: a field beside the button. */
+  ask?: { name: string; label: string; placeholder: string };
+  /** Where to send the browser, and what to keep until it comes back (kept for minutes, on the server). */
+  start(step: { url: URL; back: string; state: string; challenge: string }): Promise<{ location: string; data?: Record<string, unknown> }>;
+  /** The callback's query, checked: who signed in, by an id at that site that never changes. */
+  finish(step: { url: URL; back: string; data: Record<string, unknown>; verifier: string }): Promise<{ id: string; name: string }>;
+  /** Any other GET at /auth/oauth/<id>/<step>, such as a document the other site reads. */
+  serve?(url: URL, step: string): Response | undefined;
+}
+
+export const isFlow = (provider: Provider): provider is Flow => "finish" in provider;
+
+type Preset = Omit<OAuthProvider, "id" | "clientId" | "clientSecret">;
 
 const PRESETS: Record<string, Preset> = {
   github: {
@@ -70,6 +96,10 @@ export function providersFrom(env: Record<string, unknown>): Provider[] {
       continue;
     }
     const id = String(entry.id ?? "");
+    if (id === "bluesky") {
+      out.push(bluesky(entry));
+      continue;
+    }
     const secret = env[`${id.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_CLIENT_SECRET`];
     const preset = (Object.hasOwn(PRESETS, id) ? PRESETS[id] : undefined) ?? (entry.authorize && entry.token && entry.user ? plain(entry) : undefined);
     if (!/^[a-z0-9-]{1,32}$/.test(id) || !preset || !entry.clientId || typeof secret !== "string") {

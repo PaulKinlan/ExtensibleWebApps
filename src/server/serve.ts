@@ -13,12 +13,13 @@
 import { createReadStream, existsSync, readFileSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
-import type { Duplex } from "node:stream";
+import { type Duplex, Readable } from "node:stream";
 import { MessageChannel, Worker } from "node:worker_threads";
 import { nodeFiles } from "../seams/node.ts";
 import { accounts } from "./auth/accounts.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
 import { signed } from "./signed.ts";
+import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, spaceRoute, tooLarge } from "./routes.ts";
 import { accept } from "./websocket.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -125,6 +126,45 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     response.end(Buffer.from(await answer.arrayBuffer()));
   };
 
+  let routed = 0;
+  /** Asks a space's kernel to answer a public route (src/server/routes.ts): null if no plugin has it. */
+  const ask = async (name: string, route: RouteRequest): Promise<RouteResponse | null> => {
+    const kernel = await space(name);
+    const id = ++routed;
+    const answer = (m: { t?: string; id?: number; result?: RouteResponse | null }) => m?.t === "routed" && m.id === id && done(m.result ?? null);
+    let done!: (result: RouteResponse | null) => void;
+    const result = new Promise<RouteResponse | null>((resolve) => (done = resolve));
+    kernel.on("message", answer);
+    kernel.postMessage({ t: "route", id, request: route });
+    const timer = setTimeout(() => done({ status: 504, text: "The space didn't answer in time" }), 15_000);
+    try {
+      return await result;
+    } finally {
+      clearTimeout(timer);
+      kernel.off("message", answer);
+    }
+  };
+
+  /** A request to /s/<space>/<path> that a server plugin's route answers; false when none does. */
+  const publicRoute = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    const url = new URL(request.url ?? "/", options.origin ?? `http://${request.headers.host ?? "localhost"}`);
+    const at = spaceRoute(url);
+    if (!at || !SPACE.test(at.space) || !(await auth.exists(at.space))) return false;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
+    const route = await routeRequest(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), at.path);
+    let answer = route ? null : tooLarge();
+    if (route) {
+      const result = await ask(at.space, route);
+      if (!result) return false;
+      answer = routeResponse(result, url, at.space);
+    }
+    response.writeHead(answer!.status, Object.fromEntries(answer!.headers));
+    response.end(request.method === "HEAD" ? undefined : Buffer.from(await answer!.arrayBuffer()));
+    return true;
+  };
+
   const server = createServer((request, response) => {
     if (request.url?.startsWith("/auth/")) {
       return void signIn(request, response).catch((error) => {
@@ -132,6 +172,19 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
         if (!response.headersSent) response.writeHead(500);
         response.end();
       });
+    }
+    if (request.url?.startsWith("/s/")) {
+      return void publicRoute(request, response)
+        .then((answered) => {
+          if (answered) return;
+          if (request.method !== "GET" && request.method !== "HEAD") return void response.writeHead(405).end();
+          file(request, response);
+        })
+        .catch((error) => {
+          console.error("Route:", error);
+          if (!response.headersSent) response.writeHead(500);
+          response.end();
+        });
     }
     if (request.method !== "GET" && request.method !== "HEAD") return void response.writeHead(405).end();
     file(request, response);

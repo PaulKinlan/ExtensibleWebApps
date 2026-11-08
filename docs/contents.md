@@ -14,6 +14,7 @@
   1. [Agents](guide/agents.md)
   1. [Commands and the command palette](guide/commands.md)
   1. [API keys and web requests](guide/keys-and-requests.md)
+  1. [Deploying one app on its own](guide/deploying-an-app.md)
 - Reference
   - [API reference](api.md)
   - [Permissions](permissions.md)

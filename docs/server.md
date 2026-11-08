@@ -123,15 +123,58 @@ At the provider, register the callback URL `https://<your host>/auth/oauth/<id>/
 
 | Route | What it does |
 | --- | --- |
-| `GET /auth/providers` | The providers that are on: `{ providers: [{ id, name }] }`. |
+| `GET /auth/providers` | The providers that are on: `{ providers: [{ id, name, ask? }] }`. `ask` names a field to type before starting (Bluesky's handle). |
 | `GET /auth/oauth/<id>/start` | Sends the browser to the provider, with a state cookie and a PKCE challenge. |
 | `GET /auth/oauth/<id>/callback` | Checks the state against this browser's cookie, trades the code for a token, and asks the provider who it is. Someone signed out is signed in to the account that identity belongs to, or a new one. Someone signed in links that identity to their account, unless it's already someone else's. It goes back to `/account/`, with `?error=` if something was wrong. |
+| `GET /auth/oauth/<id>/<other>` | Anything else a sign-in flow publishes, such as Bluesky's `client-metadata.json`. |
 
 The server keeps only who the person is at the provider (an id that never changes, and a name). It throws the provider's token away.
 
-Two other ways to sign in were looked at, and wait:
+### Signing in with Bluesky
 
-- **Bluesky** signs in with OAuth too, but its own way: a client metadata URL as the client id, pushed authorization requests (PAR), DPoP-bound tokens, and a check that the account's DID points at the server that signed it in. That comes as a module of its own.
+Bluesky (the AT Protocol) signs in with OAuth too, but its own way, so it's a module of its own, [`src/server/auth/bluesky/`](../src/server/auth/bluesky/). Turn it on with `{ "id": "bluesky" }` in `AUTH_PROVIDERS`. It needs no client id, no secret and nothing registered anywhere. `/account/` shows a field for the person's handle beside its button.
+
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant S as This server
+  participant D as DNS / PLC directory
+  participant P as Their PDS
+  participant A as Their sign-in server
+  B->>S: GET /auth/oauth/bluesky/start?handle=alice.example.com
+  S->>D: handle → DID → DID document
+  S->>P: /.well-known/oauth-protected-resource
+  S->>A: /.well-known/oauth-authorization-server
+  S->>A: PAR (with a DPoP proof; asked again with its nonce)
+  S-->>B: 302 to A's authorize page
+  B->>A: signs in there
+  A-->>B: 302 to /auth/oauth/bluesky/callback?code&state&iss
+  B->>S: callback
+  S->>A: token (DPoP, PKCE): sub = their DID
+  S-->>B: signed in, back to /account/
+```
+
+What's different from GitHub, and how each part is checked:
+
+- **The client id is a URL.** On HTTPS it's `https://<host>/auth/oauth/bluesky/client-metadata.json`, which this server publishes and the person's server reads. On `http://127.0.0.1` it's atproto's loopback client id, so it works in development with no setup. A sign-in started at `localhost` moves to `127.0.0.1` first, because the loopback client has to come back there.
+- **It finds the person's server** from what they type ([`resolve.ts`](../src/server/auth/bluesky/resolve.ts)): a handle (by DNS TXT `_atproto.<handle>`, or `https://<handle>/.well-known/atproto-did`), a DID, or a server's address such as `https://bsky.social`. A handle counts only if the DID's document names it back. Every URL it fetches came from someone's input or a document someone else wrote, so it only asks public HTTPS servers, not IP addresses or local names. It follows no redirects, and each fetch has a time limit and a size limit.
+- **Requests carry DPoP proofs** ([`dpop.ts`](../src/server/auth/bluesky/dpop.ts)). Each sign-in gets a new ES256 key, kept with the sign-in's state for its five minutes and then thrown away. When the server asks for its nonce, the request goes again with it.
+- **Who signed in is believed only if it adds up.** The callback's `iss` must be the server the sign-in went to. The token's `sub` (their DID) must be the account they typed, or, when they typed a server's address, that DID's own document must name the same sign-in server. Otherwise any server could say it's anyone.
+
+The identity is the DID, which never changes even when the handle does. A new account is named by its handle. As with GitHub, the tokens are thrown away: this is sign-in only, not posting to Bluesky for the person.
+
+| Setting in its `AUTH_PROVIDERS` entry | What it does |
+| --- | --- |
+| `name` | What the button says (`Bluesky`). |
+| `plc` | The PLC directory, for `did:plc` (`https://plc.directory`). |
+| `dns` | A DNS-over-HTTPS server that answers JSON, for handles (`https://cloudflare-dns.com/dns-query`, which works on both hosts). |
+| `resolver` | A server that answers `com.atproto.identity.resolveHandle`, to ask instead of DNS and HTTPS. |
+| `insecure` | `true` lets `http://` and local servers through. For the server checks only. |
+
+[`tests/server/fake-atproto.mjs`](../tests/server/fake-atproto.mjs) is a small AT Protocol network (a PLC directory, a resolver, a PDS and its sign-in server, which checks PAR, DPoP, nonces, PKCE and the loopback client), and [`tests/server/bluesky.mjs`](../tests/server/bluesky.mjs) signs in through it on both hosts. It also tries a token for another account than the one typed, an account whose DID names another server, and an answer that names another server.
+
+Another way to sign in was looked at, and waits:
+
 - **FedCM** (the browser's own account chooser) is only in Chrome and Edge for now, and providers have to support it (Google does, GitHub doesn't). It's worth adding as a nicer front for providers that offer it, once more browsers have it.
 
 [`tests/server/authenticator.mjs`](../tests/server/authenticator.mjs) is a passkey authenticator in software. The server checks use it on both hosts. They also try a used challenge, another page's origin, another site's passkey, a counter that went back, and a forged signature. They check who may make, open, invite to and leave a space, and sign in with a provider in [`tests/server/fake-oauth.mjs`](../tests/server/fake-oauth.mjs): a sign-in this browser didn't start is refused, and an identity can't be linked to two accounts. [`tests/checks/signin.mjs`](../tests/checks/signin.mjs) uses `/account/` in Chromium, with its virtual authenticator: it signs up, out and in, makes a space, and has a second person join it from the invite link.
@@ -170,7 +213,8 @@ A plugin can run on a space's server as well as, or instead of, in the browser. 
 - **Each one runs in an isolate,** the host's `Isolates` seam ([`src/seams/index.ts`](../src/seams/index.ts)). On Node, each plugin is a process of its own under Node's permission model ([`src/seams/node-isolates.ts`](../src/seams/node-isolates.ts)), so it can't read or write files, start processes or workers, or load native code. Its runtime ([`src/server/isolate.ts`](../src/server/isolate.ts)) also keeps it from importing Node's own modules, takes away `process`, and takes away `fetch` and `WebSocket` unless it asks for `network`. It talks to the kernel as a browser plugin's worker does, through the same runtime ([`src/sandbox/runtime.ts`](../src/sandbox/runtime.ts)).
 - **On Cloudflare, each one is a Dynamic Worker of its own,** run as another facet of the space ([`src/server/cloudflare/isolate.ts`](../src/server/cloudflare/isolate.ts)), with the plugin's source beside the runtime as `plugin.js`. It is loaded with no outbound network (`globalOutbound: null`) unless it asks for `network`, nothing in its env (no bindings, no keys), and Node's compatibility turned off, so there's no `process` and no `node:` modules. The kernel reaches it through the space's supervisor, which also reads the app's files from the site's assets ([`src/server/cloudflare/worker.ts`](../src/server/cloudflare/worker.ts), [`src/seams/remote-isolates.ts`](../src/seams/remote-isolates.ts)).
 - **The browser leaves out** a plugin that runs only on the server: an app can link it like any other.
+- **Its routes are public.** A server plugin adds routes as any plugin does, with `ctx.routes.add(method, path, handler)` and the `routes` permission, and the space's server answers them at `/s/<space>/<path>`: a plugin at `/survey/survey.js` that adds `POST answer` answers `POST /s/<space>/survey/answer` ([`src/server/routes.ts`](../src/server/routes.ts)). Anyone may call one, signed in or not, from any site, so a form elsewhere or a webhook can reach the space with no one's browser open; the plugin isn't told who called. A request wakes the space if it isn't running, and waits for its apps' plugins to start. A form's fields or a JSON body come as `form` (up to 64 KB), and the answer is the same as in a browser: `html` (shown with no script), `json`, `text`, `status`, or a `redirect` to a page in the same space. A path no plugin answers, or a space that doesn't exist, gets the site's files as before.
 
-[`tests/fixtures/server-app/`](../tests/fixtures/server-app/) is a small app with a server plugin, and [`tests/server/run.mjs`](../tests/server/run.mjs) checks it on both hosts. It checks that the plugin starts when a device opens the app in a space, that it stops a change, that its writes reach devices, what its sandbox refuses, that a member can't replace it, and that it starts again after a restart.
+[`tests/fixtures/server-app/`](../tests/fixtures/server-app/) is a small app with a server plugin, and [`tests/server/run.mjs`](../tests/server/run.mjs) checks it on both hosts. It checks that the plugin starts when a device opens the app in a space, that its public routes answer anyone and wake the space, that it stops a change, that its writes reach devices, what its sandbox refuses, that a member can't replace it, and that it starts again after a restart.
 
-What isn't there yet: `http.route` answered on the server, `schedule` and `email` come next.
+What isn't there yet: `schedule` and `email` come next.
