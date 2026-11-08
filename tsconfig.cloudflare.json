@@ -1,0 +1,12 @@
+// The Cloudflare Worker (src/server/cloudflare/): Workers' types instead of
+// the browser's or Node's. Its import of the built kernel needs
+// `npm run build:cloudflare` first, which `npm run typecheck` does.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["@cloudflare/workers-types"]
+  },
+  "include": ["src/server/cloudflare/worker.ts", "src/seams/durable.ts"],
+  "exclude": []
+}

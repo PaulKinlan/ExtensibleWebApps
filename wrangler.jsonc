@@ -1,21 +1,33 @@
-// Cloudflare hosting: the built app served as Workers static assets. There is
-// no Worker code yet; the servers in phase 2b will add it. An address with no
+// Cloudflare hosting: the built app served as Workers static assets, and a
+// Worker (src/server/cloudflare/worker.ts) that runs a kernel for each space a
+// client joins, at /s/<space>/kernel (docs/server.md). An address with no
 // file gets 404.html, which starts the service worker and loads the address
 // again through it, so a link to an app's screen (/demos/reading-list/book/42)
-// opens on a first visit too. Cloudflare applies
-// public/_headers (copied into dist/), so plugin workers get their content
-// security policy here as they do under `vite preview`.
+// opens on a first visit too. Cloudflare applies public/_headers (copied into
+// dist/), so plugin workers get their content security policy here as they do
+// under `vite preview`.
+//
+// Each space is a Durable Object, `Space`, which loads the space's kernel as a
+// Dynamic Worker (the LOADER binding) and runs it as a facet, with its own
+// SQLite database for the space's folder.
 //
 // Deploys come from Cloudflare's Git integration (Workers Builds): build
-// command `npm run build`, deploy command `npx wrangler deploy`. Branches
-// other than main deploy with `npx wrangler preview`, which needs the
-// (empty) `previews` block below.
+// command `npm run build` (which builds the space kernel too), deploy command
+// `npx wrangler deploy`. Branches other than main deploy with
+// `npx wrangler preview`, which needs the (empty) `previews` block below.
 {
   "name": "extensible-web-apps",
-  "compatibility_date": "2025-09-01",
+  "main": "src/server/cloudflare/worker.ts",
+  "compatibility_date": "2026-11-01",
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     "not_found_handling": "404-page"
   },
+  "durable_objects": {
+    "bindings": [{ "name": "SPACE", "class_name": "Space" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Space"] }],
+  "worker_loaders": [{ "binding": "LOADER" }],
   "previews": {}
 }

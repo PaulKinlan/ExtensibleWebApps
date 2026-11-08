@@ -10,6 +10,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { memoryEmail, memoryFiles, memoryRecords, memorySchedule, memorySecrets } from "../../src/seams/memory.ts";
 import { nodeFiles, nodeOutbox, nodeRecords, nodeSchedule, nodeSecrets } from "../../src/seams/node.ts";
+import { durableFiles } from "../../src/seams/durable.ts";
+import { DatabaseSync } from "node:sqlite";
+
+/** A Durable Object's `ctx.storage.sql`, on Node's SQLite: the same statements, the same rows. */
+const durableSql = (file) => {
+  const db = new DatabaseSync(file);
+  const bind = (b) => (b instanceof ArrayBuffer ? new Uint8Array(b) : b);
+  // As in a Durable Object, the statement runs at once; toArray gives its rows.
+  return {
+    close: () => db.close(),
+    exec(query, ...bindings) {
+      const statement = db.prepare(query);
+      const rows = /^\s*select/i.test(query) ? statement.all(...bindings.map(bind)) : (statement.run(...bindings.map(bind)), []);
+      return { toArray: () => rows };
+    },
+  };
+};
 
 // A job that fails is reported, and the host keeps going: the checks count reports instead of logging them.
 const failures = [];
@@ -25,6 +42,24 @@ const providers = {
       // In memory, a restart keeps what a host's storage would keep.
       restart: async () => ({ files, records, schedule: schedule.restart() }),
       done: async () => schedule.stop(),
+    };
+  },
+  // Cloudflare's files: a Durable Object's SQLite database. The other seams there come later (step 4).
+  durable: async () => {
+    const dir = await mkdtemp(join(tmpdir(), "seams-do-"));
+    // Each start opens the database again, as a Durable Object coming back would; each is closed at the end.
+    const opened = [];
+    const files = () => durableFiles(opened[opened.push(durableSql(join(dir, "space.sqlite"))) - 1]);
+    const schedule = quietly();
+    const records = memoryRecords();
+    return {
+      seams: { files: files(), records, schedule, secrets: memorySecrets({ OPENAI_KEY: "sk-test", QUOTED: "a b" }), email: memoryEmail() },
+      restart: async () => ({ files: files(), records, schedule: schedule.restart() }),
+      done: async () => {
+        schedule.stop();
+        for (const sql of opened) sql.close();
+        await rm(dir, { recursive: true, force: true });
+      },
     };
   },
   node: async () => {
