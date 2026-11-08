@@ -9,7 +9,8 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:net";
+import { request } from "node:http";
+import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "../../src/server/serve.ts";
@@ -157,10 +158,45 @@ async function suite(name, make) {
       ws.onerror = () => done(true);
     });
     check("a space's name can't lead out of the spaces folder", refused);
+
+    // An upgrade's answer, for a request a browser's WebSocket can't make.
+    const upgrade = (path, headers = {}) =>
+      new Promise((done) => {
+        const req = request(`${server.url}${path}`, { headers: { connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", ...headers } });
+        req.on("upgrade", (res, socket) => (socket.destroy(), done(res.statusCode)));
+        req.on("response", (res) => (res.resume(), done(res.statusCode)));
+        req.on("error", () => done("error"));
+        req.end();
+      });
+    const ownOrigin = await upgrade("/s/family/kernel", { origin: server.url });
+    const otherSite = await upgrade("/s/family/kernel", { origin: "https://elsewhere.example" });
+    check("a page on another site can't open a space; the server's own pages and clients that aren't browsers can", ownOrigin === 101 && otherSite === 403, JSON.stringify({ ownOrigin, otherSite }));
+
+    const garbled = await new Promise((done) => {
+      const { port } = new URL(server.url);
+      const raw = connect(Number(port), "127.0.0.1", () => raw.write("GET http://[ HTTP/1.1\r\nHost: x\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n"));
+      raw.on("data", (d) => done(String(d).split("\r\n")[0]));
+      raw.on("error", () => done("error"));
+      raw.on("close", () => done("closed"));
+    });
+    const stillUp = await fetch(`${server.url}/`).then((r) => r.status, () => 0);
+    check("a request for a garbled address is refused, and the server keeps running", stillUp === 200, `${garbled}, then ${stillUp}`);
+
+    const worker = await fetch(`${server.url}/assets/${(await import("node:fs")).readdirSync("dist/assets").find((f) => /^runtime-.*\.js$/.test(f))}`);
+    check("plugin workers get the site's _headers policy, as on Cloudflare", /worker-src 'none'/.test(worker.headers.get("content-security-policy") ?? ""), worker.headers.get("content-security-policy"));
+
+    const c = await client(server.url, "tabs");
+    const tabPlugin = 'export const manifest = { id: "per-tab", name: "Per tab", scope: "tab", permissions: [] };\nexport default () => {};';
+    const startedAt = Date.now();
+    await c.command("user:add", { app: "demos/contacts", files: [{ name: "per-tab.js", data: tabPlugin }] });
+    check("a client of a space isn't asked to start a tab-scoped plugin's worker", !c.heard.some((m) => m.t === "spawn") && Date.now() - startedAt < 3000, JSON.stringify(c.heard.map((m) => m.t)));
+    // Left open, so stopping the server must close it.
   } catch (error) {
     check("the checks ran to the end", false, error?.stack ?? String(error));
   } finally {
-    await server?.stop();
+    const stopping = server?.stop();
+    const stopped = await Promise.race([stopping?.then(() => true), new Promise((r) => setTimeout(() => r(false), 10000))]);
+    check("the server stops while a client is still connected", stopped !== false);
     await rm(spaces, { recursive: true, force: true });
   }
 }

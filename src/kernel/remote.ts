@@ -155,7 +155,7 @@ export class RemotePlugins {
   }
 
   private targets(plugin: Installed): [string, Host][] {
-    if (plugin.manifest.scope === "tab") return this.hosts.list.map((host) => [`${plugin.id}@${host.tab}`, host]);
+    if (plugin.manifest.scope === "tab") return this.hosts.workerHosts.map((host) => [`${plugin.id}@${host.tab}`, host]);
     const spawner = this.hosts.spawner;
     return spawner ? [[plugin.id, spawner]] : [];
   }
@@ -247,6 +247,7 @@ export class RemotePlugins {
 
   /** A tab opened: start its instances of tab-scoped plugins. */
   hostJoined(host: Host): void {
+    if (!this.hosts.workerHosts.includes(host)) return;
     for (const plugin of this.installed.values()) {
       if (plugin.enabled && plugin.manifest.scope === "tab") void this.startInstance(plugin, `${plugin.id}@${host.tab}`, host);
     }

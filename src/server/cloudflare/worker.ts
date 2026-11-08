@@ -70,6 +70,10 @@ export default {
     if (space === undefined) return env.ASSETS.fetch(request);
     if (env.SPACES !== "open") return new Response("Spaces open once sign-in is here", { status: 403 });
     if (!SPACE.test(space)) return new Response("Not a space", { status: 404 });
+    // A page on another site may open a WebSocket here (they aren't bound by CORS), so a browser's
+    // client must come from this site's own pages. A client that isn't a browser sends no Origin.
+    const origin = request.headers.get("origin");
+    if (origin !== null && origin !== new URL(request.url).origin) return new Response("Not from this site", { status: 403 });
     return env.SPACE.getByName(space).fetch(request);
   },
 } satisfies ExportedHandler<Env>;

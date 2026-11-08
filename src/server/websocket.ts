@@ -30,6 +30,8 @@ export function accept(request: IncomingMessage, raw: Duplex): Socket | undefine
 
   let buffered = Buffer.alloc(0);
   let parts: Buffer[] = [];
+  /** The bytes of the message so far, across its fragments. */
+  let size = 0;
   let closed = false;
   const frame = (opcode: number, payload: Buffer) => {
     const n = payload.length;
@@ -83,11 +85,14 @@ export function accept(request: IncomingMessage, raw: Duplex): Socket | undefine
       else if (opcode === 10) continue;
       else if (opcode === 2) return socket.close(1003, "Text only");
       else if (opcode === 1 || opcode === 0) {
-        parts.push(payload);
-        if (parts.reduce((n, p) => n + p.length, 0) > MAX) return socket.close(1009, "Too big");
+        // The running size, not a rescan of every fragment, and an empty fragment adds nothing to keep.
+        size += payload.length;
+        if (size > MAX) return socket.close(1009, "Too big");
+        if (payload.length > 0) parts.push(payload);
         if (fin) {
           const text = Buffer.concat(parts).toString("utf8");
           parts = [];
+          size = 0;
           socket.onMessage?.(text);
         }
       }
