@@ -1,4 +1,4 @@
-// A card in a slot: the smallest plugin that shows something.
+// Show a card on the page: the smallest plugin that shows something.
 //
 // It asks for one permission, `ui`, which lets it draw into the page's
 // slots. Change the words, or the slot name to any <slot name> the page has.

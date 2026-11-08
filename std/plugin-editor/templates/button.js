@@ -1,12 +1,12 @@
-// A button that changes notes: writing data that isn't yours.
+// A button that stars every note: writing data that isn't yours.
 //
 // The notes belong to another plugin, so writing them needs
 // `data:write:learning`, and every write is shown to the person to allow or
 // refuse first. The `reason` you pass is what they read.
 
 export const manifest = {
-  id: "my-button",
-  name: "My button",
+  id: "star-button",
+  name: "Star button",
   description: "Adds a star to the start of every note, if you allow it.",
   version: "1.0.0",
   permissions: ["ui", "data:read:learning", "data:write:learning"],

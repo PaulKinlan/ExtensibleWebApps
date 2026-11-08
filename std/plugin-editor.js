@@ -31,10 +31,10 @@ export const manifest = {
 
 /** The starting templates: files next to this one. */
 const TEMPLATES = [
-  { file: "card.js", label: "Template: a card on the page" },
-  { file: "listen.js", label: "Template: react to new notes" },
-  { file: "block.js", label: "Template: block certain notes" },
-  { file: "button.js", label: "Template: a button that changes notes" },
+  { file: "card.js", label: "Template: show a card on the page" },
+  { file: "listen.js", label: "Template: show the latest note as it's written" },
+  { file: "block.js", label: "Template: stop notes that use a word you pick" },
+  { file: "button.js", label: "Template: a button that stars every note" },
 ];
 
 /**

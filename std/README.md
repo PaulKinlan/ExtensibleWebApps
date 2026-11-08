@@ -57,7 +57,7 @@ an id of its own (`note-stats-copy`) and runs beside the original. Switch the
 original off on the switchboard to try the copy instead.
 
 The templates are plain plugins: [`card.js`](plugin-editor/templates/card.js)
-draws, [`listen.js`](plugin-editor/templates/listen.js) hears a hook,
+draws, [`listen.js`](plugin-editor/templates/listen.js) shows the latest note by hearing a hook,
 [`block.js`](plugin-editor/templates/block.js) stops a write, and
 [`button.js`](plugin-editor/templates/button.js) writes data it doesn't own,
 which the person reviews. They use the homepage's `learning` notes; on
