@@ -8,7 +8,8 @@
   },
   "files": [
     "index.mjs",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=22"
@@ -25,5 +26,6 @@
     "url": "git+https://github.com/PaulKinlan/ExtensibleWebApps.git",
     "directory": "scripts/create-extensible-app"
   },
-  "author": "Paul Kinlan"
+  "author": "Paul Kinlan",
+  "license": "Apache-2.0"
 }
