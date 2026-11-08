@@ -19,7 +19,7 @@ export default () => {};`);
   try {
     const fine = await install(`export const manifest = { id: 'needs-debug', name: 'Needs debug', permissions: [], services: ['debug'] };
 export default () => {};`);
-    check("a plugin whose services the site runs is installed", fine.ok === true, JSON.stringify(fine));
+    check("a plugin whose services the site runs is installed and starts", fine.ok === true && fine.started === true, JSON.stringify(fine));
   } finally {
     await uninstall("needs-debug");
   }
