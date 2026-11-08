@@ -14,6 +14,23 @@ import type { Command } from "../shared/protocol";
 export interface InspectHost {
   app: string;
   command(name: Command, arg?: unknown): Promise<unknown>;
+  /** How each place on the page went (places.ts), to say what really happened to a change. */
+  places?(): { plugin: string; state: string }[];
+}
+
+/** What inspect mode tells the person once a change it made has had its turn on the page. */
+const OUTCOME: Record<string, (kind: "hide" | "note") => string> = {
+  drawn: (kind) => (kind === "hide" ? "Hidden." : "Note added."),
+  waiting: () => "Made, and waiting for your OK: the review asks whether it may change that part.",
+  declined: () => "Made, but the change was declined, so the page is as it was.",
+  locked: () => "Made, but the author locked that part, so it can't be changed.",
+  "no match": () => "Made, but it couldn't find that part again, so nothing changed.",
+  "bad selector": () => "Made, but it couldn't find that part again, so nothing changed.",
+};
+
+/** Containers a change can't be made to here: a whole plugin's view, or the place it was drawn in. */
+export function wholeView(el: Element): boolean {
+  return el.matches("[data-plugin][data-key], .place, slot");
 }
 
 /** Parts of the page that are the platform's own, never inspected. */
@@ -67,20 +84,33 @@ export function selectorFor(el: Element): string {
       return [];
     }
   };
+  const unique = (sel: string) => {
+    const found = within(sel);
+    return found.length === 1 && found[0] === el;
+  };
+  // Names first: the element, then its parents, as far as five steps up.
   let selector = "";
   let at: Element | null = el;
   for (let depth = 0; at && at !== root && depth < 5; depth++, at = at.parentElement) {
     selector = selector ? `${step(at, !!plugin)} > ${selector}` : step(at, !!plugin);
-    const found = within(selector);
-    if (found.length === 1 && found[0] === el) return selector;
+    if (unique(selector)) return selector;
     if (selector.startsWith("#")) break;
   }
-  // Nothing names it apart: say where it is among its kind.
-  const parent = el.parentElement;
-  const nth = parent ? [...parent.children].filter((c) => c.localName === el.localName).indexOf(el) + 1 : 1;
-  const own = `${step(el, !!plugin)}:nth-of-type(${nth})`;
-  const parentStep = parent && parent !== root ? `${step(parent, !!plugin)} > ` : "";
-  return `${parentStep}${own}`;
+  // Nothing names it apart: say where it is among its kind, at each step up, until only it matches.
+  const nth = (e: Element) => {
+    const s = step(e, !!plugin);
+    if (s.startsWith("#")) return s;
+    const kin = e.parentElement ? [...e.parentElement.children].filter((c) => c.localName === e.localName) : [e];
+    return kin.length > 1 ? `${s}:nth-of-type(${kin.indexOf(e) + 1})` : s;
+  };
+  const parts: string[] = [];
+  for (at = el; at && at !== root; at = at.parentElement) {
+    parts.unshift(nth(at));
+    if (unique(parts.join(" > ")) || parts[0].startsWith("#")) break;
+  }
+  // On the page, a path from the body can't match anything deeper down.
+  const path = parts.join(" > ");
+  return !plugin && !parts[0].startsWith("#") && !unique(path) ? `body > ${path}` : path;
 }
 
 /** How the person sees an element: its label, heading or first words. */
@@ -124,12 +154,13 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, 
 }
 
 export function inspect(host: InspectHost) {
-  const panel = h("aside", { id: "inspect", class: "inspect", role: "dialog", "aria-label": "Inspect", hidden: "" });
+  const panel = h("aside", { id: "inspect", class: "inspect", role: "dialog", "aria-label": "Inspect", tabindex: "-1", hidden: "" });
   document.body.append(panel);
   let on = false;
   let hovered: Element | null = null;
   let picked: Element | null = null;
   let message = "";
+  let focusActions = false;
 
   const mark = (el: Element | null, cls: string) => {
     for (const old of document.querySelectorAll(`.${cls}`)) old.classList.remove(cls);
@@ -154,11 +185,30 @@ export function inspect(host: InspectHost) {
       message = added?.error ?? "That didn't work";
       return draw();
     }
-    await host.command("user:on", { app: host.app, id });
-    message = `${kind === "hide" ? "Hidden" : "Note added"}. Customize lists it as one of your plugins, to turn off or remove.`;
+    const turnedOn = await host.command("user:on", { app: host.app, id }).catch((error: unknown) => error);
+    if (turnedOn !== true) {
+      message = `Made ${id}, but it didn't turn on${turnedOn instanceof Error ? `: ${turnedOn.message}` : ""}. Customize lists it, to try again.`;
+      return draw();
+    }
     picked = null;
     mark(null, "inspect-picked");
+    message = "Made. Checking the page…";
     draw();
+    const state = await settled(id);
+    message = `${(OUTCOME[state ?? ""] ?? (() => "Made."))(kind)} Customize lists it as one of your plugins, to turn off or remove.`;
+    draw();
+  }
+
+  /** The state of the new plugin's place once it has had its turn: drawn, waiting for review, locked, and so on. */
+  async function settled(plugin: string): Promise<string | undefined> {
+    if (!host.places) return undefined;
+    let last: string | undefined;
+    for (let tries = 0; tries < 40; tries++) {
+      last = host.places().find((p) => p.plugin === plugin)?.state;
+      if (last === "drawn" || last === "locked" || last === "declined") return last;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    return last;
   }
 
   function draw() {
@@ -166,11 +216,13 @@ export function inspect(host: InspectHost) {
     const done = h("button", { type: "button" }, "Done");
     done.addEventListener("click", () => stop());
     const el = picked ?? hovered;
-    panel.append(h("p", { class: "inspect-title" }, h("strong", {}, "Inspect"), " · point at any part of the page, then click it"));
+    panel.append(h("p", { class: "inspect-title" }, h("strong", {}, "Inspect"), " · point at any part of the page and click it, or move with the arrow keys and press Enter"));
     if (el) {
       panel.append(who(el), h("p", {}, h("code", {}, selectorFor(el))));
     }
-    if (picked) {
+    if (picked && wholeView(picked)) {
+      panel.append(h("p", {}, "This is a whole plugin's view. Pick a part inside it, or turn the plugin off in Customize."));
+    } else if (picked) {
       const hide = h("button", { type: "button", "data-inspect": "hide" }, "Hide this");
       hide.addEventListener("click", () => void make("hide", picked!));
       const note = h("input", { type: "text", "aria-label": "A note to add after it", placeholder: "A note to add after it" });
@@ -178,8 +230,13 @@ export function inspect(host: InspectHost) {
       add.addEventListener("click", () => {
         if (note.value.trim()) void make("note", picked!, note.value.trim());
       });
+      note.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") add.click();
+      });
       panel.append(h("div", { class: "inspect-actions" }, hide, note, add));
+      if (focusActions) hide.focus();
     }
+    focusActions = false;
     if (message) panel.append(h("p", { role: "status" }, message));
     panel.append(done);
   }
@@ -197,19 +254,48 @@ export function inspect(host: InspectHost) {
     // While inspecting, a click picks; it doesn't press the button or follow the link.
     e.preventDefault();
     e.stopPropagation();
+    pick(el);
+  };
+  function pick(el: Element) {
     picked = el;
     message = "";
+    focusActions = true;
     mark(null, "inspect-hover");
     mark(el, "inspect-picked");
     draw();
+  }
+  /** Every part of the page that can be inspected, in reading order, for the keyboard. */
+  const inspectable = () => [...document.body.querySelectorAll("*")].filter((el) => !el.closest(CHROME) && !el.closest("script, style, template, [hidden]") && el.getClientRects().length > 0);
+  const move = (by: number) => {
+    const all = inspectable();
+    if (!all.length) return;
+    const i = hovered ? all.indexOf(hovered) : -1;
+    hovered = all[i < 0 ? (by > 0 ? 0 : all.length - 1) : (i + by + all.length) % all.length];
+    mark(hovered, "inspect-hover");
+    hovered.scrollIntoView({ block: "nearest" });
+    draw();
   };
   const key = (e: KeyboardEvent) => {
-    if (e.key !== "Escape") return;
-    if (picked) {
-      picked = null;
-      mark(null, "inspect-picked");
-      draw();
-    } else stop();
+    if (e.key === "Escape") {
+      e.preventDefault();
+      if (picked) {
+        picked = null;
+        mark(null, "inspect-picked");
+        draw();
+        panel.focus();
+      } else stop();
+      return;
+    }
+    // Typing a note, or pressing a button in the panel, is just that.
+    if (picked || (e.target instanceof Element && e.target.closest("#inspect input, #inspect button"))) return;
+    const by = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[e.key];
+    if (by) {
+      e.preventDefault();
+      move(by);
+    } else if (e.key === "Enter" && hovered) {
+      e.preventDefault();
+      pick(hovered);
+    }
   };
 
   function start() {
@@ -222,6 +308,7 @@ export function inspect(host: InspectHost) {
     document.addEventListener("click", click, true);
     document.addEventListener("keydown", key, true);
     draw();
+    panel.focus();
   }
 
   function stop() {
