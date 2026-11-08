@@ -24,6 +24,8 @@
   <link rel="plugin" href="/std/debug-console.js">
   <!-- A standard plugin: Undo and Redo for any change to the expenses, whichever plugin made it. -->
   <link rel="plugin" href="/std/undo.js">
+  <!-- A standard plugin: export the expenses to a spreadsheet, or import a bank statement (try bank-statement.csv). -->
+  <link rel="plugin" href="/std/import-export.js">
 </head>
 <body>
   <header>
@@ -36,6 +38,8 @@
   </main>
   <aside>
     <slot name="side"></slot>
+    <slot name="import-export"></slot>
+    <p><small>To try Import, download <a href="bank-statement.csv" download>a sample bank statement</a>.</small></p>
   </aside>
   <slot name="debug"></slot>
 </body>
