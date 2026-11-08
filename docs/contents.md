@@ -1,5 +1,6 @@
 - [Start here](README.md)
 - [Architecture](architecture.md)
+- [The layers](layers.md)
 - [The security model](security.md)
 - [The developer guide](guide/README.md)
   1. [How an app works](guide/how-an-app-works.md)

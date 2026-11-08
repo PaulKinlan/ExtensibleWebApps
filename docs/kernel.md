@@ -1,6 +1,6 @@
 # The kernel
 
-The kernel is Cordis core plus a few pieces of our own. This page describes what it does today; [the plan](https://claude.ai/artifact/S7NdMrp2PkNSqHZFNdqGrC) says where it is going.
+The kernel is Cordis core plus pieces of our own: a core every app needs, and services an app may not use ([The layers](layers.md) says which is which). This page describes what it does today; [the plan](https://claude.ai/artifact/S7NdMrp2PkNSqHZFNdqGrC) says where it is going.
 
 ## Where it runs
 
