@@ -10,8 +10,8 @@
 // What it writes, in .build/apps/<name>/ (never committed):
 //
 //   site/            what the Worker serves: dist/ without this site's own
-//                    pages (demos/, docs/, home/, plugins/, workbench/, starter/, the
-//                    front page), the app's folder at the same path it has
+//                    pages (everything in site/, plus demos/, docs/ and starter/),
+//                    the app's folder at the same path it has
 //                    here, the folders its app.html links with ../, and an
 //                    index.html that sends / to the app
 //   wrangler.jsonc   the root wrangler.jsonc with a new name and site/ as its
@@ -34,7 +34,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** dist/'s pages that are this site's own, not the platform's: an app's Worker doesn't serve them. */
-export const SITE_PAGES = ["demos", "docs", "home", "plugins", "workbench", "starter", "index.html", "llms.txt"];
+export const SITE_PAGES = [
+  // site/ is this website's own pages (the front page, home/, workbench/), served at the root.
+  ...readdirSync(join(ROOT, "site")).filter((name) => !name.startsWith(".")),
+  "demos",
+  "docs",
+  "starter",
+  "llms.txt",
+];
 
 /** The platform's own top-level folders in dist/: an app can't live at one of these paths. */
 export const PLATFORM_FOLDERS = ["platform", "assets", "std", "elements", "sw", "account", "vendor", "auth", "s", "user"];

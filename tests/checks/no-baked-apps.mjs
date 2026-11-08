@@ -1,14 +1,14 @@
 // The core has no apps or plugins of its own: the kernel, host, sandbox,
 // service worker and servers never import a plugin, a demo or the homepage,
 // and an app runs only the plugins its app.html links. The demo plugins in
-// plugins/ run on the workbench, which links them, and nowhere else.
+// site/workbench/plugins/ run on the workbench, which links them, and nowhere else.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 
 const ROOT = new URL("../../", import.meta.url);
 /** The platform's own code. */
 const CORE = ["src", "sw", "sw.js"];
 /** Folders of apps and plugins, which the core must never import. */
-const APPS = ["plugins", "demos", "home", "std", "starter", "workbench", "docs"];
+const APPS = ["demos", "site", "std", "starter", "docs"];
 
 const files = (path) => {
   const url = new URL(path, ROOT);
@@ -17,7 +17,7 @@ const files = (path) => {
 };
 
 export default async function ({ check, context, URL: site, errors }) {
-  // import x from "../../plugins/x.js?raw", import "../demos/x.js", import("../home/x.js"),
+  // import x from "../../site/workbench/plugins/x.js?raw", import "../demos/x.js", import("../site/home/x.js"),
   // import.meta.glob("../../std/*"), new URL("../docs/…", import.meta.url): over the whole file, so an
   // import split across lines counts too.
   const reaches = new RegExp(String.raw`(?:\b(?:from|import)\s*\(?|import\.meta\.glob\s*(?:<[^>]*>)?\s*\(\s*\[?|new URL\s*\()\s*["'\x60](?:\.\.?/)+(?:${APPS.join("|")})/`, "g");

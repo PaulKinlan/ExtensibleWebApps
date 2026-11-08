@@ -257,7 +257,7 @@ const log = ctx.log;
 
 /**
  * The Markdown editor's `editor` API, on top of `ctx`, for the parts these demo notes support. Its posts are
- * the notes plugin's notes (plugins/notes.js), and its post events that plugin's hooks.
+ * the notes plugin's notes (site/workbench/plugins/notes.js), and its post events that plugin's hooks.
  */
 function editorShim() {
   let post: any = null;

@@ -2,7 +2,7 @@
 
 The kernel's hooks say what happened in the kernel: a record was written, a command ran, an agent woke. A plugin can define hooks too, for what happens in its own app: a note was opened, an order was placed, a song is about to play. Other plugins listen to them exactly as they listen to the kernel's, through the gate, with the same capabilities.
 
-The notes app on the workbench ([`plugins/notes.js`](../../plugins/notes.js)) is a plugin like any other, and this is how the word count, Tidy and the Markdown editor's extensions hear what the person does in it.
+The notes app on the workbench ([`site/workbench/plugins/notes.js`](../../site/workbench/plugins/notes.js)) is a plugin like any other, and this is how the word count, Tidy and the Markdown editor's extensions hear what the person does in it.
 
 ## Defining hooks
 
@@ -66,8 +66,8 @@ export default function (ctx) {
 
 A plugin may listen before the plugin that defines the hook is installed: its listener waits, and starts hearing the hook once that plugin arrives. Apps can load their plugins in any order. Listening to a hook nobody will define is never an error, so check the name.
 
-The Markdown editor's extensions ([`word-count.js`](../../plugins/word-count.js), [`edit-times.js`](../../plugins/edit-times.js)) listen to `post:open`, `post:change`, `post:save` and `post:close`. The sandbox gives them a shim that maps those to the notes plugin's hooks, and their `post:read` permission stands for `hook:listen:notes:*`.
+The Markdown editor's extensions ([`word-count.js`](../../site/workbench/plugins/word-count.js), [`edit-times.js`](../../site/workbench/plugins/edit-times.js)) listen to `post:open`, `post:change`, `post:save` and `post:close`. The sandbox gives them a shim that maps those to the notes plugin's hooks, and their `post:read` permission stands for `hook:listen:notes:*`.
 
 ## Data and hooks
 
-A plugin's collections have hooks already: every write to `notes` runs `data:beforeWrite:notes`, which can stop it, and then `data:changed:notes`. Use those for what happens to records, and hooks of your own for what the person does that isn't a write: opening, typing, publishing. [No shouting](../../plugins/no-shouting.js) stops a note written in capitals with `data:beforeWrite:notes`; [Tidy](../../plugins/tidy.js) follows the open note with `notes:open` and `notes:save`.
+A plugin's collections have hooks already: every write to `notes` runs `data:beforeWrite:notes`, which can stop it, and then `data:changed:notes`. Use those for what happens to records, and hooks of your own for what the person does that isn't a write: opening, typing, publishing. [No shouting](../../site/workbench/plugins/no-shouting.js) stops a note written in capitals with `data:beforeWrite:notes`; [Tidy](../../site/workbench/plugins/tidy.js) follows the open note with `notes:open` and `notes:save`.

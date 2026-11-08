@@ -1,4 +1,4 @@
-// Ask the page, on the homepage (std/ask-the-page.js, home/chapter-6-models.js):
+// Ask the page, on the homepage (std/ask-the-page.js, site/home/chapter-6-models.js):
 // a scripted model, added as the person's own plugin, stands in for a vendor,
 // so the check covers what the plugin sends and how the answer is shown,
 // without a key or a network.

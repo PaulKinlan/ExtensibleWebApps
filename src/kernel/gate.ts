@@ -6,7 +6,7 @@ import { record } from "./trace";
 
 /**
  * Editor-style permissions (from the Markdown editor) expressed as capabilities. The editor's posts are the
- * notes plugin's notes (plugins/notes.js): its hooks and its collection.
+ * notes plugin's notes (site/workbench/plugins/notes.js): its hooks and its collection.
  */
 export const EDITOR_PERMISSIONS: Record<string, string[]> = {
   "post:read": ["hook:listen:notes:*"],
