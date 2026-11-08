@@ -24,7 +24,6 @@
 // A kernel module (docs/layers.md): a site that lists `bus` in kernel.json has it, as `ctx.call("bus", …)`.
 
 import { grants } from "../../src/kernel/gate";
-import { defineHook } from "../../src/kernel/hooks";
 import type { ServiceProvider } from "../../src/kernel/remote";
 import { service, type ModuleKernel } from "../../src/kernel/modules";
 
@@ -48,11 +47,12 @@ type Post = { id: string; topic: string; from: string; text: string; at: number 
 type Answer = { stopReason: string; text: string; value?: unknown };
 type Question = { id: string; from: string; instance: string; question: string; choices?: string[]; at: number; answer: (value: string | null) => void };
 
-const make = ({ root, remote, store, apps }: ModuleKernel): ServiceProvider => {
-  defineHook("bus:message", { mode: "emit", needs: "bus:inbox", args: "{ to }", description: "A message is waiting in to's inbox. Only plugins with an inbox hear it; the one named fetches it with bus.receive." });
-  defineHook("bus:posted", { mode: "emit", args: "{ topic, id, from }", description: "Someone posted to a topic. Read it with bus.read, which needs bus:read:<topic>." });
-  defineHook("bus:asked", { mode: "emit", args: "{ id, from }", description: "An agent or plugin asked the person a question (bus.ask). The board lists it with bus.questions." });
-  defineHook("bus:answered", { mode: "emit", args: "{ id, from, answered }", description: "A question was answered, or gave up waiting (answered is false)." });
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { root, remote, store, apps } = kernel;
+  kernel.hook("bus:message", { mode: "emit", needs: "bus:inbox", args: "{ to }", description: "A message is waiting in to's inbox. Only plugins with an inbox hear it; the one named fetches it with bus.receive." });
+  kernel.hook("bus:posted", { mode: "emit", args: "{ topic, id, from }", description: "Someone posted to a topic. Read it with bus.read, which needs bus:read:<topic>." });
+  kernel.hook("bus:asked", { mode: "emit", args: "{ id, from }", description: "An agent or plugin asked the person a question (bus.ask). The board lists it with bus.questions." });
+  kernel.hook("bus:answered", { mode: "emit", args: "{ id, from, answered }", description: "A question was answered, or gave up waiting (answered is false)." });
 
   const FILE = "bus/state.json";
   type State = { inboxes: Record<string, Message[]>; topics: Record<string, Post[]> };
@@ -81,6 +81,11 @@ const make = ({ root, remote, store, apps }: ModuleKernel): ServiceProvider => {
   };
   /** Messages a recipient has taken from its inbox and not yet answered, and the instance that took them. */
   const taken = new Map<string, string>();
+  // When the module stops, nobody is left waiting: senders hear their message was cancelled, and questions give up.
+  kernel.cleanup(() => {
+    for (const w of [...waiting.values()]) w.resolve({ stopReason: "cancelled", text: "The bus stopped" });
+    for (const q of [...questions.values()]) q.answer(null);
+  });
   /** How deep a chain the plugin is working in: the deepest message it took and hasn't answered, or 1 when it started the chain. */
   const depthOf = (id: string) => {
     let depth = 1;

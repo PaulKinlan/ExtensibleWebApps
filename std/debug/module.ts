@@ -9,7 +9,6 @@
 //   answered in the kernel, and a plugin reloaded many times to show nothing is
 //   left behind.
 
-import { defineHook } from "../../src/kernel/hooks";
 import { record, recent, startedAt } from "../../src/kernel/trace";
 import type { KernelModule, ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
@@ -96,8 +95,8 @@ async function reloadTest({ root, hosts, remote }: ModuleKernel, n: number) {
 
 export default {
   name: "debug",
-  apply(ctx, kernel) {
-    ctx.on("dispose", defineHook("bench:ping", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "n", description: "Used by the round-trip benchmark; answer with anything." }));
+  apply(_ctx, kernel) {
+    kernel.hook("bench:ping", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "n", description: "Used by the round-trip benchmark; answer with anything." });
     kernel.provide("debug", debug(kernel));
     kernel.command("bench", (arg) => bench(kernel, Number(arg) || 300));
     kernel.command("reload-test", (arg) => reloadTest(kernel, Number(arg) || 50));
