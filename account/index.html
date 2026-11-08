@@ -128,6 +128,7 @@
             li.append(Object.assign(document.createElement("strong"), { textContent: name }), ` (${role === "owner" ? "yours" : "member"}) `);
             // Any app opens in a space: its data is then the space's, shared with everyone in it.
             li.append(Object.assign(document.createElement("a"), { href: `/s/${name}/demos/reading-list/`, textContent: "Open the reading list in it" }), " ");
+            li.append(Object.assign(document.createElement("a"), { href: `/s/${name}/demos/survey/`, textContent: "Open surveys in it" }), " ");
             if (role === "owner") {
               const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Invite someone" });
               button.addEventListener("click", run(async () => {

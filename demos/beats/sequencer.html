@@ -33,7 +33,10 @@
   .patterns .tools { margin-left: auto; display: flex; gap: 6px; }
 
   /* The grid: a label column and sixteen steps, in groups of four. */
-  .grid { display: grid; grid-template-columns: minmax(84px, max-content) repeat(16, minmax(0, 1fr)); gap: 6px; align-items: center; overflow-x: auto; }
+  /* A pad pops as it sounds (scale 1.12) and spills a little past its cell. In a scrolling box that spill would
+     bring a scrollbar in and out on the edge steps, resizing the whole grid on every bar, so the grid scrolls only
+     sideways and its padding is room for the spill. */
+  .grid { display: grid; grid-template-columns: minmax(84px, max-content) repeat(16, minmax(0, 1fr)); gap: 6px; align-items: center; overflow-x: auto; overflow-y: clip; padding: 4px 4px 4px 0; }
   .grid > .row { display: contents; }
   .steps span { font-weight: 600; font-size: 0.62rem; font-family: var(--mono); text-align: center; color: var(--fg-2); opacity: 0.6; }
   .steps span[data-beat] { opacity: 1; }

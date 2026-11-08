@@ -94,8 +94,21 @@ async function readBody(request: Request): Promise<Uint8Array | null> {
 // A page a plugin returns may show forms and links, but runs no script and loads nothing from elsewhere (as sw/routes/plugins.js).
 const PAGE_CSP = "sandbox allow-forms allow-same-origin; default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; form-action 'self'";
 
-/** The plugin's answer as an HTTP response, as the service worker gives it. */
+/**
+ * The plugin's answer as an HTTP response, as the service worker gives it. A route's answer as a response, marked with `X-Space-Route`: the service worker, which otherwise answers an
+ * address inside a space with the app's page, passes a marked answer on as it is (sw/routes/spaces.js).
+ */
 export function routeResponse(result: RouteResponse, url: URL, space: string): Response {
+  const response = answer(result, url, space);
+  response.headers.set(ROUTED, "1");
+  return response;
+}
+
+/** The header that says a response is a space's route's answer, not the site's files. */
+export const ROUTED = "X-Space-Route";
+
+/** The plugin's answer as an HTTP response. */
+function answer(result: RouteResponse, url: URL, space: string): Response {
   const status = Number.isInteger(result.status) && result.status! >= 200 && result.status! < 600 ? result.status! : 200;
   if (status === 204 || status === 205 || status === 304) return new Response(null, { status });
   if (typeof result.redirect === "string") {
