@@ -24,4 +24,13 @@ export default async function ({ a, check }) {
     @keyframes spin { to { rotate: 1turn; } }
     .n { color: red; & .m { color: blue; } padding: 2px; }`));
   check("a plugin's CSS is cleaned: no url(), @import, @font-face or !important", !/url|import|font-face|important|keyframes|example/i.test(cleanCss) && /\.a \{[^}]*padding: 4px;[^}]*color: red;/.test(cleanCss) && /@media .*\.b \{ margin: 1px; \}/s.test(cleanCss) && /\.n \{[^]*padding: 2px/.test(cleanCss), cleanCss);
+  // A shorthand written with var() lists as empty longhands, so the cleaner reads the shorthand itself.
+  const shorthands = await a.evaluate(() => window.__host.cleanCss(`.s { background: var(--bg) url(https://example.com/s.png); color: red; }
+    .t { color: red; & .u { border-image: var(--x) url(https://example.com/u.png) 30; } }
+    .v { font: 600 1rem/1.2 var(--mono) !important; margin: var(--m) !important; }`));
+  check(
+    "a shorthand written with var() is checked whole: one that loads something goes, and one with !important stays, without it",
+    !/url|example|important/i.test(shorthands) && /\.s \{ color: red; \}/.test(shorthands) && /font: 600 1rem\/1\.2 var\(--mono\)/.test(shorthands) && /margin: var\(--m\)/.test(shorthands),
+    shorthands,
+  );
 }

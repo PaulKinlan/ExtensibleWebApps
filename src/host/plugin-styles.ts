@@ -53,14 +53,36 @@ export function cleanCss(css: string): string {
   return [...sheet.cssRules].map(cleanRule).filter(Boolean).join("\n");
 }
 
-/** Drops declarations that load something, and !important, in place. */
+/**
+ * Drops declarations that load something, and !important, in place. A shorthand written with var(), like
+ * `font: 600 1rem var(--mono)`, lists as its longhands with empty values until the variable is known, so for
+ * those the shorthand itself is checked. Whatever is left is checked once more as text, and a block that still
+ * loads something, or still says !important, is dropped whole.
+ */
 function cleanDeclarations(style: CSSStyleDeclaration): string {
   for (const name of [...style]) {
     const value = style.getPropertyValue(name);
-    if (LOADS.test(value)) style.removeProperty(name);
-    else if (style.getPropertyPriority(name)) style.setProperty(name, value);
+    if (value) {
+      if (LOADS.test(value)) style.removeProperty(name);
+      else if (style.getPropertyPriority(name)) style.setProperty(name, value);
+      continue;
+    }
+    const shorthand = shorthandsOf(name).find((s) => style.getPropertyValue(s));
+    if (!shorthand) continue;
+    const whole = style.getPropertyValue(shorthand);
+    if (LOADS.test(whole)) style.removeProperty(shorthand);
+    else if (style.getPropertyPriority(shorthand)) style.setProperty(shorthand, whole);
   }
-  return style.cssText;
+  const text = style.cssText;
+  return LOADS.test(text) || /!\s*important/i.test(text) ? "" : text;
+}
+
+/** The shorthands a longhand may belong to: border-top-color → border-top, border-color, border. */
+function shorthandsOf(name: string): string[] {
+  const parts = name.split("-");
+  const prefixes = parts.slice(1).map((_, i) => parts.slice(0, parts.length - 1 - i).join("-"));
+  if (parts.length > 2) prefixes.splice(1, 0, `${parts[0]}-${parts.at(-1)}`);
+  return prefixes.filter(Boolean);
 }
 
 function cleanRule(rule: CSSRule): string {
