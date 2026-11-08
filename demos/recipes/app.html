@@ -7,6 +7,8 @@
   shopping.js  owns the `shopping` list; it reads the recipes, and adds a
                recipe's ingredients when you ask
   quick.js     reads the recipes and lists the ones you can make in time
+  timer.js     fills the room the open recipe leaves for other plugins (a
+               declared slot) with a timer for that recipe
 
   The plugins don't call each other. shopping.js shows its own "Add to the
   list" buttons beside each recipe, from the same collection.
@@ -22,6 +24,7 @@
   <link rel="plugin" href="cookbook.js">
   <link rel="plugin" href="shopping.js">
   <link rel="plugin" href="quick.js">
+  <link rel="plugin" href="timer.js">
   <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
   <link rel="plugin" href="/std/debug-console.js">
 </head>
