@@ -1,0 +1,133 @@
+<!--
+  The drum machine. sequencer.js sends { name, bpm, swing, playing, step,
+  pressed, patterns: [{ id, name, pressed }], steps: [{ n, now, beat }], tracks: [{ id,
+  name, glyph, muted, count, cells: [{ i, on, now, beat, hit }] }] }.
+
+  Each pad is a plain checkbox: data-action="pad:kick:3" sends true or false
+  when it changes. With appearance: none it's drawn entirely by this CSS:
+  its colour comes from the row's data-track, its glow from :checked, and
+  the playing column from data-now, a whole-hole attribute that is only
+  there on the step that is sounding.
+-->
+<style>
+  .machine { display: flex; flex-direction: column; gap: var(--space-4); padding: var(--space-5); border-radius: 22px; background: linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, #fff 8%), var(--surface)); border: 1px solid var(--border); box-shadow: 0 30px 60px -30px rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.06); }
+
+  /* Transport */
+  .transport { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); }
+  .play { width: 56px; height: 56px; padding: 0; flex: none; border-radius: 50%; border: 0; font-size: 20px; color: #0b0b12; background: radial-gradient(circle at 35% 30%, #fff8, transparent 40%), var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent), 0 10px 24px -8px var(--accent); transition: transform var(--duration) var(--ease), box-shadow var(--duration) var(--ease); }
+  .play:hover { transform: scale(1.05); }
+  .play:active { transform: scale(0.96); }
+  .play[aria-pressed="true"] { background: radial-gradient(circle at 35% 30%, #fff8, transparent 40%), #fb7185; box-shadow: 0 0 0 4px rgb(251 113 133 / 0.25), 0 0 28px -2px #fb7185; }
+  .readout { display: grid; grid-auto-flow: column; gap: var(--space-4); align-items: end; padding: var(--space-2) var(--space-4); border-radius: 12px; background: #05060a; color: #9effc7; font-family: var(--mono); box-shadow: inset 0 2px 8px rgb(0 0 0 / 0.6); }
+  .readout div { display: flex; flex-direction: column; }
+  .readout small { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: #4c7d63; }
+  .readout strong { font-size: 1.6rem; line-height: 1; text-shadow: 0 0 12px rgb(158 255 199 / 0.5); font-variant-numeric: tabular-nums; }
+  .knobs { display: flex; flex-wrap: wrap; gap: var(--space-4); flex: 1; min-width: 220px; }
+  .knobs label { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px; font-size: var(--text-sm); color: var(--fg-2); }
+  .knobs input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+  /* Patterns */
+  .patterns { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .patterns button { height: 30px; border-radius: 999px; padding: 0 14px; background: transparent; color: var(--fg-2); border-color: var(--border); }
+  .patterns button[aria-pressed="true"] { color: var(--fg); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+  .patterns .tools { margin-left: auto; display: flex; gap: 6px; }
+
+  /* The grid: a label column and sixteen steps, in groups of four. */
+  .grid { display: grid; grid-template-columns: minmax(84px, max-content) repeat(16, minmax(0, 1fr)); gap: 6px; align-items: center; overflow-x: auto; }
+  .grid > .row { display: contents; }
+  .steps span { font: 600 0.62rem var(--mono); text-align: center; color: var(--fg-2); opacity: 0.6; }
+  .steps span[data-beat] { opacity: 1; }
+  .steps span[data-now] { color: var(--accent); opacity: 1; }
+  .track { display: flex; align-items: center; gap: 8px; padding-right: var(--space-2); }
+  .track button { flex: none; width: 28px; height: 28px; padding: 0; border-radius: 8px; font-size: 13px; color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, transparent); border-color: color-mix(in srgb, var(--hue) 35%, transparent); }
+  .track button[aria-pressed="true"] { color: var(--fg-2); background: transparent; border-style: dashed; border-color: var(--border); }
+  .track span { font-weight: 600; font-size: var(--text-sm); }
+  .track small { margin-left: auto; font: 0.68rem var(--mono); color: var(--fg-2); }
+  /* The room other plugins fill, under each row's name. */
+  .track .tools { display: contents; }
+
+  .pad {
+    appearance: none; margin: 0; width: 100%; aspect-ratio: 1; min-width: 18px; border-radius: 8px; cursor: pointer;
+    background: color-mix(in srgb, var(--hue) 10%, var(--bg-2));
+    border: 1px solid color-mix(in srgb, var(--hue) 22%, transparent);
+    box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.25);
+    transition: background 90ms ease-out, box-shadow 90ms ease-out, transform 90ms ease-out, filter 90ms ease-out;
+  }
+  .pad[data-beat] { background: color-mix(in srgb, var(--hue) 16%, var(--bg-2)); }
+  .pad:hover { border-color: var(--hue); }
+  .pad:checked { background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--hue) 40%, #fff), var(--hue) 70%); border-color: transparent; box-shadow: 0 0 14px -2px var(--hue), inset 0 -3px 0 rgb(0 0 0 / 0.2); }
+  .pad[data-now] { filter: brightness(1.45); }
+  .pad[data-hit] { transform: scale(1.12); box-shadow: 0 0 26px 2px var(--hue), inset 0 -3px 0 rgb(0 0 0 / 0.2); }
+  .pad:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+  .row[data-muted] .pad { filter: grayscale(1) opacity(0.45); }
+
+  [data-track="kick"] { --hue: #ff5d8f; }
+  [data-track="snare"] { --hue: #ffb547; }
+  [data-track="clap"] { --hue: #f8f05b; }
+  [data-track="hat"] { --hue: #5ef0c9; }
+  [data-track="bass"] { --hue: #5eb4ff; }
+  [data-track="bell"] { --hue: #b18cff; }
+
+  /* Sixteen across doesn't fit a phone: there the steps scroll, and the label column stays put. */
+  @media (max-width: 640px) {
+    .machine { padding: var(--space-3); border-radius: 16px; }
+    .grid { grid-template-columns: 84px repeat(16, 34px); gap: 5px; }
+    .grid .track, .grid .steps-label { position: sticky; left: 0; z-index: 1; align-self: stretch; background: var(--surface); }
+    /* The glyph names the row (and its button says so to screen readers), so the word and count go. */
+    .track span, .track small { display: none; }
+    .play { width: 48px; height: 48px; }
+  }
+  @media (prefers-reduced-motion: reduce) { .pad[data-hit] { transform: none; } }
+</style>
+
+<template id="pads">
+  <template if="empty"><ui-empty heading="No patterns yet"><p>Every pattern was deleted.</p></ui-empty></template>
+  <template if="!empty">
+    <section class="machine" aria-label="Drum machine">
+      <div class="transport">
+        <button class="play" data-action="toggle" aria-pressed="{{pressed}}" aria-label="Play or stop (Space)" title="Play or stop (Space)">
+          <template if="playing">■</template><template if="!playing">▶</template>
+        </button>
+        <div class="readout" aria-live="off">
+          <div><small>Tempo</small><strong>{{bpm}}</strong></div>
+          <div><small>Swing</small><strong>{{swing}}%</strong></div>
+          <div><small>Step</small><strong>{{step}}</strong></div>
+        </div>
+        <div class="knobs">
+          <label>Tempo <input type="range" min="60" max="180" step="1" value="{{bpm}}" data-action="bpm" data-live aria-label="Tempo"></label>
+          <label>Swing <input type="range" min="0" max="60" step="1" value="{{swing}}" data-action="swing" data-live aria-label="Swing"></label>
+        </div>
+      </div>
+
+      <div class="patterns" role="group" aria-label="Patterns">
+        <template for="p of patterns">
+          <button key="{{p.id}}" data-action="pattern" data-value="{{p.id}}" aria-pressed="{{p.pressed}}">{{p.name}}</button>
+        </template>
+        <span class="tools">
+          <button data-action="copy" title="Copy this pattern">Copy</button>
+          <button data-action="clear" title="Clear every pad">Clear</button>
+        </span>
+      </div>
+
+      <div class="grid">
+        <div class="row steps" aria-hidden="true">
+          <span class="steps-label"></span>
+          <template for="s of steps"><span data-beat="{{s.beat}}" data-now="{{s.now}}">{{s.n}}</span></template>
+        </div>
+        <template for="t of tracks">
+          <div class="row" key="{{t.id}}" data-track="{{t.id}}" data-muted="{{t.muted}}" role="group" aria-label="{{t.name}}">
+            <div class="track" data-track="{{t.id}}">
+              <button data-action="mute:{{t.id}}" aria-pressed="{{t.pressed}}" aria-label="Mute {{t.name}}" title="Mute">{{t.glyph}}</button>
+              <span>{{t.name}}</span>
+              <small>{{t.count}}</small>
+              <slot class="tools" name="sequencer.track.tools" data-track="{{t.id}}" data-steps="{{t.count}}"></slot>
+            </div>
+            <template for="c of t.cells">
+              <input class="pad" type="checkbox" checked="{{c.on}}" data-beat="{{c.beat}}" data-now="{{c.now}}" data-hit="{{c.hit}}" data-action="pad:{{t.id}}:{{c.i}}" aria-label="{{t.name}} step {{c.n}}">
+            </template>
+          </div>
+        </template>
+      </div>
+    </section>
+  </template>
+</template>

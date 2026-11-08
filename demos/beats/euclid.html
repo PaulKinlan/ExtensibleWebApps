@@ -1,0 +1,14 @@
+<!--
+  The Euclid menu beside each row. euclid.js sends { track, choices: [{ n }] }.
+  Picking a number sends "euclid:<track>" with it.
+-->
+<style>
+  .euclid { height: 22px; max-width: 2.6rem; padding: 0 2px; font: 600 0.65rem var(--mono); color: var(--fg-2); background: transparent; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+  .euclid:hover, .euclid:focus { color: var(--fg); border-color: var(--accent); }
+</style>
+<template id="menu">
+  <select class="euclid" data-action="euclid:{{track}}" aria-label="Spread hits evenly across the {{track}} row" title="Euclidean rhythm: spread N hits evenly">
+    <option value="" selected>E</option>
+    <template for="c of choices"><option value="{{c.n}}">{{c.n}} in 16</option></template>
+  </select>
+</template>
