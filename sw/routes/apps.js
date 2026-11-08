@@ -1,27 +1,50 @@
 // An app is a folder with an app.html. A visit to the folder itself
 // (/demos/habits/) gets that page, so an app's address doesn't need the file
-// name. The address stays the folder's, so the page's relative links resolve
-// as they do at /demos/habits/app.html. A folder without an app.html goes to
-// the network as usual.
+// name. So does a visit to a screen inside it (/demos/reading-list/book/42):
+// the nearest folder up with an app.html answers, and the router service
+// tells the app's plugins which screen it is (src/kernel/services/router.ts).
+//
+// The page gets a <base> naming the app's folder, so its relative links
+// (library.js, book/42) resolve as they do at /demos/reading-list/app.html,
+// whichever screen it was opened at. An address whose last part has a dot
+// (books.json, app.html) is a file, and goes to the network as usual, as does
+// any address with no app above it.
+
+/** How many folders up a screen may be from its app: /demos/reading-list/a/b/c/d/e/f is the deepest. */
+const DEPTH = 8;
+
+/** The folders an address could belong to, nearest first: /demos/reading-list/book/42 → /demos/reading-list/book/42/, …/book/, /demos/reading-list/, /demos/. */
+function folders(pathname) {
+  const parts = pathname.split("/").filter(Boolean);
+  const out = [];
+  for (let n = parts.length; n > 0 && out.length < DEPTH; n--) out.push(`/${parts.slice(0, n).join("/")}/`);
+  return out;
+}
 
 export default {
   name: "apps",
   /** @param {Request} request @param {URL} url @param {{ fetch(r: Request | string): Promise<Response> }} env */
   async handle(request, url, env) {
-    if (request.mode !== "navigate" || request.method !== "GET" || url.pathname === "/" || !url.pathname.endsWith("/")) return undefined;
-    const page = await env.fetch(new Request(new URL("app.html", url))).catch(() => undefined);
-    if (!page?.ok || !(page.headers.get("Content-Type") ?? "").includes("text/html")) return undefined;
-    // A server may answer a missing file with its front page (a single-page fallback, or the
-    // development server's index). That isn't this folder's app: it goes to the network as usual.
-    // An app.html only has to load the platform; it needn't link any plugins.
-    const html = await page.text();
-    if (!/<script\b[^>]*\bsrc=["']?\/platform\/host\.js/i.test(html) || html.includes("/@vite/client")) return undefined;
-    const front = await env.fetch(new Request(new URL("/index.html", url))).then((r) => (r.ok ? r.text() : ""), () => "");
-    if (html === front) return undefined;
-    // The server's headers (its security policies, caching) stay; only those about the encoded body go, as it's decoded here.
-    const headers = new Headers(page.headers);
-    headers.delete("Content-Encoding");
-    headers.delete("Content-Length");
-    return new Response(html, { status: 200, headers });
+    if (request.mode !== "navigate" || request.method !== "GET" || url.pathname === "/") return undefined;
+    if (url.pathname.split("/").pop().includes(".")) return undefined;
+    let front;
+    for (const folder of folders(url.pathname)) {
+      const page = await env.fetch(new Request(new URL(`${folder}app.html`, url))).catch(() => undefined);
+      if (!page?.ok || !(page.headers.get("Content-Type") ?? "").includes("text/html")) continue;
+      // A server may answer a missing file with its front page (a single-page fallback, or the
+      // development server's index). That isn't this folder's app: try the next folder up.
+      // An app.html only has to load the platform; it needn't link any plugins.
+      const html = await page.text();
+      if (!/<script\b[^>]*\bsrc=["']?\/platform\/host\.js/i.test(html) || html.includes("/@vite/client")) continue;
+      front ??= await env.fetch(new Request(new URL("/index.html", url))).then((r) => (r.ok ? r.text() : ""), () => "");
+      if (html === front) continue;
+      // The server's headers (its security policies, caching) stay; only those about the encoded body go, as it's decoded here.
+      const headers = new Headers(page.headers);
+      headers.delete("Content-Encoding");
+      headers.delete("Content-Length");
+      const based = /<head\b[^>]*>/i.test(html) ? html.replace(/<head\b[^>]*>/i, (head) => `${head}\n  <base href="${folder}">`) : `<base href="${folder}">${html}`;
+      return new Response(based, { status: 200, headers });
+    }
+    return undefined;
   },
 };

@@ -1,5 +1,8 @@
 // Cloudflare hosting: the built app served as Workers static assets. There is
-// no Worker code yet; the servers in phase 2b will add it. Cloudflare applies
+// no Worker code yet; the servers in phase 2b will add it. An address with no
+// file gets 404.html, which starts the service worker and loads the address
+// again through it, so a link to an app's screen (/demos/reading-list/book/42)
+// opens on a first visit too. Cloudflare applies
 // public/_headers (copied into dist/), so plugin workers get their content
 // security policy here as they do under `vite preview`.
 //
@@ -12,7 +15,7 @@
   "compatibility_date": "2025-09-01",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "404-page"
   },
   "previews": {}
 }

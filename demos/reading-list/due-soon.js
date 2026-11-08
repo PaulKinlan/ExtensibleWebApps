@@ -26,7 +26,7 @@ export default async function (ctx) {
       .map((b) => ({ id: b.id, title: b.title, days: Math.round((new Date(`${b.due}T00:00:00`).getTime() - today) / DAY) }))
       .filter((b) => b.days <= 14)
       .sort((a, b) => a.days - b.days)
-      .map((b) => ({ href: `#/book/${encodeURIComponent(b.id)}`, title: b.title, when: when(b.days), tone: b.days < 0 ? "danger" : b.days <= 3 ? "warn" : "neutral" }));
+      .map((b) => ({ href: `book/${encodeURIComponent(b.id)}`, title: b.title, when: when(b.days), tone: b.days < 0 ? "danger" : b.days <= 3 ? "warn" : "neutral" }));
     return { books: due };
   });
 }

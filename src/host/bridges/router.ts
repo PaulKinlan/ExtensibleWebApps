@@ -1,10 +1,7 @@
-// router: moves this tab to another screen of its app, by its address's hash (services/router.ts).
+// router: moves this tab to another screen of its app, without loading the page (../router.ts).
+
+import { go } from "../router";
 
 export default () => ({
-  go: (path: unknown, replace: unknown) => {
-    const url = new URL(location.href);
-    url.hash = String(path);
-    if (replace) location.replace(url);
-    else location.assign(url);
-  },
+  go: (path: unknown, replace: unknown) => go(String(path), !!replace),
 });

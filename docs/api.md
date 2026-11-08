@@ -394,7 +394,7 @@ Turns one of the app's plugins on or off. Saved, and applies in every tab, as th
 
 ### router
 
-The screen an app's tab shows, from its address (#/book/42), so screens can be bookmarked and shared, and back and forward work.
+The screen an app's tab shows, from its address (app/book/42), so screens can be bookmarked and shared, and back and forward work.
 
 #### router.current
 
@@ -402,7 +402,7 @@ The screen an app's tab shows, from its address (#/book/42), so screens can be b
 
 Needs: `router`.
 
-The screen the plugin's tab shows: `#/book/42?tab=notes` is `{ path: "/book/42", query: { tab: "notes" } }`. With no hash, the path is `/`.
+The screen the plugin's tab shows: the reading list at `/demos/reading-list/book/42?tab=notes` is `{ path: "/book/42", query: { tab: "notes" } }`. The app's own address is `/`.
 
 #### router.go
 
@@ -410,7 +410,7 @@ The screen the plugin's tab shows: `#/book/42?tab=notes` is `{ path: "/book/42",
 
 Needs: `router`.
 
-Moves the plugin's tab to another screen, as a link to #/… would. With `replace`, back skips the screen it leaves.
+Moves the plugin's tab to another screen without loading the page, as a link to it would. With `replace`, back skips the screen it leaves.
 
 ### secrets
 
@@ -592,7 +592,7 @@ Listeners get `{ change, id }`.
 
 ### `router:changed`
 
-A tab moved to another screen of its app: a link to #/…, back or forward, or router.go. Read router.current() for the screen your instance shows.
+A tab moved to another screen of its app: a link to one, back or forward, or router.go. Read router.current() for the screen your instance shows.
 
 Mode: `emit`. Listening needs `router`.
 
@@ -764,7 +764,7 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<br>` |  |  |
 | `<hr>` |  |  |
 | `<blockquote>` |  |  |
-| `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto: or #. One to #/a/path is a screen of the app (see the router service), and opens in the same tab |
+| `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto:, # or relative. A relative one (book/42, ./) stays on this site and opens in the same tab: a link to a screen of the app moves to it without loading the page (see the router service) |
 | `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: (with the network permission), a data: image, or a file next to the plugin's template file |
 | `<figure>` |  |  |
 | `<figcaption>` |  |  |

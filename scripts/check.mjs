@@ -307,7 +307,7 @@ function checkTemplates(file, rules, report) {
       if (name.startsWith("on") || name === "style") report("error", file, line, `${name}= isn't allowed in a view: use data-action for events, and class with the file's <style> for looks`);
       else if (name === "slot" || name === "is" || name === "data-plugin") report("warning", file, line, `${name}= is dropped from views`);
       else if (!component && !name.startsWith("aria-") && !name.startsWith("data-") && !rules.GLOBAL_ATTRIBUTES.includes(name) && !(rules.ELEMENT_ATTRIBUTES[tag] ?? []).includes(name)) report("warning", file, line, `${name}= isn't allowed on <${tag}>, so it is dropped`);
-      else if (name === "href" && !hole && !/^(https?:|mailto:|#)/i.test(value.trim())) report("warning", file, line, `href="${value}" is dropped: a link in a view must start with https:, http:, mailto: or #`);
+      else if (name === "href" && !hole && /^([a-z][\w+.-]*:|\/\/|\\)/i.test(value.trim()) && !/^(https?:|mailto:)/i.test(value.trim())) report("warning", file, line, `href="${value}" is dropped: a link in a view must start with https:, http:, mailto: or #, or be relative`);
       else if (tag === "input" && name === "type" && !hole && !rules.INPUT_TYPES.includes(value.toLowerCase())) report("warning", file, line, `<input type="${value}"> isn't allowed, so it becomes a text box`);
     }
   }

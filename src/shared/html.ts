@@ -30,7 +30,7 @@ export const ELEMENTS: Record<string, string> = {
   br: "",
   hr: "",
   blockquote: "",
-  a: "A link; opens in a new tab. href must be https:, http:, mailto: or #. One to #/a/path is a screen of the app (see the router service), and opens in the same tab",
+  a: "A link; opens in a new tab. href must be https:, http:, mailto:, # or relative. A relative one (book/42, ./) stays on this site and opens in the same tab: a link to a screen of the app moves to it without loading the page (see the router service)",
   img: "An image; src must be https: (with the network permission), a data: image, or a file next to the plugin's template file",
   figure: "",
   figcaption: "",

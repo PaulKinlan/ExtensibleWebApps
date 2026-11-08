@@ -1,8 +1,9 @@
 // Book page: a screen for one book, with an address of its own. The router
-// service turns the address's hash into a screen: this app at
-// #/book/<id> shows that book here, so a person can bookmark it or send the
-// link, and back goes to where they were. Links to it are plain
-// <a href="#/book/<id>">, as in due-soon.html.
+// service turns the address into a screen: this app at book/<id>
+// (/demos/reading-list/book/<id>) shows that book here, so a person can
+// bookmark it or send the link, and back goes to where they were. Links to it
+// are plain <a href="book/<id>">, as in due-soon.html, and following one
+// doesn't load the page again.
 //
 // A screen belongs to one tab, so this plugin is `scope: "tab"`: each tab's
 // copy draws what its own tab's address says.
@@ -10,7 +11,7 @@
 export const manifest = {
   id: "book-page",
   name: "Book page",
-  description: "Shows one book on its own screen, at #/book/<id>, so a book can be linked to.",
+  description: "Shows one book on its own screen, at book/<id>, so a book can be linked to.",
   version: "1.0.0",
   permissions: ["ui", "router", "data:read:library"],
   scope: "tab",
@@ -30,7 +31,7 @@ export default async function (ctx) {
     try {
       key = decodeURIComponent(id);
     } catch {
-      return { book: null, shown: true, missing: true }; // #/book/% isn't an id
+      return { book: null, shown: true, missing: true }; // book/% isn't an id
     }
     const book = await ctx.call("data", "get", "library", key);
     return { book, shown: true, missing: !book };
