@@ -61,7 +61,12 @@ export function watchCanvasTheme(changed: (theme: CanvasTheme) => void): void {
     });
   };
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", check);
-  // Themes are <style> elements in <head> (plugin themes, the page's own) and attributes on <html>.
-  new MutationObserver(check).observe(document.head, { childList: true, subtree: true, characterData: true });
+  // Themes are <style> and <link> elements in <head> (plugin themes, the page's own), with their href or media
+  // changed too, and a class or style on <html> or <body>. The body is watched for its own attributes only, so
+  // the probe canvasTheme() adds and takes away doesn't set it off again.
+  new MutationObserver(check).observe(document.head, { childList: true, subtree: true, characterData: true, attributes: true });
   new MutationObserver(check).observe(document.documentElement, { attributes: true });
+  new MutationObserver(check).observe(document.body, { attributes: true });
+  // A stylesheet that is added may finish loading after the check its adding set off.
+  document.addEventListener("load", (event) => event.target instanceof HTMLLinkElement && check(), true);
 }
