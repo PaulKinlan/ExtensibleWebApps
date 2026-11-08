@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+  An app made from the starter (`npm run new-app` copies it). One plugin,
+  two files:
+
+  main.js    owns the `items` collection, and draws the list live
+  main.html  the list's template, and its own <style>
+
+  Change anything. Add a plugin with a new <link rel="plugin">, and a place
+  for its views with a new <slot name="…">. Run `npm run check` to find
+  mistakes before you open the page.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>My app</title>
+  <meta name="description" content="A list to start from.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="main.js">
+  <!-- A standard plugin: a bug button that shows errors and the trace. Remove it when you're done. -->
+  <link rel="plugin" href="/std/debug-console.js">
+</head>
+<body>
+  <header>
+    <h1>My app</h1>
+  </header>
+  <main>
+    <slot name="main"><p>Loading…</p></slot>
+  </main>
+  <slot name="debug"></slot>
+</body>
+</html>

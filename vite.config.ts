@@ -29,16 +29,25 @@ function workerPolicy(): Plugin {
 
 // Files the browser runs as written: served untouched in development (no
 // transforms, no injected scripts) and copied unchanged into the build.
-const AS_WRITTEN = [
-  "demos",
-  "elements",
-  "home",
-  "index.html",
-  "std",
-  "sw",
-  "sw.js",
-  "workbench",
+// That is every top-level folder except the ones below, and every .html or
+// .js file at the top. Nothing lists them, so a change that adds a folder
+// (a new app area, the service worker) doesn't edit this file.
+const NOT_SERVED = [
+  "dist",
+  "docs",
+  "node_modules",
+  "plugins", // built into the kernel
+  "public", // Vite copies it itself
+  "scripts",
+  "src", // built
+  "tests",
 ];
+const asWrittenPaths = (root: string): string[] =>
+  readdirSync(root, { withFileTypes: true })
+    .filter((e) => !e.name.startsWith("."))
+    .filter((e) => (e.isDirectory() ? !NOT_SERVED.includes(e.name) : e.isFile() && /\.(html|js)$/.test(e.name)))
+    .map((e) => e.name)
+    .sort();
 // Two stable URLs every page uses: the platform's stylesheet and its host
 // script. In development the script redirects to the TypeScript source (so
 // its relative worker URLs resolve); in the build it is emitted at this path.
@@ -64,16 +73,18 @@ function asWritten(): Plugin {
           return res.end();
         }
         if (path === "/platform/host.css") return serve(res, resolve(root, HOST_CSS));
-        // The service worker sits at the root, as written, so its scope is the whole site.
-        if (path === "/sw.js") return serve(res, resolve(root, "sw.js"));
-        const top = AS_WRITTEN.find((d) => statSync(join(root, d)).isDirectory() && path.startsWith(`/${d}/`));
+        const paths = asWrittenPaths(root);
+        // A top-level file is served only by its exact name ("/" is index.html); a folder serves what is inside it.
+        const name = path === "/" ? "index.html" : path.slice(1);
+        if (paths.includes(name) && statSync(join(root, name)).isFile()) return serve(res, resolve(root, name));
+        const top = paths.find((d) => statSync(join(root, d)).isDirectory() && path.startsWith(`/${d}/`));
         const file = resolve(root, `.${path}`);
         if (!top || !file.startsWith(resolve(root, top) + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
         return serve(res, file);
       });
     },
     generateBundle() {
-      for (const path of AS_WRITTEN) for (const file of files(path)) this.emitFile({ type: "asset", fileName: file.split(sep).join("/"), source: readFileSync(join(root, file)) });
+      for (const path of asWrittenPaths(root)) for (const file of files(path)) this.emitFile({ type: "asset", fileName: file.split(sep).join("/"), source: readFileSync(join(root, file)) });
       this.emitFile({ type: "asset", fileName: "platform/host.css", source: readFileSync(join(root, HOST_CSS)) });
     },
   };

@@ -30,7 +30,7 @@ export type View =
       type: "field";
       name: string;
       label: string;
-      kind: "text" | "number" | "checkbox" | "select";
+      kind: "text" | "number" | "checkbox" | "select" | "password";
       value: string | number | boolean;
       action: string;
       options?: string[];

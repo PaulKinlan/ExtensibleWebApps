@@ -9,7 +9,7 @@ Instructions for AI agents (and people) building apps and plugins on this platfo
 - A **plugin** is one ES module, run in its own worker. It has a manifest and a default export that gets `ctx`. Its views are `<template id>` elements in an `.html` file next to it.
 - **No build step.** Write plain JavaScript (JSDoc and `// @ts-check` are welcome), HTML and CSS. The browser runs the files as written. Don't add bundlers, frameworks or npm dependencies to apps or plugins.
 
-Copy [`demos/habits/`](demos/habits/) to start: it is the smallest complete app, and [the guide](docs/guide/writing-a-plugin.md) walks through it.
+Start with `npm run new-app -- my-app`: it copies [`starter/`](starter/), a list you can add to and tick off, to `demos/my-app/`. [`demos/habits/`](demos/habits/) is the smallest complete demo, and [the guide](docs/guide/writing-a-plugin.md) walks through it.
 
 ## Rules the kernel enforces
 
@@ -29,11 +29,13 @@ Copy [`demos/habits/`](demos/habits/) to start: it is the smallest complete app,
 - To let a link, a form or a fetch reach the plugin, add a route: `ctx.routes.add("POST", "add-book", handler)` with the `routes` permission. See [Routes](docs/guide/routes.md).
 - Style with the design tokens (`var(--space-2)`, `var(--fg-2)`, `var(--accent)`…). The page's own CSS overrides any plugin's.
 - Give every file a comment at the top saying what it shows. The code is read as documentation.
+- To call a web API, name its host (`network:api.example.com`) and use `ctx.call("net", "fetch", …)`. For its key, ask with `secrets.request` and put `{ secret: name }` in a header: the plugin never sees the key. See [API keys and web requests](docs/guide/keys-and-requests.md).
 
 ## How to check it
 
 ```sh
 npm install
+npm run check        # finds mistakes in the apps without a browser: permissions, manifests, templates, slots (--json for tools)
 npm run dev          # open http://localhost:5173/demos/<app>/app.html; the workbench at /workbench/ has the trace
 npm test             # builds, then opens every app in demos/ and checks each linked plugin draws
 npm run typecheck
@@ -46,7 +48,7 @@ A new app in `demos/` is picked up by the tests automatically. Put checks for wh
 
 Many people and agents work on this repo, and on the sites built with it, at once. Every change should leave everyone else's work merging cleanly and every demo working.
 
-- **Add, don't edit.** A new element, plugin, service, hook, doc page or test is a new file wherever the core can find it. Elements already work this way: `ui-table` is `elements/ui-table.html`, and no list names it.
+- **Add, don't edit.** A new element, plugin, service, hook, doc page or test is a new file wherever the core can find it. Elements already work this way: `ui-table` is `elements/ui-table.html`, and no list names it. A new top-level folder is served as written without touching `vite.config.ts` (unless it is build-only: then add it to `NOT_SERVED` there).
 - **Keep shared lists merge-friendly.** When a change has to add to a list (a JS array or object, `<link>` lines in HTML, imports, a docs table), put one entry per line with a trailing comma, and sorted where order doesn't matter. Then two changes that each add an entry touch different lines.
 - **No running totals in prose.** Don't write counts that every change bumps, like the number of checks; the test run prints it.
 - **Keep old APIs working.** Add a new call beside the old one, so a demo only has to change when the change is about that demo. When a demo does need to change for the tests to pass, change it in the same PR.

@@ -20,9 +20,11 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 
 - [API reference](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/api.md): every ctx call, service method, hook, capability, manifest field, component and allowed element
 - [The kernel](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/kernel.md): how plugins are run, checked and reviewed
+- [API keys and web requests](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/keys-and-requests.md): network:<host>, net.fetch, and secrets a plugin uses without seeing
 
 ## Examples
 
+- [Starter](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/starter): the app `npm run new-app` copies; `npm run check` finds mistakes in it
 - [Habits](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos/habits): the smallest complete app, the one the guide builds
 - [All demo apps](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos): reading list, spending, recipes, contacts, calendar
 - [Live demos](https://extensible-web-apps.kinlan-test.workers.dev/)
