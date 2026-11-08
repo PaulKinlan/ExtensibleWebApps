@@ -80,6 +80,7 @@ export default async function ({ check }) {
   const gone = [...CORE, ...SERVICES].filter((path) => !all.includes(path));
   check("every file the layers list is still there", !gone.length, gone.join(", "));
   const page = readFileSync(new URL("../../docs/layers.md", import.meta.url), "utf8");
-  const missing = SERVICES.filter((path) => !page.includes(path.split("/").pop()));
-  check("docs/layers.md names every kernel service file", !missing.length, missing.join(", "));
+  // By its whole path (a link to ../src/kernel/<path>), so a file can't pass on another's name.
+  const missing = [...CORE, ...SERVICES].filter((path) => !page.includes(`src/kernel/${path})`));
+  check("docs/layers.md links every file in src/kernel/, by its whole path", !missing.length, missing.join(", "));
 }

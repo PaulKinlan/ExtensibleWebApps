@@ -53,26 +53,26 @@ The core is what every app and every space server needs to run any plugin at all
 | Describing itself | [`reference.ts`](../src/kernel/reference.ts) | The [API reference](api.md), built from the tables the kernel enforces |
 | Wiring | [`kernel.ts`](../src/kernel/kernel.ts) | Puts the pieces together |
 
-And the services every plugin relies on: `kernel`, `settings`, `plugins`, `storage`, `files`, `data`, `secrets`, `net` and `hooks`.
+And the services every plugin relies on: `kernel`, `settings`, `plugins`, `storage`, `files`, `data`, `secrets`, `net` and `hooks`. Most are made beside the module they belong to; four are a file each, which [`services/index.ts`](../src/kernel/services/index.ts) finds by name: [`services/files.ts`](../src/kernel/services/files.ts), [`services/hooks.ts`](../src/kernel/services/hooks.ts), [`services/kernel.ts`](../src/kernel/services/kernel.ts) and [`services/storage.ts`](../src/kernel/services/storage.ts).
 
 ## Kernel services
 
-These are capabilities with trusted code in the kernel: an app may use them, but not every app does. Each is a file in [`src/kernel/services/`](../src/kernel/services/) (some with helpers beside it), and today **every one is built into every kernel**, in the browser and on a server, whether an app uses it or not. They do no work until a plugin calls them, but nobody can leave one out.
+These are capabilities with trusted code in the kernel: an app may use them, but not every app does. Each is a file in [`src/kernel/services/`](../src/kernel/services/) (some with helpers beside it), and today **every one is built into every kernel**, in the browser and on a server, whether an app uses it or not, and nobody can leave one out. Each is also made when the kernel starts, not when first called: most only define their hooks then, but some start work of their own. `schedule` reads its saved jobs and sets their timers, and `sync` listens for this device's changes. A site that leaves a service out will skip that start-up work as well.
 
 | Service | Files | Why it is trusted code |
 | --- | --- | --- |
-| `agents` | `services/agents.ts`, `agents/file.ts`, `agents/runner.js` | Counts each agent's runs and tokens, so an agent can't misreport its own use |
-| `tools` | `services/tools.ts` | Reads the whole API reference to offer tools to a model |
-| `bus` | `services/bus.ts` | Inboxes between agents, plugins and the person |
-| `llm` | `services/llm.ts` | The one interface to every model; the vendors are std plugins ([`std/llm/`](../std/llm/)) |
-| `transfer` | `services/transfer.ts`, `csv.ts` | Import and export, reviewed once for the whole file |
-| `email` | `services/email.ts` | Mail from a space's server, with daily limits |
-| `schedule` | `services/schedule.ts` | Wakes plugins that aren't running |
-| `history` | `services/history.ts` | Undo across every plugin's writes |
-| `commands` | `services/commands.ts` | Commands from any plugin, run from a palette or a key |
-| `router`, `share`, `audio`, `page` | `services/router.ts`, `services/share.ts`, `services/audio.ts`, `services/page.ts` | Bridges to what only a page can do |
-| `reflect`, `debug` | `services/reflect.ts`, `services/debug.ts` | Read-only views of the whole kernel, for debuggers |
-| spaces | `sync.ts`, `sync-device.ts`, `server-apps.ts`, `routes.ts`, `services/sync.ts` | Sync with a space, plugins on its server, public routes |
+| `agents` | [`services/agents.ts`](../src/kernel/services/agents.ts), [`agents/file.ts`](../src/kernel/agents/file.ts), [`agents/runner.js`](../src/kernel/agents/runner.js) | Counts each agent's runs and tokens, so an agent can't misreport its own use |
+| `tools` | [`services/tools.ts`](../src/kernel/services/tools.ts) | Reads the whole API reference to offer tools to a model |
+| `bus` | [`services/bus.ts`](../src/kernel/services/bus.ts) | Inboxes between agents, plugins and the person |
+| `llm` | [`services/llm.ts`](../src/kernel/services/llm.ts) | The one interface to every model; the vendors are std plugins ([`std/llm/`](../std/llm/)) |
+| `transfer` | [`services/transfer.ts`](../src/kernel/services/transfer.ts), [`csv.ts`](../src/kernel/csv.ts) | Import and export, reviewed once for the whole file |
+| `email` | [`services/email.ts`](../src/kernel/services/email.ts) | Mail from a space's server, with daily limits |
+| `schedule` | [`services/schedule.ts`](../src/kernel/services/schedule.ts) | Wakes plugins that aren't running |
+| `history` | [`services/history.ts`](../src/kernel/services/history.ts) | Undo across every plugin's writes |
+| `commands` | [`services/commands.ts`](../src/kernel/services/commands.ts) | Commands from any plugin, run from a palette or a key |
+| `router`, `share`, `audio`, `page` | [`services/router.ts`](../src/kernel/services/router.ts), [`services/share.ts`](../src/kernel/services/share.ts), [`services/audio.ts`](../src/kernel/services/audio.ts), [`services/page.ts`](../src/kernel/services/page.ts) | Bridges to what only a page can do |
+| `reflect`, `debug` | [`services/reflect.ts`](../src/kernel/services/reflect.ts), [`services/debug.ts`](../src/kernel/services/debug.ts) | Read-only views of the whole kernel, for debuggers |
+| spaces | [`sync.ts`](../src/kernel/sync.ts), [`sync-device.ts`](../src/kernel/sync-device.ts), [`server-apps.ts`](../src/kernel/server-apps.ts), [`routes.ts`](../src/kernel/routes.ts), [`services/sync.ts`](../src/kernel/services/sync.ts) | Sync with a space, plugins on its server, public routes |
 
 ### Where this is going
 
@@ -95,7 +95,7 @@ An app is a folder with an `app.html` that links its plugins (`<link rel="plugin
 
 ## The trust line
 
-The one boundary that matters for safety runs between std plugins and the kernel. Below it, code runs unsandboxed inside the kernel, so whoever deploys the site chooses it. Above it, code runs in a worker with no network and no access to anything its manifest didn't ask for, so anyone can add it: the app's author, the person, or an agent working for them. [The security model](security.md) has the details.
+The one boundary that matters for safety runs between std plugins and the kernel. Below it, code runs unsandboxed inside the kernel, so whoever deploys the site chooses it. Above it, code runs in a worker that can reach nothing its manifest didn't ask for: no network unless it asks for `network` (and then only through a separate runtime, which [the security model](security.md) describes), no data but its own unless it is granted more, and no other plugin's worker. So anyone can add it: the app's author, the person, or an agent working for them. [The security model](security.md) has the details.
 
 ## Outside the kernel
 
