@@ -209,17 +209,15 @@ const held = new Map<string, Extract<KernelToHost, { t: "render" }>>();
  * The app's plugin files, fetched as soon as the host runs, while the kernel starts. Each one's template
  * files (and their elements) start loading as soon as its source arrives (prefetch.ts).
  */
-const linked = isWorkbench
-  ? []
-  : links.map(async (href) => {
-      const response = await fetch(href, { priority: "high" }).catch((error: Error) => error);
-      if (response instanceof Response && response.ok) {
-        const source = await response.text();
-        warmPlugin(href, source);
-        return { href, source, why: "" };
-      }
-      return { href, source: "", why: response instanceof Response ? `it answered ${response.status}` : response.message };
-    });
+const linked = links.map(async (href) => {
+  const response = await fetch(href, { priority: "high" }).catch((error: Error) => error);
+  if (response instanceof Response && response.ok) {
+    const source = await response.text();
+    warmPlugin(href, source);
+    return { href, source, why: "" };
+  }
+  return { href, source: "", why: response instanceof Response ? `it answered ${response.status}` : response.message };
+});
 
 async function openApp() {
   const plugins = await Promise.all(linked);

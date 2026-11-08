@@ -16,8 +16,8 @@ import { loadFile } from "./templates";
 
 /** `ctx.ui.views("x.html")` with a plain string, as the guide writes it. */
 const VIEWS = /\.views\(\s*(["'`])([^"'`$\n]{1,200}\.html)\1\s*\)/g;
-/** A ui-* tag in a template's markup. */
-const ELEMENT = /<(ui-[a-z0-9-]+)[\s>/]/g;
+/** A ui-* tag in a template's markup, in any case. */
+const ELEMENT = /<(ui-[a-z0-9-]+)[\s>/]/gi;
 
 /** The template files a plugin's source names, as the kernel would resolve them: next to the plugin, on its site. */
 export function templatesIn(href: string, source: string): string[] {
@@ -37,7 +37,11 @@ export function templatesIn(href: string, source: string): string[] {
 /** The ui-* elements named in some markup that aren't defined yet. */
 export function elementsIn(markup: string): string[] {
   const out = new Set<string>();
-  for (const match of markup.matchAll(ELEMENT)) if (!customElements.get(match[1])) out.add(match[1]);
+  for (const match of markup.matchAll(ELEMENT)) {
+    // Tag names are case-insensitive: <UI-CARD> is ui-card once parsed.
+    const name = match[1].toLowerCase();
+    if (!customElements.get(name)) out.add(name);
+  }
   return [...out];
 }
 

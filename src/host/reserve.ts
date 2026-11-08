@@ -23,7 +23,7 @@ const LONGEST = 6000;
 /** Heights are kept for windows of about the same width: phones and desktops lay a slot out differently. */
 const bucket = () => Math.round(innerWidth / 160);
 
-type Held = { name: string; slot: HTMLElement; spacer?: HTMLElement; height: number; timer?: ReturnType<typeof setTimeout>; drawn: boolean; done: boolean };
+type Held = { name: string; slot: HTMLElement; spacer?: HTMLElement; height: number; row: boolean; gap: number; timer?: ReturnType<typeof setTimeout>; drawn: boolean; done: boolean };
 
 export type Reserve = {
   /** A view was added to (or removed from) a container. */
@@ -53,7 +53,7 @@ export function reserveSlots(app: string, slots: HTMLElement[]): Reserve {
   for (const slot of slots) {
     const name = slot.getAttribute("name") ?? "";
     const height = kept[`${name}@${width}`] ?? 0;
-    const entry: Held = { name, slot, height, drawn: false, done: false };
+    const entry: Held = { name, slot, height, row: false, gap: 0, drawn: false, done: false };
     held.set(slot, entry);
     const parent = slot.parentElement;
     if (!height || !parent) continue;
@@ -66,10 +66,9 @@ export function reserveSlots(app: string, slots: HTMLElement[]): Reserve {
     spacer.style.flex = "none";
     spacer.style.pointerEvents = "none";
     if (style.display.includes("flex")) {
-      const row = !style.flexDirection.startsWith("column");
-      const gap = parseFloat(row ? style.columnGap : style.rowGap) || 0;
-      if (gap) spacer.style[row ? "marginInlineStart" : "marginBlockStart"] = `${-gap}px`;
-      if (row) spacer.style.width = "0";
+      entry.row = !style.flexDirection.startsWith("column");
+      entry.gap = parseFloat(entry.row ? style.columnGap : style.rowGap) || 0;
+      if (entry.row) spacer.style.width = "0";
     }
     slot.after(spacer);
     entry.spacer = spacer;
@@ -85,9 +84,13 @@ export function reserveSlots(app: string, slots: HTMLElement[]): Reserve {
 
   function fit(entry: Held) {
     if (!entry.spacer) return;
-    const rest = entry.height - contentHeight(entry.slot);
-    if (rest <= 1 && entry.drawn) return release(entry);
-    entry.spacer.style.height = `${Math.max(0, rest)}px`;
+    const content = contentHeight(entry.slot);
+    if (entry.height - content <= 1 && entry.drawn) return release(entry);
+    // In a row the spacer stands beside the views, so it keeps the whole height; in a column it makes up the rest.
+    entry.spacer.style.height = `${entry.row ? entry.height : Math.max(0, entry.height - content)}px`;
+    // While the slot shows something, the flex gap before the spacer is one the page won't have: cancel it.
+    // An empty slot's spacer stands where its first view will, gap and all.
+    entry.spacer.style[entry.row ? "marginInlineStart" : "marginBlockStart"] = content > 0 && entry.gap ? `${-entry.gap}px` : "";
   }
 
   function release(entry: Held) {
@@ -130,7 +133,8 @@ export function reserveSlots(app: string, slots: HTMLElement[]): Reserve {
   const releaseAll = () => {
     for (const entry of held.values()) release(entry);
   };
-  addEventListener("pointerdown", releaseAll, { once: true, capture: true });
+  // On click, not pointerdown: what was pressed mustn't move before the press ends.
+  addEventListener("click", releaseAll, { once: true, capture: true });
   addEventListener("keydown", releaseAll, { once: true, capture: true });
   setTimeout(() => {
     // A slot no plugin drew in isn't measured: it may be a plugin that is off, or still starting.
