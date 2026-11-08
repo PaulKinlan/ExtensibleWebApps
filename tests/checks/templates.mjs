@@ -33,4 +33,12 @@ export default async function ({ a, check }) {
     !/url|example|important/i.test(shorthands) && /\.s \{ color: red; \}/.test(shorthands) && /font: 600 1rem\/1\.2 var\(--mono\)/.test(shorthands) && /margin: var\(--m\)/.test(shorthands),
     shorthands,
   );
+  // Shorthands whose longhands don't share their name (gap: row-gap, column-gap), and a string that only says "!important".
+  const others = await a.evaluate(() => window.__host.cleanCss(`.g { gap: var(--g); columns: var(--c); place-items: var(--p); flex-flow: var(--f); }
+    .q::before { content: "!important"; color: red; }`));
+  check(
+    "a var() shorthand named apart from its longhands (gap, columns, place-items, flex-flow) is kept, and so is a string that says !important",
+    /gap: var\(--g\)/.test(others) && /columns: var\(--c\)/.test(others) && /place-items: var\(--p\)/.test(others) && /flex-flow: var\(--f\)/.test(others) && /content: "!important"; color: red;/.test(others),
+    others,
+  );
 }
