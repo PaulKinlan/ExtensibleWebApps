@@ -11,6 +11,7 @@
 //   POST /auth/signin            credential signs in
 //   GET  /auth/me                           who is signed in (401 if no one)
 //   POST /auth/signout                      ends this session
+//   POST /auth/me/email          { email }  sets the address the spaces you're in may email ("" removes it)
 //   GET  /auth/providers                    the other sites you can sign in with (providers.ts)
 //   GET  /auth/oauth/<id>/start             goes to that site to sign in (or, signed in, to link it)
 //   GET  /auth/oauth/<id>/callback          where that site sends you back; signs in, then /account/
@@ -30,6 +31,7 @@
 // A session is a random token in an HttpOnly cookie; the server keeps only its
 // hash, so its files can't be used to sign in.
 
+import { isAddress } from "../../kernel/address.ts";
 import type { Files } from "../../seams/index.ts";
 import { isFlow, type OAuthProvider, type Provider } from "./providers.ts";
 import { ALGORITHMS, b64url, unb64url, type CredentialJSON, type PublicKey, verifyAssertion, verifyRegistration } from "./webauthn.ts";
@@ -38,7 +40,13 @@ export interface User {
   id: string;
   name: string;
   created: number;
+  /**
+   * The address a space's server plugins may email them at (src/kernel/services/email.ts sends only to
+   * its members' addresses). Typed on /account/; not checked yet, as the site doesn't deliver mail yet.
+   */
+  email?: string;
 }
+
 
 interface Credential {
   id: string;
@@ -372,6 +380,14 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       return current && role ? { user: current.user, role } : null;
     },
 
+    /** The email addresses a space's members gave (User.email): the only ones its server plugins may email. */
+    async addresses(name: string): Promise<string[]> {
+      const space = await spaceOf(name);
+      if (!space) return [];
+      const users = await Promise.all(Object.keys(space.members).map((id) => read<User>(`users/${id}.json`)));
+      return users.flatMap((u) => (u?.email ? [u.email] : []));
+    },
+
     /** Whether a space by this name exists: for a host to ask before waking it for a public route. */
     async exists(name: string): Promise<boolean> {
       return (await spaceOf(name)) !== null;
@@ -478,6 +494,16 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
           return json({ error: String((error as Error).message ?? error) }, 401);
         }
         return signIn(request, user);
+      }
+      case "/auth/me/email": {
+        const current = await session(request);
+        if (!current) return json({ error: "Not signed in" }, 401);
+        const email = typeof body.email === "string" ? body.email.trim() : null;
+        if (email === null || (email && !isAddress(email))) return json({ error: "That isn't an email address" }, 400);
+        const { email: _old, ...user } = current.user;
+        const updated: User = email ? { ...user, email } : user;
+        await write(`users/${user.id}.json`, updated);
+        return json({ user: updated });
       }
       case "/auth/signout": {
         const current = await session(request);

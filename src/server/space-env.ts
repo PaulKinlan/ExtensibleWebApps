@@ -12,6 +12,9 @@ import { nodeIsolates } from "../seams/node-isolates.ts";
 
 const { dir, origin, allowPrivate } = workerData as { dir: string; origin: string; allowPrivate?: string[] };
 
+/** The kernel's asks for its members' addresses, numbered so each answer finds its ask. */
+let asked = 0;
+
 setEnv({
   kind: "server",
   origin,
@@ -27,6 +30,19 @@ setEnv({
     // serve.ts starts a space with jobs when the server starts (src/kernel/services/schedule.ts): the
     // kernel's folder is ready at once on Node, so it starts as soon as it has loaded.
     setImmediate(start);
+  },
+  addresses() {
+    // serve.ts asks the accounts, which the space's thread can't read.
+    const id = ++asked;
+    return new Promise<string[]>((done) => {
+      const answer = (m: { t?: string; id?: number; addresses?: string[] }) => {
+        if (m?.t !== "addresses" || m.id !== id) return;
+        parentPort!.off("message", answer);
+        done(Array.isArray(m.addresses) ? m.addresses : []);
+      };
+      parentPort!.on("message", answer);
+      parentPort!.postMessage({ t: "addresses", id });
+    });
   },
   serve(answer) {
     // A public route's request, which serve.ts passes on (src/server/routes.ts).

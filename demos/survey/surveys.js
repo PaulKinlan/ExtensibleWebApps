@@ -37,7 +37,7 @@ export const manifest = {
           title: { type: "string", title: "Title", maxLength: 120 },
           questions: { type: "string", title: "Questions, one a line", description: "Choices go after a colon, split by |: “Pick one: Tea | Coffee”", "x-multiline": true, maxLength: 4000 },
           open: { type: "boolean", title: "Taking answers", default: true },
-          notify: { type: "string", format: "email", title: "Email a daily digest to" },
+          notify: { type: "string", format: "email", title: "Email a daily digest to", description: "A member of the space, at the address on their account page" },
         },
       },
     },

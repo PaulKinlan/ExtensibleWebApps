@@ -53,6 +53,14 @@
         </p>
         <div class="providers" data-link></div>
 
+        <h2>Your email</h2>
+        <p>Apps in your spaces can email you here, such as a survey's daily digest. They can only email the people in the space.</p>
+        <form id="email">
+          <label for="email-address" class="visually-hidden">Your email address</label>
+          <input id="email-address" name="email" type="email" autocomplete="email" placeholder="you@example.com" maxlength="254" />
+          <button type="submit">Save</button>
+        </form>
+
         <h2>Your spaces</h2>
         <p>A space holds people and their data, and any app can open in it. One with just you in it is your own.</p>
         <ul id="spaces"></ul>
@@ -108,6 +116,7 @@
         $("in").hidden = !user;
         $("out").hidden = !!user;
         $("who").textContent = user?.name ?? "";
+        $("email-address").value = user?.email ?? "";
         // An invite made before signing out isn't for whoever signs in next.
         if (!user) {
           $("invite-link").hidden = true;
@@ -178,6 +187,10 @@
         const answer = await call("/auth/signin", credential.toJSON());
         if (answer.status === 401) throw new Error(answer.error);
       }, "You're signed in."));
+      $("email").addEventListener("submit", run(async () => {
+        const answer = await call("/auth/me/email", { email: $("email-address").value.trim() });
+        if (answer.status === 401) throw new Error("You're signed out: sign in again, then save it");
+      }, "Your email is saved.", false));
       $("new-space").addEventListener("submit", run(() => call("/auth/spaces", { name: $("space-name").value.trim() }), "Your space is made.", false));
       $("signout").addEventListener("click", run(() => call("/auth/signout", {}), "You're signed out.", false));
 
