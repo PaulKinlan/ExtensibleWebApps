@@ -165,7 +165,11 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
 async function reopen(app: string) {
   for (const host of hosts.list) {
     const open = openApps.get(host.tab);
-    if (open?.app === app) await openApp(host, open.links, app);
+    if (open?.app === app) {
+      await openApp(host, open.links, app);
+      // What the app links changed, and its plugins are running now: plugins.app() and llm.providers() answer differently.
+      pluginSwitches.opened(host.tab);
+    }
   }
 }
 

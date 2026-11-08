@@ -6,6 +6,7 @@ written, and asks only for the permissions in its manifest.
 | Plugin | What it does | Add it with |
 | --- | --- | --- |
 | [`llm/`](llm/) | Language models behind the `llm` service: [`anthropic.js`](llm/anthropic.js) (Claude), [`openai.js`](llm/openai.js), [`gemini.js`](llm/gemini.js), and [`openai-compatible.js`](llm/openai-compatible.js) for Ollama on this computer or any OpenAI-style API. Each picks the vendor's newest model by tier. Any plugin with the `llm` permission can then ask a model, without holding a key. | `<link rel="plugin" href="/std/llm/anthropic.js">` in the head |
+| [`ask-the-page.js`](ask-the-page.js) | A question box that a language model answers from what the page is made of: each plugin's name, description, permissions and hooks, and the code of any plugin the question names. It shows which model answered, the tokens, and exactly what was sent. Needs a model from [`llm/`](llm/) linked beside it. | `<link rel="plugin" href="/std/ask-the-page.js">` in the head, and `<slot name="ask"></slot>` in the body |
 | [`debug-console.js`](debug-console.js) | A bug button in a corner of the page. It counts problems (errors, refused permissions, failed calls) and opens a log of them, or of everything the kernel traced, with a Copy button that puts the log on the clipboard, headed with the page's address, browser and time, ready for a bug report. | `<link rel="plugin" href="/std/debug-console.js">` in the head, and `<slot name="debug"></slot>` anywhere in the body |
 | [`hook-tracer.js`](hook-tracer.js) | Follows each thing a person does: who started it, each hook it ran in order, and what every plugin listening said (let it through, stopped it, or only heard it). Pause and Clear sit beside it. | `<link rel="plugin" href="/std/hook-tracer.js">` in the head, and `<slot name="inspect"></slot>` in the body |
 | [`plugin-editor.js`](plugin-editor.js) | An editor for the person's own plugins: start from a template in [`plugin-editor/templates/`](plugin-editor/templates/) or a copy of a plugin on the page, see what it asks for in plain words, then save and run it after a review card that shows its code. Its logs and errors show beside it. | `<link rel="plugin" href="/std/plugin-editor.js">` in the head, and `<slot name="editor"></slot>` in the body |
@@ -80,3 +81,17 @@ plugin that can change or stop it. Plugins that only hear a hook (`emit`)
 send no answer, so it names them from `kernel.reference()`, which lists the
 hooks each plugin listens to. It keeps the last few actions that touch the
 app's own plugins.
+
+## Ask the page
+
+[`ask-the-page.js`](ask-the-page.js) asks through the `llm` service, so it
+holds the `llm` permission and never a key: the model's plugin asks the
+person for one the first time. It describes the app's plugins from
+`plugins.app()` and `kernel.reference()`, and adds the code (`authoring.source`,
+which needs only `plugins:read`) of each plugin whose name or id the question
+contains, up to about 40 KB. The person can pick a model, or leave it to the
+first one that has its key.
+
+Don't link [`llm/openai-compatible.js`](llm/openai-compatible.js) on a public
+page unless you mean it: it needs no key, so it counts as ready and answers
+first, and most visitors don't run Ollama.
