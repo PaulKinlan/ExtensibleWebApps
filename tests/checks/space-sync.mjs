@@ -117,6 +117,10 @@ export default async function ({ check, context, errors }) {
 
     // Both change the same book while the server is away: when it's back they agree, and the version
     // the space didn't take is kept as a draft on the device that made it.
+    // Each page logs who made each change to a book it hears of (src/kernel/sync-device.ts keeps who made the record it puts back).
+    const watcher = `export const manifest = { id: 'book-watcher', name: 'Book watcher', permissions: ['data:read:library'] };
+export default (ctx) => { ctx.on('data:changed:library', (change) => ctx.log('book ' + (change.after?.title ?? change.id) + ' by ' + (change.by ?? 'nobody'))); };`;
+    for (const page of [ann.page, ben.page]) await page.evaluate((source) => window.__host.command("install", source), watcher);
     await server.stop();
     await rename(ann.page, "Middlemarch", "Middlemarch, by Ann");
     await rename(ben.page, "Middlemarch", "Middlemarch, by Ben");
@@ -132,6 +136,12 @@ export default async function ({ check, context, errors }) {
       final.ann.length === 1 && JSON.stringify(final.ann) === JSON.stringify(final.ben) && drafts.length === 1 && /Middlemarch, by (Ann|Ben)/.test(JSON.stringify(drafts[0].mine)) && !final.ann[0].includes(drafts[0].mine?.title),
       JSON.stringify({ final, drafts }),
     );
+    // The page that lost hears whose version won.
+    const winner = final.ann[0]?.includes("by Ann") ? "ann" : "ben";
+    const lost = winner === "ann" ? ben.page : ann.page;
+    const heard = await lost.evaluate(() => window.__host.traces.filter((e) => e.plugin?.startsWith("book-watcher") && e.detail?.startsWith("book Middlemarch, by")).map((e) => e.detail));
+    check("a space: the device whose edit lost hears who made the version that won", heard.includes(`book Middlemarch, by ${winner === "ann" ? "Ann" : "Ben"} by ${who[winner]}`), JSON.stringify({ heard, who, winner }));
+    for (const page of [ann.page, ben.page]) await page.evaluate(() => window.__host.command("uninstall", "book-watcher")).catch(() => {});
 
     // The page that lost shows its draft (std/sync.js); "Use mine" makes it the record again, everywhere.
     const loser = (await sync(ann.page)).drafts.length ? ann.page : ben.page;
