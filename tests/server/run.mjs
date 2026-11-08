@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { request } from "node:http";
+import { createServer as createHttpServer, request } from "node:http";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -54,7 +54,8 @@ const hosts = {
   node: (spaces) => ({
     async start() {
       site ??= await siteWithFixtures();
-      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env) });
+      // 127.0.0.1, as written, is the one private host server plugins may reach here (the network guard's checks use it).
+      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env), allowPrivate: ["127.0.0.1"] });
     },
     wrote: (space) => existsSync(join(spaces, space, "files", "user", "demos", "contacts", "hello-space.js")),
   }),
@@ -411,6 +412,47 @@ async function surveyChecks(base, check, owner) {
   laptop.close();
 }
 
+/** On Node, a server plugin with `network` reaches the internet but not the server's own network (src/server/network-guard.ts). */
+async function networkGuardChecks(base, check) {
+  // A server on this machine: / says hello, and /hop redirects to the same server by the name localhost.
+  const local = createHttpServer((req, res) => {
+    if (req.url === "/hop") return res.writeHead(302, { location: `http://localhost:${local.address().port}/` }).end();
+    if (req.url === "/hop-ip") return res.writeHead(307, { location: `http://[::ffff:7f00:1]:${local.address().port}/` }).end();
+    res.end("hello from inside");
+  });
+  await new Promise((r) => local.listen(0, "127.0.0.1", r));
+  const port = local.address().port;
+  const probe = (url, how) => fetch(`${base}/s/guarded/server-app/probe`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, how }) }).then((r) => r.json(), (e) => ({ ok: false, error: String(e) }));
+  const seen = {
+    byName: await probe(`http://localhost:${port}/`),
+    ipv6: await probe(`http://[::1]:${port}/`),
+    mapped: await probe(`http://[::ffff:127.0.0.1]:${port}/`),
+    metadata: await probe("http://169.254.169.254/latest/meta-data/"),
+    redirect: await probe(`http://127.0.0.1:${port}/hop`),
+    redirectToIp: await probe(`http://127.0.0.1:${port}/hop-ip`),
+    allowed: await probe(`http://127.0.0.1:${port}/`),
+  };
+  // Around fetch: the dispatcher it uses, and an Agent the plugin makes itself, are refused where the socket connects.
+  const around = {
+    dispatcher: await probe(`http://[::ffff:7f00:1]:${port}/`, "dispatcher"),
+    agent: await probe(`http://[::ffff:7f00:1]:${port}/`, "agent"),
+    metadata: await probe("http://169.254.169.254/latest/meta-data/", "agent"),
+  };
+  local.close();
+  const refused = (r) => r?.ok === false && /server's own network/.test(r.error);
+  check(
+    "network guard: a server plugin with network can't reach the server's own network: localhost, ::1, a mapped address, the metadata service, or a redirect inside",
+    refused(seen.byName) && refused(seen.ipv6) && refused(seen.mapped) && refused(seen.metadata) && refused(seen.redirect) && refused(seen.redirectToIp),
+    JSON.stringify(seen),
+  );
+  check(
+    "network guard: going around fetch, through its dispatcher or an Agent of the plugin's own, is refused too",
+    Object.values(around).every((r) => r?.ok === false && r.code === "EACCES"),
+    JSON.stringify(around),
+  );
+  check("network guard: a private host the deployment allows is reached", seen.allowed?.ok && seen.allowed.text === "hello from inside", JSON.stringify(seen.allowed));
+}
+
 function person(base) {
   const me = {
     cookie: "",
@@ -711,6 +753,10 @@ async function suite(name, make) {
       return server.url;
     });
     await surveyChecks(server.url, check, owner);
+}
+
+    // Workers can't reach a private network in production; wrangler's local runtime isn't a guide to that.
+    if (name === "node") await networkGuardChecks(server.url, check);
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {
