@@ -89,6 +89,7 @@ export type Command =
   | "uninstall"
   | "trace"
   | "changes"
+  | "sync"
   | "reference"
   | "route"
   | "user:list"

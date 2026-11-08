@@ -1270,6 +1270,7 @@ For devtools and tests, from the page: `window.__host.command(name, arg)`.
 | `uninstall` | (id) Removes a plugin kept with the data. |
 | `trace` | () The most recent trace events. |
 | `changes` | () The change log. |
+| `sync` | () In a page at /s/<space>/…: this copy of the space's sync, as { seq, connected, pending, drafts }; elsewhere { space: false }. |
 | `reference` | () This reference, as { data, markdown }. |
 | `user:list` | ({ app }) The person's own plugins for an app: each file, its manifest's id, name, permissions and places, and whether it is on. |
 | `user:add` | ({ app, files: [{ name, data }] } or { app, url }) Adds plugins (.js) and the files they bring to an app's user folder; from a URL on this site, the files its manifest lists come too. They start off. |

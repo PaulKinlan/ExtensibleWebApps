@@ -29,6 +29,7 @@ import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
 import { syncHub } from "./sync";
+import { syncDevice } from "./sync-device";
 import { asPlugin } from "./agents/file";
 import { authoring } from "./authoring";
 import { record, recent, setSink, startedAt, tap } from "./trace";
@@ -112,6 +113,8 @@ services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
 const sync = syncHub(root, store, records, hosts);
+/** In a browser kernel for a space (a page at /s/<space>/…): its sync with the space, once the folder is known. */
+let device: ReturnType<typeof syncDevice> | undefined;
 const userAdded = userPlugins(store, where.origin);
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
@@ -221,6 +224,7 @@ hosts.onHello = (host, folder) => {
     started = true;
     store.use(where.folder ?? folder);
     void notes.start();
+    if (where.space && where.kind !== "server") device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
     return;
   }
   remote.hostJoined(host);
@@ -318,6 +322,7 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "trace") return recent();
   if (name === "route") return routes.answer(arg);
   if (name === "changes") return log.list();
+  if (name === "sync") return device ? device.state() : { space: false };
   // The panel's commands answer { ok: false, error } rather than throw, so the page always hears back.
   if (name.startsWith("user:") || name.startsWith("place:")) return customize(name, arg).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   if (name === "reference") {

@@ -1,0 +1,207 @@
+// A device's side of sync (src/shared/sync.ts says how it works): a kernel in
+// a browser that keeps a copy of a space (a page at /s/<space>/…) connects to
+// the space's kernel, sends the records changed here, and applies the changes
+// the space accepted from everyone else. It works on its own copy offline,
+// keeps what it changed, and sends it when it's back.
+//
+// A change the space refuses as stale (someone changed the record first) is
+// replaced here by the space's record, and this device's version is kept as a
+// draft, so nothing anyone typed is lost.
+//
+// Kept in the space's copy, beside its collections:
+//   sync/device.json   the last sequence number seen, each record's version, changes not yet sent, and drafts
+
+import type { Accepted, Outgoing, SyncRecord, SyncToDevice, Verdict } from "../shared/sync";
+import type { Hosts } from "./hosts";
+import type { Change, Collections, StoredRecord } from "./records";
+import type { Store } from "./store";
+import { record as trace } from "./trace";
+
+const STATE = "sync/device.json";
+const MAX_PUSH = 100;
+const key = (collection: string, id: string) => `${collection}/${id}`;
+/** Whether two versions of a record say the same, apart from when each was made. */
+const same = (a: SyncRecord | null, b: SyncRecord | null) => {
+  const fields = (r: SyncRecord | null) => (r ? JSON.stringify(Object.entries(r).filter(([k]) => k !== "createdAt" && k !== "updatedAt").sort(([x], [y]) => x.localeCompare(y))) : "null");
+  return fields(a) === fields(b);
+};
+
+export interface Draft {
+  collection: string;
+  id: string;
+  /** What this device had made the record, which the space didn't take. */
+  mine: SyncRecord | null;
+  why: string;
+  at: string;
+}
+
+interface State {
+  seq: number;
+  versions: Record<string, number>;
+  pending: Record<string, Outgoing>;
+  drafts: Draft[];
+}
+
+/** Connects to `url` (the space's kernel) and keeps this kernel's collections in step with it. */
+export function syncDevice(url: string, store: Store, records: Collections, hosts: Hosts, { WebSocketImpl = globalThis.WebSocket } = {}) {
+  let state: State = { seq: 0, versions: {}, pending: {}, drafts: [] };
+  const loaded = store.readJson<unknown>(STATE, null).then((saved) => {
+    const s = saved as State | null;
+    if (s && typeof s.seq === "number") state = { seq: s.seq, versions: { ...s.versions }, pending: { ...s.pending }, drafts: Array.isArray(s.drafts) ? s.drafts : [] };
+  });
+  let saving: Promise<unknown> = Promise.resolve();
+  const save = () => (saving = saving.then(() => store.writeJson(STATE, state)).catch((error) => trace({ kind: "error", name: "sync:save", detail: String(error) })));
+
+  let socket: WebSocket | undefined;
+  /** True once the space has sent what it had: only then are changes pushed, so their versions are current. */
+  let caughtUp = false;
+  /** The push in flight: its id, and the changes it sent. One at a time. */
+  let inFlight: { id: number; changes: Outgoing[] } | undefined;
+  let pushes = 0;
+  let retry = 1000;
+  let stopped = false;
+  const status = { connected: false };
+
+  // Changes made here: remember them, and send them when connected.
+  records.local.add((change: Change) => {
+    void loaded.then(() => {
+      const k = key(change.collection, change.id);
+      const base = state.pending[k]?.base ?? state.versions[k] ?? 0;
+      state.pending[k] = { collection: change.collection, id: change.id, base, after: (change.after as SyncRecord | undefined) ?? null };
+      save();
+      push();
+    });
+  });
+
+  function push() {
+    if (!socket || socket.readyState !== 1 || !caughtUp || inFlight) return;
+    const changes = Object.values(state.pending).slice(0, MAX_PUSH);
+    if (!changes.length) return;
+    inFlight = { id: ++pushes, changes };
+    socket.send(JSON.stringify({ t: "sync", op: "push", id: inFlight.id, changes }));
+  }
+
+  /** Changes the space accepted, in order: from this device (already here) or another (applied now). */
+  async function changes(list: Accepted[], seq: number) {
+    for (const c of list) {
+      if (c.seq <= state.seq) continue;
+      const k = key(c.collection, c.id);
+      const sent = inFlight?.changes.find((o) => key(o.collection, o.id) === k);
+      const mine = sent && JSON.stringify(sent.after) === JSON.stringify(c.after);
+      state.versions[k] = c.seq;
+      state.seq = c.seq;
+      if (mine) {
+        // Ours, accepted. A newer edit made here since is now based on this version.
+        const pending = state.pending[k];
+        if (pending && JSON.stringify(pending.after) === JSON.stringify(c.after)) delete state.pending[k];
+        else if (pending) pending.base = c.seq;
+        continue;
+      }
+      // Someone else's. If this device has an unsent change to the same record, it keeps it: the space will
+      // refuse it as stale when it's sent, and then the space's record comes here and this one becomes a draft.
+      if (state.pending[k]) continue;
+      await records.apply(c.collection, c.id, c.after as StoredRecord | null, { trace: `sync-${c.seq}` });
+    }
+    state.seq = Math.max(state.seq, seq);
+    save();
+  }
+
+  async function pushed(id: number, results: Verdict[]) {
+    if (!inFlight || inFlight.id !== id) return;
+    const sent = inFlight.changes;
+    inFlight = undefined;
+    for (const [i, verdict] of results.entries()) {
+      const change = sent[i];
+      if (!change) continue;
+      const k = key(change.collection, change.id);
+      const pending = state.pending[k];
+      if (verdict.ok) {
+        state.versions[k] = Math.max(state.versions[k] ?? 0, verdict.seq);
+        if (pending && JSON.stringify(pending.after) === JSON.stringify(change.after)) delete state.pending[k];
+        else if (pending) pending.base = verdict.seq;
+        continue;
+      }
+      // Refused as stale, but the space has what this device made (two devices added the same sample, say): nothing is lost.
+      if ("stale" in verdict && same(verdict.record, change.after)) {
+        state.versions[k] = verdict.version;
+        if (pending && JSON.stringify(pending.after) === JSON.stringify(change.after)) delete state.pending[k];
+        else if (pending) pending.base = verdict.version;
+        await records.apply(change.collection, change.id, verdict.record as StoredRecord | null, { trace: `sync-same-${id}` });
+        continue;
+      }
+      // Refused: the space's record wins here, and this device's version is kept as a draft.
+      const why = "stale" in verdict ? "Someone changed it first" : verdict.error;
+      state.drafts.push({ collection: change.collection, id: change.id, mine: pending?.after ?? change.after, why, at: new Date().toISOString() });
+      delete state.pending[k];
+      if ("stale" in verdict) {
+        state.versions[k] = verdict.version;
+        await records.apply(change.collection, change.id, verdict.record as StoredRecord | null, { trace: `sync-stale-${id}` });
+      }
+      trace({ kind: "note", name: "sync:draft", detail: `${change.collection}/${change.id}: ${why}` });
+      hosts.broadcast({ t: "notice", text: `${why === "Someone changed it first" ? "Someone else changed this record first" : `The space didn't take a change: ${why}`}. Your version is kept as a draft.`, tone: "error" });
+    }
+    save();
+    push();
+  }
+
+  function connect() {
+    if (stopped) return;
+    caughtUp = false;
+    inFlight = undefined;
+    let ws: WebSocket;
+    try {
+      ws = new WebSocketImpl(url);
+    } catch {
+      return void setTimeout(connect, retry);
+    }
+    socket = ws;
+    ws.onopen = async () => {
+      await loaded;
+      retry = 1000;
+      status.connected = true;
+      ws.send(JSON.stringify({ t: "hello", tab: `sync-${Math.random().toString(36).slice(2, 8)}` }));
+      ws.send(JSON.stringify({ t: "sync", op: "hello", since: state.seq }));
+      trace({ kind: "lifecycle", name: "sync:connected", detail: `from ${state.seq}, ${Object.keys(state.pending).length} to send` });
+    };
+    ws.onmessage = async (e) => {
+      let m: SyncToDevice;
+      try {
+        m = JSON.parse(String(e.data));
+      } catch {
+        return;
+      }
+      if (m?.t !== "sync") return;
+      if (m.op === "changes") {
+        await changes(m.changes, m.seq);
+        if (!caughtUp) {
+          caughtUp = true;
+          push();
+        }
+      } else if (m.op === "pushed") await pushed(m.id, m.results);
+      else if (m.op === "refused") trace({ kind: "error", name: "sync:refused", detail: m.error });
+    };
+    ws.onclose = () => {
+      if (socket !== ws) return;
+      socket = undefined;
+      status.connected = false;
+      // Offline, or the server restarted: try again, less often each time, up to every half minute.
+      setTimeout(connect, retry);
+      retry = Math.min(retry * 2, 30_000);
+    };
+  }
+
+  connect();
+
+  return {
+    status,
+    /** What this device has, for the page and for checks. */
+    async state() {
+      await loaded;
+      return { seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
+    },
+    stop() {
+      stopped = true;
+      socket?.close();
+    },
+  };
+}
