@@ -14,7 +14,7 @@ export const manifest = {
   name: "Shopping list",
   description: "What the house needs, who added it, and who got it.",
   version: "1.0.0",
-  permissions: ["ui", "bus:read:household-me", "hook:listen:bus:posted"],
+  permissions: ["ui", "bus:read:household-me", "data:read:housemates", "hook:listen:bus:posted"],
   collections: {
     groceries: {
       title: "Shopping list",
@@ -32,7 +32,7 @@ export const manifest = {
   },
 };
 
-// Fixed ids, so phones that each start the list in a space add the same two items, once.
+// Fixed ids, so two phones that start a new household at once add the same two items, once.
 const SAMPLE = [
   { id: "sample-milk", item: "Milk" },
   { id: "sample-bread", item: "Bread" },
@@ -48,10 +48,20 @@ async function myName(ctx) {
   }
 }
 
+/**
+ * Whether to add the sample items: only for a household nobody has joined yet, with nothing in the
+ * collection. Both are synced, so a phone new to a space where people have cleared everything
+ * doesn't put the samples back; this plugin's own `seeded` flag, which stays on the device, keeps
+ * this device from adding them twice.
+ */
+async function newHousehold(ctx, collection) {
+  return !(await ctx.call("data", "list", collection)).length && !(await ctx.call("data", "list", "housemates")).length;
+}
+
 export default async function (ctx) {
   const views = ctx.ui.views("groceries.html");
   if (!(await ctx.storage.get("seeded"))) {
-    if (!(await ctx.call("data", "list", "groceries")).length) for (const item of SAMPLE) await ctx.call("data", "put", "groceries", item);
+    if (await newHousehold(ctx, "groceries")) for (const item of SAMPLE) await ctx.call("data", "put", "groceries", item);
     await ctx.storage.set("seeded", true);
   }
   /** Bumped after each add, so the template's form is drawn fresh, with its field empty. */

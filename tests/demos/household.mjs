@@ -21,4 +21,14 @@ export default async function (page, { check }) {
   await page.locator(`${chores} li`, { hasText: "Water the plants" }).locator('button:has-text("Done")').click();
   const done = await page.waitForSelector(`${chores} li:has-text("You did it today")`, { timeout: 5000 }).then(() => true, () => false);
   check("household: marking a chore done says who did it and when it's next due", done && (await page.locator(`${chores} li`, { hasText: "Water the plants" }).textContent()).includes("Due in 3 days"));
+
+  // "Not you?" forgets who this device is: what's added next isn't signed with the old name.
+  await page.click(`${who} button:has-text("Not you?")`);
+  await page.waitForSelector(`${who} button:has-text("Sam")`, { timeout: 5000 });
+  await page.fill(`${list} input[name=item]`, "Limes");
+  await page.click(`${list} button[type=submit]`);
+  const unsigned = await page.waitForSelector(`${list} li:has-text("Limes")`, { timeout: 5000 }).then(async (el) => !(await el.textContent()).includes("added it"), () => false);
+  await page.click(`${who} button:has-text("Sam")`);
+  const back = await page.waitForSelector(`${who} >> text=You're Sam`, { timeout: 5000 }).then(() => true, () => false);
+  check("household: Not you? stops signing with that name until someone picks who they are", unsigned && back);
 }

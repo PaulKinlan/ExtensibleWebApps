@@ -12,7 +12,7 @@ export const manifest = {
   name: "Chores",
   description: "What needs doing around the house, how often, and who did it last.",
   version: "1.0.0",
-  permissions: ["ui", "bus:read:household-me", "hook:listen:bus:posted"],
+  permissions: ["ui", "bus:read:household-me", "data:read:housemates", "hook:listen:bus:posted"],
   collections: {
     chores: {
       title: "Chores",
@@ -66,10 +66,20 @@ async function myName(ctx) {
   }
 }
 
+/**
+ * Whether to add the sample items: only for a household nobody has joined yet, with nothing in the
+ * collection. Both are synced, so a phone new to a space where people have cleared everything
+ * doesn't put the samples back; this plugin's own `seeded` flag, which stays on the device, keeps
+ * this device from adding them twice.
+ */
+async function newHousehold(ctx, collection) {
+  return !(await ctx.call("data", "list", collection)).length && !(await ctx.call("data", "list", "housemates")).length;
+}
+
 export default async function (ctx) {
   const views = ctx.ui.views("chores.html");
   if (!(await ctx.storage.get("seeded"))) {
-    if (!(await ctx.call("data", "list", "chores")).length) for (const chore of SAMPLE) await ctx.call("data", "put", "chores", chore);
+    if (await newHousehold(ctx, "chores")) for (const chore of SAMPLE) await ctx.call("data", "put", "chores", chore);
     await ctx.storage.set("seeded", true);
   }
   let added = 0;

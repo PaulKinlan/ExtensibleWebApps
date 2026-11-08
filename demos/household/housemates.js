@@ -34,8 +34,6 @@ export default async function (ctx) {
   const views = ctx.ui.views("housemates.html");
   /** Bumped after each join, so the template's form is drawn fresh, with its field empty. */
   let joined = 0;
-  /** Showing the list to pick from again, after "Not you?". */
-  let choosing = false;
 
   /** Who this device is, as the last post on the topic says: { id, name } or null. */
   const me = async () => {
@@ -50,14 +48,15 @@ export default async function (ctx) {
 
   const view = views.live("who", "who", async (ctx) => {
     const people = (await ctx.call("data", "list", "housemates")).sort((a, b) => a.name.localeCompare(b.name));
-    let current = await me();
-    // Someone renamed on another device is still them here; someone removed isn't anyone.
+    const current = await me();
+    // Someone renamed on another device is still them here; someone removed isn't anyone, so the
+    // other plugins stop signing with their name too.
     const still = current && people.find((p) => p.id === current.id);
-    if (current && !still) current = null;
+    if (current && !still) await become(null);
     if (still && still.name !== current.name) await become(still);
     return {
-      me: current && !choosing ? still.name : null,
-      choosing: !current || choosing,
+      me: still ? still.name : null,
+      choosing: !still,
       people: people.map((p) => ({ id: p.id, name: p.name })),
       form: `join-${joined}`,
     };
@@ -66,15 +65,11 @@ export default async function (ctx) {
   ctx.on("bus:posted", ({ topic }) => topic === TOPIC && view.refresh());
 
   ctx.ui.onEvent(async (action, value) => {
-    if (action === "change") {
-      choosing = true;
-      view.refresh();
-    }
+    // "Not you?" forgets who this device is, so nothing is signed with that name until someone says who they are.
+    if (action === "change") await become(null);
     if (action.startsWith("pick:")) {
       const person = await ctx.call("data", "get", "housemates", action.slice(5));
-      if (!person) return;
-      choosing = false;
-      await become(person);
+      if (person) await become(person);
     }
     if (action === "join" && value.name?.trim()) {
       const name = value.name.trim();
@@ -84,7 +79,6 @@ export default async function (ctx) {
       const result = found ? { ok: true, id: found.id } : await ctx.call("data", "put", "housemates", { name });
       if (!result.ok) return;
       joined++;
-      choosing = false;
       await become({ id: result.id, name: found?.name ?? name });
     }
   });
