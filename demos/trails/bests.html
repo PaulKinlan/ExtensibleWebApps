@@ -1,0 +1,41 @@
+<!--
+  Personal bests. bests.js sends { month, sessions, tiles: [{ id, label,
+  value, unit, from, kind }] }; data-kind gives each tile its colour.
+-->
+<style>
+  .bests { display: flex; flex-direction: column; gap: var(--space-3); }
+  .month { position: relative; overflow: hidden; padding: var(--space-4); border-radius: var(--radius-lg); color: #fff; background: linear-gradient(135deg, #f97316, #db2777 55%, #7c3aed); box-shadow: 0 20px 40px -24px #db2777; }
+  .month::after { content: ""; position: absolute; inset: -40% -20% auto auto; width: 70%; aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, rgb(255 255 255 / 0.25), transparent 70%); }
+  .month small { color: inherit; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.85; }
+  .month strong { display: block; font-weight: 800; font-size: 2.6rem; line-height: 1; font-family: var(--font); letter-spacing: -0.03em; margin: 4px 0; }
+  .month strong small { font-size: 0.4em; letter-spacing: 0; text-transform: none; }
+  .month p { margin: 0; opacity: 0.9; font-size: var(--text-sm); }
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+  .tile { --kind: var(--accent); min-width: 0; display: flex; flex-direction: column; gap: 2px; padding: var(--space-3); border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--kind); }
+  .tile[data-kind="run"] { --kind: #f97316; }
+  .tile[data-kind="ride"] { --kind: #0ea5e9; }
+  .tile[data-kind="hike"] { --kind: #16a34a; }
+  .tile[data-kind="swim"] { --kind: #8b5cf6; }
+  .tile span { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-2); }
+  .tile strong { font-weight: 700; font-size: var(--text-xl); line-height: 1.1; font-family: var(--font); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+  .tile strong small { font-size: 0.55em; color: var(--fg-2); margin-left: 2px; }
+  .tile em { font-style: normal; font-size: 0.72rem; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+</style>
+<template id="bests">
+  <section class="bests" aria-label="Personal bests">
+    <div class="month">
+      <small>This month</small>
+      <strong>{{month}} <small>km</small></strong>
+      <p>{{sessions}} sessions so far.</p>
+    </div>
+    <ul class="tiles">
+      <template for="t of tiles">
+        <li class="tile" key="{{t.id}}" data-kind="{{t.kind}}">
+          <span>{{t.label}}</span>
+          <strong>{{t.value}}<small>{{t.unit}}</small></strong>
+          <em title="{{t.from}}">{{t.from}}</em>
+        </li>
+      </template>
+    </ul>
+  </section>
+</template>
