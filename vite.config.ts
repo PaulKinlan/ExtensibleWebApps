@@ -51,7 +51,7 @@ const asWrittenPaths = (root: string): string[] =>
 // script. In development the script redirects to the TypeScript source (so
 // its relative worker URLs resolve); in the build it is emitted at this path.
 const HOST_CSS = "src/host/styles.css";
-const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".md": "text/markdown" };
+const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".md": "text/markdown", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };
 
 function asWritten(): Plugin {
   const root = process.cwd();
