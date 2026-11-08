@@ -123,6 +123,12 @@ export interface Api {
   commands: {
     add(command: CommandSpec, handler: (args: Record<string, unknown>, about: { by: string }) => unknown): () => void;
   };
+  /**
+   * Answers the calls to a service this plugin provides (its manifest's `provides`, with `provide:<name>`):
+   * `provide("mail", { send: async (message, { caller }) => … })`. Each method gets the call's arguments, then
+   * who called. Returns a function that stops answering.
+   */
+  provide(name: string, methods: Record<string, (...args: any[]) => unknown>): () => void;
   traced(): Api;
   log(text: string, level?: "info" | "error"): void;
 }

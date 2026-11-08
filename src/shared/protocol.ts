@@ -199,6 +199,15 @@ export interface Manifest {
   hooks?: Record<string, PluginHook>;
   /** Services it calls that not every site runs (kernel modules, docs/layers.md): `["llm", "bus"]`. It isn't started without them. */
   services?: string[];
+  /** Services it provides, by name, with the `provide:<name>` permission: `{ mail: { description, methods: { send: { args?, returns?, description, needs? } } } }` (src/kernel/provided.ts). */
+  provides?: Record<string, ProvidedService>;
+}
+
+/** A service a plugin provides: what it is, and each method other plugins may call. */
+export interface ProvidedService {
+  description: string;
+  /** Each method; `params` describes its arguments, so tools offers it to agents (MethodDoc.params). */
+  methods: Record<string, { args?: string; returns?: string; description: string; needs?: string; params?: { name: string; schema: Record<string, unknown>; optional?: boolean }[] }>;
 }
 
 /** A hook a plugin defines in its manifest. The limits are the kernel's (PLUGIN_HOOKS in src/kernel/hooks.ts). */

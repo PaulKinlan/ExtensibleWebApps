@@ -26,6 +26,7 @@ const CORE = [
   "modules.ts",
   "net.ts",
   "paths.ts",
+  "provided.ts",
   "records.ts",
   "reference.ts",
   "remote.ts",

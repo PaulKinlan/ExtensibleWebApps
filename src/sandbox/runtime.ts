@@ -117,6 +117,14 @@ function api(trace: () => string | undefined): Api {
         };
       },
     },
+    provide(name, methods) {
+      // The result goes back as { value }, so the kernel can tell it from its own failure answers.
+      return self.on(`service:${name}`, async ({ method, args, caller }: { method: string; args: unknown[]; caller: string }) => {
+        const handler = Object.hasOwn(methods, method) ? methods[method] : undefined;
+        if (typeof handler !== "function") throw new Error(`${name}.${method} has no handler`);
+        return { value: await handler(...(Array.isArray(args) ? args : []), { caller }) };
+      });
+    },
     ui: {
       render(slot: Slot, key: string, view: View | string | null, order?: number) {
         send({ t: "render", slot, key, view: typeof view === "string" ? { type: "html", html: view } : view, order, trace: trace() });

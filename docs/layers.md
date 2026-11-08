@@ -53,6 +53,7 @@ The core is what every app and every space server needs to run any plugin at all
 | Describing itself | [`reference.ts`](../src/kernel/reference.ts) | The [API reference](api.md), built from the tables the kernel enforces |
 | Wiring | [`kernel.ts`](../src/kernel/kernel.ts) | Puts the pieces together |
 | Kernel modules | [`modules.ts`](../src/kernel/modules.ts), [`kernel-modules.d.ts`](../src/kernel/kernel-modules.d.ts) | Runs the modules the site lists in `kernel.json` (below) |
+| Services plugins provide | [`provided.ts`](../src/kernel/provided.ts) | Passes calls to a service a sandboxed plugin provides on to that plugin (below) |
 
 And the services every plugin relies on: `kernel`, `settings`, `plugins`, `storage`, `files`, `data`, `secrets`, `net` and `hooks`. Most are made beside the module they belong to; four are a file each, which [`services/index.ts`](../src/kernel/services/index.ts) finds by name: [`services/files.ts`](../src/kernel/services/files.ts), [`services/hooks.ts`](../src/kernel/services/hooks.ts), [`services/kernel.ts`](../src/kernel/services/kernel.ts) and [`services/storage.ts`](../src/kernel/services/storage.ts).
 
@@ -114,9 +115,46 @@ The plan, being reviewed now, splits this layer out of the core:
 
 1. Each of the services above becomes a kernel module, as `debug` has, naming the modules it `uses` (agents uses `llm`, `tools` and `bus`). This repo's `kernel.json` lists them all, so no demo changes.
 2. A smaller site lists fewer, and has less built in.
-3. A sandboxed plugin can provide a service too. Then much of what is trusted code today can be a std plugin, and a plugin a person or their agent writes can add a service as first-class as one the platform ships.
+3. Services that don't need trusted code become std plugins that provide them (below), such as email delivery.
 
 [`tests/checks/kernel-layers.mjs`](../tests/checks/kernel-layers.mjs) keeps the lists on this page honest: it fails when a file in `src/kernel/` is on neither the core list nor the services list, so a new file has to say which layer it is in.
+
+## Plugins that provide services
+
+A sandboxed plugin can provide a service, as a Cordis plugin can. A std plugin, a person's own plugin, or one their agent wrote can add a service the site didn't build in, and other plugins call it like any other:
+
+```js
+export const manifest = {
+  id: "mailer",
+  name: "Mailer",
+  permissions: ["provide:mail", "network:api.example.com"],
+  provides: {
+    mail: {
+      description: "Sends mail.",
+      methods: {
+        send: {
+          args: "({ to, subject, text })",
+          returns: "{ id }",
+          description: "Sends one message.",
+          // Optional: the arguments, in the collections' schema subset, so the tools service offers the method to agents.
+          params: [{ name: "message", schema: { type: "object", required: ["to"], properties: { to: { type: "string" }, subject: { type: "string" }, text: { type: "string" } } } }],
+        },
+      },
+    },
+  },
+};
+
+export default (ctx) =>
+  ctx.provide("mail", {
+    send: async ({ to, subject, text }, { caller }) => ({ id: "…" }),
+  });
+```
+
+- A plugin with the permission `mail` calls it: `await ctx.call("mail", "send", { to, subject, text })`. A method's `needs` can ask for a different permission.
+- Each call goes to the provider through a hook named after it, so no other plugin can answer in its place. The provider hears which plugin called, and what it throws fails the call ([`provided.ts`](../src/kernel/provided.ts)).
+- Its methods go into the [API reference](api.md). A method whose manifest entry has `params` is also offered by the `tools` service, so an agent can call it.
+- A name the kernel, a kernel module or another plugin already has is refused, never shadowed. Plugins that list the service in `services` and open in the same app as its provider (or start from the same data folder, or on the same space server) wait for it to start. If the provider is then refused, they are stopped too, saying which service is missing.
+- It runs in its own worker like any plugin, so providing a service gives it no rights beyond its own manifest.
 
 ## std plugins
 
