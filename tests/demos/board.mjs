@@ -65,6 +65,26 @@ export default async function (page, { check, proof }) {
   await page.waitForTimeout(400);
   proof.forged = await page.locator(`${board} .column[data-column="done"] .card:has-text("Haptics for rain alerts")`).count();
   check("a card dragged onto another column lands above the card it was dropped on, and a drop from outside the view moves nothing", proof.dragged && proof.forged === 0, JSON.stringify({ dragged: proof.dragged, forged: proof.forged }));
+  const order = () => page.evaluate((b) => [...document.querySelectorAll(`${b} .column[data-column="review"] .card`)].map((c) => c.dataset.id), board);
+  // Put down where it was picked up, a card stays where it is.
+  const before = await order();
+  await page.evaluate((b) => {
+    const card = document.querySelector(`${b} .column[data-column="review"] .card[data-id]`);
+    const data = new DataTransfer();
+    for (const type of ["dragstart", "dragover", "drop", "dragend"]) card.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: data }));
+  }, board);
+  await page.waitForTimeout(400);
+  proof.selfDrop = { before, after: await order() };
+  // Without a pointer, ↓ moves a card down its column.
+  await page.click(`${haptics} button[aria-label="Move down"]`);
+  proof.down = await page
+    .waitForFunction(([b, id]) => [...document.querySelectorAll(`${b} .column[data-column="review"] .card`)].map((c) => c.dataset.id).indexOf(id) === 1, [board, before[0]], { timeout: 5000 })
+    .then(() => true, () => false);
+  check(
+    "a card dropped on itself stays put, and ↓ moves a card down its column without a pointer",
+    JSON.stringify(proof.selfDrop.before) === JSON.stringify(proof.selfDrop.after) && proof.down,
+    JSON.stringify({ selfDrop: proof.selfDrop, down: proof.down }),
+  );
 
   // A card's screen: its own address, controls that save as they change, and the checklist in the room it leaves.
   await page.click(`${icons} .title a`);

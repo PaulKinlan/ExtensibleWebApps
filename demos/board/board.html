@@ -201,6 +201,8 @@
                     <template if="c.points"><span class="points" title="Points">{{c.points}} pt</span></template>
                     <slot class="badges" name="studio.card.badges" data-id="{{c.id}}" data-due="{{c.due}}" data-column="{{c.column}}" data-title="{{c.title}}"></slot>
                     <span class="end">
+                      <button class="move" data-action="order" data-value="{{c.id}}|-1" disabled="{{c.top}}" aria-label="Move up" title="Move up">↑</button>
+                      <button class="move" data-action="order" data-value="{{c.id}}|1" disabled="{{c.bottom}}" aria-label="Move down" title="Move down">↓</button>
                       <button class="move" data-action="move" data-value="{{c.id}}|-1" disabled="{{c.first}}" aria-label="Move back a stage" title="Move back">‹</button>
                       <button class="move" data-action="move" data-value="{{c.id}}|1" disabled="{{c.last}}" aria-label="Move on a stage" title="Move on">›</button>
                     </span>
