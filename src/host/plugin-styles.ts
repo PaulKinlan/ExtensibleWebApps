@@ -58,14 +58,54 @@ export function cleanCss(css: string): string {
   return [...sheet.cssRules].map(cleanRule).filter(Boolean).join("\n");
 }
 
-/** Drops declarations that load something, and !important, in place. */
+/**
+ * Drops declarations that load something, and !important, in place. A shorthand written with var(), like
+ * `font: 600 1rem var(--mono)`, lists as its longhands with empty values until the variable is known, so for
+ * those the shorthand itself is checked. A block where anything still loads something or is still !important
+ * after that is dropped whole.
+ */
 function cleanDeclarations(style: CSSStyleDeclaration): string {
   for (const name of [...style]) {
     const value = style.getPropertyValue(name);
-    if (LOADS.test(value)) style.removeProperty(name);
-    else if (style.getPropertyPriority(name)) style.setProperty(name, value);
+    if (value) {
+      if (LOADS.test(value)) style.removeProperty(name);
+      else if (style.getPropertyPriority(name)) style.setProperty(name, value);
+      continue;
+    }
+    const shorthand = shorthandsOf(name).find((s) => style.getPropertyValue(s));
+    if (!shorthand) continue;
+    const whole = style.getPropertyValue(shorthand);
+    if (LOADS.test(whole)) style.removeProperty(shorthand);
+    else if (style.getPropertyPriority(shorthand)) style.setProperty(shorthand, whole);
   }
-  return style.cssText;
+  // What's left, checked again: the priority as the browser reads it (not the text, where a string may say
+  // "!important"), and the whole text for anything that loads.
+  if ([...style].some((name) => style.getPropertyPriority(name))) return "";
+  const text = style.cssText;
+  return LOADS.test(text) ? "" : text;
+}
+
+let shorthands: Map<string, string[]> | undefined;
+
+/**
+ * The shorthands a longhand belongs to (border-top-color → border-top, border-color, border; row-gap → gap),
+ * as this browser has them: each property is set to var() on a scratch style, and a shorthand lists its longhands.
+ */
+function shorthandsOf(name: string): string[] {
+  if (!shorthands) {
+    shorthands = new Map();
+    const scratch = document.createElement("div").style;
+    const names = new Set<string>();
+    for (let o: object | null = scratch; o; o = Object.getPrototypeOf(o))
+      for (const key of Object.getOwnPropertyNames(o)) if (/^[a-z][a-zA-Z]+$/.test(key)) names.add(key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`));
+    for (const property of names) {
+      scratch.cssText = `${property}: var(--x)`;
+      const longhands = [...scratch];
+      if (longhands.length < 2 && longhands[0] === property) continue;
+      for (const longhand of longhands) if (longhand !== property) shorthands.set(longhand, [...(shorthands.get(longhand) ?? []), property]);
+    }
+  }
+  return shorthands.get(name) ?? [];
 }
 
 function cleanRule(rule: CSSRule): string {

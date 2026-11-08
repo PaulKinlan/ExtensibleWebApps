@@ -24,4 +24,21 @@ export default async function ({ a, check }) {
     @keyframes spin { to { rotate: 1turn; } }
     .n { color: red; & .m { color: blue; } padding: 2px; }`));
   check("a plugin's CSS is cleaned: no url(), @import, @font-face or !important", !/url|import|font-face|important|keyframes|example/i.test(cleanCss) && /\.a \{[^}]*padding: 4px;[^}]*color: red;/.test(cleanCss) && /@media .*\.b \{ margin: 1px; \}/s.test(cleanCss) && /\.n \{[^]*padding: 2px/.test(cleanCss), cleanCss);
+  // A shorthand written with var() lists as empty longhands, so the cleaner reads the shorthand itself.
+  const shorthands = await a.evaluate(() => window.__host.cleanCss(`.s { background: var(--bg) url(https://example.com/s.png); color: red; }
+    .t { color: red; & .u { border-image: var(--x) url(https://example.com/u.png) 30; } }
+    .v { font: 600 1rem/1.2 var(--mono) !important; margin: var(--m) !important; }`));
+  check(
+    "a shorthand written with var() is checked whole: one that loads something goes, and one with !important stays, without it",
+    !/url|example|important/i.test(shorthands) && /\.s \{ color: red; \}/.test(shorthands) && /font: 600 1rem\/1\.2 var\(--mono\)/.test(shorthands) && /margin: var\(--m\)/.test(shorthands),
+    shorthands,
+  );
+  // Shorthands whose longhands don't share their name (gap: row-gap, column-gap), and a string that only says "!important".
+  const others = await a.evaluate(() => window.__host.cleanCss(`.g { gap: var(--g); columns: var(--c); place-items: var(--p); flex-flow: var(--f); }
+    .q::before { content: "!important"; color: red; }`));
+  check(
+    "a var() shorthand named apart from its longhands (gap, columns, place-items, flex-flow) is kept, and so is a string that says !important",
+    /gap: var\(--g\)/.test(others) && /columns: var\(--c\)/.test(others) && /place-items: var\(--p\)/.test(others) && /flex-flow: var\(--f\)/.test(others) && /content: "!important"; color: red;/.test(others),
+    others,
+  );
 }
