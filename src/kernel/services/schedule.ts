@@ -59,14 +59,15 @@ export default ({ root, store, remote }: Kernel): ServiceProvider => {
 
   async function due(name: string): Promise<void> {
     const [plugin, job] = name.split(" ");
+    const hook = scheduleHook(plugin, job);
+    const listening = () => [...remote.live.values()].some((live) => base(live.instance) === plugin && live.heard.includes(hook));
+    // A space just started may still be installing its plugins: wait for this one before deciding anything.
+    for (let waited = 0; !listening() && waited < WAIT_FOR_PLUGIN; waited += 250) await new Promise((r) => setTimeout(r, 250));
     // Its plugin is gone: so is the job.
-    if (!remote.installed.has(plugin)) {
+    if (!listening() && !remote.installed.has(plugin)) {
       jobs.delete(name);
       return void (await saved());
     }
-    const hook = scheduleHook(plugin, job);
-    const listening = () => [...remote.live.values()].some((live) => base(live.instance) === plugin && live.heard.includes(hook));
-    for (let waited = 0; !listening() && waited < WAIT_FOR_PLUGIN; waited += 250) await new Promise((r) => setTimeout(r, 250));
     await saved();
     if (!listening()) return void record({ kind: "error", name: "schedule:missed", plugin, detail: `${job}: the plugin isn't listening for it` });
     const trace = `job-${Math.random().toString(36).slice(2, 8)}`;

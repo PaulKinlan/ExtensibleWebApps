@@ -23,7 +23,8 @@ const MAX_TO = 10;
 const MAX_PER_DAY = 50;
 const MAX_SUBJECT = 200;
 const MAX_BODY = 100_000;
-const ADDRESS = /^[^@\s<>,;"]+@[^@\s<>,;"]+\.[^@\s<>,;"]+$/;
+// A local part, then a domain of dot-separated labels with none empty. No spaces, controls or separators anywhere.
+const ADDRESS = /^[^@\s\x00-\x1f\x7f<>,;"]+@[^@\s\x00-\x1f\x7f<>,;".]+(\.[^@\s\x00-\x1f\x7f<>,;".]+)+$/;
 
 const base = (instance: string) => instance.split("@")[0];
 const today = () => new Date().toISOString().slice(0, 10);
@@ -34,6 +35,12 @@ export interface Mail {
   text: string;
   html?: string;
 }
+
+/** An address with its domain in lowercase. The part before the @ is kept as written: it may be case-sensitive. */
+const normal = (address: string) => {
+  const at = address.lastIndexOf("@");
+  return address.slice(0, at) + address.slice(at).toLowerCase();
+};
 
 /** The message as the plugin gave it, checked: or throws, saying what is wrong. */
 export function checkMail(value: unknown): Mail {
@@ -48,7 +55,7 @@ export function checkMail(value: unknown): Mail {
   if (typeof m.text !== "string") throw new Error("A message needs `text`, its plain words");
   if (m.html !== undefined && typeof m.html !== "string") throw new Error("A message's `html` is a string");
   if (m.text.length + (m.html?.length ?? 0) > MAX_BODY) throw new Error("The message is too long");
-  return { to: [...new Set(to.map((a: string) => a.toLowerCase()))], subject: m.subject, text: m.text, ...(m.html !== undefined && { html: m.html }) };
+  return { to: [...new Set(to.map(normal))], subject: m.subject, text: m.text, ...(m.html !== undefined && { html: m.html }) };
 }
 
 export default ({ store }: Kernel): ServiceProvider => {
@@ -57,7 +64,8 @@ export default ({ store }: Kernel): ServiceProvider => {
 
   async function send(plugin: string, mail: Mail, trace?: string) {
     const saved = await store.readJson<{ day?: string; sent?: Record<string, number> }>(COUNTS, {});
-    const counts = saved.day === today() ? { ...saved.sent } : {};
+    // No prototype, so a plugin named like one of Object's own properties (constructor) starts at zero too.
+    const counts: Record<string, number> = Object.assign(Object.create(null), saved.day === today() ? saved.sent : {});
     if ((counts[plugin] ?? 0) >= MAX_PER_DAY) {
       record({ kind: "denied", name: "email:limit", plugin, trace, detail: `${MAX_PER_DAY} a day` });
       throw new Error(`A plugin sends at most ${MAX_PER_DAY} messages a day`);
