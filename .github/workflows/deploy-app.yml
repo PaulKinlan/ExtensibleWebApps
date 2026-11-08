@@ -1,0 +1,63 @@
+# Deploys one app as a Cloudflare Worker of its own (scripts/deploy-app.mjs,
+# docs/guide/deploying-an-app.md), from GitHub, so nobody has to run Wrangler
+# on their own machine.
+#
+# Run it from the Actions tab ("Deploy one app" → Run workflow), or with
+#   gh workflow run deploy-app.yml -f app=demos/habits
+#
+# It needs two repository secrets, set once:
+#   CLOUDFLARE_API_TOKEN    a token made from the "Edit Cloudflare Workers" template
+#   CLOUDFLARE_ACCOUNT_ID   the account the Workers go in
+
+name: Deploy one app
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "The app's folder, e.g. demos/habits"
+        required: true
+        default: demos/habits
+      name:
+        description: "The Worker's name (and so its address). Empty: the folder's name"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-app-${{ inputs.app }}-${{ inputs.name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          APP: ${{ inputs.app }}
+          NAME: ${{ inputs.name }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets first (docs/guide/deploying-an-app.md)"
+            exit 1
+          fi
+          set -o pipefail
+          npm run deploy:app -- "$APP" ${NAME:+--name "$NAME"} 2>&1 | tee deploy.log
+          url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | tail -1 || true)
+          {
+            echo "### Deployed \`$APP\`"
+            if [ -n "$url" ]; then echo "Open $url/"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
