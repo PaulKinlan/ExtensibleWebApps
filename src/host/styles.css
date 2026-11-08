@@ -8,20 +8,20 @@
 
 @layer platform {
 :root {
-  --bg: light-dark(#fbfaf8, #1c1b1a);
-  --bg-2: light-dark(#f2f0ec, #252321);
-  --fg: light-dark(#22201d, #ece9e4);
-  --fg-2: light-dark(#5f5a53, #aaa49b);
-  --border: light-dark(#dedad3, #3a3734);
-  --accent: light-dark(#2563eb, #6b9bff);
-  --accent-fg: light-dark(#fff, #0b1020);
-  --danger: light-dark(#b42318, #ff7b72);
-  --ok: light-dark(#1a7f37, #56d364);
-  --warn: light-dark(#9a6700, #e3b341);
-  --surface: light-dark(#ffffff, #232120);
-  --radius-sm: 4px;
-  --radius: 6px;
-  --radius-lg: 10px;
+  --bg: light-dark(#f6f6f8, #131316);
+  --bg-2: light-dark(#ececf0, #1c1c21);
+  --fg: light-dark(#17171c, #ededf0);
+  --fg-2: light-dark(#5c5c6a, #a3a3b0);
+  --border: light-dark(#dfdfe6, #2e2e36);
+  --accent: light-dark(#4f46e5, #8f8cff);
+  --accent-fg: light-dark(#fff, #0d0c22);
+  --danger: light-dark(#c0262d, #ff7b7b);
+  --ok: light-dark(#18794e, #4cd38a);
+  --warn: light-dark(#a35200, #f0b44c);
+  --surface: light-dark(#ffffff, #1b1b20);
+  --radius-sm: 5px;
+  --radius: 8px;
+  --radius-lg: 12px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -33,15 +33,20 @@
   --text-lg: 16px;
   --text-xl: 20px;
   --text-2xl: 26px;
-  --shadow-1: 0 1px 2px light-dark(rgb(0 0 0 / 0.06), rgb(0 0 0 / 0.4));
+  --shadow-1: 0 1px 2px light-dark(rgb(16 16 32 / 0.06), rgb(0 0 0 / 0.4)), 0 1px 1px light-dark(rgb(16 16 32 / 0.03), rgb(0 0 0 / 0.2));
+  --shadow-2: 0 4px 12px light-dark(rgb(16 16 32 / 0.08), rgb(0 0 0 / 0.45)), 0 1px 3px light-dark(rgb(16 16 32 / 0.06), rgb(0 0 0 / 0.3));
+  /* The focus ring, the same on every control. */
+  --ring: color-mix(in srgb, var(--accent) 70%, transparent);
   --duration: 140ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
-  --font: system-ui, sans-serif;
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
   color-scheme: light dark;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font); min-height: 100vh; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font); min-height: 100vh; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
 /* A <slot name> in the page is where plugins draw; what the page put inside it shows until one does. */
 slot, .fallback { display: contents; }
 .fallback[hidden] { display: none; }
@@ -49,15 +54,19 @@ slot, .fallback { display: contents; }
 /* ---- App pages (app.html): header, main, an optional aside, footer. One column on phones. ---- */
 body:not(.workbench) { display: grid; grid-template: "header header" auto "main aside" 1fr "footer footer" auto / minmax(0, 1fr) minmax(0, 320px); }
 body:not(.workbench):not(:has(> aside)) { grid-template: "header" auto "main" 1fr "footer" auto / minmax(0, 1fr); }
-body:not(.workbench) > header { grid-area: header; display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
-body:not(.workbench) > header h1 { margin: 0; font-size: var(--text-lg); }
-body:not(.workbench) > main, body:not(.workbench) > aside { min-width: 0; padding: 16px; display: flex; flex-direction: column; gap: var(--space-4); }
+body:not(.workbench) > header { grid-area: header; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; min-height: 56px; padding: 10px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
+body > header :is(h1, strong) a { color: inherit; text-decoration: none; }
+body:not(.workbench) > header h1 { margin: 0; font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.01em; }
+body:not(.workbench) > main, body:not(.workbench) > aside { min-width: 0; padding: 24px; display: flex; flex-direction: column; align-content: start; gap: var(--space-4); }
+body:not(.workbench) > main { width: 100%; max-width: 1080px; justify-self: center; }
 body:not(.workbench) > main { grid-area: main; }
 body:not(.workbench) > aside { grid-area: aside; border-left: 1px solid var(--border); }
-body:not(.workbench) > footer { grid-area: footer; padding: 6px 16px; border-top: 1px solid var(--border); color: var(--fg-2); font-size: var(--text-sm); }
+body:not(.workbench) > footer { grid-area: footer; padding: 8px 24px; border-top: 1px solid var(--border); color: var(--fg-2); font-size: var(--text-sm); }
 @media (max-width: 800px) {
   body:not(.workbench) { grid-template: "header" auto "main" auto "aside" auto "footer" auto / minmax(0, 1fr); }
   body:not(.workbench) > aside { border-left: 0; border-top: 1px solid var(--border); }
+  body:not(.workbench) > header { padding: 10px 16px; }
+  body:not(.workbench) > main, body:not(.workbench) > aside { padding: 16px; }
 }
 
 /* ---- The workbench (index.html): notes, every plugin's views, the plugins panel and the trace ---- */
@@ -88,17 +97,27 @@ dialog#review > [data-key] + [data-key] { margin-top: 16px; padding-top: 16px; b
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .stack.row { flex-direction: row; align-items: center; }
 h2 { font-size: 15px; margin: 0; }
-button { font: inherit; height: 28px; padding: 0 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--bg); color: var(--fg); cursor: pointer; }
-button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-button:focus-visible, textarea:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+/* Buttons, and links made to look like one (<a class="button">). */
+button, a.button { font: inherit; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 32px; padding: 0 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-1); cursor: pointer; text-decoration: none; white-space: nowrap; transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease); }
+/* States name the element as the base rule does, so they outrank it. */
+button:hover, a.button:hover { background: var(--bg-2); border-color: color-mix(in srgb, var(--fg) 22%, var(--border)); }
+button:active, a.button:active { box-shadow: none; transform: translateY(0.5px); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary, a.button.primary, form > button[type="submit"]:only-of-type { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+button.primary:hover, a.button.primary:hover, form > button[type="submit"]:only-of-type:hover { background: color-mix(in srgb, var(--accent) 88%, black); border-color: color-mix(in srgb, var(--accent) 88%, black); }
+:where(button, a.button, input, select, textarea, summary):focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
+/* Fields on a plain page (an HTML view and label.field style their own below). */
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select) { font: inherit; min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); transition: border-color var(--duration) var(--ease); }
+:where(input, select, textarea):hover { border-color: color-mix(in srgb, var(--fg) 28%, var(--border)); }
+:where(input, textarea)::placeholder { color: color-mix(in srgb, var(--fg-2) 75%, transparent); }
+:where(input[type="checkbox"], input[type="radio"], input[type="range"], progress, meter) { accent-color: var(--accent); }
 ul.list { list-style: none; margin: 0; padding: 0; }
-ul.list li button { width: 100%; text-align: left; border: 0; background: none; }
+ul.list li button { width: 100%; justify-content: flex-start; text-align: left; border: 0; background: none; box-shadow: none; }
 ul.list li button[aria-current="true"] { background: color-mix(in srgb, var(--accent) 15%, transparent); }
-textarea { width: 100%; min-height: 240px; font: 15px/1.7 var(--font); padding: 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); resize: vertical; }
+textarea { width: 100%; min-height: 240px; font: 15px/1.7 var(--font); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); resize: vertical; }
 label.field { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
 label.field.checkbox { flex-direction: row; align-items: center; gap: 6px; }
-label.field input:not([type="checkbox"]), label.field select { font: inherit; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
-label.field :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+label.field input:not([type="checkbox"]), label.field select { font: inherit; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); }
 pre.diff { margin: 0; padding: 8px 0; max-height: 320px; overflow: auto; font: 13px/1.5 var(--mono); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); }
 pre.diff span { display: block; padding: 0 10px; white-space: pre-wrap; }
 pre.diff .add { background: color-mix(in srgb, var(--ok) 16%, transparent); }
@@ -114,7 +133,7 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 #reference-text { font: 12px/1.5 var(--mono); max-height: 360px; overflow: auto; margin: 0 0 8px; padding: 8px 10px; white-space: pre-wrap; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); }
 #trace li.denied, #trace li.error { color: var(--danger); }
 #notice { position: fixed; right: 16px; bottom: 16px; max-width: 360px; }
-#notice p { margin: 4px 0 0; padding: 8px 12px; border-radius: var(--radius); background: var(--fg); color: var(--bg); }
+#notice p { margin: 4px 0 0; padding: 10px 14px; border-radius: var(--radius); background: var(--fg); color: var(--bg); box-shadow: var(--shadow-2); }
 /* Places: a plugin's views in a page that left no slot for them (places.ts). */
 .place { display: contents; }
 /* The default app layout puts body's children in named areas; a place right in <body> would land after the footer, so it spans the page instead. Target inside <main> or <header> to place it exactly. */
@@ -122,9 +141,11 @@ body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
 [hidden] { display: none !important; }
 .place-pending { outline: 2px dashed var(--accent); outline-offset: 4px; }
 /* The Customize button and panel, on every app page. */
-.customize-button { position: fixed; left: 16px; bottom: 16px; z-index: 10; box-shadow: var(--shadow-1); background: var(--surface); }
-dialog.customize { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); font: var(--text-md)/1.5 var(--font); }
-dialog.customize::backdrop { background: rgb(0 0 0 / 0.35); }
+.customize-button { position: fixed; left: 16px; bottom: 16px; z-index: 10; box-shadow: var(--shadow-2); background: var(--surface); border-radius: 999px; }
+/* The debug console's bug sits in the same corner by default, and grows with its count: the button goes above it. */
+body:has(slot[name="debug"] ui-debug:not([corner]), slot[name="debug"] ui-debug[corner="bottom-left"]) .customize-button { bottom: 68px; }
+dialog.customize { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); font: var(--text-md)/1.5 var(--font); box-shadow: var(--shadow-2); }
+dialog.customize::backdrop { background: rgb(10 10 20 / 0.4); backdrop-filter: blur(2px); }
 dialog.customize h2 { font-size: var(--text-lg); }
 dialog.customize h3 { font-size: var(--text-md); margin: var(--space-4) 0 var(--space-2); }
 dialog.customize p { margin: var(--space-1) 0; }
@@ -180,14 +201,15 @@ body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; o
 .html-view summary { cursor: pointer; font-weight: 600; }
 .html-view form, .html-view fieldset { display: flex; flex-direction: column; gap: var(--space-3); }
 .html-view fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); }
-.html-view label { display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-sm); color: var(--fg-2); }
+.html-view label { display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); font-weight: 500; color: var(--fg-2); }
 .html-view label:has(> input[type="checkbox"], > input[type="radio"]) { flex-direction: row; align-items: center; gap: var(--space-2); color: var(--fg); font-size: var(--text-md); }
-.html-view :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea) { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 32px; padding: 0 var(--space-2); transition: border-color var(--duration) var(--ease); }
-.html-view textarea { padding: var(--space-2); min-height: 96px; resize: vertical; }
+.html-view :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea) { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 36px; padding: 0 10px; transition: border-color var(--duration) var(--ease); }
+.html-view textarea { padding: var(--space-2) 10px; min-height: 96px; resize: vertical; }
 .html-view :where(input, select, textarea):hover { border-color: color-mix(in srgb, var(--fg) 30%, var(--border)); }
-.html-view :where(input, select, textarea, button, a, summary):focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; }
+.html-view :where(input, select, textarea, button, a, summary):focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
+.html-view :where(input, select, textarea):focus { border-color: var(--accent); }
 .html-view input:user-invalid { border-color: var(--danger); }
-.html-view button { height: 32px; padding: 0 var(--space-3); border-radius: var(--radius); font-weight: 500; transition: background var(--duration) var(--ease); }
+.html-view button { height: 32px; padding: 0 14px; border-radius: var(--radius); font-weight: 500; }
 .html-view button:hover { background: var(--bg-2); }
 .html-view button[type="submit"], .html-view button[data-primary] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .html-view button[type="submit"]:hover, .html-view button[data-primary]:hover { background: color-mix(in srgb, var(--accent) 88%, black); }
@@ -211,5 +233,7 @@ slot[name="debug"] > [data-plugin]:has(ui-debug[corner="inline"]) { position: st
 }
 
 /* The site's own links in an app's header (Home, All demos, Docs, Workbench), pushed to the end. */
-body > header nav.site { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-left: auto; }
-body > header nav.site a[aria-current="page"] { color: inherit; text-decoration: none; font-weight: 600; }
+body > header nav.site { display: flex; flex-wrap: wrap; gap: 2px; margin-left: auto; }
+body > header nav.site a { padding: 6px 10px; border-radius: var(--radius); color: var(--fg-2); text-decoration: none; font-weight: 500; transition: background var(--duration) var(--ease), color var(--duration) var(--ease); }
+body > header nav.site a:hover { background: var(--bg-2); color: var(--fg); }
+body > header nav.site a[aria-current="page"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); font-weight: 600; }
