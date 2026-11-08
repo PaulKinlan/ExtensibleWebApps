@@ -65,9 +65,9 @@ async function whileLoading<T>(load: () => Promise<T>): Promise<T> {
   }
 }
 
-/** The kernel's answer for a public route, once it has started. */
 /** Starts the kernel's plugins and jobs with no client (for an alarm), once it has loaded. */
 let boot: (() => void) | undefined;
+/** The kernel's answer for a public route, once it has started. */
 let answerRoute: ((request: RouteRequest) => Promise<RouteResponse | null>) | undefined;
 
 export class SpaceKernel extends DurableObject {
