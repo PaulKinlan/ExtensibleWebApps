@@ -1,6 +1,6 @@
 <!--
   The builder. surveys.js sends { editing, space, surveys: [{ id, title,
-  open, closed, notify, count, link, questions: [{ label, most, choices?:
+  open, closed, notify, count, link, shared, questions: [{ label, most, choices?:
   [{ choice, n }], said?: [text] }] }] }. Each choice's bar is a <meter>,
   so a screen reader says it too.
 -->
@@ -31,7 +31,7 @@
   </ui-toolbar>
 
   <template if="!space">
-    <p class="note">Answers are collected by a server. Open this app in a space (from your <a href="/account/">account</a>), and each survey gets an address anyone can answer at, signed in or not.</p>
+    <p class="note">Answers are collected by a server, so sharing a survey needs a space. Make one on your <a href="/account/">account</a> page and open Surveys in it (at /s/your-space/demos/survey/). Each survey then gets a link anyone can answer at, signed in or not.</p>
   </template>
 
   <ui-card>
@@ -60,7 +60,7 @@
         </header>
         <template if="space">
           <p class="share">
-            <template if="s.open">Anyone can answer at <a href="{{s.link}}" data-test="link">{{s.link}}</a></template>
+            <template if="s.open">Anyone can answer at <a href="{{s.link}}" data-test="link">{{s.link}}</a> <button data-action="share" data-value="{{s.id}}">Share link</button> <span role="status">{{s.shared}}</span></template>
             <template if="!s.open">Closed: the address says so.</template>
             <template if="s.notify"><ui-badge>Digest to {{s.notify}}</ui-badge></template>
           </p>
