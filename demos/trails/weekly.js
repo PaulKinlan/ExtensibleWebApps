@@ -2,9 +2,10 @@
 // drawn on a canvas in this plugin's worker. It reads the log and draws
 // again when it changes; bars grow into place over half a second.
 //
-// A worker can't read the page's CSS, so it can't see the design tokens or
-// whether the page is light or dark. The colours here are mid-tones that
-// read on both, and the gridlines are translucent grey.
+// A worker can't read the page's CSS, so the canvas comes with the page's
+// theme (its colours resolved, its font), and the theme comes again when it
+// changes: gridlines and labels follow it, light or dark, and so does a theme
+// like samples/forest.js. The bar colours are mid-tones that read on both.
 
 export const manifest = {
   id: "weekly",
@@ -35,6 +36,8 @@ const monday = (d) => {
 
 export default async function (ctx) {
   let canvas = null;
+  /** The page's theme, from the canvas: { scheme, colors, font }. */
+  let theme = null;
   let weeks = [];
   let shown = [];
   let started = 0;
@@ -96,17 +99,17 @@ export default async function (ctx) {
     const y = (km) => H - pad.b - (km / top) * (H - pad.t - pad.b);
 
     // Gridlines and their labels.
-    g.font = "500 20px system-ui, sans-serif";
+    g.font = `500 20px ${theme?.font ?? "system-ui, sans-serif"}`;
     g.textAlign = "right";
     g.textBaseline = "middle";
     for (let km = 0; km <= top; km += top / 4) {
-      g.strokeStyle = "rgba(128,128,128,0.18)";
+      g.strokeStyle = theme?.colors.border ?? "rgba(128,128,128,0.18)";
       g.lineWidth = 1;
       g.beginPath();
       g.moveTo(pad.l, y(km));
       g.lineTo(W - pad.r, y(km));
       g.stroke();
-      g.fillStyle = "rgba(128,128,128,0.9)";
+      g.fillStyle = theme?.colors["fg-2"] ?? "rgba(128,128,128,0.9)";
       g.fillText(`${Math.round(km)}`, pad.l - 12, y(km));
     }
 
@@ -128,13 +131,13 @@ export default async function (ctx) {
         base += km;
       });
       if (i === WEEKS - 1) {
-        g.fillStyle = "rgba(128,128,128,0.9)";
+        g.fillStyle = theme?.colors["fg-2"] ?? "rgba(128,128,128,0.9)";
         g.textAlign = "center";
         g.textBaseline = "bottom";
         g.fillText(`${Math.round(totals[i])} km`, x + bar / 2, y(base) - 8);
       }
       if (i % 2 === WEEKS % 2 || i === WEEKS - 1) {
-        g.fillStyle = "rgba(128,128,128,0.9)";
+        g.fillStyle = theme?.colors["fg-2"] ?? "rgba(128,128,128,0.9)";
         g.textAlign = "center";
         g.textBaseline = "top";
         g.fillText(i === WEEKS - 1 ? "This week" : w.label, x + bar / 2, H - pad.b + 14);
@@ -145,9 +148,18 @@ export default async function (ctx) {
   };
 
   ctx.on("data:changed:activities", load);
-  ctx.ui.onCanvas("weeks", (offscreen) => {
+  ctx.ui.onCanvas("weeks", (offscreen, given) => {
     canvas = offscreen;
+    theme = given;
     animate();
+  });
+  // A new theme draws the chart again as it stands, without growing the bars.
+  ctx.ui.onTheme((given) => {
+    theme = given;
+    if (!canvas || animating) return;
+    started = performance.now() - 500;
+    animating = true;
+    requestAnimationFrame(frame);
   });
   await load();
   // "This week" moves on with the calendar: load again at each local midnight.
