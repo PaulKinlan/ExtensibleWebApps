@@ -123,7 +123,11 @@ function listen(entry: Entry) {
   const el = entry.el;
   const event = (action: string, value?: unknown) => send({ t: "event", owner: entry.owner, action, value, trace: newTrace() });
   const timers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
+  // Another plugin's view inside this one (in a slot it declared, or a transform's place) has its own listeners:
+  // its events bubble through here too, and must not reach this entry's plugin.
+  const ours = (e: Event) => e.target instanceof Element && e.target.closest("[data-plugin][data-key]") === el;
   el.addEventListener("click", (e) => {
+    if (!ours(e)) return;
     const target = (e.target as Element).closest("[data-action]");
     if (!target || !el.contains(target) || target.matches(`${CONTROLS}, form`)) return;
     // A submit button in a form sends its action with the form's fields, on submit.
@@ -131,11 +135,13 @@ function listen(entry: Entry) {
     event(target.getAttribute("data-action")!, target.getAttribute("data-value") ?? undefined);
   });
   el.addEventListener("change", (e) => {
+    if (!ours(e)) return;
     const target = e.target as Element;
     if (!target.matches(CONTROLS) || !target.hasAttribute("data-action") || target.hasAttribute("data-live")) return;
     event(target.getAttribute("data-action")!, valueOf(target));
   });
   el.addEventListener("input", (e) => {
+    if (!ours(e)) return;
     const target = e.target as Element;
     if (!target.matches(CONTROLS) || !target.hasAttribute("data-action") || !target.hasAttribute("data-live")) return;
     // Read the action and value now: a redraw may change the control before the timer fires.
@@ -146,12 +152,14 @@ function listen(entry: Entry) {
   });
   // Components (a bound table's row, a bound form's save) report through this event.
   el.addEventListener("ui-action", (e) => {
+    if (!ours(e)) return;
     const { action, value } = (e as CustomEvent<{ action: string; value: unknown }>).detail;
     event(action, value);
   });
   el.addEventListener("submit", (e) => {
     // Never let a plugin's form navigate the page.
     e.preventDefault();
+    if (!ours(e)) return;
     const form = e.target as HTMLFormElement;
     // The button that sent it may name its own action, so one form can be checked or saved.
     if (!form.hasAttribute("data-action")) return;
@@ -304,39 +312,63 @@ const slotData = (name: Slot) => declaredSlots(name).map(([, slot]) => ({ data: 
 /** The plugins that asked page.slots about a name: they hear when its slots change, even before they draw there. */
 const slotWatchers = new Map<Slot, Set<string>>();
 
-/** What the slots of each name looked like when last drawn into. */
-const slotsSeen = new Map<Slot, string>();
+/** What the slots of each name were when last drawn into: their data, and the elements themselves. */
+const slotsSeen = new Map<Slot, { data: string; elements: HTMLElement[] }>();
+/** Plugins being synced right now, so slots inside slots (and their plugins' transforms) can't loop. */
+const syncing = new Set<string>();
 
-/** After a plugin's view changed: fill the slots it declares that are new, and tell the fillers if they changed. */
+/**
+ * After a plugin's view changed: fill the slots it declares that are new or were replaced, and tell the
+ * fillers if what the slots say changed. Fillers whose views went with a slot are synced in turn, so the
+ * slots they declared, and the transforms of their views, follow.
+ */
 function syncDeclared(plugin: string) {
-  const names = new Set<Slot>([...slotsSeen.keys()].filter((name) => name.startsWith(`${plugin}.`)));
-  for (const slot of document.querySelectorAll<HTMLElement>(`[data-plugin="${CSS.escape(plugin)}"] slot[name^="${CSS.escape(plugin)}."]`)) names.add(slot.getAttribute("name")!);
-  for (const name of names) {
-    const seen = JSON.stringify(slotData(name));
-    if (seen === slotsSeen.get(name)) continue;
-    slotsSeen.set(name, seen);
-    if (seen === "[]") slotsSeen.delete(name);
-    const now = new Map(declaredSlots(name));
-    // Entries whose slot went, or now has another index, go; they are drawn again below.
-    for (const [id, entries] of slots) {
-      if (!id.startsWith(`${name}#`)) continue;
-      for (const [key, entry] of entries)
-        if (now.get(id) !== containerOf.get(entry)) {
-          entry.el.remove();
-          entries.delete(key);
-        }
-      if (!entries.size) slots.delete(id);
-    }
-    const owners = new Set<string>();
-    for (const args of [...placeRenders.values()])
-      if (args[0].split("#")[0] === name) {
-        owners.add(args[2]);
-        render(...args);
+  if (syncing.has(plugin)) return;
+  syncing.add(plugin);
+  const gone = new Set<string>();
+  try {
+    const names = new Set<Slot>([...slotsSeen.keys()].filter((name) => name.startsWith(`${plugin}.`)));
+    for (const slot of document.querySelectorAll<HTMLElement>(`[data-plugin="${CSS.escape(plugin)}"] slot[name^="${CSS.escape(plugin)}."]`)) names.add(slot.getAttribute("name")!);
+    for (const name of names) {
+      const elements = declaredSlots(name).map(([, slot]) => slot);
+      const data = JSON.stringify(slotData(name));
+      const before = slotsSeen.get(name);
+      const moved = !before || before.elements.length !== elements.length || before.elements.some((el, i) => el !== elements[i]);
+      if (!moved && data === before?.data) continue;
+      if (elements.length) slotsSeen.set(name, { data, elements });
+      else slotsSeen.delete(name);
+      const now = new Map(declaredSlots(name));
+      // Entries whose slot went, or now has another index, go; they are drawn again below.
+      for (const [id, entries] of slots) {
+        if (!id.startsWith(`${name}#`)) continue;
+        for (const [key, entry] of entries)
+          if (now.get(id) !== containerOf.get(entry)) {
+            entry.el.remove();
+            entries.delete(key);
+            gone.add(pluginOf(entry.owner));
+          }
+        if (!entries.size) slots.delete(id);
       }
-    // A plugin that asked by its id is told by its id, unless one of its instances drew here.
-    for (const plugin of slotWatchers.get(name) ?? []) if (![...owners].some((o) => pluginOf(o) === plugin)) owners.add(plugin);
-    for (const owner of owners) send({ t: "event", owner, action: "slot:changed", value: { slot: name }, trace: newTrace() });
+      const owners = new Set<string>();
+      for (const args of [...placeRenders.values()])
+        if (args[0].split("#")[0] === name) {
+          owners.add(args[2]);
+          render(...args);
+        }
+      // Only a change in what the slots say is news to the fillers; new elements saying the same are just filled again.
+      if (data === before?.data) continue;
+      // A plugin that asked by its id is told by its id, unless one of its instances drew here.
+      for (const asked of slotWatchers.get(name) ?? []) if (![...owners].some((o) => pluginOf(o) === asked)) owners.add(asked);
+      for (const owner of owners) send({ t: "event", owner, action: "slot:changed", value: { slot: name }, trace: newTrace() });
+    }
+  } finally {
+    syncing.delete(plugin);
   }
+  for (const filler of gone)
+    if (filler !== plugin) {
+      pagePlaces.redo(filler);
+      syncDeclared(filler);
+    }
 }
 
 // ---- Places ----

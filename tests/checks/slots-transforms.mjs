@@ -6,6 +6,8 @@ export default async function ({ a, check, openTab, URL }) {
   // Manifests: a transform needs the permission for the plugin it changes.
   const noPermission = await a.evaluate(() => window.__host.command("install", 'export const manifest = { id: "t1", name: "T", permissions: ["ui"], places: { x: { in: "birthdays", at: "li", put: "append" } } };\nexport default () => {};'));
   check("a place inside another plugin's views needs ui:transform:<plugin>", noPermission.ok === false && /ui:transform:birthdays/.test(noPermission.error), noPermission.error);
+  const self = await a.evaluate(() => window.__host.command("install", 'export const manifest = { id: "t2", name: "T", permissions: ["ui", "ui:transform:t2"], places: { x: { in: "t2", at: "li", put: "append" } } };\nexport default () => {};'));
+  check("a plugin can't point a transform at its own views", self.ok === false && /own views/.test(self.error), self.error);
 
   const page = await openTab(`${URL}demos/recipes/app.html`);
   const book = '[data-key="cookbook:cookbook"]';

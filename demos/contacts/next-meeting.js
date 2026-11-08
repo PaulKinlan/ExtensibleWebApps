@@ -22,16 +22,21 @@ export const manifest = {
 
 export default async function (ctx) {
   const html = ctx.ui.html;
-  const today = new Date().toISOString().slice(0, 10);
+  /** Today as the calendar writes dates: yyyy-mm-dd, in local time. Worked out on each draw, so it moves on at midnight. */
+  const today = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
 
   const draw = async () => {
+    const from = today();
     const rows = await ctx.call("page", "matches", "meeting");
     // The calendar's events, if the calendar app has been opened on this device.
     const events = await ctx.call("data", "list", "events").catch(() => []);
     rows.forEach(({ data }, i) => {
       const first = (data.name ?? "").split(" ")[0].toLowerCase();
       const next = events
-        .filter((e) => e.date >= today && first && `${e.title} ${e.notes ?? ""}`.toLowerCase().includes(first))
+        .filter((e) => e.date >= from && first && `${e.title} ${e.notes ?? ""}`.toLowerCase().includes(first))
         .sort((a, b) => (a.date + (a.start ?? "")).localeCompare(b.date + (b.start ?? "")))[0];
       ctx.ui.render(`meeting#${i}`, "next", next ? html`<small>Next: ${next.title}, ${next.date}${next.start ? ` at ${next.start}` : ""}</small>` : html`<small>No meeting planned</small>`);
     });

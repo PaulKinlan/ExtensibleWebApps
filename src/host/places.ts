@@ -73,6 +73,8 @@ const hiders = new Map<Element, { by: Set<object>; was: boolean }>();
 
 export function places(host: PlacesHost) {
   const applied = new Map<string, Applied>();
+  /** Plugins whose transforms are being put back now: drawing into them may draw a view that has transforms of its own. */
+  const redoing = new Set<string>();
   const names = new Map<string, string>();
   const key = (plugin: string, name: string) => `${plugin}/${name}`;
 
@@ -218,6 +220,8 @@ export function places(host: PlacesHost) {
         return;
       }
       a.allowed = true;
+      // The page (or the view, for a transform) may have changed while the person decided: look again.
+      return apply(a);
     }
     draw(a);
   }
@@ -266,10 +270,17 @@ export function places(host: PlacesHost) {
 
     /** Puts the transforms of `plugin`'s views back, after it drew (or after its views went). */
     redo(plugin: string) {
-      for (const a of applied.values()) {
-        if (a.place.in !== plugin || a.state === "waiting") continue;
-        undo(a);
-        void apply(a);
+      // Two plugins transforming each other would put each other's transforms back forever.
+      if (redoing.has(plugin)) return;
+      redoing.add(plugin);
+      try {
+        for (const a of applied.values()) {
+          if (a.place.in !== plugin || a.state === "waiting") continue;
+          undo(a);
+          void apply(a);
+        }
+      } finally {
+        redoing.delete(plugin);
       }
     },
 
