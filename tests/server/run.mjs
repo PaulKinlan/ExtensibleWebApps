@@ -753,7 +753,6 @@ async function suite(name, make) {
       return server.url;
     });
     await surveyChecks(server.url, check, owner);
-}
 
     // Workers can't reach a private network in production; wrangler's local runtime isn't a guide to that.
     if (name === "node") await networkGuardChecks(server.url, check);
