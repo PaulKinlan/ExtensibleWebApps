@@ -10,5 +10,6 @@
     "allowJs": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "elements"]
+  "include": ["src", "elements"],
+  "exclude": ["src/server"]
 }
