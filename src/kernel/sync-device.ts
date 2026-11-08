@@ -72,6 +72,15 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   let retry = 1000;
   let stopped = false;
   const status = { connected: false };
+  /**
+   * Settles once a device new to the space has what the space has, or can't reach it (offline, a few
+   * seconds at most): until then its app would see an empty copy, and add sample data the space has
+   * already, or has deleted. A device that has synced before has a copy to start from.
+   */
+  let first: () => void = () => {};
+  const ready = new Promise<void>((done) => (first = done));
+  void loaded.then(() => state.seq > 0 && first());
+  setTimeout(() => first(), 5000);
 
   // Changes made here: remember them, and send them when connected.
   records.local.add((change: Change) => {
@@ -92,29 +101,49 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     socket.send(JSON.stringify({ t: "sync", op: "push", id: inFlight.id, changes }));
   }
 
-  /** Changes the space accepted, in order: from this device (already here) or another (applied now). */
-  async function changes(list: Accepted[], seq: number) {
+  /**
+   * Changes the space accepted, in order: from this device (already here) or another (applied now).
+   * The place it has reached moves on only past a change it has: if one can't be put here (the
+   * collection is full, saving failed), it stops there, and hears it again when it connects again.
+   */
+  async function changes(list: Accepted[], seq: number): Promise<boolean> {
     for (const c of list) {
       if (c.seq <= state.seq) continue;
       const k = key(c.collection, c.id);
       const sent = inFlight?.changes.find((o) => key(o.collection, o.id) === k);
       const mine = sent && JSON.stringify(sent.after) === JSON.stringify(c.after);
-      state.versions[k] = c.seq;
-      state.seq = c.seq;
+      const pending = state.pending[k];
       if (mine) {
         // Ours, accepted. A newer edit made here since is now based on this version.
-        const pending = state.pending[k];
         if (pending && JSON.stringify(pending.after) === JSON.stringify(c.after)) delete state.pending[k];
         else if (pending) pending.base = c.seq;
-        continue;
+      } else if (!pending) {
+        // Someone else's. (If this device has an unsent change to the same record, it keeps it: the space
+        // will refuse it as stale when it's sent, and then the space's record comes here and this one
+        // becomes a draft.)
+        try {
+          await records.apply(c.collection, c.id, c.after as StoredRecord | null, { trace: `sync-${c.seq}` });
+        } catch (error) {
+          trace({ kind: "error", name: "sync:apply", detail: `${k} (${c.seq}): ${error instanceof Error ? error.message : error}` });
+          save();
+          return false;
+        }
       }
-      // Someone else's. If this device has an unsent change to the same record, it keeps it: the space will
-      // refuse it as stale when it's sent, and then the space's record comes here and this one becomes a draft.
-      if (state.pending[k]) continue;
-      await records.apply(c.collection, c.id, c.after as StoredRecord | null, { trace: `sync-${c.seq}` });
+      state.versions[k] = c.seq;
+      state.seq = c.seq;
     }
     state.seq = Math.max(state.seq, seq);
     save();
+    return true;
+  }
+
+  /** Puts the space's record here, as the space answered a push. */
+  async function take(collection: string, id: string, record: SyncRecord | null, why: string) {
+    try {
+      await records.apply(collection, id, record as StoredRecord | null, { trace: `sync-${why}` });
+    } catch (error) {
+      trace({ kind: "error", name: "sync:apply", detail: `${key(collection, id)}: ${error instanceof Error ? error.message : error}` });
+    }
   }
 
   async function pushed(id: number, results: Verdict[]) {
@@ -126,33 +155,62 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       if (!change) continue;
       const k = key(change.collection, change.id);
       const pending = state.pending[k];
+      /** An edit made here while the push was out, which is newer than what was sent. */
+      const newer = pending && JSON.stringify(pending.after) !== JSON.stringify(change.after) ? pending : undefined;
       if (verdict.ok) {
         state.versions[k] = Math.max(state.versions[k] ?? 0, verdict.seq);
-        if (pending && JSON.stringify(pending.after) === JSON.stringify(change.after)) delete state.pending[k];
-        else if (pending) pending.base = verdict.seq;
+        if (newer) newer.base = verdict.seq;
+        else delete state.pending[k];
         continue;
       }
       // Refused as stale, but the space has what this device made (two devices added the same sample, say): nothing is lost.
       if ("stale" in verdict && same(verdict.record, change.after)) {
         state.versions[k] = verdict.version;
-        if (pending && JSON.stringify(pending.after) === JSON.stringify(change.after)) delete state.pending[k];
-        else if (pending) pending.base = verdict.version;
-        await records.apply(change.collection, change.id, verdict.record as StoredRecord | null, { trace: `sync-same-${id}` });
+        if (newer) newer.base = verdict.version;
+        else {
+          delete state.pending[k];
+          await take(change.collection, change.id, verdict.record, `same-${id}`);
+        }
         continue;
       }
-      // Refused: the space's record wins here, and this device's version is kept as a draft.
+      // Refused: the space's record is put back here, and this device's latest version is kept as a draft.
       const why = "stale" in verdict ? "Someone changed it first" : verdict.error;
-      state.drafts.push({ ref: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, collection: change.collection, id: change.id, mine: pending?.after ?? change.after, why, at: new Date().toISOString() });
+      state.drafts.push({ ref: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, collection: change.collection, id: change.id, mine: pending ? pending.after : change.after, why, at: new Date().toISOString() });
       delete state.pending[k];
-      if ("stale" in verdict) {
+      if ("record" in verdict && verdict.record !== undefined && typeof verdict.version === "number") {
         state.versions[k] = verdict.version;
-        await records.apply(change.collection, change.id, verdict.record as StoredRecord | null, { trace: `sync-stale-${id}` });
+        await take(change.collection, change.id, verdict.record, `refused-${id}`);
       }
       trace({ kind: "note", name: "sync:draft", detail: `${change.collection}/${change.id}: ${why}` });
       hosts.broadcast({ t: "notice", text: `${why === "Someone changed it first" ? "Someone else changed this record first" : `The space didn't take a change: ${why}`}. Your version is kept as a draft.`, tone: "error" });
     }
     save();
     push();
+  }
+
+  /** What arrives is handled one message at a time, in order, so a change is never passed over while an earlier one is applied. */
+  let receiving: Promise<unknown> = Promise.resolve();
+
+  async function receive(ws: WebSocket, data: unknown) {
+    // A message from a socket that has closed since is from an earlier connection: this one starts afresh.
+    if (socket !== ws) return;
+    let m: SyncToDevice;
+    try {
+      m = JSON.parse(String(data));
+    } catch {
+      return;
+    }
+    if (m?.t !== "sync") return;
+    if (m.op === "changes") {
+      const applied = await changes(m.changes, m.seq);
+      first();
+      if (!applied) return void ws.close();
+      if (!caughtUp) {
+        caughtUp = true;
+        push();
+      }
+    } else if (m.op === "pushed") await pushed(m.id, m.results);
+    else if (m.op === "refused") trace({ kind: "error", name: "sync:refused", detail: m.error });
   }
 
   function connect() {
@@ -175,28 +233,15 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       ws.send(JSON.stringify({ t: "sync", op: "hello", since: state.seq }));
       trace({ kind: "lifecycle", name: "sync:connected", detail: `from ${state.seq}, ${Object.keys(state.pending).length} to send` });
     };
-    ws.onmessage = async (e) => {
-      let m: SyncToDevice;
-      try {
-        m = JSON.parse(String(e.data));
-      } catch {
-        return;
-      }
-      if (m?.t !== "sync") return;
-      if (m.op === "changes") {
-        await changes(m.changes, m.seq);
-        if (!caughtUp) {
-          caughtUp = true;
-          push();
-        }
-      } else if (m.op === "pushed") await pushed(m.id, m.results);
-      else if (m.op === "refused") trace({ kind: "error", name: "sync:refused", detail: m.error });
+    ws.onmessage = (e) => {
+      receiving = receiving.then(() => receive(ws, e.data)).catch((error) => trace({ kind: "error", name: "sync:receive", detail: String(error) }));
     };
     ws.onclose = () => {
       if (socket !== ws) return;
       socket = undefined;
       status.connected = false;
       changed();
+      first();
       // Offline, or the server restarted: try again, less often each time, up to every half minute.
       setTimeout(connect, retry);
       retry = Math.min(retry * 2, 30_000);
@@ -208,6 +253,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   const space = /\/s\/([^/]+)\/kernel$/.exec(url)?.[1] ?? "";
   const api = {
     status,
+    ready,
     /** What this device has, for the page and for checks. */
     async state() {
       await loaded;

@@ -28,17 +28,26 @@ export interface RouteResponse {
 
 const MAX = 1_000_000;
 
-export function makeRoutes(root: any, remote: RemotePlugins, shared: boolean) {
+/**
+ * Where the service worker keeps a kernel's table: the person's own kernel's at /routes.json, and a
+ * space's kernel's (a page at /s/<space>/…) at /routes/<space>.json, so neither replaces the other.
+ */
+export const routesFile = (space?: string) => (space ? `/routes/${space}.json` : "/routes.json");
+
+export function makeRoutes(root: any, remote: RemotePlugins, shared: boolean, space?: string) {
   const channel = typeof BroadcastChannel === "undefined" ? undefined : new BroadcastChannel("platform:routes");
 
-  /** Shares the table: a broadcast for a running service worker, and the cache for one that starts later. */
+  /**
+   * Shares the table: a broadcast for a running service worker, and the cache for one that starts later.
+   * A space's kernel's plugins are linked from inside the space, so its routes are there: GET /s/<space>/demos/….
+   */
   function publish(): void {
     const table = remote.routes;
-    channel?.postMessage(table);
+    channel?.postMessage({ space: space ?? "", table });
     if (typeof caches === "undefined") return;
     void caches
       .open("platform-routes")
-      .then((cache) => cache.put("/routes.json", new Response(JSON.stringify(table), { headers: { "Content-Type": "application/json" } })))
+      .then((cache) => cache.put(routesFile(space), new Response(JSON.stringify(table), { headers: { "Content-Type": "application/json" } })))
       .catch(() => {});
   }
   // Only the shared kernel's table is the site's. A dedicated kernel (?kernel=dedicated, or a browser

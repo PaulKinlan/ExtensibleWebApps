@@ -34,7 +34,8 @@ export interface Accepted {
 export type Verdict =
   | { ok: true; seq: number }
   | { ok: false; stale: true; version: number; record: SyncRecord | null }
-  | { ok: false; error: string };
+  /** Refused for another reason; when the change named a record, the record as the space has it, so the device can put it back. */
+  | { ok: false; error: string; version?: number; record?: SyncRecord | null };
 
 // device -> space
 export type SyncToSpace =

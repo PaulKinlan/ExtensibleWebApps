@@ -115,7 +115,7 @@ const apps = makeApps(remote, hosts, plugins.isOff);
 const sync = syncHub(root, store, records, hosts);
 /** In a browser kernel for a space (a page at /s/<space>/…): its sync with the space, once the folder is known. */
 let device: ReturnType<typeof syncDevice> | undefined;
-const userAdded = userPlugins(store, where.origin);
+const userAdded = userPlugins(store, where.origin, where.kind === "server" ? undefined : where.space);
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
@@ -135,6 +135,8 @@ services.authoring = authoring(remote, apps, {
  * on. The tab hears each plugin's places, and which locked places the person let it into.
  */
 async function openApp(host: (typeof hosts.list)[number], links: { href: string; source: string }[], app?: string) {
+  // A device new to a space gets what the space has before its app starts, so the app sees the space's data.
+  await device?.ready;
   if (!hosts.list.includes(host)) return;
   let mine: { href: string; source: string }[] = [];
   let ids = new Set<string>();
@@ -182,7 +184,7 @@ remote.onChange = (change, id) => {
   }
 };
 
-const routes = makeRoutes(root, remote, shared);
+const routes = makeRoutes(root, remote, shared, where.space);
 remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;

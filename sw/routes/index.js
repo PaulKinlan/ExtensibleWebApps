@@ -13,8 +13,9 @@ import user from "./user.js";
 
 export default [
   headers,
-  spaces,
+  // A plugin's route inside a space is answered before the space's files.
   plugins,
+  spaces,
   apps,
   user,
 ];

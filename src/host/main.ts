@@ -222,7 +222,7 @@ function opened(plugins: Opened[]) {
   for (const p of plugins) if (p.error && !running.some((r) => r.href === p.href && r.error === p.error)) notice(`${p.href.split("/").pop()}: ${p.error}`);
   running = plugins;
   // The person may have added a plugin again with new files: load its templates afresh.
-  forgetFiles(`/user/${app}/`);
+  forgetFiles(`${space ? `/s/${space}` : ""}/user/${app}/`);
   const before = shown;
   shown = new Set(plugins.flatMap((p) => (p.id && !p.error ? [p.id] : [])));
   // A plugin that is no longer shown (turned off) takes its views with it.

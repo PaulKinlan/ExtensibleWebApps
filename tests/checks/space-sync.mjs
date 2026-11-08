@@ -92,8 +92,12 @@ export default async function ({ check, context, errors }) {
     await own.goto(`${server.url}/demos/reading-list/`);
     await own.waitForSelector(FORM, { timeout: 15000 });
     const apart = (await hasTitle(own, "Piranesi")) && !(await hasTitle(own, "Middlemarch", 1500));
-    await own.close();
     check("a space: its data is kept apart from the person's own copy of the same app", apart);
+    // A plugin's route answers from the kernel of the page's own copy: the space's inside it, the person's outside.
+    const json = (page, path) => page.evaluate(async (p) => (await fetch(p)).text(), path).catch((e) => String(e));
+    const routes = { space: await json(ann.page, "/s/home/demos/reading-list/books.json"), own: await json(own, "/demos/reading-list/books.json") };
+    await own.close();
+    check("a space: an app's routes inside a space answer from the space's copy, and outside it from the person's own", routes.space.includes("Middlemarch") && routes.own.includes("Piranesi") && !routes.own.includes("Middlemarch"), JSON.stringify(routes).slice(0, 300));
 
     // The server goes away. Both keep working on their own copies.
     await server.stop();

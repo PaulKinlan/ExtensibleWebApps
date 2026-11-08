@@ -25,15 +25,18 @@ const TYPES = {
 export default {
   name: "user",
   prefix: "/user/",
-  /** @param {Request} request @param {URL} url */
-  async handle(request, url) {
+  /**
+   * @param {Request} request @param {URL} url @param {unknown} _env
+   * @param {string[]} [within] the folder the data is in: an app in a space keeps its own under spaces/<space>/ (sw/routes/spaces.js)
+   */
+  async handle(request, url, _env, within = []) {
     if (request.method !== "GET") return undefined;
     const parts = decodeURIComponent(url.pathname).split("/").slice(1);
     // The same rules the kernel uses for app folders and file names: no dots that climb, nothing hidden.
     if (parts.some((p) => !p || p.startsWith(".") || !/^[\w.-]+$/.test(p))) return new Response("Not found", { status: 404 });
     try {
       let folder = await navigator.storage.getDirectory();
-      for (const part of parts.slice(0, -1)) folder = await folder.getDirectoryHandle(part);
+      for (const part of [...within, ...parts.slice(0, -1)]) folder = await folder.getDirectoryHandle(part);
       const file = await (await folder.getFileHandle(parts.at(-1))).getFile();
       const type = TYPES[/** @type {keyof typeof TYPES} */ (parts.at(-1).split(".").pop()?.toLowerCase() ?? "")] ?? "application/octet-stream";
       // Never cached: the person may change or remove it at any moment. And never a live page: a
