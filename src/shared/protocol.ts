@@ -178,7 +178,7 @@ export interface Manifest {
   name: string;
   version?: string;
   description?: string;
-  /** New-style capabilities (`hook:listen:data:changed`, `ui`, `audio`, ...) or editor-style permissions (`post:read`, `ui`). */
+  /** New-style capabilities (`hook:listen:notes:open`, `ui`, `audio`, ...) or editor-style permissions (`post:read`, `ui`). */
   permissions: string[];
   order?: number;
   /** "shared" (default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or hold view state. */
@@ -195,6 +195,22 @@ export interface Manifest {
   files?: string[];
   /** Design tokens it sets for the whole app, with the ui:theme permission: `{ "--accent": "#7c3aed" }` (shared/theme.ts). */
   theme?: Record<string, string>;
+  /** Hooks it defines, by key: `{ open: { mode: "emit", args: "{ id }" } }` is the hook `<id>:open`, which only it can run. */
+  hooks?: Record<string, PluginHook>;
+}
+
+/** A hook a plugin defines in its manifest. The limits are the kernel's (PLUGIN_HOOKS in src/kernel/hooks.ts). */
+export interface PluginHook {
+  mode: "emit" | "waterfall" | "serial" | "bail" | "parallel";
+  /** What listeners receive, as a reader should see it. */
+  args?: string;
+  description?: string;
+  /** How long each listener has to answer, for serial, bail and waterfall hooks. */
+  timeoutMs?: number;
+  /** How long an agent that checks it has; without one, agents can't check it. */
+  agentTimeoutMs?: number;
+  /** "open" (the default): a listener that fails or runs out of time is skipped. "closed": it counts as a block. */
+  onFailure?: "open" | "closed";
 }
 
 /** Carried as Cordis's `thisArg` on every kernel dispatch, so listeners in any worker know which action they serve. */

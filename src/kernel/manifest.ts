@@ -10,6 +10,7 @@
 import { THEME_TOKENS, badThemeValue } from "../shared/theme";
 import type { Manifest } from "../shared/protocol";
 import { checkCollections } from "./records";
+import { kernelPrefix, PLUGIN_HOOKS } from "./hooks";
 import { checkSchema } from "./schema";
 
 export class ManifestError extends Error {}
@@ -25,7 +26,6 @@ export const RESERVED = new Set([
   "host",
   "kernel",
   "net",
-  "notes",
   "plugins",
   "review",
   "secrets",
@@ -51,6 +51,7 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
     'Optional. Up to 20 places in the app\'s page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin\'s view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md.',
   theme:
     `Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only ${Object.keys(THEME_TOKENS).join(", ")}, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md.`,
+  hooks: `Optional. Up to ${PLUGIN_HOOKS.max} hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook \`<id>:<key>\` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (${PLUGIN_HOOKS.defaultTimeoutMs} ms if not given, at most ${PLUGIN_HOOKS.timeoutMs}); an agent that checks it has agentTimeoutMs (at most ${PLUGIN_HOOKS.agentTimeoutMs / 1000} s; without one, agents can't check it). A hook lasts while its plugin is installed.`,
   files:
     "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app.",
 };
@@ -82,6 +83,7 @@ function validate(value: unknown): Manifest {
   if (m.theme !== undefined) validateTheme(m.theme, m.permissions as string[]);
   if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 20 || m.files.some((f) => typeof f !== "string" || !FILE_NAME.test(f))))
     throw new ManifestError("`files` must be a list of up to 20 file names, with no folders");
+  if (m.hooks !== undefined) validateHooks(m.hooks, m.id);
   if (m.collections !== undefined) {
     try {
       checkCollections(m.collections, checkSchema);
@@ -100,6 +102,30 @@ function validateSettings(settings: unknown) {
     const s = spec as Record<string, unknown>;
     if (!s || !["string", "number", "boolean"].includes(s.type as string)) throw new ManifestError(`Setting ${key} needs a type of string, number or boolean`);
     if (s.enum !== undefined && (!Array.isArray(s.enum) || s.type !== "string")) throw new ManifestError(`Setting ${key}: enum is a list, for string settings`);
+  }
+}
+
+const MODES = ["emit", "parallel", "serial", "bail", "waterfall"];
+
+function validateHooks(value: unknown, id: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new ManifestError("`hooks` must be an object");
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > PLUGIN_HOOKS.max) throw new ManifestError(`At most ${PLUGIN_HOOKS.max} hooks`);
+  if (entries.length && kernelPrefix(id)) throw new ManifestError(`Hooks named \`${id}:…\` are the kernel's: a plugin that defines hooks needs another id`);
+  for (const [key, spec] of entries) {
+    if (!/^[a-z][a-z0-9-]{0,40}$/.test(key)) throw new ManifestError(`Hook ${key}: keys are lowercase letters, digits and dashes, starting with a letter`);
+    const h = spec as Record<string, unknown>;
+    if (!h || typeof h !== "object" || Array.isArray(h)) throw new ManifestError(`Hook ${key} must be { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? }`);
+    if (!MODES.includes(h.mode as string)) throw new ManifestError(`Hook ${key}: mode is one of ${MODES.join(", ")}`);
+    for (const field of ["args", "description"]) if (h[field] !== undefined && (typeof h[field] !== "string" || (h[field] as string).length > 500)) throw new ManifestError(`Hook ${key}: ${field} is a string of up to 500 characters`);
+    const waits = h.mode !== "emit" && h.mode !== "parallel";
+    if (h.timeoutMs !== undefined && (!waits || typeof h.timeoutMs !== "number" || !(h.timeoutMs > 0) || h.timeoutMs > PLUGIN_HOOKS.timeoutMs))
+      throw new ManifestError(`Hook ${key}: timeoutMs is for hooks that wait for an answer (serial, bail, waterfall), up to ${PLUGIN_HOOKS.timeoutMs}`);
+    if (h.agentTimeoutMs !== undefined && (!waits || typeof h.agentTimeoutMs !== "number" || !(h.agentTimeoutMs > 0) || h.agentTimeoutMs > PLUGIN_HOOKS.agentTimeoutMs))
+      throw new ManifestError(`Hook ${key}: agentTimeoutMs is for hooks that wait for an answer, up to ${PLUGIN_HOOKS.agentTimeoutMs}`);
+    if (h.onFailure !== undefined && h.onFailure !== "open" && h.onFailure !== "closed") throw new ManifestError(`Hook ${key}: onFailure is "open" or "closed"`);
+    const unknown = Object.keys(h).find((k) => !["mode", "args", "description", "timeoutMs", "agentTimeoutMs", "onFailure"].includes(k));
+    if (unknown) throw new ManifestError(`Hook ${key}: ${unknown} isn't a field of a hook`);
   }
 }
 

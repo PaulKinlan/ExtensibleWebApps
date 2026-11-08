@@ -11,7 +11,6 @@ export const PLATFORM = new Set([
   "plugins.json",
   "grants.json",
   "changes.json",
-  "notes.json",
   "collections",
   "user",
   "user-plugins.json",

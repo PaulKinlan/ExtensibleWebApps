@@ -396,7 +396,7 @@ export function checkCollections(value: unknown, checkSchema: (s: unknown, path:
   const entries = Object.entries(value as Record<string, unknown>);
   if (entries.length > 10) throw new Error("At most 10 collections");
   for (const [name, spec] of entries) {
-    if (!NAME.test(name) || name === "notes") throw new Error(`Collection ${name}: names are lowercase letters, digits and dashes, and \`notes\` is taken`);
+    if (!NAME.test(name)) throw new Error(`Collection ${name}: names are lowercase letters, digits and dashes, starting with a letter`);
     const s = spec as Record<string, unknown>;
     if (!s || typeof s !== "object") throw new Error(`Collection ${name} must be an object`);
     if (s.title !== undefined && typeof s.title !== "string") throw new Error(`Collection ${name}: title must be a string`);

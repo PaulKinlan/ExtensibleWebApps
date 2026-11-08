@@ -80,6 +80,10 @@ function api(trace: () => string | undefined): Api {
       };
     },
     call,
+    hooks: {
+      emit: (key: string, value?: unknown) => call("hooks", "emit", key, value).then(() => {}),
+      call: (key: string, value?: unknown) => call("hooks", "call", key, value),
+    },
     routes: {
       add(method, path, handler) {
         return self.on(`route:${String(method).toUpperCase()} ${path}`, (request: RouteRequest) => handler(request));
@@ -251,15 +255,18 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): View {
 const ctx = api(() => activeTrace);
 const log = ctx.log;
 
-/** The Markdown editor's `editor` API, on top of `ctx`, for the parts these demo notes support. */
+/**
+ * The Markdown editor's `editor` API, on top of `ctx`, for the parts these demo notes support. Its posts are
+ * the notes plugin's notes (plugins/notes.js), and its post events that plugin's hooks.
+ */
 function editorShim() {
   let post: any = null;
   const track = (p: any) => (post = p);
-  ctx.on("note:open", track);
-  ctx.on("note:change", track);
-  ctx.on("note:save", track);
-  ctx.on("note:close", () => (post = null));
-  const events: Record<string, string> = { "post:open": "note:open", "post:change": "note:change", "post:save": "note:save", "post:close": "note:close" };
+  ctx.on("notes:open", track);
+  ctx.on("notes:change", track);
+  ctx.on("notes:save", track);
+  ctx.on("notes:close", () => (post = null));
+  const events: Record<string, string> = { "post:open": "notes:open", "post:change": "notes:change", "post:save": "notes:save", "post:close": "notes:close" };
   const commands = new Map<string, () => unknown>();
   ctx.ui.onEvent((action) => commands.get(action)?.());
   return {

@@ -40,8 +40,8 @@ export default async (ctx) => {
     check("a tool call goes through the gate, like ctx.call", /Missing capability files:secret-folder/.test(await pluginLog("toolbox", "toolbox-gate").catch(() => "")));
     check("tools.call refuses a tool the plugin wasn't offered", /No tool named audio_play/.test(await pluginLog("toolbox", "toolbox-none").catch(() => "")));
 
-    // Past a few collections, one tool takes the collection's name, from those the plugin may use; `notes` isn't a collection.
-    await plugin(`export const manifest = { id: 'shelves', name: 'Shelves', permissions: ['data:read:c1', 'data:read:c2', 'data:read:c3', 'data:read:c4', 'data:read:c5', 'data:read:c6', 'data:read:notes'] };
+    // Past a few collections, one tool takes the collection's name, from those the plugin may use.
+    await plugin(`export const manifest = { id: 'shelves', name: 'Shelves', permissions: ['data:read:c1', 'data:read:c2', 'data:read:c3', 'data:read:c4', 'data:read:c5', 'data:read:c6'] };
 export default async (ctx) => {
   ${tryCall}
   const tools = await ctx.call('tools', 'list');
@@ -49,7 +49,7 @@ export default async (ctx) => {
   ctx.log('shelves-other ' + await tryCall('data_list', { collection: 'gadgets' }));
   ctx.log('shelves-read ' + await tryCall('data_list', { collection: 'c3' }));
 };`);
-    check("past a few collections, one tool offers the collections the plugin may read, and not notes", (await pluginLog("shelves", "shelves-list").catch(() => "")) === 'shelves-list ["c1","c2","c3","c4","c5","c6"]');
+    check("past a few collections, one tool offers the collections the plugin may read", (await pluginLog("shelves", "shelves-list").catch(() => "")) === 'shelves-list ["c1","c2","c3","c4","c5","c6"]');
     check("tools.call refuses a collection outside the tool's list", /must be one of c1/.test(await pluginLog("shelves", "shelves-other").catch(() => "")) && (await pluginLog("shelves", "shelves-read").catch(() => "")) === "shelves-read []");
 
     await plugin(`export const manifest = { id: 'bare-tools', name: 'Bare tools', permissions: [] };

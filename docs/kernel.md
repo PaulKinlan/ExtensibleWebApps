@@ -10,7 +10,7 @@ A sandboxed plugin is one JavaScript module with a literal manifest and a defaul
 export const manifest = {
   id: "bars",                 // lowercase letters, digits, dashes
   name: "Note lengths",
-  permissions: ["ui", "hook:listen:data:changed", "data:read:notes"],
+  permissions: ["ui", "data:read:notes"],
   scope: "tab",               // "shared" (default) or "tab"
   order: 30,                  // optional: place in lists
   settings: { ... },          // optional: { key: { type, title?, default?, enum? } }
@@ -25,7 +25,7 @@ export default function (ctx) { ... }
 
 ## Where plugins come from, and settings
 
-The kernel has no plugins of its own: a page runs the plugins it links, and the workbench links the demo plugins in `plugins/`. A plugin installed at run time is kept in the data folder as `plugins/<id>.js`, so it travels with the data, and the next kernel to open that folder loads it again. Ids the kernel uses for its own views and services (`kernel`, `host`, `notes`, `plugins`, `store`, `settings`, `audio`) are refused, so a plugin can't pass for the kernel's own panels.
+The kernel has no plugins of its own: a page runs the plugins it links, and the workbench links the demo plugins in `plugins/`. A plugin installed at run time is kept in the data folder as `plugins/<id>.js`, so it travels with the data, and the next kernel to open that folder loads it again. Ids the kernel uses for its own views and services (`kernel`, `host`, `plugins`, `store`, `settings`, `audio`) are refused, so a plugin can't pass for the kernel's own panels.
 
 The plugins panel (`src/kernel/catalog.ts`, in the side bar) lists every plugin and where it came from. Any plugin can be turned off, which stops its workers but keeps it installed. Plugins kept with the data can also be removed, which deletes their file. A plugin stopped for changing its manifest is removed the same way.
 
@@ -92,21 +92,23 @@ Two host components draw a collection without any plugin code: `<ui-table collec
 
 ## Change review
 
-A write outside a plugin's own data is shown to the person before it happens (`src/kernel/review.ts`). Notes belong to the notes app, and files are in the data folder, so a plugin's `store.put` or `files.write` opens a card above the editor. The card shows the plugin's name, its reason, and a line diff of the change, with three choices:
+A write outside a plugin's own data is shown to the person before it happens (`src/kernel/review.ts`). Notes are in the notes plugin's collection, and files are in the data folder, so another plugin's `data.put("notes", …)` or `files.write` opens a card above the editor. The card shows the plugin's name, its reason, and a line diff of the change, with three choices:
 
 - **Accept:** this write only (`allowed-once`).
-- **Always allow in …:** this write, and any later one by the same plugin to the same place (`notes`, or a folder such as `exports/`), without asking. The grant is kept with the data in `grants.json`, so it belongs to this app only. The plugins panel lists each grant with a Forget button.
+- **Always allow in …:** this write, and any later one by the same plugin to the same place (a collection such as `data:notes`, or a folder such as `exports/`), without asking. The grant is kept with the data in `grants.json`, so it belongs to this app only. The plugins panel lists each grant with a Forget button.
 - **Decline:** nothing is written, and the plugin's call fails with "The person declined the change" (`rejected`).
 
 A card nobody answers within five minutes is `cancelled`. Turning a plugin off or removing it cancels its open cards. A write that changes nothing is not shown.
 
-**Path checks** (`src/kernel/paths.ts`) run before any file is read or written, whatever capabilities the plugin has. Paths must be relative, use `/`, and sit inside a folder. They can't contain empty, `.` or `..` segments or hidden names, and they can't touch the platform's own files (`plugins/`, `plugin-data/`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`). That last rule means a plugin can never install or approve plugins by writing files.
+**Path checks** (`src/kernel/paths.ts`) run before any file is read or written, whatever capabilities the plugin has. Paths must be relative, use `/`, and sit inside a folder. They can't contain empty, `.` or `..` segments or hidden names, and they can't touch the platform's own files (`plugins/`, `plugin-data/`, `plugins.json`, `grants.json`, `changes.json`, `collections/`, and the rest listed in the [API reference](api.md#manifest)). That last rule means a plugin can never install or approve plugins by writing files.
 
 **The change log** (`src/kernel/changes.ts`) records every install, removal, on/off switch, settings change, grant, revoke and reviewed write, with its outcome and trace id. A write made by an agent acting for the person ([`acts-as: person`](guide/agents.md#acting-for-the-person)) has `as: "person"`: it is theirs, made through that agent. It keeps the most recent 500 in `changes.json` in the data folder. `window.__host.command("changes")` returns it.
 
 ## Hooks
 
 Every hook is defined with `defineHook(name, { mode, timeoutMs, onFailure })` in `src/kernel/hooks.ts`. Listeners in other workers are held to the spec: `emit` and `parallel` hooks are posted and forgotten; the others wait for the answer for `timeoutMs`, then either skip the listener (`onFailure: "open"`) or treat the silence as a block (`"closed"`).
+
+A plugin defines hooks of its own in its manifest's `hooks`, named `<id>:<key>`, and runs them with `ctx.hooks.emit` or `ctx.hooks.call` (the `hooks` service, `src/kernel/services/hooks.ts`); no other plugin can run them. `remote.ts` defines them when the plugin is installed and removes them with it, and a listener that came first waits for them. Their limits are `PLUGIN_HOOKS` in `src/kernel/hooks.ts`, in one place so they can change. See [Hooks of your own](guide/plugin-hooks.md).
 
 ## Trace ids
 
