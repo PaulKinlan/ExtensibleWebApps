@@ -89,6 +89,9 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
     const page = await fetcher(`${base}app.html`);
     if (!page.ok) throw new Error(`${app}/app.html: ${page.status}`);
     let complete = true;
+    // Read every plugin first, then start the ones that run here together, so one that needs a service
+    // another of them provides isn't refused for starting first (remote.expect).
+    const starting: { href: string; source: string }[] = [];
     for (const href of pluginLinks(await page.text(), base)) {
       if (loadedPlugins.has(href)) continue;
       const answer = await fetcher(href).catch((error) => new Response(String(error), { status: 599 }));
@@ -113,8 +116,16 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
         remote.onManifest?.(manifest);
         continue;
       }
-      const result = await remote.install(source, { origin: "server", href });
-      record({ kind: "lifecycle", name: "server:plugin", detail: `${app}: ${href}${result.ok ? "" : ` · ${result.error}`}` });
+      starting.push({ href, source });
+    }
+    const started = remote.expect(starting.map((p) => p.source));
+    try {
+      for (const { href, source } of starting) {
+        const result = await remote.install(source, { origin: "server", href });
+        record({ kind: "lifecycle", name: "server:plugin", detail: `${app}: ${href}${result.ok ? "" : ` · ${result.error}`}` });
+      }
+    } finally {
+      started();
     }
     return complete;
   }

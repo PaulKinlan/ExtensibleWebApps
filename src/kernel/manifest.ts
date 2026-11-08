@@ -54,6 +54,8 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   hooks: `Optional. Up to ${PLUGIN_HOOKS.max} hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook \`<id>:<key>\` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (${PLUGIN_HOOKS.defaultTimeoutMs} ms if not given, at most ${PLUGIN_HOOKS.timeoutMs}); an agent that checks it has agentTimeoutMs (at most ${PLUGIN_HOOKS.agentTimeoutMs / 1000} s; without one, agents can't check it). A hook lasts while its plugin is installed.`,
   services:
     'Optional. Up to 30 services the plugin calls that not every site runs, by name: ["llm", "bus"]. The kernel\'s own services (data, storage, settings and the rest) are always there and needn\'t be listed. A plugin that lists a service the site doesn\'t run isn\'t started, and says which one is missing, so an app that needs it fails when it opens rather than on its first call. The site lists the services it runs in kernel.json (docs/layers.md).',
+  provides:
+    'Optional. Up to 5 services the plugin provides, by name: { mail: { description, methods: { send: { args?, returns?, description, needs? } } } }. Each needs the permission provide:<name>, and the plugin answers its calls with ctx.provide (shared plugins only, not scope "tab"). Other plugins call it with ctx.call(name, method, ...args) and the permission <name>, or what a method\'s `needs` says. A name the kernel or another plugin already has is refused. See docs/layers.md.',
   files:
     "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app.",
 };
@@ -86,6 +88,7 @@ function validate(value: unknown): Manifest {
   if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 20 || m.files.some((f) => typeof f !== "string" || !FILE_NAME.test(f))))
     throw new ManifestError("`files` must be a list of up to 20 file names, with no folders");
   if (m.hooks !== undefined) validateHooks(m.hooks, m.id);
+  if (m.provides !== undefined) validateProvides(m.provides, m.permissions as string[], m.scope);
   if (m.services !== undefined && (!Array.isArray(m.services) || m.services.length > 30 || m.services.some((s) => typeof s !== "string" || !ID.test(s))))
     throw new ManifestError("`services` must be a list of up to 30 service names");
   if (m.collections !== undefined) {
@@ -96,6 +99,50 @@ function validate(value: unknown): Manifest {
     }
   }
   return m as unknown as Manifest;
+}
+
+const METHOD = /^[a-zA-Z][a-zA-Z0-9]{0,40}$/;
+const text = (value: unknown, max: number) => typeof value === "string" && value.length <= max;
+
+function validateProvides(provides: unknown, permissions: string[], scope: unknown) {
+  if (!provides || typeof provides !== "object" || Array.isArray(provides)) throw new ManifestError("`provides` must be an object");
+  const entries = Object.entries(provides as Record<string, unknown>);
+  if (entries.length > 5) throw new ManifestError("A plugin provides at most 5 services");
+  if (entries.length && scope === "tab") throw new ManifestError('A plugin that provides a service runs once for every tab: leave out `scope: "tab"`');
+  for (const [name, spec] of entries) {
+    if (!ID.test(name)) throw new ManifestError(`Service ${name}: names are lowercase letters, digits and dashes`);
+    if (!permissions.includes(`provide:${name}`)) throw new ManifestError(`Providing ${name} needs the permission provide:${name}`);
+    const s = spec as Record<string, unknown>;
+    if (!s || typeof s !== "object" || !text(s.description, 500) || !s.description) throw new ManifestError(`Service ${name} needs a description of up to 500 characters`);
+    const methods = s.methods;
+    if (!methods || typeof methods !== "object" || Array.isArray(methods)) throw new ManifestError(`Service ${name} needs \`methods\``);
+    const list = Object.entries(methods as Record<string, unknown>);
+    if (!list.length || list.length > 30) throw new ManifestError(`Service ${name} has 1 to 30 methods`);
+    for (const [method, doc] of list) {
+      const d = doc as Record<string, unknown>;
+      if (!METHOD.test(method)) throw new ManifestError(`Service ${name}: ${method} isn't a method name`);
+      if (!d || typeof d !== "object" || !text(d.description, 500) || !d.description) throw new ManifestError(`${name}.${method} needs a description of up to 500 characters`);
+      for (const key of ["args", "returns", "needs"] as const) if (d[key] !== undefined && !text(d[key], 200)) throw new ManifestError(`${name}.${method}: \`${key}\` must be text of up to 200 characters`);
+      if (d.params !== undefined) validateParams(d.params, `${name}.${method}`);
+    }
+  }
+}
+
+/** A provided method's arguments, for tools: a list of { name, schema, optional }, in order, optional ones last. */
+function validateParams(params: unknown, where: string) {
+  if (!Array.isArray(params) || params.length > 10) throw new ManifestError(`${where}: \`params\` is a list of up to 10 arguments`);
+  let optional = false;
+  for (const p of params as Record<string, unknown>[]) {
+    if (!p || typeof p !== "object" || typeof p.name !== "string" || !/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/.test(p.name)) throw new ManifestError(`${where}: each param needs a name`);
+    if (p.optional !== undefined && typeof p.optional !== "boolean") throw new ManifestError(`${where}: ${p.name}.optional is true or false`);
+    if (optional && !p.optional) throw new ManifestError(`${where}: ${p.name} comes after an optional argument, so it must be optional too`);
+    optional ||= !!p.optional;
+    try {
+      checkSchema(p.schema);
+    } catch (error) {
+      throw new ManifestError(`${where}: ${p.name}: ${error instanceof Error ? error.message : error}`);
+    }
+  }
 }
 
 function validateSettings(settings: unknown) {

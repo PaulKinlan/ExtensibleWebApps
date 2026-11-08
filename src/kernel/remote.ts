@@ -25,6 +25,7 @@ import { ManifestError, readManifest } from "./manifest";
 import type { Schema } from "./schema";
 import { record } from "./trace";
 import { env } from "./env";
+import { providedService, serviceHook, SERVICE_TIMEOUT_MS } from "./provided";
 
 /**
  * One argument of a service method, so a model can call it as a tool
@@ -98,6 +99,10 @@ const ms = (since: number) => Math.round((performance.now() - since) * 100) / 10
 
 export class RemotePlugins {
   readonly installed = new Map<string, Installed>();
+  /** Services plugins provide (provided.ts): which plugin provides each. */
+  readonly providers = new Map<string, string>();
+  /** Services an app that is opening will provide, by name, counted: a plugin beside them that needs one may start first. */
+  readonly expected = new Map<string, number>();
   readonly live = new Map<string, Remote>();
   private waiting = new Map<string, Waiter[]>();
   /** Told when plugins are installed, removed, or turned on or off. */
@@ -152,9 +157,18 @@ export class RemotePlugins {
       return { ok: false, error: message };
     }
     // A plugin that needs a service this site doesn't run fails now, saying which, not on its first call.
-    const missing = (manifest.services ?? []).filter((name) => !Object.hasOwn(this.services, name));
+    const provides = Object.keys(manifest.provides ?? {});
+    const missing = (manifest.services ?? []).filter((name) => !Object.hasOwn(this.services, name) && !this.expected.has(name) && !provides.includes(name));
     if (missing.length) {
-      const message = `“${manifest.name}” needs the ${missing.join(", ")} service${missing.length > 1 ? "s" : ""}, which this site doesn't run: add ${missing.length > 1 ? "them" : "it"} to kernel.json`;
+      const message = `“${manifest.name}” needs the ${missing.join(", ")} service${missing.length > 1 ? "s" : ""}, which nothing here provides: add ${missing.length > 1 ? "them" : "it"} to kernel.json, or link a plugin that provides ${missing.length > 1 ? "them" : "it"}`;
+      record({ kind: "error", name: "plugin:refused", detail: message });
+      return { ok: false, error: message };
+    }
+    // A service name the kernel, a module or another plugin has is refused, never shadowed.
+    const clash = provides.find((name) => Object.hasOwn(this.services, name) && this.providers.get(name) !== manifest.id);
+    if (clash) {
+      const by = this.providers.get(clash);
+      const message = `“${manifest.name}” can't provide ${clash}: ${by ? `the plugin ${by} already does` : "the kernel already has a service by that name"}`;
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }
@@ -169,6 +183,7 @@ export class RemotePlugins {
     const enabled = options.enabled ?? previous?.enabled ?? true;
     this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest), origin: options.origin ?? "data", enabled, href: options.href });
     this.defineHooks(manifest.id, manifest.hooks ?? {});
+    this.provideServices(manifest);
     this.onManifest?.(manifest);
     record({ kind: "lifecycle", name: "plugin:install", plugin: manifest.id, detail: `${manifest.scope ?? "shared"}: ${manifest.permissions.join(" ")}${enabled ? "" : " (off)"}` });
     this.onChange?.("install", manifest.id);
@@ -307,8 +322,67 @@ export class RemotePlugins {
     this.stop(id);
     if (!this.installed.delete(id)) return;
     this.defineHooks(id, {});
+    this.withdrawServices(id);
     record({ kind: "lifecycle", name: "plugin:uninstall", plugin: id });
     this.onChange?.("uninstall", id);
+  }
+
+  /**
+   * Plugins about to be installed together (an app's links, the data folder's plugins): the services they provide
+   * count as there while they start, so one beside them that needs a service isn't refused for starting first.
+   * Call the function it returns once they have.
+   */
+  expect(sources: string[]): () => void {
+    const names = sources.flatMap((source) => {
+      try {
+        return Object.keys(readManifest(source).provides ?? {});
+      } catch {
+        return [];
+      }
+    });
+    for (const name of names) this.expected.set(name, (this.expected.get(name) ?? 0) + 1);
+    return () => {
+      for (const name of names) {
+        const left = (this.expected.get(name) ?? 1) - 1;
+        if (left > 0) this.expected.set(name, left);
+        else this.expected.delete(name);
+      }
+      this.recheck(names);
+    };
+  }
+
+  /**
+   * A plugin started because a service was expected, and the plugin that would provide it didn't (it was refused,
+   * say): it is stopped and uninstalled, saying which service is missing, rather than left running without it.
+   */
+  private recheck(names: string[]): void {
+    const gone = names.filter((name) => !Object.hasOwn(this.services, name) && !this.expected.has(name));
+    if (!gone.length) return;
+    for (const [id, plugin] of [...this.installed]) {
+      const missing = (plugin.manifest.services ?? []).filter((name) => gone.includes(name));
+      if (!missing.length) continue;
+      record({ kind: "error", name: "plugin:refused", plugin: id, detail: `“${plugin.manifest.name}” needs the ${missing.join(", ")} service${missing.length > 1 ? "s" : ""}, and the plugin that would provide ${missing.length > 1 ? "them" : "it"} didn't start` });
+      this.uninstall(id);
+    }
+  }
+
+  /** Puts the services a plugin's manifest provides into the kernel's table, in place of any it provided before. */
+  private provideServices(manifest: Manifest): void {
+    this.withdrawServices(manifest.id);
+    const listening = (hook: string) => ((this.root.events._hooks as Record<string, unknown[]>)[hook]?.length ?? 0) > 0;
+    for (const [name, spec] of Object.entries(manifest.provides ?? {})) {
+      this.services[name] = providedService(this.root, manifest, name, spec, listening);
+      this.providers.set(name, manifest.id);
+      record({ kind: "lifecycle", name: "service:provided", plugin: manifest.id, detail: name });
+    }
+  }
+
+  private withdrawServices(id: string): void {
+    for (const [name, by] of [...this.providers]) {
+      if (by !== id) continue;
+      this.providers.delete(name);
+      delete this.services[name];
+    }
   }
 
   /** Turns a plugin on (starting its instances) or off (stopping them). */
@@ -544,6 +618,8 @@ export class Remote {
     if (command) return this.command(listener, command[1]);
     const job = /^schedule:([a-z][a-z0-9-]{0,63})$/.exec(name);
     if (job) return this.job(listener, job[1]);
+    const provided = /^service:([a-z][a-z0-9-]{0,63})$/.exec(name);
+    if (provided) return this.serve(listener, provided[1]);
     const route = /^route:(GET|HEAD|POST|PUT|PATCH|DELETE) (\S+)$/.exec(name);
     if (route) return this.route(listener, route[1], route[2]);
     // A collection's change hook is made when its owner first runs. A reader may listen
@@ -645,6 +721,17 @@ export class Remote {
     const name = commandHook(this.instance, id);
     // Closed: a command that throws or doesn't answer in time is an error for whoever ran it, not a silent pass.
     const spec: HookSpec = { mode: "bail", timeoutMs: 120_000, onFailure: "closed" };
+    this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
+  }
+
+  /** A service the plugin provides (provided.ts): its calls come on a hook named after it, so no other can answer. */
+  private serve(listener: number, service: string): void {
+    if (!this.plugin.manifest.provides?.[service] || !check(this.instance, this.caps, `provide:${service}`)) {
+      return void this.post({ t: "event", action: "kernel:denied", value: `provide:${service}` });
+    }
+    const name = serviceHook(this.plugin.id, service);
+    // Closed: a provider that throws or doesn't answer in time is an error for the caller, not a silent pass.
+    const spec: HookSpec = { mode: "bail", timeoutMs: SERVICE_TIMEOUT_MS, onFailure: "closed" };
     this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
   }
 
