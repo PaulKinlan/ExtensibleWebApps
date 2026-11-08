@@ -1,0 +1,32 @@
+<!--
+  Chapter 9's words. chapter-9-views.js sends { html, template }: the HTML in the box,
+  which it also draws, as written, just below this card, and an example
+  template (sent as data, since a {{hole}} written here would be filled). The form sends
+  "draw" with { html }, and the second button "example".
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter pre { overflow-x: auto; padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); font-size: var(--text-sm); }
+  .chapter .try { padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); }
+  .chapter .try p:first-child { margin-top: 0; }
+  .chapter textarea { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: var(--text-sm); }
+  .chapter .try-buttons { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .drawn { border-style: dashed; }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">9</ui-badge> Views are HTML</h2>
+    <p>A plugin can't touch the page. It describes what it wants drawn, as plain HTML, and sends that to the page in a message. Most plugins keep their views in an <code>.html</code> file next to them, as templates, and send only the data:</p>
+    <pre><code>{{template}}</code></pre>
+    <p>The page fills in the values as text, never as HTML. It keeps only the elements and attributes on its allowlist, so no scripts, event handlers, inline styles or <code>javascript:</code> links. Then it changes only what's different, so what you're typing and where you've scrolled survive a redraw. A plugin's own stylesheet reaches only its own views, and the page's styles always win.</p>
+    <form class="try" data-action="draw">
+      <p><strong>Try it.</strong> This chapter draws whatever HTML is in the box, just below this card, exactly as a plugin would. Change it and draw it again.</p>
+      <textarea name="html" rows="7" aria-label="HTML to draw" spellcheck="false">{{html}}</textarea>
+      <div class="try-buttons">
+        <button type="submit">Draw it</button>
+        <button type="button" data-action="example">Back to the example</button>
+      </div>
+    </form>
+    <p>Read more: <a href="/docs/guide/views-and-templates">views and templates</a>, <a href="/docs/guide/styling">styling</a>, and <a href="/docs/security#5-views-are-data-sanitised-on-the-page">why views are safe</a>.</p>
+  </ui-card>
+</template>
