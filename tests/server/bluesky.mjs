@@ -70,8 +70,8 @@ export async function blueskyChecks(base, check, net) {
   const blank = await signIn("");
   const local = await get(`${base.replace("127.0.0.1", "localhost")}/auth/oauth/bluesky/start?handle=alice.test`);
   check(
-    "bluesky: a handle no one has, or none, goes back to /account/ saying so; on localhost it moves to 127.0.0.1, which atproto's development client needs",
-    failed(nobody) && /handle/.test(decodeURIComponent(nobody.location)) && failed(blank) && new URL(local.headers.get("location") ?? "x:").hostname === "127.0.0.1",
+    "bluesky: a handle no one has, or none, goes back to /account/ saying so; on localhost it goes back to /account/ at 127.0.0.1 to start again there, which atproto's development client needs",
+    failed(nobody) && /handle/.test(decodeURIComponent(nobody.location)) && failed(blank) && /^http:\/\/127\.0\.0\.1:\d+\/account\/\?error=/.test(local.headers.get("location") ?? ""),
     JSON.stringify({ nobody, blank, local: local.headers.get("location") }),
   );
 
@@ -101,11 +101,11 @@ export async function blueskyChecks(base, check, net) {
   });
   check(
     "bluesky: on HTTPS its client id is its metadata's own URL, with this site's callback; and it won't ask a server that isn't public HTTPS",
-    metadata?.client_id === "https://apps.example/auth/oauth/bluesky/client-metadata.json" && metadata.redirect_uris?.[0] === "https://apps.example/auth/oauth/bluesky/callback" && metadata.dpop_bound_access_tokens === true && refuses.length === 9 && safeUrl("https://bsky.social", settings),
+    metadata?.client_id === "https://apps.example/auth/oauth/bluesky/client-metadata.json" && metadata.redirect_uris?.[0] === "https://apps.example/auth/oauth/bluesky/callback" && metadata.dpop_bound_access_tokens === true && refuses.length === 9 && safeUrl("https://bsky.social", settings) && safeUrl("https://0xauth.example.com", settings),
     JSON.stringify({ metadata, refuses }),
   );
 
-  const privateOnes = ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:7f00:1"];
+  const privateOnes = ["127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fd00::1", "fe80::1", "fec0::1", "::ffff:127.0.0.1", "::ffff:7f00:1"];
   const publicOnes = ["8.8.8.8", "151.101.1.1", "2606:4700::1111"];
   check(
     "bluesky: on Node, its fetch connects only to public addresses, whatever a name resolves to",

@@ -75,10 +75,12 @@ export function bluesky(entry: Record<string, unknown>): Flow {
     ask: { name: "handle", label: "Your Bluesky handle", placeholder: "you.bsky.social" },
 
     async start({ url, back, state, challenge }) {
-      // The loopback client must come back to 127.0.0.1, so its cookie must be set there.
+      // The loopback client must come back to 127.0.0.1, so it must start there too: back to the account
+      // page at that address, to start again from it (a start sent on from here would come from another site).
       if (url.hostname === "localhost" && url.protocol === "http:") {
-        const there = new URL(url);
+        const there = new URL("/account/", url);
         there.hostname = "127.0.0.1";
+        there.searchParams.set("error", "Bluesky sign-in works at this address: start it again here");
         return { location: there.href };
       }
       const client = clientId(url, back);

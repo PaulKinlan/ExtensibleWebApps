@@ -8,7 +8,9 @@
 // On Cloudflare a Worker's fetch only reaches the public internet, so there
 // it's the platform's fetch.
 
-const isNode = typeof (globalThis as { process?: { versions?: { node?: string } } }).process?.versions?.node === "string";
+// A Worker with Node compatibility has process.versions.node too, but no dns.lookup: tell it apart by its user agent.
+const isWorker = (globalThis as { navigator?: { userAgent?: string } }).navigator?.userAgent === "Cloudflare-Workers";
+const isNode = !isWorker && typeof (globalThis as { process?: { versions?: { node?: string } } }).process?.versions?.node === "string";
 
 /** Whether an address is on the public internet (not loopback, private, link-local, shared, multicast or reserved). */
 export function isPublicAddress(address: string): boolean {
@@ -26,7 +28,7 @@ export function isPublicAddress(address: string): boolean {
   }
   const v6 = address.toLowerCase();
   if (!v6.includes(":")) return false;
-  return !(v6 === "::" || v6 === "::1" || /^f[cd]/.test(v6) || /^fe[89ab]/.test(v6) || /^ff/.test(v6) || v6.startsWith("::ffff:") || v6.startsWith("64:ff9b:") || v6.startsWith("2001:db8:"));
+  return !(v6 === "::" || v6 === "::1" || /^f[cd]/.test(v6) || /^fe[89a-f]/.test(v6) || /^ff/.test(v6) || v6.startsWith("::ffff:") || v6.startsWith("64:ff9b:") || v6.startsWith("2001:db8:"));
 }
 
 export const guardedFetch = (isNode ? nodeFetch : (input, init) => fetch(input, init)) as typeof fetch;
@@ -51,9 +53,15 @@ async function nodeFetch(input: string | URL | Request, init: RequestInit = {}):
       const out = new Headers();
       for (const [name, value] of Object.entries(answer.headers)) for (const v of ([] as unknown[]).concat(value ?? [])) out.append(name, String(v));
       const status = answer.statusCode ?? 502;
-      const nobody = status === 204 || status === 304 || (init.method ?? "GET") === "HEAD";
+      const nobody = status === 101 || status === 103 || status === 204 || status === 205 || status === 304 || (init.method ?? "GET") === "HEAD";
       if (nobody) answer.resume();
-      resolve(new Response(nobody ? null : (stream.Readable.toWeb(answer) as ReadableStream), { status, headers: out }));
+      // A status a Response can't hold (or any other surprise) fails the sign-in, never the server.
+      try {
+        resolve(new Response(nobody ? null : (stream.Readable.toWeb(answer) as ReadableStream), { status, headers: out }));
+      } catch (error) {
+        answer.resume();
+        reject(error);
+      }
     });
     request.on("error", reject);
     request.end(body);

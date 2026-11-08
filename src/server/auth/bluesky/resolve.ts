@@ -64,7 +64,7 @@ export function safeUrl(url: string, settings: Settings): URL {
   }
   // "localhost." is localhost: names are checked without a trailing dot.
   const host = parsed.hostname.toLowerCase().replace(/\.+$/, "");
-  const local = host.startsWith("[") || /^[0-9.]+$/.test(host) || /^0x/i.test(host) || !host.includes(".") || /\.(localhost|local|internal|arpa|home|lan|corp|intranet)$/.test(host);
+  const local = host.startsWith("[") || /^[0-9.]+$/.test(host) || !host.includes(".") || /\.(localhost|local|internal|arpa|home|lan|corp|intranet)$/.test(host);
   if (parsed.protocol !== "https:" || local || parsed.username || parsed.password) throw new Error(`Won't ask ${parsed.origin}: only public HTTPS servers`);
   return parsed;
 }
