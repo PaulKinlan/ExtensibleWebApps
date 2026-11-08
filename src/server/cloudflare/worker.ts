@@ -132,6 +132,11 @@ class PluginHost extends RpcTarget {
     else await this.ctx.storage.setAlarm(Math.max(at, Date.now()));
   }
 
+  /** The space's members' email addresses, from the accounts (src/kernel/services/email.ts mails only these). */
+  addresses(): Promise<string[]> {
+    return this.env.ACCOUNTS.getByName("accounts").addresses(this.space);
+  }
+
   site(url: string): Promise<Response> {
     const { pathname, search } = new URL(url);
     return this.env.ASSETS.fetch(new Request(`https://assets${pathname}${search}`));
@@ -222,6 +227,11 @@ export class Accounts extends DurableObject<Env> {
   /** Whether a space by this name exists. */
   async exists(space: string): Promise<boolean> {
     return this.auth.exists(space);
+  }
+
+  /** The email addresses a space's members gave: the only ones its server plugins may email. */
+  async addresses(space: string): Promise<string[]> {
+    return this.auth.addresses(space);
   }
 
   /** Which member of a space the session in a cookie header is, if it's one. */

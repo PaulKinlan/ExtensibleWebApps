@@ -8,6 +8,11 @@
 // (Cloudflare Email, SMTP), each message is written down in the space's folder
 // as server/outbox/<time>-<id>.json, which no plugin can read.
 //
+// Mail goes only to the space's members: to the address each gave on their
+// account page (/account/), which the host reads from the accounts
+// (env().addresses). A plugin with a public route can't be made to mail
+// anyone else, and a host that can't say who the members are sends nothing.
+//
 // A plugin sends at most MAX_PER_DAY messages a day, each to at most MAX_TO
 // people, so a plugin with a public route can't be made into a way to send
 // anyone mail without end. The count is kept in server/email.json.
@@ -80,13 +85,13 @@ export default ({ store }: Kernel): ServiceProvider => {
   }
 
   return {
-    description: "Email: messages a plugin on a space's server sends. Until the deployment delivers mail, each is written down in the space's outbox.",
+    description: "Email: messages a plugin on a space's server sends to the space's members. Until the deployment delivers mail, each is written down in the space's outbox.",
     methods: {
       send: {
         args: "({ to, subject, text, html? })",
         returns: "{ ok, id }",
         needs: "email",
-        description: `Sends a message to \`to\` (an address or a list, at most ${MAX_TO}), with a one-line \`subject\`, plain \`text\` and, if given, \`html\`. Only on a space's server; at most ${MAX_PER_DAY} a day for each plugin.`,
+        description: `Sends a message to \`to\` (a member's address or a list of them, at most ${MAX_TO}: only addresses the space's members gave on their accounts), with a one-line \`subject\`, plain \`text\` and, if given, \`html\`. Only on a space's server; at most ${MAX_PER_DAY} a day for each plugin.`,
       },
     },
     capability: () => "email",
@@ -94,6 +99,13 @@ export default ({ store }: Kernel): ServiceProvider => {
       if (method !== "send") throw new Error(`email has no method ${method}`);
       if (env().kind !== "server") throw new Error('Email is sent from a space\'s server: a plugin that sends it has runs: "server"');
       const mail = checkMail(args[0]);
+      // Compared without case: the same person, whatever case they or a plugin typed it in.
+      const members = new Set(((await env().addresses?.()) ?? []).map((a) => a.toLowerCase()));
+      const outside = mail.to.filter((address) => !members.has(address.toLowerCase()));
+      if (outside.length) {
+        record({ kind: "denied", name: "email:not-a-member", plugin: base(instance), trace: dispatch?.trace, detail: `${outside.length} address${outside.length === 1 ? "" : "es"}` });
+        throw new Error(`Email goes only to the space's members, at the address they gave on their account page: ${outside.join(", ")} isn't one`);
+      }
       const run = queue.then(() => send(base(instance), mail, dispatch?.trace));
       queue = run.catch(() => {});
       return run;
