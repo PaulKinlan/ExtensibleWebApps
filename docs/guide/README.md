@@ -15,8 +15,9 @@ How to build apps on this platform, from the first page to sharing data between 
 11. [Commands and the command palette](commands.md): something a plugin can do, named once, and run from a palette, a shortcut or an agent.
 12. [Slots in views, and view transforms](slots-and-transforms.md): a plugin leaving a room in its view for others, and a plugin changing another plugin's view.
 13. [Hooks of your own](plugin-hooks.md): a plugin defining hooks in its manifest, which only it runs and others listen to, even before it is installed.
-14. [Deploying one app on its own](deploying-an-app.md): one app as a Worker of its own, on its own address, in two commands.
-15. [Loading fast, without jumping](loading-fast.md): what the host does so an app draws early and its page doesn't move while it fills in.
+14. [Spaces, and plugins on a server](spaces-and-servers.md): an app shared by a group of people, each device with a copy that syncs; and plugins that run on the space's server, with public routes, schedules and email.
+15. [Deploying one app on its own](deploying-an-app.md): one app as a Worker of its own, on its own address, in two commands.
+16. [Loading fast, without jumping](loading-fast.md): what the host does so an app draws early and its page doesn't move while it fills in.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 

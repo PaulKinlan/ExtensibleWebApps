@@ -1,6 +1,6 @@
 # Debugging an app
 
-Everything an app does goes through the kernel, so the kernel can tell you about all of it: which plugins are running, what each one asked for and was given, which hooks exist and who listens to them, what happens as it happens, and which worker runs where. The platform gives you four ways to look, from inside an app to outside all of them.
+Everything an app does goes through the kernel, so the kernel can tell you about all of it: which plugins are running, what each one asked for and was given, which hooks exist and who listens to them, what happens as it happens, and which worker runs where. The platform gives you five ways to look, from inside an app to outside all of them.
 
 | Tool | Where | What it shows |
 | --- | --- | --- |
@@ -18,6 +18,8 @@ Open [`/demos/debugger/`](../../demos/debugger/app.html) in one tab and the app 
 - **Hooks**: every hook, from the kernel, from a plugin's manifest `hooks` (named `<plugin>:<key>`), or from a collection (`data:changed:<c>`, `data:beforeWrite:<c>`). For each: its mode and time limit, the capability listening needs, who listens now, and how often it fired. A plugin can listen to a hook before the plugin that defines it is installed: such a hook shows as **waiting**.
 - **Events**: the trace, as it happens. Filter it by kind or text, pause it, or pick an event's trace id to follow one action through every worker it touched.
 - **Workers**: every plugin worker, by the tab that started it. Shared plugins run once, in the spawner tab; tab plugins run once per tab whose app links them.
+
+It sees the kernel of the address it is opened at: open it at `/s/<space>/demos/debugger/` to look at a space's kernel in this browser. It can't yet see a space's kernel on the server, where server plugins run; their routes, jobs and errors aren't in its panels.
 
 The debugger is five plugins in [`demos/debugger/`](../../demos/debugger/), one per panel. The panels agree on which tab to look at through the bus topic `debugger-focus`. Take one out, or add your own panel, as with any app.
 

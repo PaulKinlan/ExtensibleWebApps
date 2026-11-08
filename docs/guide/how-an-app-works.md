@@ -5,7 +5,7 @@ An app is three kinds of thing, each in its own place:
 | Piece | Where it runs | What it does |
 | --- | --- | --- |
 | **The page** (`app.html`) | The tab | Your HTML: the layout, the named slots plugins draw in, and the list of plugins. It loads the platform's host, which draws views and turns clicks into events. It runs no plugin code. |
-| **The kernel** | A shared worker, one for every tab | Runs the plugins, checks every message against the plugin's manifest, keeps the data, and shows the person a review before a plugin changes data it doesn't own. |
+| **The kernel** | A shared worker, one for every tab (and one for each space a tab opens) | Runs the plugins, checks every message against the plugin's manifest, keeps the data, and shows the person a review before a plugin changes data it doesn't own. |
 | **Plugins** | Their own worker each | Your code: one `.js` file per plugin, with a manifest saying what it may do. A plugin can't touch the page, the network (unless it asks), or another plugin. It sends messages. |
 
 ## The page
@@ -67,7 +67,7 @@ Three things follow from this:
 
 ## Where things live
 
-- **Data** is kept by the kernel in the browser's origin-private file system: collections, each plugin's own storage, its settings and the change log. Every app on the same origin shares it, which is how one app can read another's collection.
+- **Data** is kept by the kernel in the browser's origin-private file system: collections, each plugin's own storage, its settings and the change log. Every app on the same origin shares it, which is how one app can read another's collection. An app opened in a space (`/s/<space>/…`) uses that space's data instead, synced with the people in it ([Spaces, and plugins on a server](spaces-and-servers.md)).
 - **Plugins** are fetched from the app's folder each time. A plugin installed at run time is kept with the data instead.
 - **The trace** (on the workbench at `/workbench/`) shows every message, check and refusal, with timings. When something doesn't draw, look there first.
 

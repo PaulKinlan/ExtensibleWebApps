@@ -35,7 +35,7 @@ The handler gets `{ method, path, query, form }`. `form` holds a posted form's f
 
 - A path is read relative to the plugin's file, and must stay inside its folder. `books.json` from `/demos/reading-list/library.js` is `/demos/reading-list/books.json`. `../x` and the folder itself are refused.
 - Only a plugin an app links has a folder, so only those can add routes.
-- A route works while the app is open in a tab, because the service worker reaches the kernel through a tab. With no tab open, a route answers 503.
+- A route works while the app is open in a tab, because the service worker reaches the kernel through a tab. With no tab open, a route answers 503. A plugin that runs on a space's server answers its routes from there, for anyone, with no tab open anywhere: see [Spaces, and plugins on a server](spaces-and-servers.md).
 - A request no running plugin claims never reaches the kernel. The service worker keeps the table of routes and sends everything else straight to the network.
 
 ```mermaid
@@ -67,6 +67,8 @@ Each job is a file in [`sw/routes/`](../../sw/routes/), listed in [`sw/routes/in
 - [`apps.js`](../../sw/routes/apps.js): an app's folder address (`/demos/habits/`) serves its `app.html`.
 - [`headers.js`](../../sw/routes/headers.js): plugin workers get their security policy (no network without `network`) on any host, not only where the server sends it.
 - [`plugins.js`](../../sw/routes/plugins.js): plugin routes, above.
-- Everything it serves is kept, so an app opened once still opens offline. On a repeat visit a kept file is answered at once and fetched again behind it, so a deploy shows on the visit after; on `localhost` it always asks the network first.
+- [`spaces.js`](../../sw/routes/spaces.js): an app inside a space (`/s/<space>/demos/habits/`) serves the app's own page, with a `<base>` that keeps its links in the space. A server plugin's public route there goes to the network, to the space's server.
+- [`user.js`](../../sw/routes/user.js): a person's own plugins, from their data folder, at `/user/<app folder>/`.
+- Everything it serves is kept, so an app opened once still opens offline. On a repeat visit a kept file is answered at once and fetched again behind it, so a deploy shows on the visit after; a request the space's server answers (its kernel, a server plugin's route) and sign-in (`/auth/`) always ask the network, while an app's own files inside a space come from the cache like the same files outside it; on `localhost` everything asks the network first.
 
 The first visit to a site isn't controlled by the service worker, and nothing depends on it to start: an app works without it, and gains these once it's running.

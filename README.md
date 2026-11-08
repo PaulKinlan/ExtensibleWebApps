@@ -1,8 +1,8 @@
 # Extensible Web Apps
 
-A platform for malleable web apps: a small kernel, and everything else is a plugin. That includes the UI shell, storage and, later, the AI app builder. Plugins run in their own workers, can only do what their manifest asks for, and draw their UI as plain HTML.
+A platform for malleable web apps: a small kernel, and everything else is a plugin. That includes the UI shell, storage, sync and the AI agents. Plugins run in their own workers, can only do what their manifest asks for, and draw their UI as plain HTML. An app needs no server, and can open in a **space** that a group of people share, where the same kernel runs on a server too, with plugins of its own.
 
-**Try it:** https://extensible-web-apps.kinlan-test.workers.dev/ explains the platform with a page made of plugins you can switch off and change ([`index.html`](index.html) and [`home/`](home/README.md)). The workbench, with every plugin, the trace and the benchmarks, is at [`/workbench/`](workbench/index.html). The demo apps are in [`demos/`](demos/): a reading list, spending, recipes, contacts, a calendar and habits.
+**Try it:** https://extensibleweb.app/ explains the platform with a page made of plugins you can switch off and change ([`index.html`](index.html) and [`home/`](home/README.md)). The workbench, with every plugin, the trace and the benchmarks, is at [`/workbench/`](workbench/index.html). The demo apps are in [`demos/`](demos/README.md): a reading list, spending, recipes, contacts, a calendar, habits, a survey and a feed reader with plugins on the server, a household app made for a space, a debugger, and more. The docs are at [`/docs/`](https://extensibleweb.app/docs/), from [`docs/`](docs/README.md).
 
 ![The reading list demo](docs/images/collections.png)
 
@@ -13,7 +13,8 @@ A platform for malleable web apps: a small kernel, and everything else is a plug
 | Build an app or a plugin | The [developer guide](docs/guide/README.md), or [`AGENTS.md`](AGENTS.md) for the short version |
 | See what writing an app looks like | [`demos/`](demos/), starting with [`demos/README.md`](demos/README.md), and the homepage in [`home/`](home/README.md) |
 | Look up an API | [`docs/api.md`](docs/api.md), generated from the running kernel |
-| Understand how the kernel works | [`docs/kernel.md`](docs/kernel.md) |
+| Understand how the kernel works | [`docs/kernel.md`](docs/kernel.md) and [`docs/architecture.md`](docs/architecture.md) |
+| Share an app between people, or run plugins on a server | [`docs/guide/spaces-and-servers.md`](docs/guide/spaces-and-servers.md), then [`docs/server.md`](docs/server.md) |
 | Know why it is built this way | [`docs/spike.md`](docs/spike.md) and the [plan](https://claude.ai/artifact/S7NdMrp2PkNSqHZFNdqGrC) |
 
 ## How it fits together
@@ -62,7 +63,7 @@ Each kind of code has its own place:
   - [`bindings.ts`](src/host/bindings.ts) connects `<ui-form>` and `<ui-table>` to collections
   - [`service-worker.ts`](src/host/service-worker.ts) starts the service worker and passes its questions to the kernel
 - **The elements** ([`elements/`](elements/)) are the `ui-*` custom elements views are built from, one `.html` file each, run as written with no build. See [`elements/README.md`](elements/README.md).
-- **The kernel** (`src/kernel/`) is a shared worker that every tab talks to. [`kernel.ts`](src/kernel/kernel.ts) wires everything together and is the place to start. It reads what differs between hosts from [`env.ts`](src/kernel/env.ts), which an entry sets first: [`browser.ts`](src/kernel/browser.ts) in the browser, and a server entry for a space (see [docs/server.md](docs/server.md)). The other files, by job:
+- **The kernel** (`src/kernel/`) is a shared worker that every tab talks to (another for each space a tab opens), and the same code runs as a space's kernel on a server. [`kernel.ts`](src/kernel/kernel.ts) wires everything together and is the place to start. It reads what differs between hosts from [`env.ts`](src/kernel/env.ts), which an entry sets first: [`browser.ts`](src/kernel/browser.ts) in the browser, and a server entry for a space (see [docs/server.md](docs/server.md)). The other files, by job:
   - **Talking to plugins:**
     - [`remote.ts`](src/kernel/remote.ts) is the bridge to plugin workers
     - [`manifest.ts`](src/kernel/manifest.ts) reads a manifest without running the plugin
@@ -70,10 +71,19 @@ Each kind of code has its own place:
     - [`hooks.ts`](src/kernel/hooks.ts) defines the events plugins can listen to
     - [`apps.ts`](src/kernel/apps.ts) runs the plugins an open app links, while a tab has it open
     - [`routes.ts`](src/kernel/routes.ts) answers requests for plugin routes, which the service worker passes on
+    - [`hosts.ts`](src/kernel/hosts.ts) keeps the open tabs and picks the spawner, the tab that starts plugin workers
+    - [`services/`](src/kernel/services/) holds one file per service (`data`, `hooks`, `reflect`, `schedule`, `email`, `sync`…), found by name
+    - [`agents/`](src/kernel/agents/) runs an agent's Markdown file as a plugin
   - **Data:**
     - [`store.ts`](src/kernel/store.ts) is the data folder
     - [`records.ts`](src/kernel/records.ts) and [`schema.ts`](src/kernel/schema.ts) hold collections
     - [`paths.ts`](src/kernel/paths.ts) checks file paths
+    - [`user-plugins.ts`](src/kernel/user-plugins.ts) keeps a person's own plugins for each app
+    - [`secrets.ts`](src/kernel/secrets.ts) and [`net.ts`](src/kernel/net.ts) keep keys and put them into requests a plugin can't read
+  - **Spaces and servers:**
+    - [`sync.ts`](src/kernel/sync.ts) is a space's side of sync, and [`sync-device.ts`](src/kernel/sync-device.ts) a device's
+    - [`server-apps.ts`](src/kernel/server-apps.ts) starts the server plugins of the apps opened in a space
+    - [`isolate-host.ts`](src/kernel/isolate-host.ts) stands in for a tab on a server, starting each plugin in an isolate
   - **Keeping the person in charge:**
     - [`review.ts`](src/kernel/review.ts) shows a diff before a plugin changes data it doesn't own
     - [`changes.ts`](src/kernel/changes.ts) is the log of what changed
@@ -83,7 +93,8 @@ Each kind of code has its own place:
     - [`reference.ts`](src/kernel/reference.ts) is the API reference
     - [`trace.ts`](src/kernel/trace.ts) is the trace you see at the bottom of the page
 - **The service worker** ([`sw.js`](sw.js)) sits between pages and the network. It serves an app's folder address, keeps what it served for offline use, and sends requests for plugin routes to the kernel through a tab. Each job is a file in [`sw/routes/`](sw/routes/); see [Routes and the service worker](docs/guide/routes.md).
-- **The sandbox** ([`src/sandbox/runtime.ts`](src/sandbox/runtime.ts)) runs inside each plugin's worker. It builds the `ctx` a plugin is given, and every call on `ctx` becomes a message to the kernel.
+- **The server** ([`src/server/`](src/server/)) runs spaces: [`serve.ts`](src/server/serve.ts) on Node, [`cloudflare/`](src/server/cloudflare/) as a Durable Object per space with its kernel in a Dynamic Worker, [`auth/`](src/server/auth/) for passkeys, OAuth providers, spaces and members, and [`routes.ts`](src/server/routes.ts) for server plugins' public routes. What a host provides (a folder, isolates) is a seam in [`src/seams/`](src/seams/). See [docs/server.md](docs/server.md).
+- **The sandbox** ([`src/sandbox/runtime.ts`](src/sandbox/runtime.ts)) runs inside each plugin's worker, in a browser or in a server plugin's isolate. It builds the `ctx` a plugin is given, and every call on `ctx` becomes a message to the kernel.
 
 [`src/shared/`](src/shared/) holds what both sides agree on:
 - the message protocol
@@ -109,6 +120,8 @@ npm run check      # find mistakes in every app in demos/ (or the folders you na
 npm run new-app -- my-app   # copy starter/ to demos/my-app/, a small app to begin from
 npx github:PaulKinlan/ExtensibleWebApps my-app   # no checkout needed: a my-app/ folder with the platform, installed, and the app in demos/my-app/
 npm run deploy:app -- demos/my-app   # deploy just that app as its own Cloudflare Worker (docs/guide/deploying-an-app.md)
+npm run serve      # the site and its spaces on this machine, at http://127.0.0.1:8787 (sign in at /account/)
+npm run test:server  # the server checks, on Node and wrangler dev
 npm run typecheck
 ```
 
@@ -116,7 +129,7 @@ The trace panel at the bottom of the page shows every dispatch, remote call, den
 
 A core rule for every change: add files rather than edit shared ones, and leave existing demos and other people's work merging cleanly. [`AGENTS.md`](AGENTS.md#changing-the-platform-without-getting-in-anyones-way) says how.
 
-Every push to `main` is deployed to Cloudflare as static assets ([`wrangler.jsonc`](wrangler.jsonc)), through Cloudflare's Git integration. Cloudflare applies [`public/_headers`](public/_headers), so plugin workers there get the same content security policy as under `vite preview`: no network unless the plugin's manifest asks for it.
+Every push to `main` is deployed to Cloudflare, at https://extensibleweb.app/, through Cloudflare's Git integration: the static assets, and a Worker ([`wrangler.jsonc`](wrangler.jsonc)) with the `Space` and `Accounts` Durable Objects for spaces and sign-in. Cloudflare applies [`public/_headers`](public/_headers), so plugin workers there get the same content security policy as under `vite preview`: no network unless the plugin's manifest asks for it.
 
 ## Background
 

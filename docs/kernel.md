@@ -1,6 +1,19 @@
 # The kernel
 
-The kernel is Cordis core plus a few pieces of our own, running in a shared worker (or a dedicated one where shared workers are missing). This page describes what it does today; [the plan](https://claude.ai/artifact/S7NdMrp2PkNSqHZFNdqGrC) says where it is going.
+The kernel is Cordis core plus a few pieces of our own. This page describes what it does today; [the plan](https://claude.ai/artifact/S7NdMrp2PkNSqHZFNdqGrC) says where it is going.
+
+## Where it runs
+
+The same kernel code ([`src/kernel/kernel.ts`](../src/kernel/kernel.ts)) runs in four places. It never reaches for `self` or `navigator`: an entry sets its environment first ([`src/kernel/env.ts`](../src/kernel/env.ts)), with who connects, the site's origin, its folder (the `files` seam), and on a server, where its plugins run.
+
+| Where | `kind` | Entry | Who starts its plugins | Its data |
+| --- | --- | --- | --- | --- |
+| A shared worker, one for every tab of the site | `shared` | [`browser.ts`](../src/kernel/browser.ts) | The spawner tab ([`hosts.ts`](../src/kernel/hosts.ts)) | The origin private file system |
+| A dedicated worker, one per tab, where shared workers are missing (or with `?kernel=dedicated`) | `dedicated` | `browser.ts` | Its tab | The same |
+| A shared worker for one space, `kernel:<space>`, in every tab open at `/s/<space>/…` | `shared` | `browser.ts`, with `space` set | The spawner tab | `spaces/<space>/` on the device, kept in step with the space's server ([`sync-device.ts`](../src/kernel/sync-device.ts)) |
+| A space's kernel on a server | `server` | [`src/server/space.ts`](../src/server/space.ts) (Node), [`src/server/cloudflare/kernel.ts`](../src/server/cloudflare/kernel.ts) | Its own stand-in for a tab, which starts each plugin in an isolate ([`isolate-host.ts`](../src/kernel/isolate-host.ts)) | The space's folder on the server; it orders every change ([`sync.ts`](../src/kernel/sync.ts)) |
+
+On a server, the kernel runs only the plugins whose manifest says `runs: "server"` or `"both"`, from the apps opened in the space ([`server-apps.ts`](../src/kernel/server-apps.ts)), answers their public routes, and wakes for their scheduled jobs. A browser kernel leaves out plugins that run only on the server. [Servers and spaces](server.md) has the details.
 
 ## Plugins
 
@@ -14,6 +27,7 @@ export const manifest = {
   scope: "tab",               // "shared" (default) or "tab"
   order: 30,                  // optional: place in lists
   settings: { ... },          // optional: { key: { type, title?, default?, enum? } }
+  // also optional: runs, collections, places, theme, hooks, files (see api.md#manifest)
 };
 
 export default function (ctx) { ... }
@@ -25,7 +39,7 @@ export default function (ctx) { ... }
 
 ## Where plugins come from, and settings
 
-The kernel has no plugins of its own: a page runs the plugins it links, and the workbench links the demo plugins in `plugins/`. A plugin installed at run time is kept in the data folder as `plugins/<id>.js`, so it travels with the data, and the next kernel to open that folder loads it again. Ids the kernel uses for its own views and services (`kernel`, `host`, `plugins`, `store`, `settings`, `audio`) are refused, so a plugin can't pass for the kernel's own panels.
+The kernel has no plugins of its own: a page runs the plugins it links, and the workbench links the demo plugins in `plugins/`. A plugin installed at run time is kept in the data folder as `plugins/<id>.js`, so it travels with the data, and the next kernel to open that folder loads it again. Ids the kernel uses for its own views and services (`kernel`, `host`, `plugins`, `data`, `sync` and the rest, listed in the [API reference](api.md#manifest)) are refused, so a plugin can't pass for the kernel's own panels or services.
 
 The plugins panel (`src/kernel/catalog.ts`, in the side bar) lists every plugin and where it came from. Any plugin can be turned off, which stops its workers but keeps it installed. Plugins kept with the data can also be removed, which deletes their file. A plugin stopped for changing its manifest is removed the same way.
 
@@ -92,7 +106,7 @@ Two host components draw a collection without any plugin code: `<ui-table collec
 
 ## Change review
 
-A write outside a plugin's own data is shown to the person before it happens (`src/kernel/review.ts`). Notes are in the notes plugin's collection, and files are in the data folder, so another plugin's `data.put("notes", …)` or `files.write` opens a card above the editor. The card shows the plugin's name, its reason, and a line diff of the change, with three choices:
+A write outside a plugin's own data is shown to the person before it happens (`src/kernel/review.ts`). Notes are in the notes plugin's collection, and files are in the data folder, so another plugin's `data.put("notes", …)` or `files.write` opens a card in the host's review dialog, which shows wherever the person is on the page. The card shows the plugin's name, its reason, and a line diff of the change, with three choices:
 
 - **Accept:** this write only (`allowed-once`).
 - **Always allow in …:** this write, and any later one by the same plugin to the same place (a collection such as `data:notes`, or a folder such as `exports/`), without asking. The grant is kept with the data in `grants.json`, so it belongs to this app only. The plugins panel lists each grant with a Forget button.

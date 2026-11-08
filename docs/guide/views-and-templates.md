@@ -127,6 +127,10 @@ The host's `ui-*` elements cover layout and data. Each is one file in [`elements
 | `ui-card`, `ui-badge`, `ui-stat`, `ui-empty` | A surface, a status word, a number with a label, an empty state |
 | `ui-table collection="…"` | A sortable table of a collection, kept up to date |
 | `ui-form collection="…"` | A form built from a collection's schema, with lists and groups; see [Data and permissions](data-and-permissions.md#forms-and-tables) |
+| `ui-markdown src="…"`, `ui-diagram` | A Markdown file drawn as a page (these docs are one), and a Mermaid diagram from its text |
+| `ui-code` | A plain code editor, with line numbers, that a form sends by `name` |
+| `ui-commands` | A command palette; see [Commands](commands.md#the-palette) |
+| `ui-debug` | A bug button that opens a panel; what the [debug console](../../std/debug-console.js) draws |
 
 Attributes for each are in the [API reference](../api.md#components).
 
