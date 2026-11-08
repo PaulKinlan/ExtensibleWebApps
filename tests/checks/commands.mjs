@@ -72,6 +72,8 @@ export default async (ctx) => {
     const palette = 'ui-commands [data-command="library/start-next"]';
     const listed = await page.waitForSelector(palette, { state: "attached", timeout: 8000 }).then(() => true, () => false);
     check("the command palette lists the commands an app's plugins add, leaving out those that need arguments", listed && !(await page.$('ui-commands [data-command="library/add"]')));
+    // The element loads the first time a view uses it; its shortcuts work once it is defined and has drawn its button.
+    await page.waitForFunction(() => customElements.get("ui-commands") && document.querySelector("ui-commands")?.shadowRoot?.querySelector(".open"), null, { timeout: 8000 }).catch(() => {});
     const mod = await page.evaluate(() => (/Mac|iPhone|iPad/.test(navigator.platform) ? "Meta" : "Control"));
     await page.keyboard.press(`${mod}+k`);
     const opened = await page.waitForFunction(() => document.querySelector("ui-commands")?.shadowRoot?.querySelector("dialog")?.open, null, { timeout: 3000 }).then(() => true, () => false);
