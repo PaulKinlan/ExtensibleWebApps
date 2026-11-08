@@ -25,7 +25,9 @@ export default async function ({ check }) {
       config.name === "habits" && config.assets.directory === "./site" && existsSync(resolve(out, config.main)) && config.durable_objects.bindings.length >= 2 && config.worker_loaders?.length === 1,
       JSON.stringify(config),
     );
-    check("deploy:app warns about links to pages the Worker won't have", warnings.some((w) => w.includes("/docs/")), warnings.join("; "));
+    const deployed = readFileSync(join(site, "demos/habits/app.html"), "utf8");
+    check("an app's Worker leaves out the main site's navigation", !/class="site"/.test(deployed) && !deployed.includes("/workbench/") && /<slot name="main">/.test(deployed) && !warnings.length, warnings.join("; "));
+    check("deploying leaves the app's own app.html as it was", readFileSync(join(root, "demos/habits/app.html"), "utf8").includes('href="/workbench/"'));
 
     // The security demo links plugins from two other demos with ../: those folders come too.
     const security = layoutApp("demos/security", { out, name: "security-test" });
@@ -39,8 +41,11 @@ export default async function ({ check }) {
       writeFileSync(join(away, "shared", "widgets", "w.js"), "");
       writeFileSync(join(away, "shared", "lib.js"), "");
       const page = join(away, "trip-kit", "app.html");
-      writeFileSync(page, readFileSync(page, "utf8").replace("</head>", "<link rel=plugin href=../shared/widgets/w.js>\n<link rel=plugin href=../shared/lib.js>\n</head>"));
+      writeFileSync(page, readFileSync(page, "utf8").replace("</head>", "<link rel=plugin href=../shared/widgets/w.js>\n<link rel=plugin href=../shared/lib.js>\n</head>").replace("</body>", '<a href="/nowhere/">Elsewhere</a>\n<nav class="site-tools">Tools</nav>\n<nav data-class="site">Mine</nav>\n<nav class="compact site"><a href="/docs/">Docs</a></nav>\n</body>'));
       const external = layoutApp(join(away, "trip-kit"), { out });
+      const navs = readFileSync(join(external.site, "trip-kit/app.html"), "utf8");
+      check("only a nav whose class has the token `site` is left out", navs.includes("site-tools") && navs.includes('data-class="site"') && !navs.includes("compact site"));
+      check("deploy:app warns about links to pages the Worker won't have", external.warnings.some((w) => w.includes("/nowhere/")), external.warnings.join("; "));
       check(
         "an app outside the repo brings its ../ folders, quoted or not",
         external.path === "trip-kit" && existsSync(join(external.site, "trip-kit/app.html")) && existsSync(join(external.site, "shared/widgets/w.js")) && existsSync(join(external.site, "shared/lib.js")),
