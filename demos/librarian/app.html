@@ -6,8 +6,14 @@
   librarian.agent.md          an agent: a Markdown file, not code. When a book is
                               added with only a title, it asks a model for the
                               author and year and fills them in
+  bibliographer.agent.md      a second agent, with an inbox and no access to the
+                              library: the librarian asks it about books it isn't
+                              sure of, and it asks you when a title could be
+                              more than one book
   activity.js                 listens to the agent:* events and lists what the
-                              agent did
+                              agents did
+  /std/board.js               the board: questions the agents ask you, with
+                              their choices, and what the agents did lately
   /std/llm/anthropic.js       the model the agent asks; it asks for your key the
                               first time
 
@@ -26,6 +32,9 @@
   <link rel="plugin" href="activity.js">
   <!-- An agent: the kernel reads its frontmatter as a manifest and runs it as a plugin. -->
   <link rel="agent" href="librarian.agent.md">
+  <link rel="agent" href="bibliographer.agent.md">
+  <!-- Where the agents' questions to you wait, folded to a button with a badge. -->
+  <link rel="plugin" href="/std/board.js">
   <!-- Any provider will do: swap in /std/llm/openai.js, /std/llm/gemini.js or /std/llm/openai-compatible.js. -->
   <link rel="plugin" href="/std/llm/anthropic.js">
 </head>
@@ -38,6 +47,7 @@
     <slot name="main"><p>Loading your books…</p></slot>
   </main>
   <aside>
+    <slot name="board"></slot>
     <slot name="side"></slot>
   </aside>
 </body>

@@ -16,6 +16,8 @@
 //   on:
 //     - hook: data:changed:library
 //     - command: tag-untagged-books
+//     - message: true          (an inbox: others may send it messages)
+//     - topic: new-books       (a bus topic it wakes on)
 //   limits: { runs-per-hour: 30, tokens-per-day: 200000 }
 //   ---
 //   You keep the reading list tidy. When a book has no genre, ...
@@ -36,6 +38,9 @@ export interface AgentConfig {
   instructions: string;
   hooks: string[];
   commands: string[];
+  /** Whether it has an inbox on the bus (`- message: true`), and the bus topics it wakes on. */
+  inbox: boolean;
+  topics: string[];
   limits: { runsPerHour: number; tokensPerDay: number; steps: number };
 }
 
@@ -85,14 +90,17 @@ export function fromAgentFile(text: string): string {
 
   const hooks: string[] = [];
   const commands: string[] = [];
+  const topics: string[] = [];
+  let inbox = false;
   const on = meta.on ?? [];
   if (!Array.isArray(on)) throw new AgentFileError("`on` must be a list of what wakes the agent");
   for (const trigger of on) {
     const [kind, value] = trigger && typeof trigger === "object" && !Array.isArray(trigger) ? (Object.entries(trigger)[0] ?? []) : [];
     if (kind === "hook" && typeof value === "string" && value) hooks.push(value);
     else if (kind === "command" && typeof value === "string" && COMMAND.test(value)) commands.push(value);
-    else if (kind === "message") throw new AgentFileError("Waking on a message comes with the message bus");
-    else throw new AgentFileError("Each entry in `on` is `- hook: <name>` or `- command: <name>` (lowercase letters, digits and dashes)");
+    else if (kind === "message" && value === true) inbox = true;
+    else if (kind === "topic" && typeof value === "string" && COMMAND.test(value)) topics.push(value);
+    else throw new AgentFileError("Each entry in `on` is `- hook: <name>`, `- command: <name>`, `- message: true` or `- topic: <name>` (names are lowercase letters, digits and dashes)");
   }
 
   // An agent can't own a collection, so hearing that one changed needs reading it.
@@ -101,6 +109,10 @@ export function fromAgentFile(text: string): string {
     const collection = /^data:changed:(.+)$/.exec(hook)?.[1];
     if (collection && !grants(reads, `data:read:${collection}`)) throw new AgentFileError(`Waking on ${hook} needs data:read:${collection} in \`permissions\``);
   }
+
+  // Waking on a topic needs reading it, as a reader would.
+  const busReads = new Set((permissions as string[]).filter((p) => p.startsWith("bus:read:")));
+  for (const topic of topics) if (!grants(busReads, `bus:read:${topic}`)) throw new AgentFileError(`Waking on the topic ${topic} needs bus:read:${topic} in \`permissions\``);
 
   const limits = { ...DEFAULT_LIMITS };
   const given = meta.limits ?? {};
@@ -115,10 +127,18 @@ export function fromAgentFile(text: string): string {
   const instructions = body.trim();
   if (!instructions) throw new AgentFileError("An agent needs instructions: write them after the frontmatter");
   const model = string("model");
-  const config: AgentConfig = { id, name, model: model && model !== "default" ? model : undefined, instructions, hooks, commands, limits };
+  const config: AgentConfig = { id, name, model: model && model !== "default" ? model : undefined, instructions, hooks, commands, inbox, topics, limits };
 
-  // An agent asks the model (llm), is an agent (agent: it hears requests to run), and listens to the hooks that wake it.
-  const caps = [...permissions, "llm", "agent", ...hooks.filter((h) => !h.startsWith("data:changed:")).map((h) => `hook:listen:${h}`)];
+  // An agent asks the model (llm), is an agent (agent: it hears requests to run), listens to the hooks that wake it,
+  // and, with `- message: true`, has an inbox; waking on a topic means hearing that something was posted.
+  const caps = [
+    ...permissions,
+    "llm",
+    "agent",
+    ...hooks.filter((h) => !h.startsWith("data:changed:")).map((h) => `hook:listen:${h}`),
+    ...(inbox ? ["bus:inbox"] : []),
+    ...(topics.length ? ["hook:listen:bus:posted"] : []),
+  ];
   const manifest = {
     id,
     name,

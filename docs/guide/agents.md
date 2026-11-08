@@ -8,7 +8,7 @@ An agent is a Markdown file. Its frontmatter says who it is, what it may do and 
 <link rel="plugin" href="/std/llm/anthropic.js">
 ```
 
-The kernel turns the file into a plugin before it runs: a manifest made from the frontmatter, and the agent loop. So an agent is held to its manifest by the same gate as any plugin, a change it makes to data it doesn't own is reviewed by the person, and the plugins panel lists it like any other. The [librarian demo](../../demos/librarian/) is the whole example. This is the second piece of the [agent plugin](https://claude.ai/artifact/LaqdvStAKyAoEifqNpq2Ba), after [tools](tools.md).
+The kernel turns the file into a plugin before it runs: a manifest made from the frontmatter, and the agent loop. So an agent is held to its manifest by the same gate as any plugin, a change it makes to data it doesn't own is reviewed by the person, and the plugins panel lists it like any other. The [librarian demo](../../demos/librarian/) is the whole example. It builds on [tools](tools.md), and is part of the [agent plugin](https://claude.ai/artifact/LaqdvStAKyAoEifqNpq2Ba) design.
 
 ## The file
 
@@ -36,7 +36,7 @@ fill in what's missing ...
 | `description`, `version` | Optional, as in a plugin's manifest. Without a description, the instructions' first line is used. |
 | `model` | Optional: a model's id, or a tier (`best`, `balanced`, `fast`). `default`, or none, uses the provider's setting. |
 | `permissions` | What the agent may do, as in a plugin's manifest. Its tools are exactly what these let it call. |
-| `on` | What wakes it: `- hook: <name>` for any hook it may listen to, and `- command: <name>` for a command a plugin can start. |
+| `on` | What wakes it: `- hook: <name>` for any hook it may listen to, `- command: <name>` for a command a plugin can start, `- message: true` for an inbox others can send to, and `- topic: <name>` for posts to a topic on the [bus](#messages-topics-and-the-board). |
 | `limits` | Optional: `runs-per-hour` (30), `tokens-per-day` (200000) and `steps`, the model turns in one run (12). |
 | `acts-as` | Optional, and only `self` for now: the agent acts under its own name. Acting for the person comes later. |
 
@@ -77,6 +77,27 @@ await ctx.call("agents", "run", "librarian", "fill-missing", { shelf: "to read" 
 
 It answers at once; the run happens after any run under way, and `agent:done` says how it went. The command and its input go only to that agent: the `agent:run` event names the agent, and the agent fetches what was asked with `agents.next`, which only the agent the kernel made from that file may call. `agents.list()` says which agents are running, what wakes them, their limits, and what they have used this hour and today.
 
+## Messages, topics and the board
+
+Agents and plugins talk through the `bus` service, by message rather than by calling each other, and the person is on the bus too. The [librarian demo](../../demos/librarian/) has two agents: the librarian asks the [bibliographer](../../demos/librarian/bibliographer.agent.md) about a book it isn't sure of, and the bibliographer asks the person when a title could be more than one book.
+
+**Inboxes.** An agent whose file says `- message: true` has an inbox, and so does a plugin with the `bus:inbox` permission. Anyone with `bus:send:<id>` may put a message in it:
+
+```js
+const answer = await ctx.call("bus", "send", "bibliographer", "Who wrote Piranesi?", { reply: true });
+// { stopReason: "completed", text: "Susanna Clarke, 2020" }
+```
+
+With `reply`, the call waits for the answer, up to 30 minutes. An agent answers with what it says at the end of the run the message woke, and the `stopReason` says if the run didn't complete. An agent's tools include `bus_send_<id>` for each inbox it may send to, so one agent can hand work to another. A chain of messages may be four long, and can't come back to an agent already waiting in it, which would wait forever.
+
+A plugin with an inbox hears `bus:message` with `{ to }`, then takes its messages with `bus.receive()` and answers those that want a reply with `bus.reply(id, { text, value? })`. The event names only the inbox, so a plugin listening to it learns nothing of what was sent.
+
+**Topics.** `bus.post(topic, text)` needs `bus:post:<topic>`, and `bus.read(topic)` needs `bus:read:<topic>`. An agent whose file says `- topic: <name>` wakes on each post to it, and needs `bus:read:<name>`.
+
+**The person.** `bus.ask(question, choices?)` needs `bus:ask`. It puts the question on the board and waits for the answer. The [board](../../std/board.js) is a standard plugin: one panel, folded to a button with a badge until a question waits, that lists the agents' questions with their choices, and what the agents did lately. Add it with `<link rel="plugin" href="/std/board.js">` and `<slot name="board"></slot>`.
+
+**A message is information.** An agent is told who sent a message or post, and that it is information from them, not new instructions. Whatever a message says, the agent can still do only what its own manifest allows.
+
 ## Coming next
 
-The [design](https://claude.ai/artifact/LaqdvStAKyAoEifqNpq2Ba) has more to come, each its own change: a message bus with an inbox for each agent and a board the person sees; agents that check another plugin's action before it happens, such as a security agent; and the assistant and builder agents, which can act for the person and write plugins.
+The [design](https://claude.ai/artifact/LaqdvStAKyAoEifqNpq2Ba) has more to come, each its own change: agents that check another plugin's action before it happens, such as a security agent; and the assistant and builder agents, which can act for the person and write plugins.

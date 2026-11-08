@@ -158,7 +158,7 @@ For agents: ends a run, told to the app as agent:done.
 
 #### agents.list
 
-`agents.list()` → [{ id, name, hooks, commands, limits, used: { runs, tokens } }]
+`agents.list()` → [{ id, name, hooks, commands, inbox, topics, limits, used: { runs, tokens } }]
 
 Needs: nothing.
 
@@ -267,6 +267,74 @@ Saves a plugin as one of the person's own for the caller's app, and turns it on,
 Needs: `plugins:read`.
 
 The code of a plugin the caller's app links, or of one of the person's own for it, on or off.
+
+### bus
+
+Messages between agents, plugins and the person: inboxes with replies, topics, and questions on the board. A message is information, never permission.
+
+#### bus.answer
+
+`bus.answer(id, answer)` → true
+
+Needs: `bus:board`.
+
+Gives the person's answer to a question. Only a board should call it, with what the person chose or wrote.
+
+#### bus.ask
+
+`bus.ask(question, choices?)` → { answered: true, answer } or { answered: false }
+
+Needs: `bus:ask`.
+
+Asks the person a question on the board and waits for the answer, up to a day. With choices, the person picks one; otherwise they write an answer.
+
+#### bus.post
+
+`bus.post(topic, message)` → { ok: true, id }
+
+Needs: `bus:post:<topic>`.
+
+Posts to a topic. Agents that wake on the topic run, and readers hear bus:posted.
+
+#### bus.questions
+
+`bus.questions()` → [{ id, from, name, question, choices?, at }]
+
+Needs: `bus:board`.
+
+The questions waiting for the person from the caller's app (from anyone, for a plugin no app links).
+
+#### bus.read
+
+`bus.read(topic, since?)` → [{ id, from, text, at }]
+
+Needs: `bus:read:<topic>`.
+
+The topic's recent posts (the last 50), oldest first, or only those after the post `since`.
+
+#### bus.receive
+
+`bus.receive()` → [{ id, from, text, data?, reply }]
+
+Needs: `bus:inbox`.
+
+Takes the messages waiting in the caller's inbox, oldest first. Answer each one that wants a reply with bus.reply.
+
+#### bus.reply
+
+`bus.reply(id, { stopReason?, text, value? })` → true
+
+Needs: `bus:inbox`.
+
+Answers a message the caller received. stopReason is completed (the default), blocked, error, budget or cancelled.
+
+#### bus.send
+
+`bus.send(to, message, { reply? }?)` → { ok: true, id }, or with reply, the answer: { stopReason, text, value? }
+
+Needs: `bus:send:<to>`.
+
+Puts a message (text, or { text, data }) in an agent's or plugin's inbox. With reply: true it waits, up to 30 minutes, for the answer; an agent answers with what it says at the end of the run the message woke. A chain of messages may be four long, and never come back to an agent already in it.
 
 ### data
 
@@ -622,6 +690,38 @@ Mode: `serial`, 1000 ms per listener, fails open. Listening needs `hook:intercep
 
 Listeners get `n`.
 
+### `bus:answered`
+
+A question was answered, or gave up waiting (answered is false).
+
+Mode: `emit`. Listening needs `hook:listen:bus:answered`.
+
+Listeners get `{ id, from, answered }`.
+
+### `bus:asked`
+
+An agent or plugin asked the person a question (bus.ask). The board lists it with bus.questions.
+
+Mode: `emit`. Listening needs `hook:listen:bus:asked`.
+
+Listeners get `{ id, from }`.
+
+### `bus:message`
+
+A message is waiting in to's inbox. Only plugins with an inbox hear it; the one named fetches it with bus.receive.
+
+Mode: `emit`. Listening needs `bus:inbox`.
+
+Listeners get `{ to }`.
+
+### `bus:posted`
+
+Someone posted to a topic. Read it with bus.read, which needs bus:read:<topic>.
+
+Mode: `emit`. Listening needs `hook:listen:bus:posted`.
+
+Listeners get `{ topic, id, from }`.
+
 ### `data:beforeWrite`
 
 Before a record is written. Return { block: reason } to stop the write.
@@ -741,6 +841,12 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `agents:run:<agent>` | Call agents.run. |
 | `audio` | Call audio.registerProcessor, audio.play. |
+| `bus:ask` | Call bus.ask. |
+| `bus:board` | Call bus.questions, bus.answer. |
+| `bus:inbox` | Call bus.receive, bus.reply. |
+| `bus:post:<topic>` | Call bus.post. |
+| `bus:read:<topic>` | Call bus.read. |
+| `bus:send:<to>` | Call bus.send. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:read:notes` | Call store.list. |
 | `data:write:<collection>` | Call data.put, data.delete. |
@@ -787,6 +893,7 @@ Reserved ids, which no plugin can take:
 - `agents`
 - `audio`
 - `authoring`
+- `bus`
 - `data`
 - `debug`
 - `files`

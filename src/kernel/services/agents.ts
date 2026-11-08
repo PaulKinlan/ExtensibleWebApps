@@ -83,7 +83,7 @@ export default ({ root, remote, store }: Kernel): ServiceProvider => {
   return {
     description: "Agents: Markdown files an app links with rel=\"agent\", each run by the kernel as a plugin that asks a model and calls tools. Lists them, starts their commands, and is how an agent reaches its model and tools, so its limits hold and the app hears the agent:* events.",
     methods: {
-      list: { args: "()", returns: "[{ id, name, hooks, commands, limits, used: { runs, tokens } }]", description: "The agents running now, what wakes them, their limits, and what they have used this hour (runs) and today (tokens)." },
+      list: { args: "()", returns: "[{ id, name, hooks, commands, inbox, topics, limits, used: { runs, tokens } }]", description: "The agents running now, what wakes them, their limits, and what they have used this hour (runs) and today (tokens)." },
       run: { args: "(agent, command, input?)", returns: "{ ok: true }", needs: "agents:run:<agent>", description: "Starts one of an agent's commands, the ones its file lists under `on`. It runs after any run under way; listen to agent:done for the outcome." },
       next: { args: "()", returns: "[{ command, input, from }]", description: "For agents: the commands waiting for this agent, which it runs in order." },
       begin: { args: "(trigger)", returns: "{ ok: true, run } or { ok: false, reason }", description: "For agents: starts a run, if the agent is within its limits. The agent loop calls it." },
@@ -99,7 +99,7 @@ export default ({ root, remote, store }: Kernel): ServiceProvider => {
           const config = made.get(plugin.source);
           if (!config || !plugin.enabled) continue;
           const u = await usage(config.id);
-          out.push({ id: config.id, name: config.name, hooks: config.hooks, commands: config.commands, limits: config.limits, used: { runs: u.runs, tokens: u.tokens } });
+          out.push({ id: config.id, name: config.name, hooks: config.hooks, commands: config.commands, inbox: config.inbox, topics: config.topics, limits: config.limits, used: { runs: u.runs, tokens: u.tokens } });
         }
         return out;
       }
