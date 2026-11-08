@@ -206,6 +206,8 @@ async function syncChecks(base, check, owner, restart) {
     JSON.stringify({ stale, newer }),
   );
   check("sync: a device can't say it is another member: the server says who it is", byBea?.by === ids.bea, JSON.stringify(byBea));
+  const told = (d) => d.heard.find((m) => m.op === "changes")?.member;
+  check("sync: the space's answer to hello tells each device which member it is", told(phone) === ids.owner && told(laptop) === ids.bea, JSON.stringify({ phone: told(phone), laptop: told(laptop) }));
   const stamped = laptop.changes().find((c) => c.seq === 1)?.after;
   check("sync: a record sent without timestamps is stored with them, as every record has", typeof stamped?.createdAt === "string" && typeof stamped?.updatedAt === "string", JSON.stringify(stamped));
 
@@ -242,6 +244,8 @@ async function serverPluginChecks(base, check, owner, restart) {
   }
   const fine = await phone.push([{ collection: "memos", id: "fine", base: 0, after: { id: "fine", title: "A fine word" } }]);
   check("server plugins: an app's plugin with runs: \"server\" starts in the space when a device opens the app there, and its data:beforeWrite stops a device's change", /Guard: that word/.test(refused?.error ?? "") && fine?.[0]?.ok, JSON.stringify({ refused, fine }));
+  const ownerId = (await owner.call("/auth/me")).body?.user?.id;
+  check("server plugins: a server plugin's data:beforeWrite hears which member's device sent the change, as `by`", !!ownerId && refused?.error?.includes(`(from ${ownerId})`), JSON.stringify({ refused, ownerId }));
 
   await phone.settle();
   const reach = phone.changes().find((c) => c.id === "reach");

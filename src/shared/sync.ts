@@ -47,7 +47,10 @@ export type SyncToSpace =
 
 // space -> device
 export type SyncToDevice =
-  /** Changes in order. `seq` is the space's latest, so a device knows it has caught up. */
-  | { t: "sync"; op: "changes"; changes: Accepted[]; seq: number }
+  /**
+   * Changes in order. `seq` is the space's latest, so a device knows it has caught up. The first, the
+   * answer to hello, says which member the device is signed in as.
+   */
+  | { t: "sync"; op: "changes"; changes: Accepted[]; seq: number; member?: string }
   | { t: "sync"; op: "pushed"; id: number; results: Verdict[] }
   | { t: "sync"; op: "refused"; error: string };

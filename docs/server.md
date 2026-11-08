@@ -108,7 +108,7 @@ A space holds people and their data (collections and plugins), and any app can o
 
 Every change under `/auth/` runs one at a time, so a challenge or an invite is used once and a name gets one owner, on both hosts. Someone who leaves a space, or is removed, is disconnected from it at once.
 
-The kernel of a space knows which member each client is: the server adds it to the client's `hello` (a client can't say it itself), and sync records it with every change.
+The kernel of a space knows which member each client is: the server adds it to the client's `hello` (a client can't say it itself), and sync records it with every change. Plugins hear it too: a change that came from another device or from the space's server has `by` (the member's id, or `plugin:<id>` for a server plugin) on `data:changed:<collection>`, and a server plugin's `data:beforeWrite:<collection>` hears which member's device sent the change. A device learns which member it is from the space's answer to its hello: `sync.state()` has it as `member`.
 
 ### Signing in with another site
 
@@ -200,7 +200,7 @@ Any app opens in a space: `/s/family/demos/reading-list/` is the reading list, w
 - **It works offline.** What changes while the server can't be reached waits in `sync/device.json` and is sent when it's back, trying again less often each time, up to every half minute.
 - **Nothing anyone typed is lost.** When the space refuses a change as stale, the space's record replaces it, the tab says so, and this device's version is kept as a draft (`sync/device.json`). Two devices that made the same record (an app's sample data, say, with ids of its own) aren't in conflict.
 
-The `sync` command says where a tab's copy is: `{ seq, connected, pending, drafts }`. Plugins ask the `sync` service (`state`, `keep`, `dismiss`, and the `sync:changed` event). The standard plugin [`std/sync.js`](../std/sync.js), which the reading list links, uses it to show whether the page is in step with the space and to list the drafts. Each draft has two buttons: Use mine sends that version to the space as a new change, and Keep theirs lets the draft go. Your spaces on [`/account/`](/account/) each have a link that opens the reading list in them. [`tests/checks/space-sync.mjs`](../tests/checks/space-sync.mjs) checks it in Chromium, with two people's devices, the server going away and coming back, and a record both changed meanwhile.
+The `sync` command says where a tab's copy is: `{ seq, member, connected, pending, drafts }`. Plugins ask the `sync` service (`state`, `keep`, `dismiss`, and the `sync:changed` event). The standard plugin [`std/sync.js`](../std/sync.js), which the reading list links, uses it to show whether the page is in step with the space and to list the drafts. Each draft has two buttons: Use mine sends that version to the space as a new change, and Keep theirs lets the draft go. Your spaces on [`/account/`](/account/) each have a link that opens the reading list in them. [`tests/checks/space-sync.mjs`](../tests/checks/space-sync.mjs) checks it in Chromium, with two people's devices, the server going away and coming back, and a record both changed meanwhile.
 
 What isn't there yet: only collections sync (not the person's own plugins for an app, or an app's other files).
 
