@@ -221,8 +221,9 @@ body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; o
 :where(ui-stack, ui-grid, ui-card, ui-toolbar, ui-stat, ui-empty, ui-table, ui-form):not(:defined) { display: block; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
-/* Each view entry is drawn by one plugin (data-plugin, set by the host). Containment keeps what it draws inside it. */
-[data-plugin] { contain: layout paint; overflow-clip-margin: 4px; }
+/* Each view entry is drawn by one plugin (data-plugin, set by the host). Containment keeps what it draws inside it:
+   !important here, in the first layer, beats any other declaration, so no plugin and no page can take it off. */
+[data-plugin] { contain: layout paint !important; overflow-clip-margin: 4px; }
 
 /* The "debug" slot floats: what is drawn there (std/debug-console.js's bug) stays in a corner of the screen, where <ui-debug corner> says. */
 slot[name="debug"] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); }
