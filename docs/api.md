@@ -292,6 +292,34 @@ Needs: `files:<folder>`, and the person's review.
 
 Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open.
 
+### history
+
+Undo and redo for the person, across every write to the app's collections, whichever plugin made it.
+
+#### history.redo
+
+`history.redo()` → { ok, step } or { ok: false, step?, error }
+
+Needs: `history`.
+
+Makes the most recent undone write again. A new write to that record ends its redo.
+
+#### history.state
+
+`history.state()` → { undo: step or null, redo: step or null }
+
+Needs: `history`.
+
+What Undo and Redo would do now in the caller's app. A step is `{ kind, collection, title, id, label?, by, at, text }`, with kind add, edit or delete and text such as `delete “Coffee” in Expenses`.
+
+#### history.undo
+
+`history.undo()` → { ok, step } or { ok: false, step?, error }
+
+Needs: `history`.
+
+Takes back the app's most recent write: the record goes back to how it was, with no review. If the record changed since, that step is dropped and the answer says so; the next undo takes the one before.
+
 ### kernel
 
 The kernel itself.
@@ -546,6 +574,14 @@ Mode: `emit`. Listening needs `debug:read`.
 
 Listeners get `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]`.
 
+### `history:changed`
+
+Something was written, undone or redone, so what Undo and Redo would do may have changed: read history.state().
+
+Mode: `emit`. Listening needs `history`.
+
+Listeners get `{}`.
+
 ### `llm:complete`
 
 Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }. Listening needs provide:llm.
@@ -646,6 +682,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:notes` | Call store.put. |
 | `debug:read` | Call debug.recent, debug.app. |
 | `files:<folder>` | Call files.read, files.write. |
+| `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `network:<host>` | Call net.fetch. |
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file. |
@@ -688,6 +725,7 @@ Reserved ids, which no plugin can take:
 - `data`
 - `debug`
 - `files`
+- `history`
 - `host`
 - `kernel`
 - `llm`

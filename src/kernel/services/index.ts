@@ -9,6 +9,7 @@
 
 import type { apps } from "../apps";
 import type { Hosts } from "../hosts";
+import type { Collections } from "../records";
 import type { Reference } from "../reference";
 import type { RemotePlugins, ServiceProvider } from "../remote";
 import type { Store } from "../store";
@@ -24,6 +25,8 @@ export interface Kernel {
   reviewed(instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: { trace?: string }): Promise<string>;
   /** The kernel's API reference, as it is now. */
   describe(): Reference;
+  /** The collections: their registry, and every write to them as it happens. */
+  collections: Collections;
 }
 
 const files = import.meta.glob<{ default: (kernel: Kernel) => ServiceProvider }>(["./*.ts", "!./index.ts"], { eager: true });

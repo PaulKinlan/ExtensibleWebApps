@@ -50,6 +50,14 @@ const MAX_BYTES = 5_000_000;
 const INDEX = "collections/_registry.json";
 
 /** What `reviewed` in the kernel does: asks the person, throws unless they allow it. */
+/** A write to a record: `after` is missing for a delete, `before` for a new record. */
+export interface Change {
+  collection: string;
+  id: string;
+  before?: StoredRecord;
+  after?: StoredRecord;
+}
+
 type Review = (instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: Dispatch) => Promise<string>;
 
 const base = (instance: string) => instance.split("@")[0];
@@ -210,7 +218,41 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     });
     if (committed) return committed;
     root.emit(dispatch, `data:changed:${name}`, change);
+    for (const heard of written) heard(change, instance);
     return { ok: true, id: recordId, ...(outcome ? { outcome } : {}) };
+  }
+
+  /** Who hears every write by a plugin, with the plugin that made it (services/history.ts). */
+  const written = new Set<(change: Change, instance: string) => void>();
+
+  /**
+   * Puts a record back as it was (`to`, or deleted when it is missing), for the person: no review,
+   * as it undoes a change already made. Only if the record is still `from`, what the change left;
+   * data:beforeWrite listeners can still stop it.
+   */
+  async function restore(name: string, id: string, from: StoredRecord | undefined, to: StoredRecord | undefined, dispatch: Dispatch): Promise<{ ok: true } | { ok: false; error: string }> {
+    known(name);
+    const records = await load(name);
+    const change: Change = { collection: name, id, before: from, after: to };
+    const verdict = await root.serial(dispatch, `data:beforeWrite:${name}`, change);
+    if (verdict && typeof verdict === "object" && "block" in verdict) return { ok: false, error: String(verdict.block) };
+    const failed = await serially(name, async () => {
+      if (JSON.stringify(records.get(id)) !== JSON.stringify(from)) return "It has changed since";
+      if (to && !from && records.size >= MAX_RECORDS) return `The ${name} collection is limited to ${MAX_RECORDS} records`;
+      if (to) records.set(id, to);
+      else records.delete(id);
+      try {
+        await save(name, records);
+      } catch (error) {
+        if (from) records.set(id, from);
+        else records.delete(id);
+        throw error;
+      }
+      return undefined;
+    });
+    if (failed) return { ok: false, error: failed };
+    root.emit(dispatch, `data:changed:${name}`, change);
+    return { ok: true };
   }
 
   const service: ServiceProvider = {
@@ -293,6 +335,8 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       }
     },
     registry,
+    written,
+    restore,
     /** Settles once the collections saved from earlier runs are known. */
     ready,
   };
