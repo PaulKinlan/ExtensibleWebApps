@@ -11,6 +11,9 @@
   book-share.js  adds a page shared to the app (once it is installed) as a
                  book to read; manifest.webmanifest makes it a share target
 
+  It also links two standard plugins: a debug console, and a command palette
+  that lists the commands library.js adds.
+
   The plugins never call each other. They meet in the collection: when one
   writes a book, the others hear `data:changed:library` and redraw (due-soon.js
   draws live, so it redraws by itself).
@@ -33,11 +36,14 @@
   <link rel="plugin-sample" href="samples/goal.js" title="Reading goal">
   <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
   <link rel="plugin" href="/std/debug-console.js">
+  <!-- A standard plugin: Ctrl K (Cmd K on a Mac) searches what the plugins can do, such as library.js's commands. -->
+  <link rel="plugin" href="/std/commands/palette.js">
 </head>
 <body>
   <header>
     <h1>Reading list</h1>
     <a href="/workbench/">Workbench</a>
+    <slot name="commands"></slot>
   </header>
   <main>
     <slot name="main"><p>Loading your books…</p></slot>

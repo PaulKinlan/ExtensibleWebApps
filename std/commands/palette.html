@@ -1,0 +1,14 @@
+<!--
+  The command palette's one view. palette.js sends { commands, openKeys,
+  hidden, message }: each command is { name, title, group, description,
+  keys }, keys as a JSON list. <ui-commands> reads the buttons inside,
+  shows them as a searchable list, catches their keys, and sends "run" with
+  the name of the one picked.
+-->
+<template id="palette">
+  <ui-commands label="Commands" run="run" open-keys="{{openKeys}}" no-button="{{hidden}}" message="{{message.text}}" message-at="{{message.at}}">
+    <template for="c of commands">
+      <button key="{{c.name}}" data-command="{{c.name}}" data-keys="{{c.keys}}" data-group="{{c.group}}" data-description="{{c.description}}">{{c.title}}</button>
+    </template>
+  </ui-commands>
+</template>
