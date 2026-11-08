@@ -8,8 +8,9 @@
     "noEmit": true,
     "skipLibCheck": true,
     "allowJs": true,
+    "allowImportingTsExtensions": true,
     "types": ["vite/client"]
   },
   "include": ["src", "elements"],
-  "exclude": ["src/server"]
+  "exclude": ["src/server", "src/seams/node.ts"]
 }

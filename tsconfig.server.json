@@ -1,4 +1,4 @@
-// The server side (src/server/): Node's types instead of the browser's, and
+// The server side (src/server/, and the seams in src/seams/): Node's types instead of the browser's, and
 // imports that name their .ts files, so Node runs them as they are (it strips
 // the types) with no build step. `npm run typecheck` checks both halves.
 {
@@ -8,6 +8,6 @@
     "types": ["node"],
     "allowImportingTsExtensions": true
   },
-  "include": ["src/server"],
+  "include": ["src/server", "src/seams"],
   "exclude": []
 }

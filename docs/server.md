@@ -15,7 +15,7 @@ It is built in steps, each its own pull request:
 
 ## Seams
 
-Everything a space kernel needs from the machine it runs on is a **seam**: one small interface in [`src/server/seams/index.ts`](../src/server/seams/index.ts). Each host provides every seam, and a space's config can mix providers. Plugins never see a seam. They call services through the gate, and the kernel calls the seams.
+Everything a space kernel needs from the machine it runs on is a **seam**: one small interface in [`src/seams/index.ts`](../src/seams/index.ts). Each host provides every seam, and a space's config can mix providers. Plugins never see a seam. They call services through the gate, and the kernel calls the seams.
 
 | Seam | What it does | Memory (tests) | Node | Cloudflare (step 4) |
 | --- | --- | --- | --- | --- |
@@ -41,4 +41,4 @@ This is how sync works until 2c brings CRDTs for live editing.
 
 [`tests/seams/run.mjs`](../tests/seams/run.mjs) runs the same checks against every provider: what is written reads back, paths (and links) can't leave the folder, stale writes are refused, the change log is complete and ordered, jobs run once, survive a restart and catch up once after one, a failing job doesn't stop the rest, and email refuses what isn't an address. Run them with `npm run test:seams`. `npm test` runs them too.
 
-Server code is TypeScript that Node runs as it is (Node strips the types), so there is no build step on the server either. Its imports name their `.ts` files, and `tsconfig.server.json` checks it with Node's types: `npm run typecheck` checks both halves.
+The seams live in `src/seams/`, beside the browser code rather than under `src/server/`, because the browser kernel uses them too: its folder moves onto the `files` seam when the kernel core is shared (step 2). Server code is TypeScript that Node runs as it is (Node strips the types), so there is no build step on the server either. Imports name their `.ts` files, and `tsconfig.server.json` checks the server and the seams with Node's types: `npm run typecheck` checks both halves.

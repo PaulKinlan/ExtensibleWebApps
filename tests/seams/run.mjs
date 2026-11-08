@@ -1,4 +1,4 @@
-// Conformance checks for the seams (src/server/seams/): every provider must
+// Conformance checks for the seams (src/seams/): every provider must
 // pass the same ones, so a space can move from one host to another. Run with
 // `npm run test:seams`; the main test run calls it too (tests/checks/seams.mjs).
 //
@@ -8,8 +8,8 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { memoryEmail, memoryFiles, memoryRecords, memorySchedule, memorySecrets } from "../../src/server/seams/memory.ts";
-import { nodeFiles, nodeOutbox, nodeRecords, nodeSchedule, nodeSecrets } from "../../src/server/seams/node.ts";
+import { memoryEmail, memoryFiles, memoryRecords, memorySchedule, memorySecrets } from "../../src/seams/memory.ts";
+import { nodeFiles, nodeOutbox, nodeRecords, nodeSchedule, nodeSecrets } from "../../src/seams/node.ts";
 
 // A job that fails is reported, and the host keeps going: the checks count reports instead of logging them.
 const failures = [];
