@@ -128,6 +128,66 @@ The `<template id>` elements in an .html file next to the plugin (only for plugi
 
 Called with `ctx.call(service, method, ...args)`. A method not listed here doesn't exist. Reviewed methods show the person a diff with the plugin's reason first; they accept once, allow that plugin in that place from then on, or decline.
 
+### agents
+
+Agents: Markdown files an app links with rel="agent", each run by the kernel as a plugin that asks a model and calls tools. Lists them, starts their commands, and is how an agent reaches its model and tools, so its limits hold and the app hears the agent:* events.
+
+#### agents.begin
+
+`agents.begin(trigger)` → { ok: true, run } or { ok: false, reason }
+
+Needs: nothing.
+
+For agents: starts a run, if the agent is within its limits. The agent loop calls it.
+
+#### agents.complete
+
+`agents.complete(run, request)` → llm.complete's answer with ok: true, or { ok: false, reason }
+
+Needs: nothing.
+
+For agents: llm.complete, counted against the agent's tokens a day.
+
+#### agents.end
+
+`agents.end(run, { stopReason, text, steps })` → true
+
+Needs: nothing.
+
+For agents: ends a run, told to the app as agent:done.
+
+#### agents.list
+
+`agents.list()` → [{ id, name, hooks, commands, limits, used: { runs, tokens } }]
+
+Needs: nothing.
+
+The agents running now, what wakes them, their limits, and what they have used this hour (runs) and today (tokens).
+
+#### agents.next
+
+`agents.next()` → [{ command, input, from }]
+
+Needs: nothing.
+
+For agents: the commands waiting for this agent, which it runs in order.
+
+#### agents.run
+
+`agents.run(agent, command, input?)` → { ok: true }
+
+Needs: `agents:run:<agent>`.
+
+Starts one of an agent's commands, the ones its file lists under `on`. It runs after any run under way; listen to agent:done for the outcome.
+
+#### agents.tool
+
+`agents.tool(run, name, args)` → { ok, value?, error? }
+
+Needs: nothing.
+
+For agents: tools.call, as the agent, told to the app as agent:toolResult.
+
 ### audio
 
 Sound, played by the tab that runs the plugin workers. Audio runs in an AudioWorklet, never through hooks.
@@ -542,6 +602,46 @@ The caller's tools: each service method that describes its arguments and that th
 
 ## Hooks
 
+### `agent:budget`
+
+An agent reached one of its limits, so a run didn't start or was stopped.
+
+Mode: `emit`. Listening needs `hook:listen:agent:budget`.
+
+Listeners get `{ agent, limit: "runs-per-hour" | "tokens-per-day", used, max }`.
+
+### `agent:done`
+
+An agent's run ended. stopReason is completed, steps (it reached its step limit), budget or error.
+
+Mode: `emit`. Listening needs `hook:listen:agent:done`.
+
+Listeners get `{ agent, run, stopReason, steps, tools, usage: { input, output } }`.
+
+### `agent:run`
+
+Someone ran one of an agent's commands (agents.run). The named agent fetches it with agents.next, which only that agent may call.
+
+Mode: `emit`. Listening needs `agent`.
+
+Listeners get `{ agent }`.
+
+### `agent:toolResult`
+
+An agent called one of its tools; ok is false if the call failed.
+
+Mode: `emit`. Listening needs `hook:listen:agent:toolResult`.
+
+Listeners get `{ agent, run, tool, ok }`.
+
+### `agent:wake`
+
+An agent began a run, woken by a hook or a command.
+
+Mode: `emit`. Listening needs `hook:listen:agent:wake`.
+
+Listeners get `{ agent, run, trigger: { kind, name } }`.
+
 ### `bench:ping`
 
 Used by the round-trip benchmark; answer with anything.
@@ -675,6 +775,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `network` | Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
+| `agents:run:<agent>` | Call agents.run. |
 | `audio` | Call audio.registerProcessor, audio.play. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:read:notes` | Call store.list. |
@@ -720,6 +821,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 
 Reserved ids, which no plugin can take:
 
+- `agents`
 - `audio`
 - `authoring`
 - `data`

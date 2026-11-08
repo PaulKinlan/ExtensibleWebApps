@@ -10,6 +10,7 @@
 
 import type { Opened } from "../shared/protocol";
 import type { Host, Hosts } from "./hosts";
+import { asPlugin } from "./agents/file";
 import { readManifest } from "./manifest";
 import type { RemotePlugins } from "./remote";
 import { record } from "./trace";
@@ -42,9 +43,13 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     return undefined;
   }
 
-  async function openOne(host: Host, { href, source }: Link): Promise<Opened> {
+  async function openOne(host: Host, link: Link): Promise<Opened> {
+    const { href } = link;
     let id: string;
+    let source: string;
     try {
+      // An agent file (rel="agent") runs as the plugin the kernel makes from it.
+      source = asPlugin(href, link.source);
       id = readManifest(source).id;
     } catch (error) {
       return { href, error: error instanceof Error ? error.message : String(error) };
