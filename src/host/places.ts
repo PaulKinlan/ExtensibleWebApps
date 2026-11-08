@@ -20,6 +20,12 @@
 // place is refused unless the person unlocked it for that plugin. Replace
 // and hide take everything inside the element with them, so a mark anywhere
 // inside it counts too: hiding <main> can't take a locked section with it.
+//
+// A place with `in: "<plugin>"` is a view transform: its selector runs inside
+// that plugin's views instead of the page, and only marks inside those views
+// count. Each time the plugin draws, its transforms are taken down before the
+// update and put back after it, and the transforming plugin hears
+// "place:changed" if what the place matches changed, so it can draw again.
 
 import type { Opened, Place } from "../shared/protocol";
 
@@ -32,6 +38,11 @@ interface Applied {
   /** What the manifest said and what the person unlocked, to tell when it changed. */
   signature: string;
   state: PlaceState;
+  /** The places the person unlocked for this plugin, and whether they allowed this one on a review card. */
+  unlocked: string[];
+  allowed: boolean;
+  /** What the place matched when last drawn, to tell the plugin when that changes. */
+  seen: string;
   targets: Element[];
   containers: HTMLElement[];
   /** Elements this place hid. */
@@ -39,15 +50,17 @@ interface Applied {
 }
 
 /** Elements a place may never match: plugins' views, other places, and the platform's own panels. */
-const OFF_LIMITS = ".place, [data-plugin], #review, #notice, #customize, .customize, .customize-button";
+const OFF_LIMITS = ".place, [data-plugin], #review, #notice, #customize, .customize, .customize-button, #inspect";
+/** The platform's own panels, which a transform can't reach either. */
+const PLATFORM = "#review, #notice, #customize, .customize, .customize-button, #inspect";
 const MAX_MATCHES = 200;
 const STRICTNESS = ["open", "review", "locked"];
 
 export interface PlacesHost {
   /** Asks the person about a review place; resolves true if they allow it. */
   ask(plugin: string, place: string, target: string, what: string): Promise<boolean>;
-  /** Told when one of a plugin's places was set up again, so its views can be drawn into it. */
-  changed(plugin: string, name: string): void;
+  /** Told when one of a plugin's places was set up again, so its views can be drawn into it; `moved` if what it matches changed. */
+  changed(plugin: string, name: string, moved: boolean): void;
   /** Reports a problem, for the trace. */
   report(text: string): void;
 }
@@ -60,13 +73,17 @@ const hiders = new Map<Element, { by: Set<object>; was: boolean }>();
 
 export function places(host: PlacesHost) {
   const applied = new Map<string, Applied>();
+  /** Plugins whose transforms are being put back now: drawing into them may draw a view that has transforms of its own. */
+  const redoing = new Set<string>();
   const names = new Map<string, string>();
   const key = (plugin: string, name: string) => `${plugin}/${name}`;
 
   /** The author's mark that governs a change at `el`: the nearest data-extend, or open. */
-  function markOf(el: Element, put: Place["put"]): string {
+  function markOf(el: Element, put: Place["put"], within?: Element): string {
     const at = put === "before" || put === "after" ? el.parentElement : el;
-    const marks = [at?.closest("[data-extend]")?.getAttribute("data-extend")];
+    const mark = at?.closest("[data-extend]");
+    // In a transform, only the marks in the plugin's own view count, not the page's around it.
+    const marks = [mark && (!within || within.contains(mark)) ? mark.getAttribute("data-extend") : null];
     // Replace and hide hide the whole element, so the marks inside it count as well.
     if (put === "replace" || put === "hide") for (const inner of el.querySelectorAll("[data-extend]")) marks.push(inner.getAttribute("data-extend"));
     return strictest(marks.map((m) => (m && STRICTNESS.includes(m) ? m : "open")));
@@ -103,6 +120,14 @@ export function places(host: PlacesHost) {
     hide: "It will hide it.",
   };
 
+  /** The view entry of `plugin` that holds `el`, if `el` is inside one (and not in another plugin's view or a place within it). */
+  function viewOf(el: Element, plugin: string): HTMLElement | null {
+    const entry = el.closest<HTMLElement>("[data-plugin]");
+    if (!entry || entry === el || entry.dataset.plugin !== plugin || el.closest(PLATFORM)) return null;
+    const place = el.closest(".place");
+    return place && entry.contains(place) ? null : entry;
+  }
+
   function find(place: Place): Element[] | "bad selector" {
     let all: Element[];
     try {
@@ -110,7 +135,7 @@ export function places(host: PlacesHost) {
     } catch {
       return "bad selector";
     }
-    const ok = all.filter((el) => !el.closest(OFF_LIMITS));
+    const ok = all.filter((el) => (place.in ? !!viewOf(el, place.in) : !el.closest(OFF_LIMITS)));
     return place.each ? ok.slice(0, MAX_MATCHES) : ok.slice(0, 1);
   }
 
@@ -153,10 +178,14 @@ export function places(host: PlacesHost) {
       else el.append(container);
       a.containers.push(container);
     }
-    host.changed(a.plugin, a.name);
+    const seen = JSON.stringify(a.targets.map((el) => [ownText(el), (el as HTMLElement).dataset]));
+    const moved = seen !== a.seen;
+    a.seen = seen;
+    host.changed(a.plugin, a.name, moved);
   }
 
-  async function apply(a: Applied, unlocked: string[]) {
+  async function apply(a: Applied) {
+    const unlocked = a.unlocked;
     const found = find(a.place);
     if (found === "bad selector") {
       a.state = "bad selector";
@@ -166,16 +195,20 @@ export function places(host: PlacesHost) {
     a.targets = found;
     if (!found.length) {
       a.state = "no match";
-      host.report(`${a.plugin}: the place ${a.name} matches nothing in this page (${a.place.at})`);
+      // A transform matches nothing until its plugin draws, and again whenever it draws nothing to change.
+      if (a.place.in) {
+        if (a.seen !== "[]") host.changed(a.plugin, a.name, a.seen !== "");
+        a.seen = "[]";
+      } else host.report(`${a.plugin}: the place ${a.name} matches nothing in this page (${a.place.at})`);
       return;
     }
-    const mark = strictest(found.map((el) => markOf(el, a.place.put)));
+    const mark = strictest(found.map((el) => markOf(el, a.place.put, a.place.in ? (viewOf(el, a.place.in) ?? undefined) : undefined)));
     if (mark === "locked" && !unlocked.includes(a.name)) {
       a.state = "locked";
       host.report(`${a.plugin}: the place ${a.name} is in an area the app's author locked`);
       return;
     }
-    if (mark === "review" && !unlocked.includes(a.name)) {
+    if (mark === "review" && !unlocked.includes(a.name) && !a.allowed) {
       a.state = "waiting";
       for (const el of found) el.classList.add("place-pending");
       const ok = await host.ask(a.plugin, a.name, describe(found[0]), verbs[a.place.put]);
@@ -186,6 +219,9 @@ export function places(host: PlacesHost) {
         a.state = "declined";
         return;
       }
+      a.allowed = true;
+      // The page (or the view, for a transform) may have changed while the person decided: look again.
+      return apply(a);
     }
     draw(a);
   }
@@ -214,9 +250,9 @@ export function places(host: PlacesHost) {
           const old = applied.get(k);
           if (old?.signature === signature) continue;
           if (old) undo(old);
-          const a: Applied = { plugin: p.id, name, place, signature, state: "waiting", targets: [], containers: [], hidden: [] };
+          const a: Applied = { plugin: p.id, name, place, signature, state: "waiting", unlocked: p.unlocked ?? [], allowed: false, seen: "", targets: [], containers: [], hidden: [] };
           applied.set(k, a);
-          void apply(a, p.unlocked ?? []);
+          void apply(a);
         }
       }
       for (const wake of [...waiting]) wake();
@@ -224,6 +260,27 @@ export function places(host: PlacesHost) {
         if (wanted.has(k)) continue;
         undo(a);
         applied.delete(k);
+      }
+    },
+
+    /** Takes down the transforms of `plugin`'s views, before it draws: its update must not see them. */
+    lift(plugin: string) {
+      for (const a of applied.values()) if (a.place.in === plugin && a.state !== "waiting") undo(a);
+    },
+
+    /** Puts the transforms of `plugin`'s views back, after it drew (or after its views went). */
+    redo(plugin: string) {
+      // Two plugins transforming each other would put each other's transforms back forever.
+      if (redoing.has(plugin)) return;
+      redoing.add(plugin);
+      try {
+        for (const a of applied.values()) {
+          if (a.place.in !== plugin || a.state === "waiting") continue;
+          undo(a);
+          void apply(a);
+        }
+      } finally {
+        redoing.delete(plugin);
       }
     },
 
@@ -276,8 +333,8 @@ export function places(host: PlacesHost) {
     },
 
     /** Every place and how it went, for the Customize panel. */
-    status(): { plugin: string; name: string; at: string; put: string; each: boolean; state: PlaceState; matches: number }[] {
-      return [...applied.values()].map((a) => ({ plugin: a.plugin, name: a.name, at: a.place.at, put: a.place.put, each: !!a.place.each, state: a.state, matches: a.targets.length }));
+    status(): { plugin: string; name: string; at: string; put: string; each: boolean; in?: string; state: PlaceState; matches: number }[] {
+      return [...applied.values()].map((a) => ({ plugin: a.plugin, name: a.name, at: a.place.at, put: a.place.put, each: !!a.place.each, ...(a.place.in && { in: a.place.in }), state: a.state, matches: a.targets.length }));
     },
   };
 }

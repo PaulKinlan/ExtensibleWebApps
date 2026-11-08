@@ -8,6 +8,7 @@
 //   - sees every plugin's places and how each went: drawn, waiting for a
 //     review card, declined, locked by the app's author, or matching nothing
 //   - lets one plugin into an area the author locked, after a warning
+//   - starts inspect mode (inspect.ts), to point at a part and change it
 //
 // It is platform chrome, like review cards, so it is plain DOM built here,
 // and plugins can't draw into it or point a place at it.
@@ -35,6 +36,8 @@ export interface CustomizeHost {
   running(): Opened[];
   /** Every place in the page and how it went. */
   places(): Status[];
+  /** Starts inspect mode (inspect.ts). */
+  inspect?(): void;
 }
 
 const STATES: Record<PlaceState, string> = {
@@ -194,6 +197,15 @@ export function customize(host: CustomizeHost) {
     );
   }
 
+  function inspectButton(): HTMLElement {
+    const button = h("button", { type: "button", "data-inspect-start": "" }, "Inspect the page");
+    button.addEventListener("click", () => {
+      dialog.close();
+      host.inspect?.();
+    });
+    return h("p", {}, button, h("span", { class: "muted" }, " Point at any part to see which plugin drew it, then hide it or add a note beside it."));
+  }
+
   async function refresh() {
     if (!dialog.open) return;
     const list = ((await host.command("user:list", { app: host.app })) as UserPlugin[] | undefined) ?? [];
@@ -206,6 +218,7 @@ export function customize(host: CustomizeHost) {
       h("h2", { id: "customize-title" }, "Customize this app"),
       h("p", { class: "muted" }, "Your plugins are kept on this device. They can add to this page, replace parts of it or hide them, except where the app's author locked it."),
       message ? h("p", { role: "status" }, message) : null,
+      host.inspect ? inspectButton() : null,
       h("h3", {}, "Your plugins"),
       mine(list, running),
       h("h3", {}, "The app's plugins"),

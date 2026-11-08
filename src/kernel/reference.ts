@@ -160,7 +160,7 @@ export const COMMANDS: Record<Command, string> = {
 
 export interface Reference {
   modes: { mode: string; about: string }[];
-  hooks: { name: string; mode: Mode; listen: string; args?: string; timeoutMs?: number; onFailure?: string; description?: string }[];
+  hooks: { name: string; mode: Mode; listen: string; args?: string; timeoutMs?: number; agentTimeoutMs?: number; onFailure?: string; description?: string }[];
   ctx: ({ member: string } & Doc)[];
   services: { name: string; description: string; methods: { name: string; args: string; returns: string; needs?: string; reviewed?: boolean; description: string }[] }[];
   capabilities: { name: string; about: string }[];
@@ -198,6 +198,8 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
     { name: "ui", about: "Draw views with ctx.ui.render." },
     { name: "routes", about: "Answer requests for paths in the plugin's own folder with ctx.routes.add." },
     { name: "network", about: "Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere." },
+    { name: "ui:theme", about: "Set design tokens for the whole app with the manifest's `theme`." },
+    { name: "ui:transform:<plugin>", about: "Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md." },
     { name: "hook:listen:<hook>", about: "Listen to an emit or parallel hook." },
     { name: "hook:intercept:<hook>", about: "Listen to a hook that can change or stop an action (serial, bail, waterfall)." },
     ...[...needs].sort(([a], [b]) => a.localeCompare(b, "en")).map(([name, methods]) => ({ name, about: `Call ${methods.join(", ")}.` })),
@@ -286,7 +288,7 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     ...spaced([...ref.hooks].sort(byName((h) => h.name)).map((h) =>
       entry("###", code(h.name), [
         h.description ?? "",
-        `Mode: ${code(h.mode)}${h.timeoutMs ? `, ${h.timeoutMs} ms per listener, fails ${h.onFailure ?? "open"}` : ""}. Listening needs ${code(h.listen)}.`,
+        `Mode: ${code(h.mode)}${h.timeoutMs ? `, ${h.timeoutMs} ms per listener, fails ${h.onFailure ?? "open"}` : ""}${h.agentTimeoutMs ? `; an agent that checks it has ${h.agentTimeoutMs / 1000} s` : ""}. Listening needs ${code(h.listen)}.`,
         h.args ? `Listeners get ${code(h.args)}.` : "",
       ]),
     )),

@@ -121,6 +121,7 @@ export interface Opened {
   error?: string;
   name?: string;
   places?: Record<string, Place>;
+  theme?: Record<string, string>;
   unlocked?: string[];
   user?: boolean;
 }
@@ -128,12 +129,14 @@ export interface Opened {
 /**
  * Where a plugin's view goes in a page that has no slot for it: `at` is a CSS selector run against the
  * app's own page, and `put` says what happens there. The view is drawn by rendering to the place's name,
- * as to a slot. `each` uses every match instead of the first.
+ * as to a slot. `each` uses every match instead of the first. With `in`, the selector runs inside that
+ * plugin's views instead (a view transform), which needs the permission `ui:transform:<in>`.
  */
 export interface Place {
   at: string;
   put: "before" | "after" | "prepend" | "append" | "replace" | "hide";
   each?: boolean;
+  in?: string;
 }
 
 // kernel <-> plugin worker
@@ -171,6 +174,8 @@ export interface Manifest {
   places?: Record<string, Place>;
   /** Other files next to the plugin that it needs (its templates, images), copied with it when a person adds it to an app. */
   files?: string[];
+  /** Design tokens it sets for the whole app, with the ui:theme permission: `{ "--accent": "#7c3aed" }` (shared/theme.ts). */
+  theme?: Record<string, string>;
 }
 
 /** Carried as Cordis's `thisArg` on every kernel dispatch, so listeners in any worker know which action they serve. */

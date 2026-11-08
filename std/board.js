@@ -1,7 +1,8 @@
 // Board: where the app's agents reach the person. One panel, folded to a
 // button with a badge until something waits: questions agents asked
-// (bus.ask), each with its choices or a box to answer in, and what the
-// agents did lately.
+// (bus.ask), each with its choices or a box to answer in, what is waiting
+// while an agent checks it (a security agent, say), and what the agents did
+// lately.
 //
 // Add it to any app with two lines in its app.html:
 //
@@ -31,9 +32,11 @@ export default function (ctx) {
   let questions = [];
   /** Newest first: { id, text }. */
   const lately = [];
+  /** Checks under way, by run: { run, agent, name }. Something waits for each. */
+  const checking = new Map();
   let next = 0;
 
-  const draw = () => views.render("board", "board", { open, questions, waiting: questions.length, lately });
+  const draw = () => views.render("board", "board", { open, questions, waiting: questions.length, lately, checking: [...checking.values()] });
   const refresh = async () => {
     questions = (await ctx.call("bus", "questions")).map((q) => ({ ...q, open: !q.choices }));
     // A new question opens the board: the agent is waiting for the person.
@@ -48,8 +51,22 @@ export default function (ctx) {
 
   ctx.on("bus:asked", refresh);
   ctx.on("bus:answered", refresh);
-  ctx.on("agent:wake", ({ agent, trigger }) => did(`${agent} woke: ${trigger.kind === "message" ? `a message from ${trigger.name}` : trigger.name}`));
-  ctx.on("agent:done", ({ agent, stopReason, tools }) => did(`${agent} ${stopReason === "completed" ? "finished" : `stopped (${stopReason})`} after ${tools} tool call${tools === 1 ? "" : "s"}`));
+  ctx.on("agent:wake", ({ agent, run, trigger }) => {
+    // A check holds something up until the agent answers: show it as being checked.
+    if (trigger.kind === "check") {
+      checking.set(run, { run, agent, name: trigger.name });
+      return draw();
+    }
+    did(`${agent} woke: ${trigger.kind === "message" ? `a message from ${trigger.name}` : trigger.name}`);
+  });
+  ctx.on("agent:done", ({ agent, run, stopReason, tools, verdict }) => {
+    const check = checking.get(run);
+    if (check) {
+      checking.delete(run);
+      return did(`${agent} ${verdict === "block" ? "blocked" : verdict === "allow" ? "allowed" : `couldn't check (${stopReason})`} ${check.name}`);
+    }
+    did(`${agent} ${stopReason === "completed" ? "finished" : `stopped (${stopReason})`} after ${tools} tool call${tools === 1 ? "" : "s"}`);
+  });
   ctx.on("agent:budget", ({ agent, limit }) => did(`${agent} reached its ${limit} limit`));
 
   ctx.ui.onEvent(async (action, value) => {
