@@ -63,9 +63,7 @@ These are capabilities with trusted code in the kernel: an app may use them, but
 
 | Service | Files | Why it is trusted code |
 | --- | --- | --- |
-| `agents` | [`services/agents.ts`](../src/kernel/services/agents.ts), [`agents/file.ts`](../src/kernel/agents/file.ts), [`agents/runner.js`](../src/kernel/agents/runner.js) | Counts each agent's runs and tokens, so an agent can't misreport its own use |
-| `tools` | [`services/tools.ts`](../src/kernel/services/tools.ts) | Reads the whole API reference to offer tools to a model |
-| `bus` | [`services/bus.ts`](../src/kernel/services/bus.ts) | Inboxes between agents, plugins and the person |
+| agent files | [`agents/file.ts`](../src/kernel/agents/file.ts), [`agents/runner.js`](../src/kernel/agents/runner.js) | Turns an app's `rel="agent"` file into the plugin that runs the agent loop. The `agents` service is a module (below); these stay until the core reads links through a hook, so it needn't know about agent files |
 | `llm` | [`services/llm.ts`](../src/kernel/services/llm.ts) | The one interface to every model; the vendors are std plugins ([`std/llm/`](../std/llm/)) |
 | `transfer` | [`services/transfer.ts`](../src/kernel/services/transfer.ts), [`csv.ts`](../src/kernel/csv.ts) | Import and export, reviewed once for the whole file |
 | `email` | [`services/email.ts`](../src/kernel/services/email.ts), [`address.ts`](../src/kernel/address.ts) | Mail from a space's server to its members, with daily limits |
@@ -83,7 +81,10 @@ The first services have moved out of the core into **kernel modules**. A module 
 ```json
 {
   "modules": [
-    "debug"
+    "agents",
+    "bus",
+    "debug",
+    "tools"
   ]
 }
 ```
@@ -92,7 +93,10 @@ Only the listed modules are built into the kernel, in the browser and on the sit
 
 | Module | File | What it adds |
 | --- | --- | --- |
+| `agents` | [`std/agents/module.ts`](../std/agents/module.ts) | The `agents` service: counts each agent's runs and tokens, so an agent can't misreport its own use, and tells the app what agents do (`agent:*` hooks). Uses `tools` |
+| `bus` | [`std/bus/module.ts`](../std/bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person, with replies and topics |
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
+| `tools` | [`std/tools/module.ts`](../std/tools/module.ts) | The `tools` service: reads the whole API reference to offer a plugin's service methods to a model as tools |
 
 ### Saying which services a plugin needs
 
@@ -113,7 +117,7 @@ The kernel's own services (`data`, `storage`, `settings` and the rest above) are
 
 The plan, being reviewed now, splits this layer out of the core:
 
-1. Each of the services above becomes a kernel module, as `debug` has, naming the modules it `uses` (agents uses `llm`, `tools` and `bus`). This repo's `kernel.json` lists them all, so no demo changes.
+1. Each of the services above becomes a kernel module, as `debug`, `agents`, `bus` and `tools` have, naming the modules it `uses`. This repo's `kernel.json` lists them all, so no demo changes.
 2. A smaller site lists fewer, and has less built in.
 3. Services that don't need trusted code become std plugins that provide them (below), such as email delivery.
 

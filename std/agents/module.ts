@@ -36,14 +36,14 @@
 // allow: its rights are its own list, capped by the person's, and with one
 // person, who may do anything in their own app, that cap is everything.
 //
-// Found by name: this file is src/kernel/services/agents.ts, so it is `ctx.call("agents", …)`.
+// A kernel module (docs/layers.md): a site that lists `agents` in kernel.json has it, as `ctx.call("agents", …)`.
 
-import { made, type AgentConfig } from "../agents/file";
-import { BEFORE_WRITE, defineHook, hooks } from "../hooks";
-import { callService, type ServiceProvider } from "../remote";
-import { ACTS_AS } from "../review";
-import { record } from "../trace";
-import type { Kernel } from "./index";
+import { made, type AgentConfig } from "../../src/kernel/agents/file";
+import { BEFORE_WRITE, defineHook, hooks } from "../../src/kernel/hooks";
+import { callService, type ServiceProvider } from "../../src/kernel/remote";
+import { ACTS_AS } from "../../src/kernel/review";
+import { record } from "../../src/kernel/trace";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
 
 const base = (instance: string) => instance.split("@")[0];
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -65,7 +65,7 @@ type Run = {
   acting: boolean;
 };
 
-export default ({ root, remote, store, reviewed, apps }: Kernel): ServiceProvider => {
+const make = ({ root, remote, store, reviewed, apps }: ModuleKernel): ServiceProvider => {
   defineHook("agent:run", { mode: "emit", needs: "agent", args: "{ agent }", description: "Someone ran one of an agent's commands (agents.run). The named agent fetches it with agents.next, which only that agent may call." });
   defineHook("agent:wake", { mode: "emit", args: "{ agent, run, trigger: { kind, name }, as? }", description: "An agent began a run. kind is hook, check (it was asked whether something may happen), command, message or topic. as is \"person\" when it acts for the person in this run (acts-as: person)." });
   defineHook("agent:beforeTool", { mode: "serial", timeoutMs: 1000, agentTimeoutMs: 15_000, onFailure: "open", args: "{ agent, run, tool, args, chain }", description: "An agent is about to call one of its tools, with these arguments. chain is the agents in the call's line: the caller, and any agents whose tool call it is checking. Return { block: reason } to stop the call; the agent hears the reason." });
@@ -246,3 +246,5 @@ export default ({ root, remote, store, reviewed, apps }: Kernel): ServiceProvide
     },
   };
 };
+
+export default service("agents", make, ["tools"]);
