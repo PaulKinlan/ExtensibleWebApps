@@ -21,6 +21,7 @@ export const manifest = {
   version: "1.0.0",
   scope: "tab",
   permissions: ["ui", "transfer"],
+  services: ["transfer"],
 };
 
 const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;

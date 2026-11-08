@@ -19,6 +19,7 @@ export const manifest = {
   description: "Questions from the app's agents, waiting for your answer, and what they did lately.",
   version: "1.0.0",
   permissions: ["ui", "bus:board", "hook:listen:bus:asked", "hook:listen:bus:answered", "hook:listen:agent:*"],
+  services: ["bus"],
   // One per tab, so opening the board in one tab doesn't open it in another.
   scope: "tab",
 };

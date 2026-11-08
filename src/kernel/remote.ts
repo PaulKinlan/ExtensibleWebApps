@@ -151,6 +151,13 @@ export class RemotePlugins {
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }
+    // A plugin that needs a service this site doesn't run fails now, saying which, not on its first call.
+    const missing = (manifest.services ?? []).filter((name) => !Object.hasOwn(this.services, name));
+    if (missing.length) {
+      const message = `“${manifest.name}” needs the ${missing.join(", ")} service${missing.length > 1 ? "s" : ""}, which this site doesn't run: add ${missing.length > 1 ? "them" : "it"} to kernel.json`;
+      record({ kind: "error", name: "plugin:refused", detail: message });
+      return { ok: false, error: message };
+    }
     // A plugin's hooks are named after it: one the kernel already has can't be taken.
     const taken = Object.keys(manifest.hooks ?? {}).map((key) => `${manifest.id}:${key}`).find((name) => hooks.has(name) && hookOwners.get(name) !== manifest.id);
     if (taken) {

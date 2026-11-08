@@ -20,6 +20,7 @@ export const manifest = {
   description: "Write to the app's agents, such as the assistant or the builder, and read their answers.",
   version: "1.0.0",
   permissions: ["ui", "bus:send:*"],
+  services: ["agents", "bus"],
   // Each tab has its own conversation.
   scope: "tab",
 };

@@ -26,6 +26,7 @@ export const manifest = {
   description: "Answers the app's llm requests with Claude, using the person's Anthropic API key.",
   version: "1.1.0",
   permissions: ["provide:llm", "network:api.anthropic.com", "secret:anthropic"],
+  services: ["llm"],
   settings: {
     model: {
       type: "string",

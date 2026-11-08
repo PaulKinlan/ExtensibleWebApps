@@ -18,6 +18,7 @@ export const manifest = {
   description: "Undo and Redo buttons that take back the app's most recent change to its data, and put it back again.",
   version: "1.0.0",
   permissions: ["ui", "history"],
+  services: ["history"],
   // Each tab's buttons undo the changes of the app open in that tab, and no other.
   scope: "tab",
 };

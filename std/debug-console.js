@@ -21,6 +21,7 @@ export const manifest = {
   description: "A bug button that shows errors and the trace, ready to copy into a bug report.",
   version: "1.0.0",
   permissions: ["ui", "debug:read"],
+  services: ["debug"],
   // One per tab, so opening the panel in one tab doesn't open it in another.
   scope: "tab",
   settings: {

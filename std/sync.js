@@ -20,6 +20,7 @@ export const manifest = {
   description: "In a space: whether this page reaches it, and the versions of records it kept when someone else changed them first.",
   version: "1.0.0",
   permissions: ["ui", "sync"],
+  services: ["sync"],
 };
 
 const when = (at) => {

@@ -21,6 +21,7 @@ export const manifest = {
   description: "Answers questions about this page with a language model, from the plugins it is made of.",
   version: "1.0.0",
   permissions: ["ui", "llm", "plugins:read"],
+  services: ["llm"],
   // Its tab says which app it is about.
   scope: "tab",
 };
