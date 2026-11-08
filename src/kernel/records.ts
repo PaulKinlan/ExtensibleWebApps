@@ -175,8 +175,11 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
 
   const sorted = (records: Map<string, StoredRecord>) => [...records.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-  /** Writes (or, with `fields` null, deletes) a record as `instance`. Reviewed unless the plugin owns the collection. */
-  async function write(instance: string, name: string, id: string | undefined, fields: Fields | null, reason: unknown, dispatch: Dispatch) {
+  /**
+   * Writes (or, with `fields` null, deletes) a record as `instance`. Reviewed unless the plugin owns the collection,
+   * or `reviewed` says the person already reviewed it with others (services/transfer.ts reviews an import once).
+   */
+  async function write(instance: string, name: string, id: string | undefined, fields: Fields | null, reason: unknown, dispatch: Dispatch, reviewed = false) {
     const collection = known(name);
     const records = await load(name);
     const recordId = typeof id === "string" && /^[\w-]{1,64}$/.test(id) ? id : newId();
@@ -194,7 +197,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       if (!before && records.size >= MAX_RECORDS) throw new Error(`The ${name} collection is limited to ${MAX_RECORDS} records`);
     }
     let outcome: string | undefined;
-    if (collection.owner !== base(instance)) {
+    if (collection.owner !== base(instance) && !reviewed) {
       const show = (r?: StoredRecord) => (r ? JSON.stringify(Object.fromEntries(Object.entries(r).filter(([k]) => !RECORD_FIELDS.includes(k) || k === "id")), null, 2) : "");
       outcome = await review(instance, `data:${name}`, `${fields ? (before ? "a record" : "a new record") : "and delete a record"} in ${collection.title}`, show(before), show(after), reason, dispatch);
     }
@@ -337,6 +340,10 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     registry,
     written,
     restore,
+    write,
+    may,
+    /** Every record in a collection, most recently changed first, for a service that checks rights itself. */
+    records: async (name: string) => sorted(await load(name)),
     /** Settles once the collections saved from earlier runs are known. */
     ready,
   };
