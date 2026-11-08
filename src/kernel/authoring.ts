@@ -61,6 +61,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
     if (!app) throw new Error("This page has no app folder, so it can't keep plugins of your own");
     return app;
   };
+  /** The plugins with a save or removal waiting for the person, so a second click doesn't ask again. */
+  const asking = new Set<string>();
   const words = (permissions: string[]) => (permissions.length ? permissions.map(explain).join(" ") : "Nothing: it can't draw, read or change anything.");
 
   return {
@@ -158,16 +160,28 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const mine = await saving.userAdded.list(app);
         const ask = async (target: string, before: string, after: string, reason: string) =>
           allowed(await saving.ask({ plugin: caller, instance, name: remote.installed.get(caller)?.manifest.name ?? caller, place: `author:${app}`, target, before, after, reason }, dispatch));
+        const once = async <T>(id: string, work: () => Promise<T>): Promise<T | { ok: false; error: string }> => {
+          const key = `${app}/${id}`;
+          if (asking.has(key)) return { ok: false, error: "There's already a review open for this plugin. Answer that one first." };
+          asking.add(key);
+          try {
+            return await work();
+          } finally {
+            asking.delete(key);
+          }
+        };
 
         if (method === "remove") {
           const [id] = args;
           const own = mine.find((p) => p.id === id);
           if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
-          const code = (await saving.store.readText(`user/${app}/${own.file}`)) ?? "";
-          if (!(await ask(`your plugins: removes ${own.name ?? id}`, code, "", "It stops, and its file is deleted. Your data is kept."))) return { ok: false, error: "Not removed" };
-          await saving.userAdded.remove(app, id);
-          await saving.reopen(app);
-          return { ok: true };
+          return once(id, async () => {
+            const code = (await saving.store.readText(`user/${app}/${own.file}`)) ?? "";
+            if (!(await ask(`your plugins: removes ${own.name ?? id}`, code, "", "It stops, and its file is deleted. Your data is kept."))) return { ok: false, error: "Not removed" };
+            await saving.userAdded.remove(app, id);
+            await saving.reopen(app);
+            return { ok: true };
+          });
         }
 
         const [code] = args;
@@ -181,13 +195,16 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const own = mine.find((p) => p.id === m.id);
         // Changing one of the app's own plugins in place comes later; until then a copy needs an id of its own.
         if (!own && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page. Give yours a new id.` };
-        const before = own ? ((await saving.store.readText(`user/${app}/${own.file}`)) ?? "") : "";
-        if (!(await ask(`your plugins: ${own ? "changes" : "adds"} ${m.name}`, before, code, `Once it is on, it can: ${words(m.permissions)}`))) return { ok: false, error: "Not saved" };
-        const added = await saving.userAdded.add(app, [{ name: `${m.id}.js`, data: code }]);
-        if (!added.ok) return added;
-        await saving.userAdded.on(app, m.id);
-        await saving.reopen(app);
-        return { ok: true, id: m.id };
+        const manifest = m;
+        return once(manifest.id, async () => {
+          const before = own ? ((await saving.store.readText(`user/${app}/${own.file}`)) ?? "") : "";
+          if (!(await ask(`your plugins: ${own ? "changes" : "adds"} ${manifest.name}`, before, code, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not saved" };
+          const added = await saving.userAdded.add(app, [{ name: `${manifest.id}.js`, data: code }]);
+          if (!added.ok) return added;
+          await saving.userAdded.on(app, manifest.id);
+          await saving.reopen(app);
+          return { ok: true, id: manifest.id };
+        });
       }
       throw new Error(`authoring.${method} is not a method`);
     },

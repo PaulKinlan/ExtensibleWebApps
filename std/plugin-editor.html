@@ -5,7 +5,7 @@
   plugin on the page, each { value, label }; check is
   { ok, manifest?, permissions?, error? } from authoring.check(); trace is
   the draft's recent trace lines, each { key, kind, text }.
-  status is what the last save said; own is set when the draft is one of
+  status is what the last save said; waiting is true while a review is open; own is set when the draft is one of
   the person's saved plugins. The picker sends "start" with a value; the
   form sends "check" or "save" (its submit buttons) with { code }, and
   Remove sends "remove".
@@ -37,9 +37,9 @@
     <form data-action="save">
       <ui-code name="code" label="Plugin code" rows="22" revision="{{rev}}">{{code}}</ui-code>
       <div class="editor-actions">
-        <button type="submit">Save and run</button>
-        <button type="submit" data-action="check" class="secondary">Check</button>
-        <template if="own"><button type="button" data-action="remove" class="secondary">Remove it</button></template>
+        <button type="submit" disabled="{{waiting}}">Save and run</button>
+        <button type="submit" data-action="check" class="secondary" disabled="{{waiting}}">Check</button>
+        <template if="own"><button type="button" data-action="remove" class="secondary" disabled="{{waiting}}">Remove it</button></template>
       </div>
     </form>
     <template if="status"><p class="status" role="status">{{status}}</p></template>

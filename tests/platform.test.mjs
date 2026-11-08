@@ -219,7 +219,7 @@ export default (ctx) => {
   ctx.ui.onEvent((action, value) => ctx.log('books-event ' + action + ' ' + JSON.stringify(value)));
 };`);
   const books = 'main [data-key="books:books"]';
-  const reviewCard = 'main [data-key^="review:"]';
+  const reviewCard = '#review [data-key^="review:"]';
   await a.waitForSelector(`${books} ui-form input[name="title"]`, { timeout: 5000 });
   await a.click(`${books} ui-form button[type="submit"]`);
   await a.waitForSelector(`${books} ui-form >> text=Title is required`, { timeout: 5000 });
@@ -421,7 +421,7 @@ export default async (ctx) => {
   // Change review: a plugin's write outside its own data shows a diff first.
   const messy = "Hello there   \n\n\n\nOne two three four five six seven eight nine ten.";
   const tidied = "Hello there\n\nOne two three four five six seven eight nine ten.";
-  const card = 'main [data-key^="review:"]';
+  const card = '#review [data-key^="review:"]';
   const textarea = () => a.inputValue("textarea");
   const saveText = async (text) => {
     await a.fill("textarea", text);

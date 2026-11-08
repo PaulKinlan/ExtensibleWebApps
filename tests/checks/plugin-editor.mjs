@@ -28,6 +28,14 @@ export default async function ({ check, context, URL, errors }) {
   await page.click(`${editor} button:has-text("Save and run")`);
   const reviewed = await seen(`${review} >> text=adds My card`);
   check("saving shows a review with the plugin's code and permissions first", reviewed && (await page.isVisible(`${review} >> text=Draw on this page.`)));
+  // The card is in a dialog that stays in view, and the editor waits for it rather than asking twice.
+  const inView = await page.evaluate(() => {
+    const dialog = document.querySelector("dialog#review");
+    const box = dialog?.getBoundingClientRect();
+    return !!dialog?.open && !!box && box.top >= 0 && box.bottom <= innerHeight;
+  });
+  const waits = await page.isDisabled(`${editor} button:has-text("Save and run")`);
+  check("the review opens in a dialog in view, and the editor's buttons wait for the answer", inView && waits && (await page.$$(review)).length === 1);
   await page.click(`${review} >> text=Accept`);
   const runs = await seen(`${key("my-card")} >> text=This card is a plugin you wrote`, 8000);
   const listed = await seen('slot[name="switchboard"] input[data-action="switch:my-card"]');

@@ -59,6 +59,8 @@ export default async function (ctx) {
   let trace = [];
   /** What the last save or removal said. */
   let status = "";
+  /** True while a save or removal waits for the person's answer: the buttons are off, so it is asked once. */
+  let waiting = false;
 
   /** The person's own plugins here; the rest of the app's plugins can only be copied. */
   const mine = () => ctx.call("authoring", "mine");
@@ -77,7 +79,7 @@ export default async function (ctx) {
   };
 
   const draw = async () => {
-    views.render("editor", "editor", { rev, code, from, status, own: await isOwn(), starts: await startingPoints() }, { order: 10 });
+    views.render("editor", "editor", { rev, code, from, status, waiting, own: await isOwn(), starts: await startingPoints() }, { order: 10 });
     views.render("editor", "asks", { check }, { order: 20 });
     views.render("editor", "trace", { trace }, { order: 30 });
   };
@@ -121,21 +123,26 @@ export default async function (ctx) {
   ctx.on("plugins:changed", draw);
 
   ctx.ui.onEvent(async (action, value) => {
+    if (waiting) return;
     if (action === "start" && typeof value === "string" && value) await start(value);
     if (action === "check" || action === "save") {
       code = String(value?.code ?? "");
       await recheck();
       status = "";
       if (action === "save" && check.ok) {
-        status = "Waiting for you to accept the review…";
+        status = "Waiting for your answer on the review card at the bottom of the screen.";
+        waiting = true;
         await draw();
-        const saved = await ctx.call("authoring", "save", code);
+        const saved = await ctx.call("authoring", "save", code).finally(() => (waiting = false));
         status = saved.ok ? `Saved, and ${check.manifest.name} is on. It's listed on the switchboard with the rest.` : saved.error;
       }
       await draw();
     }
     if (action === "remove" && check.ok) {
-      const removed = await ctx.call("authoring", "remove", check.manifest.id);
+      status = "Waiting for your answer on the review card at the bottom of the screen.";
+      waiting = true;
+      await draw();
+      const removed = await ctx.call("authoring", "remove", check.manifest.id).finally(() => (waiting = false));
       status = removed.ok ? `${check.manifest.name} is removed. Its code is still here, if you want to save it again.` : removed.error;
       await draw();
     }
