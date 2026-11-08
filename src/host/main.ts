@@ -250,7 +250,7 @@ function listen(entry: Entry) {
     const target = (e.target as Element).closest("[data-action]");
     if (!target || !el.contains(target) || target.matches(`${CONTROLS}, form`)) return;
     // A submit button in a form sends its action with the form's fields, on submit.
-    if (target.matches('button[type="submit"]') && (target as HTMLButtonElement).form?.hasAttribute("data-action")) return;
+    if (target instanceof HTMLButtonElement && target.type === "submit" && target.form?.hasAttribute("data-action")) return;
     event(target.getAttribute("data-action")!, target.getAttribute("data-value") ?? undefined);
   });
   el.addEventListener("change", (e) => {

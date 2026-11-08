@@ -98,6 +98,13 @@ export default class UiCode extends HTMLElement {
     const lineStart = value.lastIndexOf("\n", start - 1) + 1;
     if (!e.shiftKey && start === end) {
       area.setRangeText("  ", start, end, "end");
+    } else if (start === end) {
+      // Shift+Tab at the caret: take up to two spaces off the start of its line, and keep the caret where it was in the text.
+      const removed = /^ {0,2}/.exec(value.slice(lineStart))?.[0].length ?? 0;
+      if (!removed) return;
+      area.setRangeText("", lineStart, lineStart + removed, "preserve");
+      const caret = Math.max(lineStart, start - removed);
+      area.setSelectionRange(caret, caret);
     } else {
       // Every line the selection touches.
       const block = value.slice(lineStart, end);

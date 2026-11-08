@@ -285,6 +285,7 @@ services.authoring = authoring(remote, apps, {
   appIn: (tab) => openApps.get(tab)?.app,
   ask: (request, dispatch) => reviews.ask(request, dispatch),
   reopen: (app) => reopen(app),
+  turnOn: (ids) => plugins.turnOn(ids),
 });
 
 /**

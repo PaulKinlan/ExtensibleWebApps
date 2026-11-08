@@ -37,15 +37,6 @@ const TEMPLATES = [
   { file: "button.js", label: "Template: a button that stars every note" },
 ];
 
-/**
- * A copy of one of the page's plugins, with an id and name of its own, so it can run beside the original.
- * Only the manifest's first `id:` and `name:` change; the rest is as the original was written.
- */
-const renamed = (code, id, name) =>
-  code
-    .replace(/(\bid\s*:\s*)(["'])[^"']*\2/, (_, before, quote) => `${before}${quote}${id}-copy${quote}`)
-    .replace(/(\bname\s*:\s*)(["'])[^"']*\2/, (_, before, quote) => `${before}${quote}${name.replaceAll(quote, "")} (copy)${quote}`);
-
 /** How many of the draft's trace lines it shows. */
 const LINES = 50;
 
@@ -96,9 +87,10 @@ export default async function (ctx) {
       code = await ctx.call("authoring", "file", `plugin-editor/templates/${name}`);
       from = TEMPLATES.find((t) => t.file === name)?.label ?? name;
     } else if (kind === "plugin") {
-      const source = await ctx.call("authoring", "source", name);
-      code = renamed(source.code, source.id, source.name);
-      from = `Copy of ${source.name}`;
+      // The kernel gives the copy an id and name of its own, and points its templates at the original's.
+      const copy = await ctx.call("authoring", "copy", name);
+      code = copy.code;
+      from = `Copy of ${copy.name.replace(/ \(copy\)$/, "")}`;
     } else if (kind === "own") {
       const source = await ctx.call("authoring", "source", name);
       code = source.code;

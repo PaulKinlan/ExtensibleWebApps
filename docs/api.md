@@ -332,6 +332,14 @@ Needs: `plugins:author`.
 
 Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do.
 
+#### authoring.copy
+
+`authoring.copy(id)` → { id, name, code }
+
+Needs: `plugins:author`.
+
+A copy of a plugin the caller's app links, with an id and name of its own so it can run beside the original, and its templates read from where the original lives.
+
 #### authoring.file
 
 `authoring.file(path)` → the file's text
@@ -539,7 +547,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `ui` | Call page.matches. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `network:<host>` | Call net.fetch. |
-| `plugins:author` | Call authoring.source, authoring.mine, authoring.save, authoring.remove, authoring.file, authoring.check. |
+| `plugins:author` | Call authoring.source, authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file, authoring.check. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `plugins:read` | Call plugins.app. |

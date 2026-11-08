@@ -37,12 +37,14 @@ export interface Request {
   reason: string;
   /** A place in the page rather than data: the card says what will appear or disappear, with no diff. */
   kind?: "place";
+  /** Asked every time: the card offers no "always allow", and no earlier grant answers it. */
+  once?: boolean;
 }
 
 type Pending = { request: Request; resolve: (o: Outcome) => void; timer: ReturnType<typeof setTimeout>; dispatch: Dispatch };
 
 export const placeLabel = (place: string) =>
-  place.startsWith("author:") ? "your plugins" : place.startsWith("files:") ? `${place.slice(6)}/` : place.startsWith("place:") || place.startsWith("unlock:") ? `${place.split("#")[1]}` : place;
+  place.startsWith("files:") ? `${place.slice(6)}/` : place.startsWith("place:") || place.startsWith("unlock:") ? `${place.split("#")[1]}` : place;
 
 export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
   // No prototype, so a plugin id such as `constructor` finds nothing it shouldn't.
@@ -92,7 +94,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
               direction: "row",
               children: [
                 { type: "button", label: "Accept", action: `accept:${id}`, primary: true },
-                { type: "button", label: `Always allow in ${placeLabel(r.place)}`, action: `always:${id}` },
+                ...(r.once ? [] : [{ type: "button" as const, label: `Always allow in ${placeLabel(r.place)}`, action: `always:${id}` }]),
                 { type: "button", label: "Decline", action: `decline:${id}` },
               ],
             },
@@ -105,7 +107,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     pending.delete(id);
     clearTimeout(p.timer);
     hosts.render("review", "main", `review:${id}`, null, 0);
-    if (outcome === "allowed-always") {
+    if (outcome === "allowed-always" && !p.request.once) {
       const list = (grants[p.request.plugin] ??= []);
       if (!list.includes(p.request.place)) list.push(p.request.place);
       void persist();
@@ -120,7 +122,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     /** Asks the person about a write, unless an earlier grant covers it. */
     async ask(request: Request, dispatch: Dispatch): Promise<Outcome> {
       await loaded;
-      if (grants[request.plugin]?.includes(request.place)) {
+      if (!request.once && grants[request.plugin]?.includes(request.place)) {
         void log.append({ kind: "write", plugin: request.plugin, detail: request.target, outcome: "granted", trace: dispatch.trace });
         return "granted";
       }

@@ -27,10 +27,47 @@ export interface Saving {
   ask(request: Request, dispatch: Dispatch): Promise<Outcome>;
   /** Starts the app again in every tab that has it open, so a saved plugin runs. */
   reopen(app: string): Promise<void>;
+  /** Clears a plugin's saved "off", so saving one the person had switched off runs it again. */
+  turnOn(ids: string[]): Promise<void>;
 }
 
 /** The longest file `file()` reads, and the longest draft `check()` takes. */
 const MAX = 100_000;
+
+/** Where a module's first statement starts: after the comments and blank lines at its top. */
+function firstStatement(code: string): number {
+  let i = 0;
+  for (;;) {
+    while (i < code.length && /\s/.test(code[i])) i++;
+    if (code.startsWith("//", i)) i = code.indexOf("\n", i) < 0 ? code.length : code.indexOf("\n", i);
+    else if (code.startsWith("/*", i)) i = code.indexOf("*/", i) < 0 ? code.length : code.indexOf("*/", i) + 2;
+    else return i;
+  }
+}
+
+/**
+ * A copy of a plugin that can run beside it: a new id and name in its manifest, and its template files
+ * named from where the original lives, since the copy is kept somewhere else. Checked by reading the
+ * manifest back, so a manifest written some unusual way is refused rather than copied wrong.
+ */
+export function copyOf(code: string, href: string | undefined): { id: string; name: string; code: string } {
+  const original = readManifest(code);
+  const id = `${original.id}-copy`.slice(0, 64);
+  const name = `${original.name} (copy)`.replace(/["'\\]/g, "");
+  const start = firstStatement(code);
+  const field = (key: string) => new RegExp(`(?<![\\w$])(["']?)${key}\\1\\s*:\\s*(["'])(?:\\\\.|(?!\\2).)*\\2`);
+  let manifest = code.slice(start);
+  manifest = manifest.replace(field("id"), (_m, k, q) => `${k}id${k}: ${q}${id}${q}`);
+  manifest = manifest.replace(field("name"), (_m, k, q) => `${k}name${k}: ${q}${name}${q}`);
+  let copy = code.slice(0, start) + manifest;
+  if (href) {
+    const folder = new URL(".", href).pathname;
+    copy = copy.replace(/\bviews\(\s*(["'])([^"'/:][^"']*\.html)\1/g, (_m, q, file) => `views(${q}${folder}${file}${q}`);
+  }
+  const back = readManifest(copy);
+  if (back.id !== id || back.name !== name) throw new Error("Couldn't give the copy an id of its own; change `id` in its manifest by hand");
+  return { id, name, code: copy };
+}
 
 /** What a permission lets a plugin do, in words a person who doesn't code can weigh. */
 export function explain(permission: string): string {
@@ -63,6 +100,17 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
   };
   /** The plugins with a save or removal waiting for the person, so a second click doesn't ask again. */
   const asking = new Set<string>();
+  /** Why a draft can't own the collections it declares: another plugin already does. */
+  const takenCollection = (m: { id: string; collections?: Record<string, unknown> }): string | undefined => {
+    for (const name of Object.keys(m.collections ?? {})) {
+      const owner = remote.collectionOwner?.(name);
+      if (owner && owner !== m.id) {
+        const who = remote.installed.get(owner)?.manifest.name ?? owner;
+        return `${who} already owns the ${name} collection, so this plugin can't declare it too. Take ${name} out of \`collections\`, and ask for data:read:${name} and data:write:${name} in \`permissions\` instead.`;
+      }
+    }
+    return undefined;
+  };
   const words = (permissions: string[]) => (permissions.length ? permissions.map(explain).join(" ") : "Nothing: it can't draw, read or change anything.");
 
   return {
@@ -73,6 +121,12 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         returns: "{ id, name, code }",
         needs: "plugins:author",
         description: "The code of a plugin the caller's app links, or of one of the person's own for it, on or off.",
+      },
+      copy: {
+        args: "(id)",
+        returns: "{ id, name, code }",
+        needs: "plugins:author",
+        description: "A copy of a plugin the caller's app links, with an id and name of its own so it can run beside the original, and its templates read from where the original lives.",
       },
       mine: {
         args: "()",
@@ -118,6 +172,13 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         if (!plugin) throw new Error(`${id} hasn't loaded yet`);
         return { id, name: plugin.manifest.name, code: plugin.source };
       }
+      if (method === "copy") {
+        const [id] = args;
+        if (typeof id !== "string" || !(apps.linkedBy(tab) ?? []).includes(id)) throw new Error(`${String(id)} isn't a plugin in this app`);
+        const plugin = remote.installed.get(id);
+        if (!plugin) throw new Error(`${id} hasn't loaded yet`);
+        return copyOf(plugin.source, plugin.href);
+      }
       if (method === "file") {
         const [path] = args;
         const href = remote.installed.get(instance.split("@")[0])?.href;
@@ -140,6 +201,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         if (code.length > MAX) return { ok: false, error: `A plugin is limited to ${MAX} characters` };
         try {
           const m = readManifest(code);
+          const taken = takenCollection(m);
+          if (taken) return { ok: false, error: taken };
           return {
             ok: true,
             manifest: { id: m.id, name: m.name, description: m.description ?? "", scope: m.scope ?? "shared" },
@@ -159,7 +222,13 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const caller = instance.split("@")[0];
         const mine = await saving.userAdded.list(app);
         const ask = async (target: string, before: string, after: string, reason: string) =>
-          allowed(await saving.ask({ plugin: caller, instance, name: remote.installed.get(caller)?.manifest.name ?? caller, place: `author:${app}`, target, before, after, reason }, dispatch));
+          allowed(await saving.ask({ plugin: caller, instance, name: remote.installed.get(caller)?.manifest.name ?? caller, place: `author:${app}`, target, before, after, reason, once: true }, dispatch));
+        /** The code of one of the person's plugins as it is now, or undefined if there is none with that id. */
+        const current = async (id: string) => {
+          const file = (await saving.userAdded.list(app)).find((p) => p.id === id)?.file;
+          return file ? ((await saving.store.readText(`user/${app}/${file}`)) ?? "") : undefined;
+        };
+        const changed = "It changed while the review was open (in another tab, perhaps), so nothing was done. Look again and try once more.";
         const once = async <T>(id: string, work: () => Promise<T>): Promise<T | { ok: false; error: string }> => {
           const key = `${app}/${id}`;
           if (asking.has(key)) return { ok: false, error: "There's already a review open for this plugin. Answer that one first." };
@@ -176,8 +245,10 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           const own = mine.find((p) => p.id === id);
           if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
           return once(id, async () => {
-            const code = (await saving.store.readText(`user/${app}/${own.file}`)) ?? "";
+            const code = (await current(id)) ?? "";
             if (!(await ask(`your plugins: removes ${own.name ?? id}`, code, "", "It stops, and its file is deleted. Your data is kept."))) return { ok: false, error: "Not removed" };
+            // Remove only what the person saw.
+            if ((await current(id)) !== code) return { ok: false, error: changed };
             await saving.userAdded.remove(app, id);
             await saving.reopen(app);
             return { ok: true };
@@ -192,16 +263,24 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
+        const taken = takenCollection(m);
+        if (taken) return { ok: false, error: taken };
         const own = mine.find((p) => p.id === m.id);
         // Changing one of the app's own plugins in place comes later; until then a copy needs an id of its own.
         if (!own && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page. Give yours a new id.` };
         const manifest = m;
         return once(manifest.id, async () => {
-          const before = own ? ((await saving.store.readText(`user/${app}/${own.file}`)) ?? "") : "";
-          if (!(await ask(`your plugins: ${own ? "changes" : "adds"} ${manifest.name}`, before, code, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not saved" };
+          const before = await current(manifest.id);
+          if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", code, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not saved" };
+          // Replace only the version the person saw, or add one that still isn't there.
+          if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
           const added = await saving.userAdded.add(app, [{ name: `${manifest.id}.js`, data: code }]);
           if (!added.ok) return added;
           await saving.userAdded.on(app, manifest.id);
+          // A running copy with other code is stopped, so opening the app again starts the new code under the same id.
+          const running = remote.installed.get(manifest.id);
+          if (running && running.source !== code) remote.uninstall(manifest.id);
+          await saving.turnOn([manifest.id]);
           await saving.reopen(app);
           return { ok: true, id: manifest.id };
         });
