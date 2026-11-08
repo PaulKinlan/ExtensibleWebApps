@@ -30,12 +30,21 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // bundled from src/ so this script can never disagree with them.
 async function loadKernelRules() {
   const entry = [
-    'export { readManifest } from "./src/kernel/manifest.ts";',
+    'export { readManifest, RESERVED } from "./src/kernel/manifest.ts";',
     'export { capabilities, grants } from "./src/kernel/gate.ts";',
     'export * from "./src/shared/html.ts";',
   ].join("\n");
   const out = await build({ stdin: { contents: entry, resolveDir: ROOT, loader: "ts" }, bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent" });
-  return import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+  const rules = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+  // The kernel reserves each service's name when it loads src/kernel/services/,
+  // so reserve the same names here, read from the same folder.
+  for (const name of serviceFiles()) rules.RESERVED.add(name);
+  return rules;
+}
+
+/** The services that are a file each in src/kernel/services/: the file's name is the service's. */
+function serviceFiles() {
+  return readdirSync(join(ROOT, "src/kernel/services")).filter((f) => f.endsWith(".ts") && f !== "index.ts").map((f) => f.slice(0, -3));
 }
 
 // What each service method and hook needs, read from docs/api.md, which the
