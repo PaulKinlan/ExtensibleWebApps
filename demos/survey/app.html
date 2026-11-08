@@ -1,0 +1,42 @@
+<!doctype html>
+<!--
+  Surveys: a proof app for the space's server (docs/server.md). Two plugins:
+
+  surveys.js  in the browser: build surveys, and see what has come in
+  collect.js  on the space's server only (runs: "server"): each survey as a
+              public form at answer?survey=<id>, the answers, and a daily
+              email digest
+
+  Open it in a space (/s/<space>/demos/survey/) to collect answers: the form
+  is answered on the server, with no one's browser open, and the answers
+  reach every member's device. Outside a space, the builder still works.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Surveys</title>
+  <meta name="description" content="Build a survey, share a link anyone can answer, and watch the answers come in.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="surveys.js">
+  <link rel="plugin" href="collect.js">
+  <!-- A standard plugin: opened in a space, whether this page reaches it. -->
+  <link rel="plugin" href="/std/sync.js">
+</head>
+<body>
+  <header>
+    <h1>Surveys</h1>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <slot name="sync"></slot>
+    <slot name="main"><p>Loading your surveys…</p></slot>
+  </main>
+</body>
+</html>

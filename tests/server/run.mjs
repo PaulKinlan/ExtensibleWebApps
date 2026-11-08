@@ -373,6 +373,44 @@ async function serverPluginChecks(base, check, owner, restart) {
 }
 
 /** Someone using the site's /auth/ routes, with their own cookie: `account()` signs them up with a passkey. */
+/** The survey demo (demos/survey/), a proof app: a survey made on a device is answered at its public address, on the server. */
+async function surveyChecks(base, check, owner) {
+  await owner.call("/auth/spaces", { name: "polls" });
+  const laptop = await device(base, "polls", owner.cookie);
+  await laptop.hello(0);
+  laptop.app("demos/survey");
+  const made = await laptop.push([{ collection: "surveys", id: "lunch", base: 0, after: { id: "lunch", title: "Lunch <b>Friday</b>", questions: "Where to: Cafe | Park\nAnything else?", open: true } }]);
+  const address = `${base}/s/polls/demos/survey/answer?survey=lunch`;
+  let form = "";
+  for (let i = 0; i < 40 && !form.includes("<form"); i++) {
+    form = await fetch(address).then((r) => r.text(), () => "");
+    if (!form.includes("<form")) await new Promise((r) => setTimeout(r, 250));
+  }
+  check(
+    "survey demo: a survey made on a device is a public form on the space's server, with what its author typed escaped",
+    made?.[0]?.ok && form.includes('<form method="post"') && form.includes('value="Park"') && form.includes("Lunch &lt;b&gt;Friday&lt;/b&gt;") && !form.includes("<b>Friday"),
+    form.slice(0, 300),
+  );
+  const post = (body) => fetch(address, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://elsewhere.example" }, body });
+  const sent = await post("q1=Park&q2=Bring+cake");
+  const odd = await post("q1=The+moon");
+  let answer;
+  for (let i = 0; i < 20 && !answer; i++) {
+    await laptop.settle();
+    answer = laptop.changes().find((c) => c.collection === "answers");
+  }
+  check(
+    "survey demo: anyone's answers are kept on the server and reach the members' devices; a choice the survey doesn't offer is refused",
+    sent.status === 200 && (await sent.text()).includes("are in") && answer?.by === "plugin:collect" && answer.after?.survey === "lunch" && answer.after.values?.q1 === "Park" && answer.after.values.q2 === "Bring cake" && answer.after.asked?.q1 === "Where to" && answer.after.asked.q2 === "Anything else?" && odd.status === 400,
+    JSON.stringify({ sent: sent.status, odd: odd.status, answer }),
+  );
+  const closed = await laptop.push([{ collection: "surveys", id: "lunch", base: made[0].seq, after: { id: "lunch", title: "Lunch <b>Friday</b>", questions: "Where to: Cafe | Park", open: false } }]);
+  const after = await fetch(address).then((r) => r.text());
+  const late = await post("q1=Cafe");
+  check("survey demo: a survey that stops taking answers says so, and takes none", closed?.[0]?.ok && /isn't taking answers/.test(after) && late.status === 404, JSON.stringify({ closed, late: late.status }));
+  laptop.close();
+}
+
 function person(base) {
   const me = {
     cookie: "",
@@ -672,6 +710,7 @@ async function suite(name, make) {
       owner.base = server.url;
       return server.url;
     });
+    await surveyChecks(server.url, check, owner);
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {
