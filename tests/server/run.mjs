@@ -38,7 +38,7 @@ const hosts = {
   cloudflare: (spaces) => ({
     async start() {
       const port = await freePort();
-      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, "--var", "SPACES:open", "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
+      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
       let log = "";
       await new Promise((ready, fail) => {
         const timer = setTimeout(() => fail(new Error(`wrangler dev didn't start: ${log.slice(-500)}`)), 60_000);
@@ -65,28 +65,12 @@ const hosts = {
     },
     // A Durable Object's database is the space's folder, so what was written shows in the space, after a restart.
     wrote: () => true,
-    async closedByDefault() {
-      const port = await freePort();
-      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
-      try {
-        for (let i = 0; i < 60; i++) {
-          const answer = await fetch(`http://127.0.0.1:${port}/s/family/kernel`).catch(() => undefined);
-          if (answer) return answer.status === 403;
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-        return false;
-      } finally {
-        try {
-          process.kill(-dev.pid, "SIGTERM");
-        } catch {}
-      }
-    },
   }),
 };
 
 /** A client of a space's kernel: hello as a tab would, then commands that answer. */
-async function client(base, space) {
-  const ws = new WebSocket(`${base.replace("http", "ws")}/s/${space}/kernel`);
+async function client(base, space, cookie) {
+  const ws = new WebSocket(`${base.replace("http", "ws")}/s/${space}/kernel`, { headers: { cookie } });
   const heard = [];
   const waiting = new Map();
   let id = 0;
@@ -113,17 +97,68 @@ async function client(base, space) {
   };
 }
 
+/** Someone using the site's /auth/ routes, with their own cookie: `account()` signs them up with a passkey. */
+function person(base) {
+  const me = {
+    cookie: "",
+    /** Where the site is (a restarted host listens somewhere new). */
+    base,
+    async call(path, body, { origin = me.base, keep = true } = {}) {
+      const headers = { "content-type": "application/json", cookie: me.cookie };
+      if (origin) headers.origin = origin;
+      const res = await fetch(`${me.base}${path}`, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify(body) });
+      const set = res.headers.getSetCookie?.().find((c) => c.startsWith("ewa-session="));
+      if (set && keep) me.cookie = set.split(";")[0];
+      return { status: res.status, body: await res.json().catch(() => null), set };
+    },
+    async account(name) {
+      const key = authenticator();
+      await me.call("/auth/register", await key.create((await me.call("/auth/register/options", { name })).body, base));
+      return me;
+    },
+  };
+  return me;
+}
+
+/** Whether a WebSocket to a space opens, for someone with this cookie. */
+const opens = (base, space, cookie = "") =>
+  new Promise((done) => {
+    const ws = new WebSocket(`${base.replace("http", "ws")}/s/${space}/kernel`, { headers: { cookie } });
+    ws.onopen = () => (ws.close(), done(true));
+    ws.onerror = () => done(false);
+  });
+
+/** Spaces with members (src/server/auth/accounts.ts): who may make, join, invite to and leave a space. */
+async function memberChecks(base, check, owner) {
+  const ada = await person(base).account("Ada");
+  const taken = await ada.call("/auth/spaces", { name: "family" });
+  const badName = await ada.call("/auth/spaces", { name: "Not A Name!" });
+  check("members: a space's name is a slug no one else has taken", taken.status === 409 && badName.status === 400, `${taken.status} ${badName.status}`);
+
+  const strangers = { nobody: await opens(base, "family"), ada: await opens(base, "family", ada.cookie), peek: (await ada.call("/auth/spaces/family")).status };
+  check("members: someone not signed in, or not in the space, can't join it or see who is", !strangers.nobody && !strangers.ada && strangers.peek === 404, JSON.stringify(strangers));
+
+  const invite = (await owner.call("/auth/spaces/family/invite", {})).body;
+  const joined = await ada.call("/auth/invites/accept", { token: invite?.token });
+  const again = await person(base).account("Bea").then((bea) => bea.call("/auth/invites/accept", { token: invite?.token }));
+  const members = (await owner.call("/auth/spaces/family")).body?.members ?? [];
+  const mine = (await ada.call("/auth/spaces")).body?.spaces ?? [];
+  check(
+    "members: the owner's invite lets one person join, and then they can open the space",
+    joined.status === 200 && again.status === 404 && members.some((m) => m.name === "Ada" && m.role === "member") && mine.some((s) => s.name === "family" && s.role === "member") && (await opens(base, "family", ada.cookie)),
+    JSON.stringify({ joined, again: again.status, members, mine }),
+  );
+
+  const inviteByMember = await ada.call("/auth/spaces/family/invite", {});
+  const removeOwner = await ada.call("/auth/spaces/family/leave", { user: members.find((m) => m.role === "owner")?.id });
+  const left = await ada.call("/auth/spaces/family/leave", {});
+  check("members: only the owner invites, no one removes the owner, and someone who leaves can't open it again", inviteByMember.status === 403 && removeOwner.status === 403 && left.status === 200 && !(await opens(base, "family", ada.cookie)), JSON.stringify([inviteByMember.status, removeOwner.status, left.status]));
+}
+
 /** Sign-in with passkeys (src/server/auth/), as a browser on this site would do it, and as others might try. */
 async function signInChecks(base, check) {
-  let cookie = "";
-  const call = async (path, body, { origin = base, keep = true } = {}) => {
-    const headers = { "content-type": "application/json", cookie };
-    if (origin) headers.origin = origin;
-    const res = await fetch(`${base}${path}`, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify(body) });
-    const set = res.headers.getSetCookie?.().find((c) => c.startsWith("ewa-session="));
-    if (set && keep) cookie = set.split(";")[0];
-    return { status: res.status, body: await res.json().catch(() => null), set };
-  };
+  const someone = person(base);
+  const call = (...args) => someone.call(...args);
   const me = async () => (await call("/auth/me")).body?.user;
   const key = authenticator();
 
@@ -162,10 +197,10 @@ async function signInChecks(base, check) {
 
   const results = {};
   for (const alg of ["EdDSA", "RS256"]) {
-    cookie = "";
+    someone.cookie = "";
     const k = authenticator({ alg, counting: false });
     const made = await call("/auth/register", await k.create((await call("/auth/register/options", { name: alg })).body, base));
-    cookie = "";
+    someone.cookie = "";
     const again = await call("/auth/signin", await k.get((await call("/auth/signin/options", {})).body, base));
     results[alg] = `${made.status}/${again.status}`;
   }
@@ -183,7 +218,11 @@ async function suite(name, make) {
     const missing = await fetch(`${server.url}/no/such/page`);
     check("the server serves the built site, and its 404 page for a path it hasn't got", page.status === 200 && (await page.text()).includes("<html") && missing.status === 404, `${page.status} ${missing.status}`);
 
-    const a = await client(server.url, "family");
+    // Someone with an account, who makes the spaces the checks use.
+    const owner = await person(server.url).account("Owner");
+    for (const space of ["family", "work", "tabs"]) await owner.call("/auth/spaces", { name: space });
+
+    const a = await client(server.url, "family", owner.cookie);
     await new Promise((r) => setTimeout(r, 300));
     const welcome = a.heard.find((m) => m.t === "welcome");
     check("a client joins a space's kernel and is welcomed as a tab is, with no plugin workers to start", welcome?.mode === "server" && welcome.spawner === false, JSON.stringify(welcome));
@@ -192,7 +231,7 @@ async function suite(name, make) {
     const source = 'export const manifest = { id: "hello-space", name: "Hello", permissions: [] };\nexport default () => {};';
     const added = await a.command("user:add", { app: "demos/contacts", files: [{ name: "hello-space.js", data: source }] });
     check("a client's change is written to the space's folder", added?.ok && host.wrote("family"), JSON.stringify(added));
-    const other = await client(server.url, "work");
+    const other = await client(server.url, "work", owner.cookie);
     const otherList = await other.command("user:list", { app: "demos/contacts" });
     check("spaces are separate", Array.isArray(otherList) && otherList.length === 0, JSON.stringify(otherList));
     a.close();
@@ -201,17 +240,15 @@ async function suite(name, make) {
     // Start again: the space's kernel reads its folder back.
     await server.stop();
     server = await host.start();
-    const b = await client(server.url, "family");
+    owner.base = server.url;
+    const b = await client(server.url, "family", owner.cookie);
     const listed = await b.command("user:list", { app: "demos/contacts" });
     check("after a restart, the space has what was written to it", Array.isArray(listed) && listed.some((p) => p.id === "hello-space"), JSON.stringify(listed));
     b.close();
 
     await signInChecks(server.url, check);
 
-    if (host.closedByDefault) {
-      const closed = await host.closedByDefault();
-      check("without SPACES=open (as in production, until sign-in), clients can't join a space", closed);
-    }
+    await memberChecks(server.url, check, owner);
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {
@@ -230,8 +267,8 @@ async function suite(name, make) {
         req.on("error", () => done("error"));
         req.end();
       });
-    const ownOrigin = await upgrade("/s/family/kernel", { origin: server.url });
-    const otherSite = await upgrade("/s/family/kernel", { origin: "https://elsewhere.example" });
+    const ownOrigin = await upgrade("/s/family/kernel", { origin: server.url, cookie: owner.cookie });
+    const otherSite = await upgrade("/s/family/kernel", { origin: "https://elsewhere.example", cookie: owner.cookie });
     check("a page on another site can't open a space; the server's own pages and clients that aren't browsers can", ownOrigin === 101 && otherSite === 403, JSON.stringify({ ownOrigin, otherSite }));
 
     const garbled = await new Promise((done) => {
@@ -247,14 +284,14 @@ async function suite(name, make) {
     const worker = await fetch(`${server.url}/assets/${(await import("node:fs")).readdirSync("dist/assets").find((f) => /^runtime-.*\.js$/.test(f))}`);
     check("plugin workers get the site's _headers policy, as on Cloudflare", /worker-src 'none'/.test(worker.headers.get("content-security-policy") ?? ""), worker.headers.get("content-security-policy"));
 
-    const c = await client(server.url, "tabs");
+    const c = await client(server.url, "tabs", owner.cookie);
     const tabPlugin = 'export const manifest = { id: "per-tab", name: "Per tab", scope: "tab", permissions: [] };\nexport default () => {};';
     const startedAt = Date.now();
     await c.command("user:add", { app: "demos/contacts", files: [{ name: "per-tab.js", data: tabPlugin }] });
     check("a client of a space isn't asked to start a tab-scoped plugin's worker", !c.heard.some((m) => m.t === "spawn") && Date.now() - startedAt < 3000, JSON.stringify(c.heard.map((m) => m.t)));
     // Left open, so stopping the server must close it.
   } catch (error) {
-    check("the checks ran to the end", false, error?.stack ?? String(error));
+    check("the checks ran to the end", false, (error?.stack ?? String(error)) + " cause: " + (error?.cause?.stack ?? error?.cause));
   } finally {
     const stopping = server?.stop();
     const stopped = await Promise.race([stopping?.then(() => true), new Promise((r) => setTimeout(() => r(false), 10000))]);

@@ -48,6 +48,16 @@
           <button id="add" type="button">Add a passkey on another device</button>
           <button id="signout" type="button">Sign out</button>
         </p>
+
+        <h2>Your spaces</h2>
+        <p>A space holds people and their data, and any app can open in it. One with just you in it is your own.</p>
+        <ul id="spaces"></ul>
+        <form id="new-space">
+          <label for="space-name" class="visually-hidden">The new space's name</label>
+          <input id="space-name" name="name" placeholder="family" required pattern="[a-z0-9][a-z0-9\-]{0,62}" title="Lowercase letters, numbers and dashes" />
+          <button type="submit">Make a space</button>
+        </form>
+        <p id="invite-link" hidden>Send this link to the person you're inviting. It works once, for a week: <input id="invite-url" readonly /></p>
       </section>
 
       <p id="unavailable" hidden>Sign-in needs this site's server (<code>npm run serve</code>, or the site on Cloudflare); this page is being served without one.</p>
@@ -71,6 +81,36 @@
         $("in").hidden = !user;
         $("out").hidden = !!user;
         $("who").textContent = user?.name ?? "";
+        if (!user) return;
+        // Signed in with an invite in the address: join that space, once.
+        const invite = new URLSearchParams(location.search).get("invite");
+        if (invite) {
+          history.replaceState(null, "", location.pathname);
+          const joined = await call("/auth/invites/accept", { token: invite }).catch((error) => ({ error: error.message }));
+          say(joined.space ? `You've joined ${joined.space.name}.` : joined.error);
+        }
+        const { spaces = [] } = await call("/auth/spaces");
+        $("spaces").replaceChildren(
+          ...spaces.map(({ name, role }) => {
+            const li = document.createElement("li");
+            li.append(Object.assign(document.createElement("strong"), { textContent: name }), ` (${role === "owner" ? "yours" : "member"}) `);
+            if (role === "owner") {
+              const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Invite someone" });
+              button.addEventListener("click", run(async () => {
+                const { token } = await call(`/auth/spaces/${name}/invite`, {});
+                $("invite-url").value = new URL(`/account/?invite=${token}`, location.href).href;
+                $("invite-link").hidden = false;
+              }, `Here's an invite to ${name}.`, false));
+              li.append(button);
+            } else {
+              const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Leave" });
+              button.addEventListener("click", run(() => call(`/auth/spaces/${name}/leave`, {}), `You've left ${name}.`, false));
+              li.append(button);
+            }
+            return li;
+          }),
+        );
+        if (!spaces.length) $("spaces").append(Object.assign(document.createElement("li"), { textContent: "None yet." }));
       }
 
       /** Makes a passkey from the server's options, and gives it back to the server. */
@@ -87,6 +127,7 @@
         try {
           await task();
           say(done);
+          if (event?.target instanceof HTMLFormElement) event.target.reset();
         } catch (error) {
           // Closing the passkey prompt isn't an error worth more than a line.
           say(error.name === "NotAllowedError" ? "No passkey was used." : error.message);
@@ -102,6 +143,7 @@
         const answer = await call("/auth/signin", credential.toJSON());
         if (answer.status === 401) throw new Error(answer.error);
       }, "You're signed in."));
+      $("new-space").addEventListener("submit", run(() => call("/auth/spaces", { name: $("space-name").value.trim() }), "Your space is made.", false));
       $("signout").addEventListener("click", run(() => call("/auth/signout", {}), "You're signed out.", false));
 
       show();

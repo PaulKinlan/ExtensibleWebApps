@@ -50,12 +50,11 @@ The seams live in `src/seams/`, beside the browser code rather than under `src/s
 - The built site (`dist/`), the way Cloudflare's static assets serve it: a folder's `index.html`, and `404.html` for a path that isn't there.
 - A kernel for each space a client joins, at `ws://127.0.0.1:8787/s/<space>/kernel`. Each one is the browser's kernel (`src/kernel/kernel.ts`), built for Node by Vite (`npm run build:server`, into `.build/server/space.js`) and started in a worker thread of its own. Its folder is `.spaces/<space>/`, through the Node `files` seam.
 
-A client speaks the messages a tab speaks to its kernel (`hello`, `command`, `event`, `bye`), as JSON over the WebSocket ([`src/server/websocket.ts`](../src/server/websocket.ts) is the server's side, with no dependency). For example, after `hello`, `{ "t": "command", "id": 1, "name": "user:list", "arg": { "app": "demos/contacts" } }` answers with the plugins the space keeps for that app.
+Only a space's members may join it: the upgrade must carry the session cookie of someone in the space (see Sign-in and spaces, below). A client speaks the messages a tab speaks to its kernel (`hello`, `command`, `event`, `bye`), as JSON over the WebSocket ([`src/server/websocket.ts`](../src/server/websocket.ts) is the server's side, with no dependency). For example, after `hello`, `{ "t": "command", "id": 1, "name": "user:list", "arg": { "app": "demos/contacts" } }` answers with the plugins the space keeps for that app.
 
 What isn't there yet:
 
 - **Plugins don't run on the server.** On a server no client starts plugin workers. The `isolate` seam does that, with server plugins (step 7).
-- **No sign-in.** The server listens only on `127.0.0.1` until sign-in and members arrive (step 5).
 - **Tabs don't sync with a space yet.** That's step 6.
 
 Options: `node src/server/serve.ts --port 8787 --host 127.0.0.1 --spaces .spaces --site dist`. [`tests/server/run.mjs`](../tests/server/run.mjs) checks it (`npm run test:server`, or `node tests/server/run.mjs node` for this host only), and `npm test` runs those checks too.
@@ -76,7 +75,7 @@ Two things are different from Node:
 
 `npx wrangler dev` runs all of this on this machine, with no account. [`tests/server/run.mjs`](../tests/server/run.mjs) runs the same checks against Node and against `wrangler dev`. The Durable Object's files seam also passes the seams' conformance checks, on Node's SQLite.
 
-## Sign-in
+## Sign-in and spaces
 
 People sign in with a **passkey**: a key their phone or computer makes for this site and unlocks with a face, a fingerprint or a screen lock. There is no password to remember, reuse or leak. Try it at [`/account/`](/account/) on either host.
 
@@ -94,6 +93,19 @@ People sign in with a **passkey**: a key their phone or computer makes for this 
 | `GET /auth/me` | Who is signed in, or 401. |
 | `POST /auth/signout` | Ends this session. |
 
-Signing in doesn't open spaces yet. Spaces with members and invites come next (5b), and production keeps spaces closed until then. After that come GitHub and other providers, as configuration (5c).
+### Spaces and members
 
-[`tests/server/authenticator.mjs`](../tests/server/authenticator.mjs) is a passkey authenticator in software. The server checks use it on both hosts, and also try a used challenge, another page's origin, another site's passkey, a counter that went back, and a forged signature. [`tests/checks/signin.mjs`](../tests/checks/signin.mjs) signs up, out and in on `/account/` in Chromium, with its virtual authenticator.
+A space holds people and their data (collections and plugins), and any app can open in it. A personal space is a space with one member. The accounts keep each space's members, so both hosts decide who may join a space's kernel in the same place, before the WebSocket opens.
+
+| Route | What it does |
+| --- | --- |
+| `GET /auth/spaces` | The spaces you're in, with your role (`owner` or `member`). |
+| `POST /auth/spaces` | `{ name }` makes a space, with you as its owner. A name is lowercase letters, numbers and dashes, and no one else's. |
+| `GET /auth/spaces/<name>` | Its members. To anyone else, it's a space that doesn't exist. |
+| `POST /auth/spaces/<name>/invite` | A one-time invite, for a week (its owner only). `/account/?invite=<token>` accepts it once the person signs in or makes an account. |
+| `POST /auth/invites/accept` | `{ token }` joins the space the invite is for, and uses the invite up. |
+| `POST /auth/spaces/<name>/leave` | Leaves it. Its owner can give `{ user }` to remove someone, and can't leave it. |
+
+What the kernel of a space doesn't know yet is *which* member a client is. That arrives with sync (step 6), where changes carry who made them. After that come GitHub and other providers, as configuration (5c).
+
+[`tests/server/authenticator.mjs`](../tests/server/authenticator.mjs) is a passkey authenticator in software. The server checks use it on both hosts. They also try a used challenge, another page's origin, another site's passkey, a counter that went back, and a forged signature. They check who may make, open, invite to and leave a space. [`tests/checks/signin.mjs`](../tests/checks/signin.mjs) uses `/account/` in Chromium, with its virtual authenticator: it signs up, out and in, makes a space, and has a second person join it from the invite link.

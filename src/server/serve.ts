@@ -5,8 +5,8 @@
 // own, keeping its folder under <spaces>/<space>/.
 //
 // A client speaks the same messages a tab speaks to its kernel (hello,
-// command, event, bye), as JSON. Sign-in comes later (step 5 of
-// docs/server.md), so for now the server listens only on this machine.
+// command, event, bye), as JSON. Only a space's members may join it: they
+// sign in with a passkey at /auth/ (src/server/auth/accounts.ts).
 //
 //   node src/server/serve.ts [--port 8787] [--spaces .spaces] [--site dist] [--host 127.0.0.1]
 
@@ -135,6 +135,10 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     // A page on another site may open a WebSocket here (they aren't bound by CORS), so a browser's
     // client must come from this server's own pages. A client that isn't a browser sends no Origin.
     if (!sameOrigin(request.headers.origin, request.headers.host)) return void raw.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+    // Only the space's members may join it.
+    const cookie = typeof request.headers.cookie === "string" ? request.headers.cookie : "";
+    const member = await auth.member(new Request(`http://${request.headers.host ?? "localhost"}/`, { headers: { cookie } }), match[1]).catch(() => null);
+    if (!member) return void raw.end("HTTP/1.1 403 Forbidden\r\n\r\n");
     let kernel: Worker;
     try {
       kernel = await space(match[1]);

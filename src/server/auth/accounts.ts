@@ -12,6 +12,17 @@
 //   GET  /auth/me                           who is signed in (401 if no one)
 //   POST /auth/signout                      ends this session
 //
+// And the spaces people share (a space holds people and data; any app can
+// open in it, and a personal space is one with one member):
+//   GET  /auth/spaces                       the spaces you're in, with your role
+//   POST /auth/spaces            { name }   makes a space, with you as its owner
+//   GET  /auth/spaces/<name>                its members (members only)
+//   POST /auth/spaces/<name>/invite         a one-time invite to it (its owner only)
+//   POST /auth/invites/accept    { token }  joins the space an invite is for
+//   POST /auth/spaces/<name>/leave { user? } leaves it, or (its owner) removes someone
+//
+// A host lets a client join a space's kernel only if `member()` says it's in it.
+//
 // A session is a random token in an HttpOnly cookie; the server keeps only its
 // hash, so its files can't be used to sign in.
 
@@ -39,6 +50,19 @@ interface Challenge {
   user?: string;
   name?: string;
 }
+
+export type Role = "owner" | "member";
+
+interface Space {
+  name: string;
+  owner: string;
+  members: Record<string, Role>;
+  created: number;
+}
+
+/** A space's name: what /s/<name>/kernel and the hosts' folders use. */
+export const SPACE_NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const INVITE_MS = 7 * 24 * 3600_000;
 
 const COOKIE = "ewa-session";
 const SESSION_MS = 30 * 24 * 3600_000;
@@ -87,7 +111,7 @@ export function accounts(files: Files) {
 
   /** Clears challenges and sessions that have run out, so they don't pile up. */
   const sweep = async () => {
-    for (const path of [...(await files.list("challenges/")), ...(await files.list("sessions/"))]) {
+    for (const path of [...(await files.list("challenges/")), ...(await files.list("sessions/")), ...(await files.list("invites/"))]) {
       const found = await read<{ expires: number }>(path);
       if (!found || found.expires < Date.now()) await files.remove(path);
     }
@@ -99,8 +123,91 @@ export function accounts(files: Files) {
     return all.filter((c): c is Credential => c?.user === user);
   };
 
+  /** A space's record, if the name is a space's. */
+  const spaceOf = (name: string) => (SPACE_NAME.test(name) ? read<Space>(`spaces/${name}.json`) : Promise.resolve(null));
+
+  const join = async (space: Space, user: string, role: Role) => {
+    space.members[user] = role;
+    await write(`spaces/${space.name}.json`, space);
+    await write(`memberships/${user}/${space.name}.json`, { role });
+  };
+
+  const leave = async (space: Space, user: string) => {
+    delete space.members[user];
+    await write(`spaces/${space.name}.json`, space);
+    await files.remove(`memberships/${user}/${space.name}.json`);
+  };
+
+  /** Space routes: GET and POST, all for someone signed in. */
+  const spaces = async (request: Request, path: string, body: Record<string, unknown>): Promise<Response | undefined> => {
+    const current = await session(request);
+    if (!current) return json({ error: "Not signed in" }, 401);
+    const me = current.user.id;
+    const route = `${request.method} ${path}`;
+
+    if (route === "GET /auth/spaces") {
+      const mine = await Promise.all(
+        (await files.list(`memberships/${me}/`)).map(async (p) => ({ name: p.slice(`memberships/${me}/`.length, -".json".length), role: (await read<{ role: Role }>(p))?.role })),
+      );
+      return json({ spaces: mine });
+    }
+    if (route === "POST /auth/spaces") {
+      const name = String(body.name ?? "");
+      if (!SPACE_NAME.test(name)) return json({ error: "A space's name is lowercase letters, numbers and dashes" }, 400);
+      if (await spaceOf(name)) return json({ error: "That name is taken" }, 409);
+      const space: Space = { name, owner: me, members: {}, created: Date.now() };
+      await join(space, me, "owner");
+      return json({ space: { name, role: "owner" } });
+    }
+    if (route === "POST /auth/invites/accept") {
+      const token = String(body.token ?? "");
+      const key = await hash(token);
+      const invite = /^[A-Za-z0-9_-]{20,100}$/.test(token) ? await read<{ space: string; expires: number }>(`invites/${key}.json`) : null;
+      const space = invite && invite.expires > Date.now() ? await spaceOf(invite.space) : null;
+      if (!space) return json({ error: "That invite has been used or has expired" }, 404);
+      // One person, one use: the invite is gone once someone joins with it.
+      await files.remove(`invites/${key}.json`);
+      if (!space.members[me]) await join(space, me, "member");
+      return json({ space: { name: space.name, role: space.members[me] } });
+    }
+
+    const match = /^\/auth\/spaces\/([^/]+)(\/invite|\/leave)?$/.exec(path);
+    const space = match ? await spaceOf(match[1]) : null;
+    // Someone who isn't in a space can't tell it from one that doesn't exist.
+    if (!match || !space || !space.members[me]) return match ? json({ error: "No such space" }, 404) : undefined;
+    const action = `${request.method} ${match[2] ?? ""}`;
+
+    if (action === "GET ") {
+      const members = await Promise.all(Object.entries(space.members).map(async ([id, role]) => ({ id, role, name: (await read<User>(`users/${id}.json`))?.name ?? "?" })));
+      return json({ name: space.name, members });
+    }
+    if (action === "POST /invite") {
+      if (space.members[me] !== "owner") return json({ error: "Only the space's owner can invite people" }, 403);
+      const token = random(24);
+      await write(`invites/${await hash(token)}.json`, { space: space.name, by: me, expires: Date.now() + INVITE_MS });
+      return json({ token, expires: Date.now() + INVITE_MS });
+    }
+    if (action === "POST /leave") {
+      const who = typeof body.user === "string" ? body.user : me;
+      if (who !== me && space.members[me] !== "owner") return json({ error: "Only the space's owner can remove people" }, 403);
+      if (space.members[who] === "owner") return json({ error: "A space's owner can't leave it" }, 400);
+      if (!space.members[who]) return json({ error: "They aren't in this space" }, 404);
+      await leave(space, who);
+      return json({ ok: true });
+    }
+    return undefined;
+  };
+
   return {
     credentials,
+
+    /** Whether a request's session is a member of a space, and as what: for a host to ask before a client joins it. */
+    async member(request: Request, name: string): Promise<{ user: User; role: Role } | null> {
+      const current = await session(request);
+      const space = current ? await spaceOf(name) : null;
+      const role = space && current ? space.members[current.user.id] : undefined;
+      return current && role ? { user: current.user, role } : null;
+    },
 
     /** Answers a request under /auth/, or gives undefined for one that isn't a route. */
     async handle(request: Request): Promise<Response | undefined> {
@@ -112,6 +219,7 @@ export function accounts(files: Files) {
         const current = await session(request);
         return current ? json({ user: current.user }) : json({ error: "Not signed in" }, 401);
       }
+      if (request.method === "GET" && url.pathname.startsWith("/auth/spaces")) return spaces(request, url.pathname, {});
       if (request.method !== "POST" || !url.pathname.startsWith("/auth/")) return undefined;
       // Only this site's own pages may sign in or out (a form on another site can't).
       if (request.headers.get("origin") !== url.origin) return json({ error: "Not from this site" }, 403);
@@ -123,6 +231,8 @@ export function accounts(files: Files) {
       } catch {
         return json({ error: "JSON only" }, 400);
       }
+
+      if (url.pathname.startsWith("/auth/spaces") || url.pathname === "/auth/invites/accept") return spaces(request, url.pathname, body);
 
       switch (url.pathname) {
         case "/auth/register/options": {

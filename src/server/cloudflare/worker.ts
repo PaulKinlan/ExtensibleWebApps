@@ -11,9 +11,8 @@
 // Accounts and sign-in (/auth/, src/server/auth/accounts.ts) are one more
 // Durable Object, `Accounts`, whose SQLite database holds every account.
 //
-// Until spaces have members (step 5 of docs/server.md), anyone who can reach a space can
-// write to it, so spaces are closed unless the SPACES variable is "open":
-// `wrangler dev --var SPACES:open` on this machine, never in production.
+// Only a space's members may join it, which `Accounts` decides from the
+// request's session cookie.
 
 import { DurableObject } from "cloudflare:workers";
 // The space kernel's built source, as text (npm run build:cloudflare writes it).
@@ -30,8 +29,6 @@ interface Env {
   SPACE: DurableObjectNamespace<Space>;
   ACCOUNTS: DurableObjectNamespace<Accounts>;
   LOADER: WorkerLoader;
-  /** "open" lets clients join spaces; anything else (the default) refuses them. */
-  SPACES?: string;
 }
 
 interface KernelStub {
@@ -78,6 +75,11 @@ export class Accounts extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
     return (await this.auth.handle(request)) ?? new Response("Not found", { status: 404 });
   }
+
+  /** Whether the session in a cookie header is one of a space's members. */
+  async member(cookie: string, space: string): Promise<boolean> {
+    return !!(await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space));
+  }
 }
 
 export default {
@@ -85,12 +87,12 @@ export default {
     if (new URL(request.url).pathname.startsWith("/auth/")) return env.ACCOUNTS.getByName("accounts").fetch(request);
     const space = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url).pathname)?.[1];
     if (space === undefined) return env.ASSETS.fetch(request);
-    if (env.SPACES !== "open") return new Response("Spaces open once sign-in is here", { status: 403 });
     if (!SPACE.test(space)) return new Response("Not a space", { status: 404 });
     // A page on another site may open a WebSocket here (they aren't bound by CORS), so a browser's
     // client must come from this site's own pages. A client that isn't a browser sends no Origin.
     const origin = request.headers.get("origin");
     if (origin !== null && origin !== new URL(request.url).origin) return new Response("Not from this site", { status: 403 });
+    if (!(await env.ACCOUNTS.getByName("accounts").member(request.headers.get("cookie") ?? "", space))) return new Response("Only the space's members may join it", { status: 403 });
     return env.SPACE.getByName(space).fetch(request);
   },
 } satisfies ExportedHandler<Env>;
