@@ -314,8 +314,8 @@ async function serverPluginChecks(base, check, owner, restart) {
   c.close();
 
   // The space starts its apps' server plugins again when it restarts, with no device asking.
-  const stoppedAt = Date.now();
   const url = await restart();
+  const stoppedAt = Date.now();
   // The ticker's job starts the space again by itself, with no device or request: a device that connects
   // later finds ticks made after the restart.
   await new Promise((r) => setTimeout(r, 4000));
@@ -329,10 +329,13 @@ async function serverPluginChecks(base, check, owner, restart) {
     JSON.stringify({ firstTick, ticked, stoppedAt }),
   );
   watcher.close();
-  // A request to a public route wakes the space, with no device connected.
-  const woken = await fetch(`${url}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
-  check("server plugins: a public route wakes a space that isn't running, and its plugin answers", woken?.count === 2, JSON.stringify(woken));
-  const later = await device(url, "guarded", owner.cookie);
+  // With the ticker's job stopped, a restart leaves the space cold: a request to a public route wakes it,
+  // with no device connected.
+  const stopped = await fetch(`${url}/s/guarded/server-app/stop`, { method: "POST" }).then((r) => r.json(), () => null);
+  const coldUrl = await restart();
+  const woken = await fetch(`${coldUrl}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
+  check("server plugins: a public route wakes a space that isn't running, and its plugin answers", stopped?.stopped && woken?.count === 2, JSON.stringify({ stopped, woken }));
+  const later = await device(coldUrl, "guarded", owner.cookie);
   await later.hello(0);
   let again;
   for (let i = 0; i < 40 && !again; i++) {
