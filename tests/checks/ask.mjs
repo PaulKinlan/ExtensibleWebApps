@@ -39,10 +39,17 @@ export default async function ({ check, context, URL, errors }) {
   check("Ask the page tells the model about every plugin, and sends the code of the one the question names", answered, (await page.textContent(`${ask} .answer`).catch(() => "")) ?? "");
   check("the answer says which model answered and what it cost", await seen(`${ask} .about-answer >> text=Answered by Scripted model, scripted-1 · 120 in, 12 out tokens`, 2000));
   const sent = await page.textContent(`${ask} .sent pre`).catch(() => "");
-  check("what was sent to the model is shown under the answer", /The plugins on this page/.test(sent) && /Quiet please \(quiet-please\)/.test(sent));
+  check("what was sent to the model is shown under the answer, the question included", /The plugins on this page/.test(sent) && /Quiet please \(quiet-please\)/.test(sent) && /You:\nHow does Quiet please stop a note\?/.test(sent));
 
   await page.click(`${ask} button[data-action="suggest:0"]`);
   check("a suggested question asks it", await seen(`${ask} .answer >> text=You asked: What does each plugin on this page do?`));
   check("a question that names no plugin sends no code", await seen(`${ask} .answer >> text=without code`, 2000));
+
+  // Switched off, the model leaves the picker; switched on again, it comes back once it is listening.
+  const toggle = 'slot[name="switchboard"] input[data-action="switch:scripted-model"]';
+  await page.click(toggle);
+  const left = await page.waitForSelector(`${ask} option[value="scripted-model"]`, { state: "detached", timeout: 8000 }).then(() => true, () => false);
+  await page.click(toggle);
+  check("a model switched off leaves the picker, and comes back when it is switched on", left && (await seen(`${ask} option[value="scripted-model"]`)));
   await own.close();
 }

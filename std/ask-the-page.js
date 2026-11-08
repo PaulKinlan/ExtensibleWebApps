@@ -59,17 +59,22 @@ export default function (ctx) {
       return `- ${p.name} (${p.id}), ${p.enabled ? "on" : "off"}: ${p.description || "no description"}. Permissions: ${r?.permissions.join(", ") || "none"}. Listens to: ${r?.hooks.join(", ") || "nothing"}.`;
     });
     let code = "";
+    /** The plugins whose code was sent: one too large, or unreadable, is left out. */
+    const sent = [];
     for (const p of named) {
       const source = await ctx.call("authoring", "source", p.id).catch(() => null);
       if (!source || code.length + source.code.length > CODE) continue;
       code += `\n\n${p.name} (${p.id}):\n\`\`\`js\n${source.code}\n\`\`\``;
+      sent.push(p.name);
     }
-    return { context: `The plugins on this page, in order:\n${lines.join("\n")}${code ? `\n\nThe code of the plugins the question names:${code}` : ""}`, named: named.map((p) => p.name) };
+    return { context: `The plugins on this page, in order:\n${lines.join("\n")}${code ? `\n\nThe code of the plugins the question names:${code}` : ""}`, named: sent };
   };
 
   /** Draws, and says how many language models it found. */
   const draw = async () => {
     const list = await ctx.call("llm", "providers").catch(() => []);
+    // A model switched off or removed can't answer: go back to the first with a key.
+    if (provider && !list.some((p) => p.id === provider)) provider = "";
     const providers = list.map((p) => ({ ...p, picked: p.id === provider, label: `${p.name}${p.ready ? "" : " (asks for a key)"}` }));
     views.render("ask", "ask", { providers, none: !providers.length, question, answer, error, asking, suggested: SUGGESTED.map((text, n) => ({ n, text })) }, { order: 10 });
     return providers.length;
@@ -94,7 +99,7 @@ export default function (ctx) {
         text: reply.text || "(The model gave no answer.)",
         by: `${(await ctx.call("llm", "providers")).find((p) => p.id === reply.provider)?.name ?? reply.provider}${reply.model ? `, ${reply.model}` : ""}`,
         tokens: `${reply.usage.input} in, ${reply.usage.output} out`,
-        sent: `${SYSTEM}\n\n${context}`,
+        sent: `System:\n${SYSTEM}\n\n${context}\n\nYou:\n${question}`,
         named: named.length ? `It also sent the code of ${named.join(", ")}.` : "",
       };
     } catch (e) {
@@ -104,14 +109,18 @@ export default function (ctx) {
     await draw();
   };
 
-  // The model plugins start beside this one, and may not be listening yet when it first asks: look again a few times.
-  (async () => {
-    for (const wait of [0, 500, 1000, 2000, 4000]) {
+  /**
+   * A model plugin that has just started, or been switched on, may not be listening yet when this
+   * asks which models there are: draw now, and look again a little later.
+   */
+  const refresh = async (waits, untilFound) => {
+    for (const wait of waits) {
       await new Promise((resolve) => setTimeout(resolve, wait));
-      if (await draw()) return;
+      if ((await draw()) && untilFound) return;
     }
-  })();
-  ctx.on("plugins:changed", draw);
+  };
+  refresh([0, 500, 1000, 2000, 4000], true);
+  ctx.on("plugins:changed", () => refresh([0, 500, 1500], false));
   ctx.ui.onEvent(async (action, value) => {
     if (asking) return;
     if (action === "provider") {

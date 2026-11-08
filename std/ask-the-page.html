@@ -23,7 +23,7 @@
       <h2>Ask the page</h2>
       <template if="!none">
         <label>Model
-          <select data-action="provider" aria-label="Which model answers">
+          <select data-action="provider" aria-label="Which model answers" disabled="{{asking}}">
             <option value="">The first with a key</option>
             <template for="p of providers"><option key="{{p.id}}" value="{{p.id}}" selected="{{p.picked}}">{{p.label}}</option></template>
           </select>
