@@ -82,6 +82,8 @@ export function customize(host: CustomizeHost) {
   });
 
   let message = "";
+  /** True while a registry package (and what it needs) is being added, across the panel redrawing itself. */
+  let addingPackage = false;
   const say = (text: string) => {
     message = text;
     void refresh();
@@ -226,7 +228,10 @@ export function customize(host: CustomizeHost) {
         return box.replaceChildren(h("p", { class: "muted" }, "This site has no plugin registry."));
       }
       const have = new Set(mine.map((p) => p.id));
-      const providerOf = (service: string) => packages.find((p) => p.provides.includes(service));
+      // The services this app already has, from the kernel or a running plugin: a package that needs one adds no provider for it.
+      const reference = (await host.command("reference").catch(() => undefined)) as { data?: { services?: { name: string }[] } } | undefined;
+      const running = new Set((reference?.data?.services ?? []).map((s) => s.name));
+      const providerOf = (service: string) => (running.has(service) ? undefined : packages.find((p) => p.provides.includes(service)));
       /** The package and, first, every package that provides a service it needs and isn't here yet. */
       const withNeeds = (pkg: Package, seen = new Set<string>()): Package[] => {
         if (seen.has(pkg.id)) return [];
@@ -241,11 +246,21 @@ export function customize(host: CustomizeHost) {
           { class: "customize-list" },
           ...packages.map((pkg) => {
             const add = h("button", { type: "button", "data-package": pkg.id }, have.has(pkg.id) ? "Added" : "Add");
-            if (have.has(pkg.id)) add.setAttribute("disabled", "");
+            if (have.has(pkg.id) || addingPackage) add.setAttribute("disabled", "");
             const adding = withNeeds(pkg);
             add.addEventListener("click", async () => {
-              for (const p of adding) if (!(await run("user:add", { url: p.href }))) return;
-              say(`Added ${adding.map((p) => p.name).join(" and ")}. Turn ${adding.length > 1 ? "them" : "it"} on above.`);
+              // One package at a time, and none added twice: adding a plugin again would turn it off.
+              if (addingPackage) return;
+              addingPackage = true;
+              for (const button of box.querySelectorAll("button[data-package]")) button.setAttribute("disabled", "");
+              try {
+                const added = new Set(((await host.command("user:list", { app: host.app })) as { id?: string }[]).map((p) => p.id));
+                const todo = adding.filter((p) => !added.has(p.id));
+                for (const p of todo) if (!(await run("user:add", { url: p.href }))) return;
+                say(`Added ${todo.map((p) => p.name).join(" and ")}. Turn ${todo.length > 1 ? "them" : "it"} on above.`);
+              } finally {
+                addingPackage = false;
+              }
             });
             const also = adding.filter((p) => p.id !== pkg.id);
             return h(
