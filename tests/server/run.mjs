@@ -16,11 +16,16 @@ import { join, resolve } from "node:path";
 import { serve } from "../../src/server/serve.ts";
 import { providersFrom } from "../../src/server/auth/providers.ts";
 import { authenticator } from "./authenticator.mjs";
+import { blueskyChecks } from "./bluesky.mjs";
+import { fakeAtproto } from "./fake-atproto.mjs";
 import { fakeProvider } from "./fake-oauth.mjs";
 
 const results = [];
 // Another site to sign in with, which both hosts are configured to use.
 const fake = await fakeProvider();
+// And Bluesky, on a small AT Protocol network of its own (tests/server/bluesky.mjs).
+const atproto = await fakeAtproto();
+fake.env.AUTH_PROVIDERS = JSON.stringify([...JSON.parse(fake.env.AUTH_PROVIDERS), atproto.entry]);
 
 /** A free port on this machine. */
 const freePort = () =>
@@ -602,6 +607,7 @@ async function suite(name, make) {
 
     await memberChecks(server.url, check, owner);
     await oauthChecks(server.url, check);
+    await blueskyChecks(server.url, check, atproto);
     await syncChecks(server.url, check, owner, async () => {
       await server.stop();
       server = await host.start();
@@ -666,7 +672,7 @@ async function suite(name, make) {
 }
 
 const only = process.argv[2];
-process.on("exit", () => fake.close());
+process.on("exit", () => (fake.close(), atproto.close()));
 for (const [name, make] of Object.entries(hosts)) if (!only || only === name) await suite(name, make);
 
 for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.what}${r.detail && !r.ok ? `  (${r.detail})` : ""}`);
