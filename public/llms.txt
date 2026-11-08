@@ -16,6 +16,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [Commands and the command palette](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/commands.md): commands plugins add, run from a palette, a shortcut or an agent
 - [Routes and the service worker](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/routes.md): plugins answering links, forms and fetches
 - [Agents](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/agents.md): a Markdown file linked with <link rel="agent">, run as a plugin that asks a model and calls tools through the gate
+- [Deploying one app on its own](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/deploying-an-app.md): npm run deploy:app puts one app on a Cloudflare Worker of its own, with the whole platform
 - [Places](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/places.md): plugins adding to, replacing or hiding parts of a page with no slot for them; open, review and locked areas; a person's own plugins
 - [Slots in views, and view transforms](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/slots-and-transforms.md): a plugin declaring `<slot name="<id>.<name>">` in its view for others to fill (page.slots), and changing another plugin's view with a place `in` it (ui:transform:<plugin>)
 
