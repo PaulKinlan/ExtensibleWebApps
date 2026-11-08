@@ -3,8 +3,8 @@
 // The runner (tests/platform.test.mjs) opens demos/board/app.html, checks every
 // plugin it links draws, then calls this with that page and the shared helpers.
 export default async function (page, { check, proof }) {
-  // board.js is tab-scoped, so its view's key is board@<tab>:board.
-  const board = '[data-plugin="board"][data-key$=":board"]';
+  // board.js is tab-scoped, so its view's key is studio@<tab>:board.
+  const board = '[data-plugin="studio"][data-key$=":board"]';
   await page.waitForSelector(`${board} .column[data-column="doing"] .card`, { timeout: 8000 });
   proof.columns = await page.locator(`${board} .column`).count();
   check("the board draws a column per stage, with the sample cards", proof.columns === 5);
@@ -33,7 +33,7 @@ export default async function (page, { check, proof }) {
 
   // A card's screen: its own address, controls that save as they change, and the checklist in the room it leaves.
   await page.click(`${icons} .title a`);
-  const card = '[data-plugin="board"][data-key$=":card"]';
+  const card = '[data-plugin="studio"][data-key$=":card"]';
   await page.waitForSelector(`${card} .sheet`, { timeout: 5000 });
   proof.address = new URL(page.url()).pathname;
   // The host prefixes ids in a view with its plugin and tab, so find the label by what it shows.
