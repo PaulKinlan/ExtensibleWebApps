@@ -55,7 +55,7 @@ Only a space's members may join it: the upgrade must carry the session cookie of
 What isn't there yet:
 
 - **Plugins don't run on the server.** On a server no client starts plugin workers. The `isolate` seam does that, with server plugins (step 7).
-- **Tabs don't sync with a space yet.** That's step 6.
+- **Tabs don't sync with a space yet.** The space's side of sync is here (below); a tab joining a space is step 6b.
 
 Options: `node src/server/serve.ts --port 8787 --host 127.0.0.1 --spaces .spaces --site dist`. Behind a proxy that speaks HTTPS, add `--origin https://your.host` (or set `PUBLIC_ORIGIN`), so sign-in sees the address people use. [`tests/server/run.mjs`](../tests/server/run.mjs) checks it (`npm run test:server`, or `node tests/server/run.mjs node` for this host only), and `npm test` runs those checks too.
 
@@ -108,7 +108,7 @@ A space holds people and their data (collections and plugins), and any app can o
 
 Every change under `/auth/` runs one at a time, so a challenge or an invite is used once and a name gets one owner, on both hosts. Someone who leaves a space, or is removed, is disconnected from it at once.
 
-What the kernel of a space doesn't know yet is *which* member a client is. That arrives with sync (step 6), where changes carry who made them.
+The kernel of a space knows which member each client is: the server adds it to the client's `hello` (a client can't say it itself), and sync records it with every change.
 
 ### Signing in with another site
 
@@ -135,3 +135,14 @@ Two other ways to sign in were looked at, and wait:
 - **FedCM** (the browser's own account chooser) is only in Chrome and Edge for now, and providers have to support it (Google does, GitHub doesn't). It's worth adding as a nicer front for providers that offer it, once more browsers have it.
 
 [`tests/server/authenticator.mjs`](../tests/server/authenticator.mjs) is a passkey authenticator in software. The server checks use it on both hosts. They also try a used challenge, another page's origin, another site's passkey, a counter that went back, and a forged signature. They check who may make, open, invite to and leave a space, and sign in with a provider in [`tests/server/fake-oauth.mjs`](../tests/server/fake-oauth.mjs): a sign-in this browser didn't start is refused, and an identity can't be linked to two accounts. [`tests/checks/signin.mjs`](../tests/checks/signin.mjs) uses `/account/` in Chromium, with its virtual authenticator: it signs up, out and in, makes a space, and has a second person join it from the invite link.
+
+## Sync
+
+Each device keeps its own copy of a space's data, and works on it offline. The space orders every change, so all the copies agree. This is how it works until 2c brings CRDTs for live editing. The messages are in [`src/shared/sync.ts`](../src/shared/sync.ts), and the space's side is [`src/kernel/sync.ts`](../src/kernel/sync.ts).
+
+1. A device says `{ t: "sync", op: "hello", since }` with the last sequence number it saw (0 the first time). The space answers with every change after it, and from then on sends each change it accepts.
+2. A device sends the records it changed: `{ t: "sync", op: "push", id, changes: [{ collection, id, base, after }] }`. `base` is the record's version when the device changed it (0 for a new one), and `after` is the record, or null for a delete.
+3. The space takes each change in turn. If `base` is still the record's version, the change gets the next sequence number, which becomes the record's version. The space's own plugins can stop it with `data:beforeWrite`, as a browser's can, and a collection the space knows is checked against its schema. Every device hears the change, with `by`, the member who made it.
+4. A change based on an older version is refused as stale, with the record as the space has it, so the device can show the newer one and keep its own as a draft.
+
+The space keeps the log beside its collections (`sync/log/`, a hundred changes to a file) with each record's version (`sync/head.json`), so a device that was away for a while catches up from wherever it was. [`tests/server/run.mjs`](../tests/server/run.mjs) checks all of this on both hosts, with two members' devices.

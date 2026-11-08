@@ -261,6 +261,32 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     return { ok: true };
   }
 
+  /**
+   * Puts a record as another device made it (`after`, or deleted when it is null), for sync (sync.ts):
+   * no review, as the person who made it already did, and the collection needn't be known here yet.
+   * Views and `data:changed` listeners hear it as they hear any write.
+   */
+  async function apply(name: string, id: string, after: StoredRecord | null, dispatch: Dispatch = {}): Promise<Change> {
+    if (!NAME.test(name)) throw new Error(`${name} isn't a collection's name`);
+    const records = await load(name);
+    let change!: Change;
+    await serially(name, async () => {
+      const before = records.get(id);
+      change = { collection: name, id, before, ...(after ? { after } : {}) };
+      if (after) records.set(id, after);
+      else records.delete(id);
+      try {
+        await save(name, records);
+      } catch (error) {
+        if (before) records.set(id, before);
+        else records.delete(id);
+        throw error;
+      }
+    });
+    if (hooks.has(`data:changed:${name}`)) root.emit(dispatch, `data:changed:${name}`, change);
+    return change;
+  }
+
   const service: ServiceProvider = {
     description: "Collections: typed records plugins share. A plugin declares its own in its manifest; reading or writing another's needs a capability, and writes to another's are reviewed.",
     methods: {
@@ -343,6 +369,9 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     registry,
     written,
     restore,
+    apply,
+    /** One record, for a service that checks rights itself; null if there is none. */
+    record: async (name: string, id: string) => (await load(name)).get(id) ?? null,
     write,
     may,
     /** Every record in a collection, most recently changed first, for a service that checks rights itself. */

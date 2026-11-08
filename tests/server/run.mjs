@@ -101,6 +101,93 @@ async function client(base, space, cookie) {
   };
 }
 
+/** A device that syncs with a space: says hello as a tab, then speaks sync (src/shared/sync.ts). */
+async function device(base, space, cookie, { claim } = {}) {
+  const ws = new WebSocket(`${base.replace("http", "ws")}/s/${space}/kernel`, { headers: { cookie } });
+  const heard = [];
+  const waiting = new Map();
+  let id = 0;
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.t !== "sync") return;
+    if (m.op === "pushed") waiting.get(m.id)?.(m.results);
+    else heard.push(m);
+  };
+  await new Promise((open, fail) => {
+    ws.onopen = open;
+    ws.onerror = () => fail(new Error("Couldn't connect"));
+  });
+  ws.send(JSON.stringify({ t: "hello", tab: `device-${Math.random().toString(36).slice(2)}`, ...(claim ? { member: claim } : {}) }));
+  const settle = () => new Promise((r) => setTimeout(r, 300));
+  return {
+    /** Every change heard, in order. */
+    changes: () => heard.filter((m) => m.op === "changes").flatMap((m) => m.changes),
+    heard,
+    async hello(since = 0) {
+      ws.send(JSON.stringify({ t: "sync", op: "hello", since }));
+      await settle();
+    },
+    push: (changes) =>
+      new Promise((answer, fail) => {
+        const n = ++id;
+        waiting.set(n, answer);
+        setTimeout(() => fail(new Error("No answer to a push")), 5000);
+        ws.send(JSON.stringify({ t: "sync", op: "push", id: n, changes }));
+      }),
+    settle,
+    close: () => ws.close(),
+  };
+}
+
+/** Sync (src/kernel/sync.ts): the space orders changes from its members' devices, refuses stale ones, and lets a device catch up. */
+async function syncChecks(base, check, owner, restart) {
+  const bea = await person(base).account("Bea");
+  await owner.call("/auth/spaces", { name: "shared" });
+  await bea.call("/auth/invites/accept", { token: (await owner.call("/auth/spaces/shared/invite", {})).body?.token });
+  const ids = { owner: (await owner.call("/auth/me")).body?.user?.id, bea: (await bea.call("/auth/me")).body?.user?.id };
+
+  const phone = await device(base, "shared", owner.cookie);
+  const laptop = await device(base, "shared", bea.cookie, { claim: ids.owner });
+  await phone.hello(0);
+  await laptop.hello(0);
+  const first = await phone.push([{ collection: "books", id: "dune", base: 0, after: { id: "dune", title: "Dune" } }]);
+  await laptop.settle();
+  const heard = laptop.changes().find((c) => c.id === "dune");
+  check(
+    "sync: a change one member's device sends gets the space's next number, and reaches another member's device, saying who made it",
+    first?.[0]?.ok && first[0].seq === 1 && heard?.seq === 1 && heard.after?.title === "Dune" && heard.by === ids.owner,
+    JSON.stringify({ first, heard }),
+  );
+
+  const stale = await laptop.push([{ collection: "books", id: "dune", base: 0, after: { id: "dune", title: "Dune Messiah" } }]);
+  const newer = await laptop.push([{ collection: "books", id: "dune", base: 1, after: { id: "dune", title: "Dune (1965)" } }]);
+  await phone.settle();
+  const byBea = phone.changes().find((c) => c.seq === 2);
+  check(
+    "sync: a change made from an older version is refused as stale, with the record as the space has it; one made from the latest is accepted",
+    stale?.[0]?.stale && stale[0].version === 1 && stale[0].record?.title === "Dune" && newer?.[0]?.ok && newer[0].seq === 2,
+    JSON.stringify({ stale, newer }),
+  );
+  check("sync: a device can't say it is another member: the server says who it is", byBea?.by === ids.bea, JSON.stringify(byBea));
+
+  const bad = await phone.push([{ collection: "Not A Name", id: "x", base: 0, after: { id: "x" } }, { collection: "books", id: "gone", base: 0, after: null }, { collection: "books", id: "dune", base: 2, after: null }]);
+  check("sync: a change that isn't well formed is refused, and a delete is a change like any other", bad?.[0]?.error && bad[1]?.ok && bad[2]?.ok && bad[2].seq === 4, JSON.stringify(bad));
+  phone.close();
+  laptop.close();
+
+  // A device that was away catches up from the last number it saw, after the space has restarted too.
+  const url = await restart();
+  const away = await device(url, "shared", bea.cookie);
+  await away.hello(1);
+  const caught = away.changes().map((c) => c.seq);
+  const again = await away.push([{ collection: "books", id: "dune", base: 4, after: { id: "dune", title: "Back" } }]);
+  check("sync: a device that was away gets every change after the last one it saw, kept across a restart", JSON.stringify(caught) === "[2,3,4]" && again?.[0]?.ok && again[0].seq === 5, JSON.stringify({ caught, again }));
+  away.close();
+
+  const outsider = await person(url).account("Out");
+  check("sync: someone who isn't a member can't connect to sync", !(await opens(url, "shared", outsider.cookie)));
+}
+
 /** Someone using the site's /auth/ routes, with their own cookie: `account()` signs them up with a passkey. */
 function person(base) {
   const me = {
@@ -388,6 +475,12 @@ async function suite(name, make) {
 
     await memberChecks(server.url, check, owner);
     await oauthChecks(server.url, check);
+    await syncChecks(server.url, check, owner, async () => {
+      await server.stop();
+      server = await host.start();
+      owner.base = server.url;
+      return server.url;
+    });
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {

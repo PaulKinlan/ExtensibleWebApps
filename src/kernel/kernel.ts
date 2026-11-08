@@ -28,6 +28,7 @@ import { routed } from "./services/router";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
+import { syncHub } from "./sync";
 import { asPlugin } from "./agents/file";
 import { authoring } from "./authoring";
 import { record, recent, setSink, startedAt, tap } from "./trace";
@@ -110,6 +111,7 @@ remote.onDispose = (instance) => {
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
+const sync = syncHub(root, store, records, hosts);
 const userAdded = userPlugins(store, where.origin);
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
@@ -228,6 +230,7 @@ hosts.onLeave = (host) => {
   remote.hostLeft(host);
   records.hostLeft(host);
   apps.hostLeft(host);
+  sync.hostLeft(host);
   openApps.delete(host.tab);
 };
 
@@ -297,6 +300,8 @@ hosts.onMessage = async (host, message) => {
       return routed(host, message.path, message.query, openApps.get(host.tab)?.app);
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
+    case "sync":
+      return sync.handle(host, message);
     case "command": {
       const value = await command(message.name, message.arg);
       return hosts.send(host, { t: "command:result", id: message.id, value });

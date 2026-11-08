@@ -7,6 +7,8 @@
 // behalf of a user action carry a `trace` id so one action can be followed
 // across threads.
 
+import type { SyncToDevice, SyncToSpace } from "./sync";
+
 /** A declarative view. Plugins never touch the DOM; the host draws these. */
 export type View =
   /** Plain HTML, using the elements and components in shared/html.ts. `remote` is set by the kernel, never the plugin. */
@@ -54,7 +56,9 @@ export interface TraceEvent {
 
 // host -> kernel
 export type HostToKernel =
-  | { t: "hello"; tab: string; folder?: FileSystemDirectoryHandle }
+  /** `member` is set by a server, never by the client: who in the space's accounts this connection is. */
+  | { t: "hello"; tab: string; folder?: FileSystemDirectoryHandle; member?: string }
+  | SyncToSpace
   | { t: "bye"; tab: string }
   | { t: "event"; owner: string; action: string; value?: unknown; trace: string }
   | { t: "spawned"; plugin: string; port: MessagePort }
@@ -99,6 +103,7 @@ export type Command =
 // kernel -> host
 export type KernelToHost =
   | { t: "welcome"; tab: string; spawner: boolean; mode: "shared" | "dedicated" | "server" }
+  | SyncToDevice
   | { t: "render"; slot: Slot; key: string; owner: string; order: number; view: View | null }
   | { t: "spawn"; plugin: string; source: string; network: boolean }
   | { t: "terminate"; plugin: string }
