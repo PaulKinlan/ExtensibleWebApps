@@ -812,11 +812,11 @@ Listeners get `{ app, tab, title?, text?, url? }`.
 
 ### `transfer:changed`
 
-A record in a collection transfer.collections listed was written or deleted, so its count may have changed.
+A record in a collection transfer.collections listed was written or deleted, so the counts may have changed: call transfer.collections() again.
 
 Mode: `emit`. Listening needs `transfer`.
 
-Listeners get `{ collection }`.
+Listeners get `{}`.
 
 ### Dispatch modes
 

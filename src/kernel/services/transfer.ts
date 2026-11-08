@@ -39,51 +39,64 @@ const SHOWN = 20;
 defineHook("transfer:changed", {
   mode: "emit",
   needs: "transfer",
-  args: "{ collection }",
-  description: "A record in a collection transfer.collections listed was written or deleted, so its count may have changed.",
+  args: "{}",
+  description: "A record in a collection transfer.collections listed was written or deleted, so the counts may have changed: call transfer.collections() again.",
 });
 
 type Format = "csv" | "json";
 const loose = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-/** A value from a file, as the field's schema wants it: "£1,250.00" for a number is 1250, "yes" for a boolean is true. */
-function coerce(value: unknown, schema: Schema): unknown {
-  if (typeof value === "string") value = unguard(value.trim());
-  if (value === "" || value === null || value === undefined) return undefined;
+/**
+ * A value from a file, as the field's schema wants it: "£1,250.00" for a number is 1250, "yes" for a
+ * boolean is true. Text for a text field is kept as written, spaces and all; from a CSV file, only the
+ * ' a spreadsheet guard put in front of a formula-like value comes off.
+ */
+function coerce(value: unknown, schema: Schema, csv: boolean): unknown {
+  if (value === null || value === undefined) return undefined;
   if (typeof value !== "string") return value;
+  if (csv) value = unguard(value);
+  const text = (value as string).trim();
+  if (text === "") return undefined;
   switch (schema.type) {
     case "number":
     case "integer": {
-      const negative = /^\(.*\)$/.test(value);
-      const n = Number(value.replace(/[()\s£$€¥,]/g, ""));
-      return Number.isFinite(n) && value !== "" ? (negative ? -n : n) : value;
+      const negative = /^\(.*\)$/.test(text);
+      const digits = text.replace(/[()\s£$€¥,]/g, "");
+      const n = Number(digits);
+      // "£" alone is no number, not 0.
+      return digits !== "" && Number.isFinite(n) ? (negative ? -n : n) : value;
     }
     case "boolean":
-      if (/^(true|yes|y|1|x|✓)$/i.test(value)) return true;
-      if (/^(false|no|n|0)$/i.test(value)) return false;
+      if (/^(true|yes|y|1|x|✓)$/i.test(text)) return true;
+      if (/^(false|no|n|0)$/i.test(text)) return false;
       return value;
     case "array":
     case "object":
       try {
-        return JSON.parse(value);
+        return JSON.parse(text);
       } catch {
         return value;
       }
     default:
-      return schema.enum?.find((choice) => typeof choice === "string" && choice.toLowerCase() === value.toLowerCase()) ?? value;
+      return schema.enum?.find((choice) => typeof choice === "string" && choice.toLowerCase() === text.toLowerCase()) ?? value;
   }
 }
 
-/** A file's rows as objects of text (CSV) or values (JSON): a JSON array, or an object of records by id as a collection is kept. */
-function rowsOf(name: string, text: string): Record<string, unknown>[] {
+/**
+ * A file's rows, in order, as objects of text (CSV) or values (JSON): a JSON array, or an object of
+ * records by id as a collection is kept. An entry that isn't an object stays in its place as null,
+ * so rows keep their numbers and it is reported as skipped.
+ */
+function rowsOf(name: string, text: string): { csv: boolean; rows: (Record<string, unknown> | null)[] } {
   const json = /\.json$/i.test(name) || /^\s*[[{]/.test(text);
+  const isRecord = (r: unknown): r is Record<string, unknown> => !!r && typeof r === "object" && !Array.isArray(r);
   if (json) {
     const data = JSON.parse(text) as unknown;
-    const list = Array.isArray(data) ? data : data && typeof data === "object" ? Object.entries(data).map(([id, r]) => (r && typeof r === "object" && !Array.isArray(r) ? { id, ...r } : r)) : [];
-    return list.filter((r): r is Record<string, unknown> => !!r && typeof r === "object" && !Array.isArray(r));
+    const list = Array.isArray(data) ? data : isRecord(data) ? Object.entries(data).map(([id, r]) => (isRecord(r) ? { id, ...r } : r)) : [];
+    return { csv: false, rows: list.map((r) => (isRecord(r) ? r : null)) };
   }
   const [header = [], ...lines] = parseCsv(text);
-  return lines.map((line) => Object.fromEntries(header.map((h, i) => [h.trim(), line[i] ?? ""])));
+  return { csv: true, rows: lines.map((line) => Object.fromEntries(header.map((h, i) => [h.trim(), line[i] ?? ""]))) };
 }
 
 export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServiceProvider => {
@@ -92,7 +105,8 @@ export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServicePr
   const watch = (name: string) => {
     if (watched.has(name)) return;
     watched.add(name);
-    root.on(`data:changed:${name}`, () => root.emit({}, "transfer:changed", { collection: name }));
+    // It names no collection: every plugin with `transfer` hears it, so it says only that something changed.
+    root.on(`data:changed:${name}`, () => root.emit({}, "transfer:changed", {}));
   };
 
   /** The plugins in the caller's app: for a tab's instance, only the app open in its tab (as in history.ts). */
@@ -138,9 +152,10 @@ export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServicePr
     if (!picked) return { ok: false, cancelled: true, error: "No file was chosen" };
     if (typeof picked.text !== "string") return { ok: false, file: picked.name, error: `${picked.name} is over ${MAX_BYTES / 1_000_000} MB` };
 
-    let rows: Record<string, unknown>[];
+    let rows: (Record<string, unknown> | null)[];
+    let csv: boolean;
     try {
-      rows = rowsOf(picked.name, picked.text);
+      ({ rows, csv } = rowsOf(picked.name, picked.text));
     } catch (error) {
       return { ok: false, file: picked.name, error: `${picked.name} isn't CSV or JSON that can be read: ${error instanceof Error ? error.message : error}` };
     }
@@ -155,6 +170,7 @@ export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServicePr
     const ready: { row: number; id?: string; fields: Fields }[] = [];
     const skipped: { row: number; error: string }[] = [];
     rows.forEach((row, i) => {
+      if (!row) return void skipped.push({ row: i + 1, error: "It isn't a record" });
       const fields: Fields = Object.create(null);
       let id: string | undefined;
       for (const [column, value] of Object.entries(row)) {
@@ -168,7 +184,7 @@ export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServicePr
           ignored.add(column);
           continue;
         }
-        const typed = coerce(value, properties[key]);
+        const typed = coerce(value, properties[key], csv);
         if (typed !== undefined) fields[key] = typed;
       }
       const errors = validate({ ...collection.schema, type: "object" }, fields);
@@ -191,8 +207,16 @@ export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServicePr
 
     let added = 0;
     let replaced = 0;
+    // The person reviewed the import against the collection as it was: a record with a row's id
+    // that was changed, made or deleted while the card was open is left as it now is.
+    const now = new Map((await collections.records(collection.name)).map((r) => [r.id, r]));
     for (const { row, id, fields } of ready) {
-      const result = (await collections.write(instance, collection.name, id, fields, reason, dispatch, true)) as { ok: boolean; errors?: { message: string }[]; error?: string };
+      if (id && JSON.stringify(now.get(id)) !== JSON.stringify(existing.get(id))) {
+        skipped.push({ row, error: "That record changed while the review was open" });
+        continue;
+      }
+      // A full collection or a failed save stops that row, not the report.
+      const result = (await collections.write(instance, collection.name, id, fields, reason, dispatch, true).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }))) as { ok: boolean; errors?: { message: string }[]; error?: string };
       if (!result.ok) skipped.push({ row, error: result.error ?? (result.errors ?? []).map((e) => e.message).join(". ") });
       else if (id && existing.has(id)) replaced++;
       else added++;
