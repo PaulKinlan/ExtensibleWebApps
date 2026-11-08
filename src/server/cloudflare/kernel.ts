@@ -23,7 +23,7 @@ type Send = (text: string) => void | Promise<void>;
 async function whileLoading<T>(load: () => Promise<T>): Promise<T> {
   const real = { setTimeout, setInterval, clearTimeout, clearInterval };
   const held = new Map<number, { repeat: boolean; fn: (...a: unknown[]) => void; ms?: number; args: unknown[] }>();
-  const started = new Map<number, ReturnType<typeof setTimeout>>();
+  const started = new Map<number, { handle: ReturnType<typeof setTimeout>; repeat: boolean }>();
   let next = 1;
   const hold = (repeat: boolean) => (fn: (...a: unknown[]) => void, ms?: number, ...args: unknown[]) => {
     const id = -next++;
@@ -35,7 +35,8 @@ async function whileLoading<T>(load: () => Promise<T>): Promise<T> {
       held.delete(id);
       const timer = started.get(id);
       started.delete(id);
-      return real.clearTimeout(timer);
+      if (timer) (timer.repeat ? real.clearInterval : real.clearTimeout)(timer.handle);
+      return;
     }
     real.clearTimeout(id as ReturnType<typeof setTimeout>);
   };
@@ -44,7 +45,7 @@ async function whileLoading<T>(load: () => Promise<T>): Promise<T> {
     return await load();
   } finally {
     Object.assign(globalThis, { setTimeout: real.setTimeout, setInterval: real.setInterval, clearTimeout: clear, clearInterval: clear });
-    for (const [id, t] of held) started.set(id, (t.repeat ? real.setInterval : real.setTimeout)(t.fn, t.ms, ...t.args));
+    for (const [id, t] of held) started.set(id, { handle: (t.repeat ? real.setInterval : real.setTimeout)(t.fn, t.ms, ...t.args), repeat: t.repeat });
     held.clear();
   }
 }

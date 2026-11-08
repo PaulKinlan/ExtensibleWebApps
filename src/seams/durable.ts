@@ -38,9 +38,10 @@ export function durableFiles(sql: Sql): Files {
       sql.exec("DELETE FROM files WHERE path = ?", checkPath(path));
     },
     async list(prefix) {
-      // Paths are compared as text, so a prefix with LIKE's wildcards in it still means only itself.
+      // A range on the key, so SQLite reads only the paths under the prefix (and a prefix with LIKE's
+      // wildcards in it still means only itself). U+10FFFF sorts after every other character.
       return sql
-        .exec("SELECT path FROM files ORDER BY path")
+        .exec("SELECT path FROM files WHERE path >= ? AND path < ? ORDER BY path", prefix, `${prefix}\u{10FFFF}`)
         .toArray()
         .map((r) => String(r.path))
         .filter((p) => p.startsWith(prefix));

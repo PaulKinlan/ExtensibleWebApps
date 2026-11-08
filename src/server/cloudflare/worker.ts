@@ -55,7 +55,8 @@ export class Space extends DurableObject<Env> {
     server.accept();
     const id = crypto.randomUUID();
     // The client's messages wait for the kernel to be ready for them, in order.
-    let ready = kernel.join(id, url.origin, (text) => server.send(text)); ready.then(() => console.log("joined"), (e) => console.log("join failed", e?.stack ?? e));
+    let ready = kernel.join(id, url.origin, (text) => server.send(text));
+    ready.catch((e) => console.error(`Space ${space}: the kernel didn't start`, e?.stack ?? e));
     server.addEventListener("message", (e) => {
       ready = ready.then(() => kernel.deliver(id, String(e.data))).catch(() => server.close(1011, "The kernel stopped"));
     });
