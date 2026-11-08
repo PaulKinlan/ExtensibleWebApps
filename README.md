@@ -62,7 +62,7 @@ Each kind of code has its own place:
   - [`bindings.ts`](src/host/bindings.ts) connects `<ui-form>` and `<ui-table>` to collections
   - [`service-worker.ts`](src/host/service-worker.ts) starts the service worker and passes its questions to the kernel
 - **The elements** ([`elements/`](elements/)) are the `ui-*` custom elements views are built from, one `.html` file each, run as written with no build. See [`elements/README.md`](elements/README.md).
-- **The kernel** (`src/kernel/`) is a shared worker that every tab talks to. [`kernel.ts`](src/kernel/kernel.ts) wires everything together and is the place to start. The other files, by job:
+- **The kernel** (`src/kernel/`) is a shared worker that every tab talks to. [`kernel.ts`](src/kernel/kernel.ts) wires everything together and is the place to start. It reads what differs between hosts from [`env.ts`](src/kernel/env.ts), which an entry sets first: [`browser.ts`](src/kernel/browser.ts) in the browser, and a server entry for a space (see [docs/server.md](docs/server.md)). The other files, by job:
   - **Talking to plugins:**
     - [`remote.ts`](src/kernel/remote.ts) is the bridge to plugin workers
     - [`manifest.ts`](src/kernel/manifest.ts) reads a manifest without running the plugin

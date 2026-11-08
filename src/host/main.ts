@@ -34,10 +34,10 @@ const useShared = typeof SharedWorker !== "undefined" && params.get("kernel") !=
 
 let port: MessagePort;
 if (useShared) {
-  const kernel = new SharedWorker(new URL("../kernel/kernel.ts", import.meta.url), { type: "module", name: "kernel" });
+  const kernel = new SharedWorker(new URL("../kernel/browser.ts", import.meta.url), { type: "module", name: "kernel" });
   port = kernel.port;
 } else {
-  const kernel = new Worker(new URL("../kernel/kernel.ts", import.meta.url), { type: "module", name: "kernel" });
+  const kernel = new Worker(new URL("../kernel/browser.ts", import.meta.url), { type: "module", name: "kernel" });
   const channel = new MessageChannel();
   kernel.postMessage({ t: "connect" }, [channel.port2]);
   port = channel.port1;
