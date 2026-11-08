@@ -729,9 +729,13 @@ const folder = await navigator.storage
 send({ t: "hello", tab, folder });
 introduced = true;
 for (const message of unsent.splice(0)) send(message);
-/** Every app gets the Customize button, where the person adds their own plugins. */
-const inspector = isWorkbench ? undefined : inspect({ app, command, places: () => pagePlaces.status() });
-const panel = isWorkbench ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status(), inspect: () => inspector?.start() });
+/**
+ * Every app gets the Customize button, where the person adds their own plugins. An author can leave it
+ * out with <meta name="customize" content="off">; the person still has the last word: ?customize brings it back.
+ */
+const withCustomize = !isWorkbench && (document.querySelector('meta[name="customize"]')?.getAttribute("content")?.trim().toLowerCase() !== "off" || params.has("customize"));
+const inspector = withCustomize ? inspect({ app, command, places: () => pagePlaces.status() }) : undefined;
+const panel = !withCustomize ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status(), inspect: () => inspector?.start() });
 // The workbench is an app too: it links the demo plugins in plugins/, which no other page runs.
 await openApp();
 sendUrl();
