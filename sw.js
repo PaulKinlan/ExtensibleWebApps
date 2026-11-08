@@ -15,6 +15,7 @@
 // to let the next route try. When none answers, the request goes to the network.
 
 import routes from "./sw/routes/index.js";
+import { renderBlocking } from "./sw/render-blocking.js";
 
 const CACHE = "platform-v1";
 
@@ -33,7 +34,8 @@ self.addEventListener("message", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;
-  event.respondWith(answer(event, url));
+  // A page it serves waits for the host before its first paint (sw/render-blocking.js).
+  event.respondWith(event.request.mode === "navigate" ? answer(event, url).then(renderBlocking) : answer(event, url));
 });
 
 /** @param {FetchEvent} event @param {URL} url */

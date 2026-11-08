@@ -20,7 +20,7 @@ import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
 import { audioStats } from "./bridges/audio";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
-import { defineElementsIn, onElementError } from "./elements";
+import { defineElementsIn, loadElement, onElementError } from "./elements";
 import { morphChildren } from "./morph";
 import { serviceWorker } from "./service-worker";
 import { cleanCss } from "./plugin-styles";
@@ -29,6 +29,9 @@ import { fill, forgetFiles, loadedFile, loadFile } from "./templates";
 import { listenDrag } from "./drag";
 import { drawView } from "./views";
 import { workbench } from "./workbench";
+import { elementsIn, warmPlugin } from "./prefetch";
+import { reserveSlots } from "./reserve";
+import { speculate } from "./speculation";
 
 const tab = Math.random().toString(36).slice(2, 8);
 const params = new URLSearchParams(location.search);
@@ -190,6 +193,9 @@ const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"
 const isWorkbench = !!document.getElementById("devtools");
 /** The app's folder, which names where the person's own plugins for it are kept: `demos/trip` for /demos/trip/app.html, and for its screens, /demos/trip/day/2. */
 const app = appFolder.replace(/^\/s\/[^/]+\//, "/").replace(/^\/+|\/+$/g, "") || "root";
+/** The page's own slots hold the room they took last time while the app loads (reserve.ts). */
+const reserve = isWorkbench ? undefined : reserveSlots(app, [...document.querySelectorAll<HTMLElement>("slot[name]")].filter((slot) => !slot.closest("[data-plugin]")));
+speculate();
 /** Whose views this page shows: its app's plugins, or (on the workbench) everyone's. */
 let shown: Set<string> | "all" = isWorkbench ? "all" : new Set();
 /** Review cards always show: the person must see what a plugin wants to change. */
@@ -199,14 +205,24 @@ const showing = (owner: string) => shown === "all" || shown.has(owner.split("@")
 /** Views for owners this page doesn't show (yet): kept, in case the app's plugins are still starting. */
 const held = new Map<string, Extract<KernelToHost, { t: "render" }>>();
 
-async function openApp() {
-  const plugins = await Promise.all(
-    links.map(async (href) => {
-      const response = await fetch(href).catch((error: Error) => error);
-      if (response instanceof Response && response.ok) return { href, source: await response.text(), why: "" };
+/**
+ * The app's plugin files, fetched as soon as the host runs, while the kernel starts. Each one's template
+ * files (and their elements) start loading as soon as its source arrives (prefetch.ts).
+ */
+const linked = isWorkbench
+  ? []
+  : links.map(async (href) => {
+      const response = await fetch(href, { priority: "high" }).catch((error: Error) => error);
+      if (response instanceof Response && response.ok) {
+        const source = await response.text();
+        warmPlugin(href, source);
+        return { href, source, why: "" };
+      }
       return { href, source: "", why: response instanceof Response ? `it answered ${response.status}` : response.message };
-    }),
-  );
+    });
+
+async function openApp() {
+  const plugins = await Promise.all(linked);
   for (const { href, source, why } of plugins) if (!source) notice(`Couldn't load the plugin at ${href}: ${why}`);
   // ?reset turns this app's plugins back on, for when a person has switched off the very plugin that would do it.
   // It works once: the address loses it, so reloading doesn't reset again.
@@ -447,6 +463,7 @@ function afterChange(container: HTMLElement, _slot: string) {
   if (container.id === "review" && container instanceof HTMLDialogElement) return syncReview(container, count);
   const fallback = fallbacks.get(container);
   if (fallback) fallback.hidden = count > 0;
+  reserve?.changed(container);
   pagePlaces.sync(container, count);
 }
 
@@ -459,6 +476,21 @@ function templateFiles(view: View): string[] {
   if (view.type === "stack") return view.children.flatMap(templateFiles);
   return [];
 }
+
+/** The ui-* elements a view's markup uses. */
+function elementsOf(view: View): string[] {
+  if (view.type === "html") return elementsIn(view.html);
+  if (view.type === "template") {
+    const template = [...(loadedFile(view.src)?.querySelectorAll("template") ?? [])].find((t) => t.id === view.id);
+    return template ? elementsIn(template.innerHTML) : [];
+  }
+  if (view.type === "stack") return view.children.flatMap(elementsOf);
+  return [];
+}
+/** Elements that didn't load in time, or at all: views stop waiting for them. */
+const gaveUpOn = new Set<string>();
+/** How long a view waits for its elements before it is drawn anyway. */
+const ELEMENT_WAIT = 1500;
 
 const waitingForFile = new Map<string, [Slot, string, string, number, View]>();
 /** The views drawn in this page, as they came, so a plugin turned off here can be shown again. */
@@ -492,6 +524,18 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
         render(s, k, o, n, { type: "text", text, tone: "error" });
       },
     );
+    return;
+  }
+  // Its elements, the first time each is used: a view drawn before its <ui-*> are defined jumps when they are.
+  const undefinedElements = view ? elementsOf(view).filter((name) => !customElements.get(name) && !gaveUpOn.has(name)) : [];
+  if (undefinedElements.length) {
+    waitingForFile.set(id, [slot, key, owner, order, view!]);
+    void Promise.race([Promise.all(undefinedElements.map(loadElement)), new Promise((resolve) => setTimeout(resolve, ELEMENT_WAIT))]).then(() => {
+      for (const name of undefinedElements) if (!customElements.get(name)) gaveUpOn.add(name);
+      const latest = waitingForFile.get(id);
+      waitingForFile.delete(id);
+      if (latest) render(...latest);
+    });
     return;
   }
   waitingForFile.delete(id);
@@ -549,6 +593,7 @@ function drawIn(slot: string, container: HTMLElement, key: string, owner: string
     entry = { owner, order, el: next };
     containerOf.set(entry, container);
     listen(entry);
+    reserve?.observe(next, container);
     entries.set(key, entry);
     const sorted = [...entries.values()].sort((a, b) => a.order - b.order);
     container.append(...sorted.map((e) => e.el));
