@@ -24,6 +24,16 @@ async function fromServer(request) {
   return undefined;
 }
 
+/**
+ * Whether an address is an app's own folder: it ends in / and has an app.html. A route may end in / too.
+ * @param {URL} url @param {{ fetch(r: Request | string): Promise<Response> }} env
+ */
+async function isApp(url, env) {
+  if (!url.pathname.endsWith("/")) return false;
+  const page = await env.fetch(new Request(new URL("app.html", url))).catch(() => undefined);
+  return !!page?.ok && (page.headers.get("Content-Type") ?? "").includes("text/html");
+}
+
 export default {
   name: "spaces",
   prefix: "/s/",
@@ -40,9 +50,9 @@ export default {
     if (path.startsWith("/user/")) return user.handle(request, inner, env, ["spaces", space]);
     if (request.mode === "navigate") {
       // A plugin on the space's server may answer this address, for anyone: a survey's form at
-      // …/demos/survey/answer?survey=…. The server says so, and its answer is the page. A folder
-      // (the app itself) is never asked, so opening an app costs no extra trip.
-      const routed = path.endsWith("/") ? undefined : await fromServer(request);
+      // …/demos/survey/answer?survey=…. The server says so, and its answer is the page. An app's own
+      // folder (one with an app.html, from the cache) is never asked, so opening an app costs no extra trip.
+      const routed = (await isApp(inner, env)) ? undefined : await fromServer(request);
       if (routed) return routed;
       // The app's page, as apps.js serves it outside the space, with its <base> moved inside.
       const page = await apps.handle({ mode: "navigate", method: "GET" }, inner, env);
