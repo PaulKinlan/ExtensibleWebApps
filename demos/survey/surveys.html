@@ -1,0 +1,92 @@
+<!--
+  The builder. surveys.js sends { editing, space, surveys: [{ id, title,
+  open, closed, notify, count, link, questions: [{ label, most, choices?:
+  [{ choice, n }], said?: [text] }] }] }. Each choice's bar is a <meter>,
+  so a screen reader says it too.
+-->
+<style>
+  .surveys { display: grid; gap: var(--space-4); }
+  .note { margin: 0 0 var(--space-3); padding: var(--space-3); border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: var(--text-sm); }
+  .survey header { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+  .survey h3 { margin: 0; font-size: var(--text-lg); }
+  .survey .count { color: var(--fg-2); font-size: var(--text-sm); }
+  .survey[data-closed] h3 { color: var(--fg-2); }
+  .share { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; font-size: var(--text-sm); }
+  .share a { font-weight: 600; word-break: break-all; }
+  .results { display: grid; gap: var(--space-3); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+  .results h4 { margin: 0 0 var(--space-1); font-size: var(--text-md); }
+  .bars { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .bar { display: grid; grid-template-columns: minmax(6rem, 10rem) 1fr 2rem; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+  .bar meter { width: 100%; height: 10px; }
+  .bar .n { text-align: end; font-variant-numeric: tabular-nums; color: var(--fg-2); }
+  .said { margin: 0; padding-inline-start: var(--space-4); color: var(--fg-2); font-size: var(--text-sm); }
+  .said li + li { margin-top: 2px; }
+</style>
+
+<template id="surveys">
+  <ui-toolbar>
+    <h2>Surveys</h2>
+    <ui-spacer></ui-spacer>
+    <template if="editing"><button data-action="done">New survey instead</button></template>
+  </ui-toolbar>
+
+  <template if="!space">
+    <p class="note">Answers are collected by a server. Open this app in a space (from your <a href="/account/">account</a>), and each survey gets an address anyone can answer at, signed in or not.</p>
+  </template>
+
+  <ui-card>
+    <template if="editing">
+      <h3>Edit survey</h3>
+      <ui-form collection="surveys" record="{{editing}}" submit="Save changes" action="saved"></ui-form>
+    </template>
+    <template if="!editing">
+      <h3>New survey</h3>
+      <ui-form collection="surveys" fields="title,questions,notify" submit="Create survey"></ui-form>
+    </template>
+  </ui-card>
+
+  <div class="surveys">
+    <template for="s of surveys">
+      <ui-card class="survey" key="{{s.id}}" data-closed="{{s.closed}}">
+        <header>
+          <h3>{{s.title}}</h3>
+          <span class="count">{{s.count}} answered</span>
+          <ui-spacer></ui-spacer>
+          <button data-action="toggle" data-value="{{s.id}}">
+            <template if="s.open">Stop taking answers</template>
+            <template if="!s.open">Take answers again</template>
+          </button>
+          <button data-action="edit" data-value="{{s.id}}">Edit</button>
+        </header>
+        <template if="space">
+          <p class="share">
+            <template if="s.open">Anyone can answer at <a href="{{s.link}}" data-test="link">{{s.link}}</a></template>
+            <template if="!s.open">Closed: the address says so.</template>
+            <template if="s.notify"><ui-badge>Digest to {{s.notify}}</ui-badge></template>
+          </p>
+        </template>
+        <ul class="results">
+          <template for="q of s.questions">
+            <li>
+              <h4>{{q.label}}</h4>
+              <template if="q.choices">
+                <ul class="bars">
+                  <template for="c of q.choices">
+                    <li class="bar"><span>{{c.choice}}</span><meter min="0" max="{{q.most}}" value="{{c.n}}">{{c.n}}</meter><span class="n">{{c.n}}</span></li>
+                  </template>
+                </ul>
+              </template>
+              <template if="q.said">
+                <template if="q.said.length">
+                  <ul class="said"><template for="t of q.said"><li>{{t}}</li></template></ul>
+                </template>
+                <template if="!q.said.length"><p class="said">Nothing yet.</p></template>
+              </template>
+            </li>
+          </template>
+        </ul>
+      </ui-card>
+    </template>
+    <template if="!surveys.length"><ui-empty>No surveys yet. Make one above.</ui-empty></template>
+  </div>
+</template>
