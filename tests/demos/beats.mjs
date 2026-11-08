@@ -21,6 +21,19 @@ export default async function (page, { check, proof }) {
     .then(() => true, () => false);
   check("the Euclid menu, another plugin, spreads 5 hits across a row through the sequencer's command", proof.euclid);
 
+  // After a pick the menu goes back to "E", so the same rhythm can be picked again after editing the row.
+  const menu = `${machine} .row[data-track="bell"] [data-plugin="euclid"] select`;
+  proof.menuReset = await page.waitForFunction((sel) => document.querySelector(sel)?.value === "", menu, { timeout: 5000 }).then(() => true, () => false);
+  await page.uncheck(`${machine} .row[data-track="bell"] .pad >> nth=0`);
+  await page.waitForFunction((sel) => !document.querySelector(sel)?.checked, `${machine} .row[data-track="bell"] .pad`, { timeout: 5000 }).catch(() => {});
+  // A person moves focus to the menu to pick from it; the host doesn't change a control that has focus.
+  await page.focus(menu);
+  await page.selectOption(menu, "5");
+  proof.euclidAgain = await page
+    .waitForFunction((sel) => [...document.querySelectorAll(sel)].map((p) => (p.checked ? "x" : ".")).join("") === "x...x..x..x..x..", `${machine} .row[data-track="bell"] .pad`, { timeout: 5000 })
+    .then(() => true, () => false);
+  check("the Euclid menu goes back to E after a pick, so the same rhythm can be picked again", proof.menuReset && proof.euclidAgain, `reset ${proof.menuReset}, again ${proof.euclidAgain}`);
+
   // Playing: the clock lights a column each step and asks the audio service for each hit.
   // The audio service plays in whichever tab hosts the plugin workers, so count the calls the kernel traced.
   const played = () => page.evaluate(() => window.__host.traces.filter((e) => e.kind === "call" && e.name === "audio.play" && e.plugin === "sequencer").length);

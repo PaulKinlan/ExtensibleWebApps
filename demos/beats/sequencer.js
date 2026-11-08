@@ -176,6 +176,7 @@ export default async function (ctx) {
   let step = -1;
   let startedAt = 0;
   let timer = null;
+  let last = -1; // the count of the last step played since startedAt
   let hits = 0;
 
   const load = async () => {
@@ -242,6 +243,7 @@ export default async function (ctx) {
     const due = startedAt + n * len + (n % 2 ? swing : 0);
     timer = setTimeout(() => {
       if (!playing) return;
+      last = n;
       tick(n % STEPS);
       schedule(n + 1);
     }, Math.max(0, due - Date.now()));
@@ -251,6 +253,7 @@ export default async function (ctx) {
     if (playing) return;
     playing = true;
     startedAt = Date.now() + 60;
+    last = -1;
     schedule(0);
     await announce();
   };
@@ -262,28 +265,66 @@ export default async function (ctx) {
     await announce();
   };
 
-  /** Saves a pattern with `change` applied. */
-  const save = async (change) => {
-    const p = pattern();
-    if (!p) return;
-    const { createdAt, updatedAt, ...rest } = p;
-    const next = { ...rest, ...change, tracks: { ...p.tracks, ...(change.tracks ?? {}) } };
-    // Show it at once; the write comes back as data:changed.
-    patterns = patterns.map((x) => (x.id === p.id ? { ...x, ...next } : x));
-    draw();
-    await ctx.call("data", "put", "patterns", next);
+  /**
+   * When the tempo changes while playing (the slider, a command, another
+   * pattern), keeps the arm where it is in the bar: the time already into
+   * this step carries over at the new length, and the next step is
+   * scheduled from there. Then tells other plugins the new clock.
+   */
+  const retime = (before) => {
+    if (!playing || before === sixteenth()) return;
+    const now = Date.now();
+    const pos = Math.min(Math.max((now - startedAt) / before, last), last + 1);
+    startedAt = now - pos * sixteenth();
+    clearTimeout(timer);
+    schedule(last + 1);
+    return announce();
   };
 
-  const setCell = (track, i, on) => {
-    const cells = [...row(pattern(), track)];
-    cells[i] = on ? "x" : ".";
-    return save({ tracks: { [track]: cells.join("") } });
-  };
+  // Writes go one at a time, each built on the pattern as the last one left it, so quick taps on the
+  // pads can't race. Reloads after a change wait their turn too.
+  let queue = Promise.resolve();
+  const serial = (job) => (queue = queue.then(job, job));
 
-  ctx.on("data:changed:patterns", async () => {
-    await load();
-    draw();
-  });
+  /** Saves the open pattern with `change` (or `change(pattern)`) applied. */
+  const save = (change) =>
+    serial(async () => {
+      const p = pattern();
+      if (!p) return;
+      const c = typeof change === "function" ? change(p) : change;
+      const { createdAt, updatedAt, ...rest } = p;
+      const next = { ...rest, ...c, tracks: { ...p.tracks, ...(c.tracks ?? {}) } };
+      const before = sixteenth();
+      // Show it at once; the write comes back as data:changed.
+      patterns = patterns.map((x) => (x.id === p.id ? { ...x, ...next } : x));
+      await retime(before);
+      const tried = sixteenth();
+      draw();
+      const result = await ctx.call("data", "put", "patterns", next);
+      if (result?.ok === false) {
+        // Refused: show what is really saved, and say why in the log.
+        ctx.log(`pattern not saved: ${(result.errors ?? []).map((e) => e.message).join("; ")}`);
+        await load();
+        await retime(tried);
+        draw();
+      }
+    });
+
+  const setCell = (track, i, on) =>
+    save((p) => {
+      const cells = [...row(p, track)];
+      cells[i] = on ? "x" : ".";
+      return { tracks: { [track]: cells.join("") } };
+    });
+
+  ctx.on("data:changed:patterns", () =>
+    serial(async () => {
+      const before = sixteenth();
+      await load();
+      await retime(before);
+      draw();
+    }),
+  );
 
   ctx.ui.onEvent(async (action, value) => {
     const [verb, a, b] = action.split(":");
@@ -296,17 +337,13 @@ export default async function (ctx) {
     }
     if (verb === "bpm" || verb === "swing") {
       await save({ [verb]: Math.round(value) });
-      if (playing && verb === "bpm") {
-        // Keep the playing step where it is at the new tempo.
-        startedAt = Date.now() - (step + 1) * sixteenth();
-        clearTimeout(timer);
-        schedule(step + 1);
-      }
       return announce();
     }
     if (verb === "pattern") {
+      const before = sixteenth();
       current = value ?? a;
       await ctx.storage.set("pattern", current);
+      await retime(before);
       draw();
       return announce();
     }
@@ -317,8 +354,9 @@ export default async function (ctx) {
       const { id } = await ctx.call("data", "put", "patterns", { ...rest, name: `${p.name} (copy)`.slice(0, 40) });
       current = id;
       await ctx.storage.set("pattern", current);
-      await load();
-      return draw();
+      await serial(load);
+      draw();
+      return announce();
     }
   });
 
@@ -328,11 +366,13 @@ export default async function (ctx) {
     return playing ? "Playing" : "Stopped";
   });
   ctx.commands.add({ id: "faster", title: "Tempo up 5 bpm", group: "Transport", keys: ["Alt+ArrowUp"] }, async () => {
-    await save({ bpm: Math.min(180, (pattern()?.bpm ?? 120) + 5) });
+    await save((p) => ({ bpm: Math.min(180, (p.bpm ?? 120) + 5) }));
+    await announce();
     return `${pattern()?.bpm} bpm`;
   });
   ctx.commands.add({ id: "slower", title: "Tempo down 5 bpm", group: "Transport", keys: ["Alt+ArrowDown"] }, async () => {
-    await save({ bpm: Math.max(60, (pattern()?.bpm ?? 120) - 5) });
+    await save((p) => ({ bpm: Math.max(60, (p.bpm ?? 120) - 5) }));
+    await announce();
     return `${pattern()?.bpm} bpm`;
   });
   ctx.commands.add(

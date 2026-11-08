@@ -58,8 +58,14 @@ export default async function (ctx) {
     // Where the arm is: a fraction of the bar, from the clock.
     let pos = -1;
     if (transport?.playing) {
-      const sixteenth = 60_000 / (transport.bpm || 120) / 4;
-      pos = (((now - transport.startedAt) / sixteenth) % 16 + 16) % 16;
+      // The same clock as the sequencer's: swing makes each odd sixteenth start late, so the
+      // even step of each pair is longer and the odd one shorter.
+      const len = 60_000 / (transport.bpm || 120) / 4;
+      const late = ((transport.swing ?? 0) / 100) * len * 0.5;
+      const t = (((now - transport.startedAt) % (len * 16)) + len * 16) % (len * 16);
+      const pair = Math.floor(t / (len * 2));
+      const into = t - pair * len * 2;
+      pos = pair * 2 + (into < len + late ? into / (len + late) : 1 + (into - len - late) / (len - late));
     }
     const step = pos < 0 ? -1 : Math.floor(pos);
 

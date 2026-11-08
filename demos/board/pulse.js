@@ -1,5 +1,5 @@
 // Pulse: how the board is doing, in the side column. It reads the cards
-// (data:read:cards) and draws live, so every move on the board shows here
+// (data:read:studio-cards) and draws live, so every move on the board shows here
 // without this plugin listening for anything.
 //
 // The ring and the flow bar are sized by numbers in the data, and a view
@@ -14,7 +14,7 @@ export const manifest = {
   name: "Pulse",
   description: "Progress, flow and who has what, from the board's cards.",
   version: "1.0.0",
-  permissions: ["ui", "data:read:cards"],
+  permissions: ["ui", "data:read:studio-cards"],
   order: 50,
 };
 
@@ -35,7 +35,7 @@ const today = () => {
 export default async function (ctx) {
   const views = ctx.ui.views("pulse.html");
   const pulse = views.live("side", "pulse", async (api) => {
-    const cards = await api.call("data", "list", "cards");
+    const cards = await api.call("data", "list", "studio-cards");
     const points = (list) => list.reduce((sum, c) => sum + (c.points ?? 0), 0);
     const total = points(cards);
     const shipped = points(cards.filter((c) => c.column === "done"));

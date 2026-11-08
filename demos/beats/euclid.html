@@ -1,5 +1,5 @@
 <!--
-  The Euclid menu beside each row. euclid.js sends { track, choices: [{ n }] }.
+  The Euclid menu beside each row. euclid.js sends { track, marked, choices: [{ n }] }; marked flips after each pick so the menu goes back to "E".
   Picking a number sends "euclid:<track>" with it.
 -->
 <style>
@@ -8,7 +8,7 @@
 </style>
 <template id="menu">
   <select class="euclid" data-action="euclid:{{track}}" aria-label="Spread hits evenly across the {{track}} row" title="Euclidean rhythm: spread N hits evenly">
-    <option value="" selected>E</option>
+    <option value="" selected="{{marked}}">E</option>
     <template for="c of choices"><option value="{{c.n}}">{{c.n}} in 16</option></template>
   </select>
 </template>

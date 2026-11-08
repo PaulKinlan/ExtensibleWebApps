@@ -21,7 +21,8 @@
 // copy draws what its own address says.
 
 // Its id is "studio", not "board": /std/board.js, the agents' board, already has that id, and two
-// plugins with one id can't run side by side.
+// plugins with one id can't run side by side. Its collection is "studio-cards", not "cards": a profile
+// that ran this plugin under its old id keeps "cards" registered to "board", and a saved owner wins.
 export const manifest = {
   id: "studio",
   name: "Board",
@@ -31,7 +32,7 @@ export const manifest = {
   scope: "tab",
   order: 10,
   collections: {
-    cards: {
+    "studio-cards": {
       title: "Cards",
       schema: {
         type: "object",
@@ -117,7 +118,7 @@ export default async function (ctx) {
   const views = ctx.ui.views("board.html");
 
   if (!(await ctx.storage.get("seeded"))) {
-    if (!(await ctx.call("data", "list", "cards")).length) for (const card of SAMPLE()) await ctx.call("data", "put", "cards", card);
+    if (!(await ctx.call("data", "list", "studio-cards")).length) for (const card of SAMPLE()) await ctx.call("data", "put", "studio-cards", card);
     await ctx.storage.set("seeded", true);
   }
 
@@ -126,7 +127,7 @@ export default async function (ctx) {
   /** On the card screen, why the last change wasn't saved, if it wasn't. */
   let problem = "";
 
-  const all = async (api) => (await api.call("data", "list", "cards")).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || String(a.createdAt).localeCompare(String(b.createdAt)));
+  const all = async (api) => (await api.call("data", "list", "studio-cards")).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || String(a.createdAt).localeCompare(String(b.createdAt)));
 
   // The board, drawn only on the app's own address.
   const board = views.live("main", "board", async (api) => {
@@ -152,7 +153,7 @@ export default async function (ctx) {
     const { path } = await api.call("router", "current");
     const id = screen(path).card;
     if (id === undefined) return { shown: false };
-    const c = id && (await api.call("data", "get", "cards", id));
+    const c = id && (await api.call("data", "get", "studio-cards", id));
     if (!c) return { shown: true, missing: true };
     const has = new Set(c.labels ?? []);
     const option = (value, current) => ({ value, on: value === current, key: `${value}` });
@@ -195,12 +196,12 @@ export default async function (ctx) {
    */
   const update = (id, fields) =>
     serial(async () => {
-      const c = await ctx.call("data", "get", "cards", id);
+      const c = await ctx.call("data", "get", "studio-cards", id);
       if (!c) return;
       const { createdAt, updatedAt, ...rest } = c;
       const next = { ...rest, ...(typeof fields === "function" ? fields(c) : fields) };
       for (const [k, v] of Object.entries(next)) if (v === "" || v === null || Number.isNaN(v)) delete next[k];
-      const result = await ctx.call("data", "put", "cards", next);
+      const result = await ctx.call("data", "put", "studio-cards", next);
       problem = result.ok ? "" : (result.errors ?? []).map((e) => `${e.path ? `${e.path}: ` : ""}${e.message}`).join("; ") || "That change wasn't saved.";
       if (!result.ok) card.refresh();
     });
@@ -211,7 +212,7 @@ export default async function (ctx) {
     if (!title) return null;
     const cards = await all(ctx);
     const rank = Math.max(0, ...cards.filter((c) => c.column === column).map((c) => c.rank ?? 0)) + 1;
-    return (await ctx.call("data", "put", "cards", { title, column, rank, priority: "normal", cover: "none" })).id;
+    return (await ctx.call("data", "put", "studio-cards", { title, column, rank, priority: "normal", cover: "none" })).id;
   };
 
   /** Moves a card one stage left (-1) or right (+1), to the end of that column. */
@@ -253,7 +254,7 @@ export default async function (ctx) {
         return void card.refresh();
       }
       confirming = false;
-      await ctx.call("data", "delete", "cards", id);
+      await ctx.call("data", "delete", "studio-cards", id);
       return void ctx.call("router", "go", "/");
     }
     if (verb === "keep") {

@@ -28,15 +28,20 @@ export function euclid(hits, steps = 16) {
 
 export default async function (ctx) {
   const views = ctx.ui.views("euclid.html");
+  // The host keeps what a person picked in a menu until the HTML declares something else. So to put the
+  // menus back to "E" after a pick, the declared choice has to change: "E" is marked selected one time and
+  // left unmarked the next, and either way the menu shows "E", its first option.
+  let marked = true;
   const fill = async () => {
     const slots = await ctx.call("page", "slots", SLOT);
-    slots.forEach(({ data }, i) => views.render(`${SLOT}#${i}`, "menu", { track: data.track, choices: [0, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 16].map((n) => ({ n })) }));
+    slots.forEach(({ data }, i) => views.render(`${SLOT}#${i}`, "menu", { track: data.track, marked, choices: [0, 2, 3, 4, 5, 6, 7, 8, 9, 11, 13, 16].map((n) => ({ n })) }));
   };
   ctx.ui.onEvent(async (action, value) => {
     if (action === "slot:changed") return void fill();
     const [verb, track] = action.split(":");
     if (verb !== "euclid" || value === "") return;
     await ctx.call("commands", "run", "sequencer/set-track", { track, steps: euclid(Number(value)) });
+    marked = !marked;
     fill(); // put the menu back to its label
   });
   await fill();
