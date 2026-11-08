@@ -26,7 +26,9 @@ export default async function (ctx) {
     const fast = best(of("run").filter((a) => a.km >= 5), (a) => a.km / a.minutes);
     const pace = fast ? fast.minutes / fast.km : 0;
     const swim = best(of("swim"), (a) => a.km);
-    const month = new Date().toISOString().slice(0, 7);
+    // This month by the local calendar (toISOString would give UTC's month near midnight).
+    const now = new Date();
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     const thisMonth = all.filter((a) => a.date.startsWith(month));
     return {
       month: Math.round(thisMonth.reduce((s, a) => s + a.km, 0)),
