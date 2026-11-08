@@ -32,7 +32,8 @@ export default async function (ctx) {
 
 - **Named `service_method`:** `data_put` is `data.put`, and `files_read` is `files.read`.
 - **Only what it could call anyway:** a method that needs nothing, or one whose capability the manifest grants. A plugin with `files:exports` gets `files_read` and `files_write`. One without it gets neither.
-- **Only the collections it may use:** an argument that names a collection lists them as its choices. That means the ones the plugin owns, plus the ones its manifest names in `data:read:` or `data:write:`. The model can't ask for another.
+- **Only the collections it may use:** the ones the plugin owns, plus the ones its manifest names in `data:read:` or `data:write:`. The model can't ask for another.
+- **One tool per collection, with its fields:** for up to five collections, a method that takes one becomes a tool each, such as `data_put_books`. Its `record` argument is the collection's own schema, with its fields, required fields and choices, plus `id`, so the model sees real fields rather than a bare object. Past five, it is one tool, `data_put`, whose `collection` argument lists them.
 - **Never `llm` or `tools` themselves.**
 
 ## What a tool call does
@@ -49,10 +50,10 @@ put: {
   // …
   params: [
     { name: "collection", schema: { type: "string" }, names: "data:write:" },
-    { name: "record", schema: { type: "object" } },
+    { name: "record", schema: { type: "object" }, recordOf: "collection" },
     { name: "reason", schema: { type: "string" }, optional: true },
   ],
 },
 ```
 
-`names` is a capability prefix: the value must be one of the names the caller holds after it. A method without `params` isn't offered, so a service decides what a model may reach.
+`names` is a capability prefix: the value must be one of the names the caller holds after it. `recordOf: "collection"` on another argument gives it that collection's schema in the per-collection tools. A method without `params` isn't offered, so a service decides what a model may reach.

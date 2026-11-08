@@ -41,6 +41,12 @@ export interface Param {
    * `data:` prefixes, the collections its manifest owns).
    */
   names?: string;
+  /**
+   * The name of a `names` param that holds a collection: this value is a
+   * record of that collection. When a tool is made for one collection, this
+   * argument takes the collection's own schema.
+   */
+  recordOf?: string;
 }
 
 /** One method of a service, as the API reference shows it. */

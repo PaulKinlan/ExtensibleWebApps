@@ -490,7 +490,7 @@ Calls a tool from `list` with the arguments a model gave, as an object. The argu
 
 Needs: nothing.
 
-The caller's tools: each service method that describes its arguments and that the caller's manifest lets it call. Pass them to `llm.complete` as `tools`. An argument that names a collection lists only those the caller may use.
+The caller's tools: each service method that describes its arguments and that the caller's manifest lets it call. Pass them to `llm.complete` as `tools`. A method that takes a collection is one tool per collection the caller may use, such as `data_put_books` with that collection's fields (one tool listing them, past five).
 
 ## Hooks
 
