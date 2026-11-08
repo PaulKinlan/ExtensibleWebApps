@@ -41,8 +41,10 @@ export default async function ({ check }) {
       writeFileSync(join(away, "shared", "widgets", "w.js"), "");
       writeFileSync(join(away, "shared", "lib.js"), "");
       const page = join(away, "trip-kit", "app.html");
-      writeFileSync(page, readFileSync(page, "utf8").replace("</head>", "<link rel=plugin href=../shared/widgets/w.js>\n<link rel=plugin href=../shared/lib.js>\n</head>").replace("</body>", '<a href="/nowhere/">Elsewhere</a>\n</body>'));
+      writeFileSync(page, readFileSync(page, "utf8").replace("</head>", "<link rel=plugin href=../shared/widgets/w.js>\n<link rel=plugin href=../shared/lib.js>\n</head>").replace("</body>", '<a href="/nowhere/">Elsewhere</a>\n<nav class="site-tools">Tools</nav>\n<nav data-class="site">Mine</nav>\n<nav class="compact site"><a href="/docs/">Docs</a></nav>\n</body>'));
       const external = layoutApp(join(away, "trip-kit"), { out });
+      const navs = readFileSync(join(external.site, "trip-kit/app.html"), "utf8");
+      check("only a nav whose class has the token `site` is left out", navs.includes("site-tools") && navs.includes('data-class="site"') && !navs.includes("compact site"));
       check("deploy:app warns about links to pages the Worker won't have", external.warnings.some((w) => w.includes("/nowhere/")), external.warnings.join("; "));
       check(
         "an app outside the repo brings its ../ folders, quoted or not",

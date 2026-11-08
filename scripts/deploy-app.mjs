@@ -107,8 +107,12 @@ export function layoutApp(app, { name, dist = join(ROOT, "dist"), out } = {}) {
 
   // The main site's navigation (<nav class="site">: Home, All demos, Docs, Workbench) points at pages this
   // Worker doesn't have, so the deployed copy of app.html leaves it out. The app's own files are untouched.
-  const SITE_NAV = /\s*<nav\b[^>]*\bclass\s*=\s*["']?site\b[^>]*>[\s\S]*?<\/nav>/gi;
-  const served = html.replace(SITE_NAV, "");
+  // A <nav> whose class attribute has the token `site` (not site-tools, not data-class="site").
+  const served = html.replace(/\s*<nav\b([^>]*)>[\s\S]*?<\/nav>/gi, (whole, attrs) => {
+    const cls = /(?:^|\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(attrs);
+    const tokens = cls ? (cls[1] ?? cls[2] ?? cls[3]).split(/\s+/) : [];
+    return tokens.includes("site") ? "" : whole;
+  });
   if (served !== html) writeFileSync(join(site, path, "app.html"), served);
 
   // Links in the deployed app.html to pages this Worker won't have.
