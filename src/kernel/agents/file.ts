@@ -21,6 +21,7 @@
 //     - check: data:beforeWrite:library    (asked before a write, which it may block)
 //       when: '\d{13,19}'                 (only if the value, as JSON, matches)
 //   if-unsure: block                      (block what it couldn't check)
+//   acts-as: person                       (it may act for the person, once they let it)
 //   limits: { runs-per-hour: 30, tokens-per-day: 200000 }
 //   ---
 //   You keep the reading list tidy. When a book has no genre, ...
@@ -50,6 +51,12 @@ export interface AgentConfig {
   when: Record<string, string>;
   /** What happens to an action it couldn't check: in time, within its limits, or with an answer. */
   ifUnsure: "allow" | "block";
+  /**
+   * Who its changes are made as. `person`: in a run the person asked for (a message from a plugin, not
+   * another agent, or a command), once they let it on a card, its changes are logged as theirs, made
+   * through it. They are still reviewed, and it still may do only what its own permissions allow.
+   */
+  actsAs: "self" | "person";
   limits: { runsPerHour: number; tokensPerDay: number; steps: number };
 }
 
@@ -92,7 +99,7 @@ export function fromAgentFile(text: string): string {
   if (!id) throw new AgentFileError("An agent needs an `id`");
   if (!name) throw new AgentFileError("An agent needs a `name`");
   const actsAs = string("acts-as") ?? "self";
-  if (actsAs !== "self") throw new AgentFileError("`acts-as` may only be self for now: acting for the person comes later");
+  if (actsAs !== "self" && actsAs !== "person") throw new AgentFileError("`acts-as` is self or person");
 
   const permissions = meta.permissions ?? [];
   if (!Array.isArray(permissions) || permissions.some((p) => typeof p !== "string")) throw new AgentFileError("`permissions` must be a list");
@@ -160,7 +167,7 @@ export function fromAgentFile(text: string): string {
   const instructions = body.trim();
   if (!instructions) throw new AgentFileError("An agent needs instructions: write them after the frontmatter");
   const model = string("model");
-  const config: AgentConfig = { id, name, model: model && model !== "default" ? model : undefined, instructions, hooks, commands, inbox, topics, checks, when, ifUnsure: unsure, limits };
+  const config: AgentConfig = { id, name, model: model && model !== "default" ? model : undefined, instructions, hooks, commands, inbox, topics, checks, when, ifUnsure: unsure, actsAs, limits };
 
   // An agent asks the model (llm), is an agent (agent: it hears requests to run), listens to the hooks that wake it,
   // and, with `- message: true`, has an inbox; waking on a topic means hearing that something was posted.

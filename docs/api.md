@@ -166,11 +166,11 @@ For agents: ends a run, told to the app as agent:done.
 
 #### agents.list
 
-`agents.list()` → [{ id, name, hooks, checks, commands, inbox, topics, limits, used: { runs, tokens } }]
+`agents.list()` → [{ id, name, description, actsAs, hooks, checks, commands, inbox, topics, limits, used: { runs, tokens } }]
 
 Needs: nothing.
 
-The agents running now, what wakes them, their limits, and what they have used this hour (runs) and today (tokens).
+The agents running now in the caller's app (every one, for a plugin no app links), what wakes them, their limits, and what they have used this hour (runs) and today (tokens).
 
 #### agents.next
 
@@ -812,11 +812,11 @@ Listeners get `{ agent, run, tool, ok }`.
 
 ### `agent:wake`
 
-An agent began a run. kind is hook, check (it was asked whether something may happen), command, message or topic.
+An agent began a run. kind is hook, check (it was asked whether something may happen), command, message or topic. as is "person" when it acts for the person in this run (acts-as: person).
 
 Mode: `emit`. Listening needs `hook:listen:agent:wake`.
 
-Listeners get `{ agent, run, trigger: { kind, name } }`.
+Listeners get `{ agent, run, trigger: { kind, name }, as? }`.
 
 ### `bench:ping`
 
@@ -860,11 +860,11 @@ Listeners get `{ topic, id, from }`.
 
 ### `commands:before`
 
-Before a command runs; `by` is the plugin that ran it (the palette, an agent). Return { block: reason } to stop it.
+Before a command runs; `by` is the plugin that ran it (the palette, an agent), and as is "person" when that is an agent acting for the person. Return { block: reason } to stop it.
 
 Mode: `serial`, 15000 ms per listener, fails open. Listening needs `hook:intercept:commands:before`.
 
-Listeners get `{ name, plugin, id, args, by }`.
+Listeners get `{ name, plugin, id, args, by, as? }`.
 
 ### `commands:changed`
 
@@ -880,7 +880,7 @@ A command ran, or failed (ok false, with the error). Its arguments aren't includ
 
 Mode: `emit`. Listening needs `commands`.
 
-Listeners get `{ name, plugin, id, by, ok, error? }`.
+Listeners get `{ name, plugin, id, by, as?, ok, error? }`.
 
 ### `data:beforeWrite`
 

@@ -18,6 +18,9 @@ off, what's left is the page's own HTML and the kernel.
 | [`chapter-4-make.js`](chapter-4-make.js) | Make your own: how to write a plugin, above the plugin editor ([`/std/plugin-editor.js`](../std/plugin-editor.js)). |
 | [`chapter-5-inspect.js`](chapter-5-inspect.js) | Look inside: how to read any plugin and follow its hooks, above view source ([`/std/view-source.js`](../std/view-source.js)) and the hook tracer ([`/std/hook-tracer.js`](../std/hook-tracer.js)). |
 | [`chapter-6-models.js`](chapter-6-models.js) | Ask a model: how a plugin asks a language model without a key, above Ask the page ([`/std/ask-the-page.js`](../std/ask-the-page.js)). The page links Claude, OpenAI and Gemini from [`/std/llm/`](../std/llm/). |
+| [`chapter-7-permissions.js`](chapter-7-permissions.js) | What a plugin may do: permissions and the gate. Its own manifest asks only for `ui`, and its buttons ask for more, so you watch the kernel refuse. |
+| [`chapter-8-data.js`](chapter-8-data.js) | Your data, and your say: collections, schemas and review. It has `data:write:learning`, so adding a note shows you a review card, and a note that isn't text is refused by the schema. |
+| [`chapter-9-views.js`](chapter-9-views.js) | Views are HTML: how plugins draw, and a box whose HTML it draws as written, so you see what the page's allowlist keeps. |
 
 Each chapter's words are in the `.html` file next to it, so a chapter is
 edited like any view. The page also links standard plugins from

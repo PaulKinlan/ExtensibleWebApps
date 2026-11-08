@@ -28,6 +28,17 @@ export default async function (ctx) {
 
 `tools.list` returns `{ name, description, parameters, service, method, reviewed }` for each tool. `llm.complete` reads the name, description and parameters and ignores the rest.
 
+```mermaid
+flowchart TB
+    List["tools.list<br/>every method the manifest lets it call"] --> Ask["llm.complete<br/>the messages and the tools"]
+    Ask --> Stop{"Did the model<br/>call a tool?"}
+    Stop -->|no| Done["Done: the model's answer"]
+    Stop -->|yes| Call["tools.call(name, args)<br/>checked against the schema"]
+    Call --> Gate["The gate, as for ctx.call<br/>and a review for data the plugin doesn't own"]
+    Gate --> Result["The result, or the error,<br/>added to the messages"]
+    Result --> Ask
+```
+
 ## What a plugin is offered
 
 - **Named `service_method`:** `data_put` is `data.put`, and `files_read` is `files.read`.

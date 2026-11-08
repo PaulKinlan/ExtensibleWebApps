@@ -12,6 +12,9 @@ export const folder = new URL(".", document.baseURI).pathname;
 
 /** Whether an address on this site is a screen of this app: inside its folder, and not a file (a last part with a dot). */
 function isScreen(url: URL): boolean {
+  // The site's front page (/) has no screens: the service worker never serves it at another address
+  // (sw/routes/apps.js), so /docs/ or /workbench/ from there is another page, to load.
+  if (folder === "/") return url.origin === location.origin && url.pathname === "/";
   const inside = url.pathname.startsWith(folder) || `${url.pathname}/` === folder;
   return url.origin === location.origin && inside && !url.pathname.split("/").pop()!.includes(".");
 }

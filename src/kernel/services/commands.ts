@@ -65,13 +65,13 @@ defineHook("commands:before", {
   mode: "serial",
   timeoutMs: 15_000,
   onFailure: "open",
-  args: "{ name, plugin, id, args, by }",
-  description: "Before a command runs; `by` is the plugin that ran it (the palette, an agent). Return { block: reason } to stop it.",
+  args: "{ name, plugin, id, args, by, as? }",
+  description: "Before a command runs; `by` is the plugin that ran it (the palette, an agent), and as is \"person\" when that is an agent acting for the person. Return { block: reason } to stop it.",
 });
 defineHook("commands:ran", {
   mode: "emit",
   needs: "commands",
-  args: "{ name, plugin, id, by, ok, error? }",
+  args: "{ name, plugin, id, by, as?, ok, error? }",
   description: "A command ran, or failed (ok false, with the error). Its arguments aren't included: listen to commands:before for those.",
 });
 
@@ -221,13 +221,15 @@ export default ({ root, remote, apps }: Kernel): ServiceProvider => {
 
       // A run with no trace of its own (a call made outside any action) gets one, so its hooks group together in the trace, as a route's do.
       dispatch = dispatch.trace ? dispatch : { ...dispatch, trace: `command-${Math.random().toString(36).slice(2, 8)}` };
-      const about = { name: command.name, plugin: command.plugin, id: command.id, args: input, by: base(instance) };
+      // An agent acting for the person (acts-as: person) runs it for them: say so.
+      const as = dispatch.via && dispatch.via === base(instance) ? { as: "person" } : {};
+      const about = { name: command.name, plugin: command.plugin, id: command.id, args: input, by: base(instance), ...as };
       const verdict = await root.serial(dispatch, "commands:before", about);
       if (isObject(verdict) && "block" in verdict) throw new Error(`${command.name} was stopped: ${String(verdict.block)}`);
       // The runtime sends a handler's result as { value }, so a result that happens to hold `block` or `failed` is still a result.
       const answer = await root.bail(dispatch, commandHook(found.instance, command.id), input, { by: about.by });
       // What went out to every plugin with `commands`: which command and who ran it, not the arguments, which may be private to the app.
-      const told = { name: command.name, plugin: command.plugin, id: command.id, by: about.by };
+      const told = { name: command.name, plugin: command.plugin, id: command.id, by: about.by, ...as };
       if (!isObject(answer) || !("value" in answer)) {
         // The kernel's words for a handler that threw or took too long: keep only what went wrong.
         const error = !isObject(answer) ? `${command.name} didn't answer` : String(answer.block).replace(/^.* could not answer .*? \((?:Error: )?(.*)\)$/s, "$1");

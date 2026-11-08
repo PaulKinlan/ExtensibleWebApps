@@ -102,7 +102,7 @@ A card nobody answers within five minutes is `cancelled`. Turning a plugin off o
 
 **Path checks** (`src/kernel/paths.ts`) run before any file is read or written, whatever capabilities the plugin has. Paths must be relative, use `/`, and sit inside a folder. They can't contain empty, `.` or `..` segments or hidden names, and they can't touch the platform's own files (`plugins/`, `plugin-data/`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`). That last rule means a plugin can never install or approve plugins by writing files.
 
-**The change log** (`src/kernel/changes.ts`) records every install, removal, on/off switch, settings change, grant, revoke and reviewed write, with its outcome and trace id. It keeps the most recent 500 in `changes.json` in the data folder. `window.__host.command("changes")` returns it.
+**The change log** (`src/kernel/changes.ts`) records every install, removal, on/off switch, settings change, grant, revoke and reviewed write, with its outcome and trace id. A write made by an agent acting for the person ([`acts-as: person`](guide/agents.md#acting-for-the-person)) has `as: "person"`: it is theirs, made through that agent. It keeps the most recent 500 in `changes.json` in the data folder. `window.__host.command("changes")` returns it.
 
 ## Hooks
 

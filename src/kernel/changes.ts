@@ -16,6 +16,8 @@ export interface ChangeEntry {
   detail?: string;
   /** For reviewed writes: what the person decided. */
   outcome?: "allowed-once" | "allowed-always" | "granted" | "rejected" | "cancelled";
+  /** "person": the person made it, through `plugin`, an agent acting for them (acts-as: person). */
+  as?: "person";
   trace?: string;
 }
 
@@ -30,7 +32,7 @@ export function changeLog(store: Store) {
       await loaded;
       entries.push(full);
       if (entries.length > KEEP) entries.splice(0, entries.length - KEEP);
-      record({ kind: "note", name: `change:${entry.kind}`, plugin: entry.plugin, trace: entry.trace, detail: [entry.detail, entry.outcome].filter(Boolean).join(" · ") });
+      record({ kind: "note", name: `change:${entry.kind}`, plugin: entry.plugin, trace: entry.trace, detail: [entry.as ? `you, via ${entry.plugin}` : "", entry.detail, entry.outcome].filter(Boolean).join(" · ") });
       await store.writeJson(FILE, entries).catch((error) => record({ kind: "error", name: "changes:write-failed", detail: String(error) }));
     },
     async list(): Promise<ChangeEntry[]> {

@@ -2,6 +2,19 @@
 
 Every app on the same origin shares one kernel and one data folder. So a collection one app's plugin owns can be read by a plugin in another app, with the same permission it would need in the same app. Nothing else is needed: no API, no sync.
 
+```mermaid
+flowchart LR
+    subgraph Contacts["/demos/contacts/"]
+        People["people.js<br/>owns contacts"]
+    end
+    subgraph Calendar["/demos/calendar/"]
+        Agenda["agenda.js<br/>data:read:contacts"]
+    end
+    Data[("One data folder<br/>for the whole site")]
+    People -->|writes| Data
+    Data -->|reads, and hears changes| Agenda
+```
+
 The calendar and contacts demos show it. The contacts app's `people.js` owns `contacts`. The calendar's `agenda.js` shows birthdays from it:
 
 ```js
