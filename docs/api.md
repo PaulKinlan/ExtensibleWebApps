@@ -1279,6 +1279,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 - An `input`, `select` or `textarea` with `data-action` sends it when the change is committed, with the new value (a boolean for a checkbox, a number for a number). Add `data-live` to send it as the person types, after a 300 ms pause.
 - A `form` with `data-action` sends it on submit, with `{ name: value }` for every named field.
 - A submit button with `data-action` of its own, in such a form, sends its action instead, with the same fields.
+- An element with `data-drag="<item>"` can be picked up, and dropping it on an element with `data-drop="<action>"` sends that action with `{ item, value, before? }`: `value` is the drop place's `data-value`, and `before` the `data-drag` of the item it landed on. Drags stay inside the view; `data-dragging` and `data-over` mark them for CSS. Offer the same move with a button too.
 - Give repeated elements a `key` attribute so an update moves them instead of redrawing them; focus, typing and scroll survive updates either way.
 
 ### Plain elements

@@ -49,6 +49,23 @@ export default async function (page, { check, proof }) {
   proof.gaugeAfter = await page.waitForSelector(`${board} .column[data-column="doing"] [data-plugin="wip"] .gauge[data-full]`, { timeout: 5000 }).then((el) => el.textContent(), () => "");
   check("moving a card on puts it in the next column, and the gauge follows", proof.moved && /3 of 3/.test(proof.gaugeAfter), proof.gaugeAfter);
 
+  // Dragging a card onto another one in a column puts it there, just above that card.
+  const haptics = `${board} .card:has-text("Haptics for rain alerts")`;
+  await page.dragAndDrop(haptics, `${board} .column[data-column="review"] .card[data-id="card-rotate"]`);
+  proof.dragged = await page
+    .waitForFunction((b) => [...document.querySelectorAll(`${b} .column[data-column="review"] .card`)].map((c) => c.textContent).findIndex((t) => t.includes("Haptics")) === 0, board, { timeout: 5000 })
+    .then(() => true, () => false);
+  // A drop that didn't start as a drag in this view (another app's, a file from the desktop) moves nothing.
+  await page.evaluate((b) => {
+    const target = document.querySelector(`${b} .column[data-column="done"]`);
+    const data = new DataTransfer();
+    data.setData("application/x-ewa-drag", "forged");
+    for (const type of ["dragover", "drop"]) target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: data }));
+  }, board);
+  await page.waitForTimeout(400);
+  proof.forged = await page.locator(`${board} .column[data-column="done"] .card:has-text("Haptics for rain alerts")`).count();
+  check("a card dragged onto another column lands above the card it was dropped on, and a drop from outside the view moves nothing", proof.dragged && proof.forged === 0, JSON.stringify({ dragged: proof.dragged, forged: proof.forged }));
+
   // A card's screen: its own address, controls that save as they change, and the checklist in the room it leaves.
   await page.click(`${icons} .title a`);
   const card = '[data-plugin="studio"][data-key$=":card"]';

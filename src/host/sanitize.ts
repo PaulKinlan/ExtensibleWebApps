@@ -114,6 +114,8 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       out.setAttribute("rel", "noopener noreferrer");
     }
     if (tag === "img") out.setAttribute("referrerpolicy", "no-referrer");
+    // Something a view says can be picked up (drag.ts). Images and links are draggable already, which data-drag doesn't change.
+    if (out.hasAttribute("data-drag")) out.setAttribute("draggable", "true");
     copy(el, out, owner, remote, base);
     into.appendChild(out);
   }

@@ -106,6 +106,7 @@ The person's actions come back to the plugin that drew the view, and to no other
 | `<button data-action="save">` | `"save"`, with `data-value` if the button has one |
 | `<input data-action="rename">` (or `select`, `textarea`) | `"rename"` and the new value when the change is committed: a boolean for a checkbox, a number for a number input. Add `data-live` to send it as the person types, after a 300 ms pause. |
 | `<form data-action="add">` | `"add"` and `{ name: value }` for every named field |
+| `<li data-drag="card-7">` dropped on `<ul data-drop="move" data-value="doing">` | `"move"` and `{ item: "card-7", value: "doing", before }`: `before` is the `data-drag` of the item it was dropped on, if any, so a list can be put in order |
 
 ```js
 ctx.ui.onEvent((action, value) => {
@@ -113,6 +114,8 @@ ctx.ui.onEvent((action, value) => {
   if (action.startsWith("tick:")) …; // put an id in the action when there are many of one control
 });
 ```
+
+A drag stays inside the view that drew it: nothing from another plugin's view, another tab or another app is dropped there. While something is dragged it has `data-dragging`, and the drop place under it has `data-over`, for the plugin's CSS (`[data-drop][data-over] { outline: 2px dashed var(--accent) }`). A drag needs a pointer, so offer the same move with a button or a command too.
 
 ## Components
 

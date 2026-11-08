@@ -49,6 +49,9 @@
   .column[data-column="review"] { --stage: #f472b6; }
   .column[data-column="done"] { --stage: #34d399; }
   .cards { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+  /* Dragging a card: it fades where it was, and the column it would land in is outlined. */
+  .card[data-dragging] { opacity: 0.4; }
+  .column[data-over] { outline: 2px dashed color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: -2px; }
   .empty { margin: 0; padding: var(--space-4) var(--space-3); text-align: center; color: var(--fg-2); font-size: var(--text-sm); border: 1.5px dashed var(--border); border-radius: var(--radius); }
 
   /* ---------- A card ---------- */
@@ -176,7 +179,7 @@
   <template if="shown">
     <div class="board" role="list" aria-label="Board">
       <template for="col of columns">
-        <section class="column" key="{{col.id}}" data-column="{{col.id}}" role="listitem" aria-label="{{col.title}}">
+        <section class="column" key="{{col.id}}" data-column="{{col.id}}" data-drop="drop" data-value="{{col.id}}" role="listitem" aria-label="{{col.title}}">
           <header class="column-head" data-column="{{col.id}}" data-count="{{col.count}}" data-points="{{col.points}}">
             <span class="dot" aria-hidden="true"></span>
             <h2>{{col.title}}</h2>
@@ -185,7 +188,7 @@
           <template if="col.cards.length">
             <ul class="cards">
               <template for="c of col.cards">
-                <li class="card" key="{{c.id}}" data-id="{{c.id}}" data-column="{{c.column}}" data-priority="{{c.priority}}" data-assignee="{{c.assignee}}" data-loud="{{c.loud}}">
+                <li class="card" key="{{c.id}}" data-id="{{c.id}}" data-drag="{{c.id}}" data-column="{{c.column}}" data-priority="{{c.priority}}" data-assignee="{{c.assignee}}" data-loud="{{c.loud}}">
                   <template if="c.cover"><div class="cover" data-cover="{{c.cover}}"></div></template>
                   <template if="c.labels.length">
                     <ul class="labels" aria-label="Labels">

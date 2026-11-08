@@ -13,6 +13,10 @@
 // data-assignee), so a transform such as wip.js or a person's own "Focus"
 // plugin can find them by selector.
 //
+// A card can be dragged to another column, or up and down its own: each
+// card has data-drag, each column data-drop, and a drop comes back as the
+// event `drop` with the card, the column and the card it landed on.
+//
 // Everything on the card screen is a plain control with data-action: radio
 // buttons styled as segmented controls, checkboxes styled as chips. Each
 // change saves at once; there is no Save button to forget.
@@ -226,8 +230,19 @@ export default async function (ctx) {
     });
   };
 
+  /** Puts a card in a column, just above the card `before` when it was dropped on one, else at the end. */
+  const place = async (id, to, before) => {
+    if (!COLUMNS.some((col) => col.id === to)) return;
+    const column = (await all(ctx)).filter((x) => x.column === to && x.id !== id).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0));
+    const at = column.findIndex((x) => x.id === before);
+    const rank = at < 0 ? Math.max(0, ...column.map((x) => x.rank ?? 0)) + 1 : at === 0 ? (column[0].rank ?? 0) - 1 : ((column[at - 1].rank ?? 0) + (column[at].rank ?? 0)) / 2;
+    await update(id, { column: to, rank });
+  };
+
   ctx.ui.onEvent(async (action, value) => {
     const [verb, arg] = action.split(":");
+    // A card dragged onto a column (the ‹ › buttons do the same without a pointer).
+    if (verb === "drop") return void place(String(value?.item), String(value?.value), value?.before);
     // On the board.
     if (verb === "add") return void add(arg, value?.title);
     if (verb === "move") {
