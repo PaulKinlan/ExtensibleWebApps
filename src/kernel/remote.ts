@@ -185,8 +185,20 @@ export class RemotePlugins {
     return plugin.manifest.scope === "tab" && this.hosts.mode !== "server";
   }
 
+  /**
+   * The tabs a tab-scoped plugin runs in, when not every tab: an app's plugin runs only in the tabs whose
+   * app links it (apps.ts sets this). Undefined means every tab, as for a plugin kept with the data.
+   */
+  tabsFor?: (id: string) => string[] | undefined;
+
+  /** The tabs a tab-scoped plugin may have an instance in. */
+  private allowedIn(plugin: Installed, host: Host): boolean {
+    const tabs = this.tabsFor?.(plugin.id);
+    return !tabs || tabs.includes(host.tab);
+  }
+
   private targets(plugin: Installed): [string, Host][] {
-    if (this.perTab(plugin)) return this.hosts.workerHosts.map((host) => [`${plugin.id}@${host.tab}`, host]);
+    if (this.perTab(plugin)) return this.hosts.workerHosts.filter((host) => this.allowedIn(plugin, host)).map((host) => [`${plugin.id}@${host.tab}`, host]);
     const spawner = this.hosts.spawner;
     return spawner ? [[plugin.id, spawner]] : [];
   }
@@ -280,8 +292,23 @@ export class RemotePlugins {
   hostJoined(host: Host): void {
     if (!this.hosts.workerHosts.includes(host)) return;
     for (const plugin of this.installed.values()) {
-      if (plugin.enabled && this.perTab(plugin) && this.runsHere(plugin)) void this.startInstance(plugin, `${plugin.id}@${host.tab}`, host);
+      if (plugin.enabled && this.perTab(plugin) && this.runsHere(plugin) && this.allowedIn(plugin, host)) void this.startInstance(plugin, `${plugin.id}@${host.tab}`, host);
     }
+  }
+
+  /** A tab's app now links a running tab-scoped plugin: start that tab's instance, if it hasn't one. */
+  startIn(id: string, host: Host): void {
+    const plugin = this.installed.get(id);
+    if (!plugin?.enabled || !this.perTab(plugin) || !this.runsHere(plugin) || !this.allowedIn(plugin, host)) return;
+    if (!this.hosts.workerHosts.includes(host)) return;
+    const instance = `${id}@${host.tab}`;
+    if (this.live.has(instance) || this.waiting.has(instance)) return;
+    void this.startInstance(plugin, instance, host);
+  }
+
+  /** A tab's app no longer links a tab-scoped plugin: stop that tab's instance. */
+  stopIn(id: string, tab: string): void {
+    this.stopInstance(`${id}@${tab}`);
   }
 
   /** A tab closed: its workers went with it. */

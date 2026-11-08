@@ -17,11 +17,16 @@ const files = (path) => {
 };
 
 export default async function ({ check, context, URL: site, errors }) {
-  // import x from "../../plugins/x.js?raw", import.meta.glob("../../demos/*"), new URL("../home/…", import.meta.url)
-  const reaches = new RegExp(String.raw`(?:\bfrom\s*|\bimport\s*\(\s*|import\.meta\.glob\s*(?:<[^>]*>)?\s*\(\s*\[?\s*|new URL\s*\(\s*)["'\x60](?:\.\.?/)+(?:${APPS.join("|")})/`);
+  // import x from "../../plugins/x.js?raw", import "../demos/x.js", import("../home/x.js"),
+  // import.meta.glob("../../std/*"), new URL("../docs/…", import.meta.url): over the whole file, so an
+  // import split across lines counts too.
+  const reaches = new RegExp(String.raw`(?:\b(?:from|import)\s*\(?|import\.meta\.glob\s*(?:<[^>]*>)?\s*\(\s*\[?|new URL\s*\()\s*["'\x60](?:\.\.?/)+(?:${APPS.join("|")})/`, "g");
   const found = CORE.flatMap(files)
     .filter((path) => /\.(ts|js|mjs)$/.test(path))
-    .flatMap((path) => readFileSync(new URL(path, ROOT), "utf8").split("\n").flatMap((line, i) => (reaches.test(line) ? [`${path}:${i + 1}`] : [])));
+    .flatMap((path) => {
+      const text = readFileSync(new URL(path, ROOT), "utf8");
+      return [...text.matchAll(reaches)].map((m) => `${path}:${text.slice(0, m.index).split("\n").length}`);
+    });
   check("the core imports no plugin, demo or page of the site", !found.length, found.join(", "));
 
   // An app runs only what it links: habits links habits.js, so that is the only worker its tab starts.
@@ -34,5 +39,18 @@ export default async function ({ check, context, URL: site, errors }) {
   await page.waitForTimeout(1500);
   const running = await page.evaluate(() => [...window.__host.workers.keys()].map((key) => key.split("@")[0]).sort());
   check("an app runs only the plugins it links", running.length === 1 && running[0] === "habits", running.join(", "));
+
+  // With the workbench open in the same browser, one kernel serves both tabs. The workbench's tab-scoped
+  // demo plugin (bars) runs in the workbench's tab only, not in the habits tab beside it.
+  const bench = await own.newPage();
+  await bench.goto(`${site}workbench/`);
+  await bench.waitForFunction(() => [...(window.__host?.workers?.keys() ?? [])].some((k) => k.startsWith("bars@")), null, { timeout: 10000 }).catch(() => {});
+  const second = await own.newPage();
+  second.on("pageerror", (e) => errors.push(e.message));
+  await second.goto(`${site}demos/habits/app.html`);
+  await second.waitForSelector('[data-key^="habits:"]', { state: "attached", timeout: 10000 }).catch(() => {});
+  await second.waitForTimeout(1500);
+  const beside = await second.evaluate(() => [...window.__host.workers.keys()].filter((key) => key.includes("@")));
+  check("a tab-scoped plugin runs only in the tabs whose app links it", !beside.length, beside.join(", "));
   await own.close();
 }
