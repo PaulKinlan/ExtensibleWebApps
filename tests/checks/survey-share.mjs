@@ -50,6 +50,33 @@ export default async function ({ check, context, errors }) {
     let form = "";
     for (const until = Date.now() + 8000; Date.now() < until && !/<form method="post"/.test(form); await new Promise((r) => setTimeout(r, 200))) form = await fetch(address).then((r) => r.text());
     check("survey share: the shared address is the survey's form, for anyone", /<form method="post"/.test(form) && form.includes("How was the launch party?"));
+
+    // In a browser, the link is followed past the service worker, which answers other addresses in a space with
+    // the app's page: the survey's author, opening their own link, and a friend who isn't signed in but has been
+    // to the site before (so the service worker is theirs too) both get the form, not the app.
+    const formIn = async (tab) => {
+      await tab.goto(address);
+      return tab.locator('form[method="post"] button[type="submit"]').waitFor({ timeout: 8000 }).then(() => true, () => false);
+    };
+    const author = await formIn(page);
+    const friend = await browser.newContext();
+    try {
+      const tab = await friend.newPage();
+      tab.on("pageerror", (e) => errors.push(`survey-share friend: ${e.message}`));
+      await tab.goto(`${server.url}/demos/survey/`);
+      // The first visit may load the page again once the service worker starts: wait for the app, then for the worker.
+      await tab.waitForSelector(VIEW, { timeout: 15000 }).catch(() => {});
+      const controlled = await tab.waitForFunction(() => !!navigator.serviceWorker?.controller, null, { timeout: 8000 }).then(() => true, () => false);
+      const seen = await formIn(tab);
+      if (seen) {
+        await tab.locator('input[type="radio"]').first().check();
+        await tab.click('form[method="post"] button[type="submit"]');
+      }
+      const thanked = await tab.getByText("are in").waitFor({ timeout: 8000 }).then(() => true, () => false);
+      check("survey share: opened in a browser with the site's service worker, the link is the survey's form, for its author and for a friend who isn't signed in, and the friend's answer is taken", controlled && author && seen && thanked, JSON.stringify({ author, controlled, seen, thanked }));
+    } finally {
+      await friend.close().catch(() => {});
+    }
   } finally {
     await phone.close().catch(() => {});
     await server.stop().catch(() => {});
