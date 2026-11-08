@@ -41,14 +41,26 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
   let apps: string[] = [];
   /** The apps whose plugins were started since the kernel started. */
   const started = new Set<string>();
+  /** Starts under way, and when the last one finished. */
+  const starting = new Set<Promise<void>>();
+  let finished = 0;
   const loaded = store.readJson<unknown>(FILE, []).then((saved) => {
     apps = Array.isArray(saved) ? saved.filter((a): a is string => typeof a === "string").slice(0, MAX_APPS) : [];
     for (const app of apps) void start(app);
   });
 
-  async function start(app: string): Promise<void> {
-    if (started.has(app)) return;
+  function start(app: string): Promise<void> {
+    if (started.has(app)) return Promise.resolve();
     started.add(app);
+    const run = startApp(app).finally(() => {
+      starting.delete(run);
+      finished = Date.now();
+    });
+    starting.add(run);
+    return run;
+  }
+
+  async function startApp(app: string): Promise<void> {
     const base = `${origin.replace(/\/$/, "")}/${app}/`;
     try {
       const page = await fetcher(`${base}app.html`);
@@ -97,5 +109,11 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
     },
     /** The apps opened in the space. */
     list: async () => (await loaded, [...apps]),
+    /** Resolves once the saved apps' plugins have been started; with the time the last start finished. */
+    async settled(): Promise<number> {
+      await loaded;
+      while (starting.size) await Promise.all(starting);
+      return finished;
+    },
   };
 }

@@ -78,11 +78,14 @@ where.onError((name, detail) => record({ kind: "error", name, detail }));
 
 // Wire up connections first, so no tab's connect event is missed.
 // On a server, the kernel's own client that starts its plugins in isolates. It connects with the first
-// client, not as the kernel loads: on Cloudflare, a module's top level can't read storage.
+// client (or request), not as the kernel loads: on Cloudflare, a module's top level can't read storage.
 let isolates = where.isolates;
-where.connect((port) => {
+const wake = () => {
   if (isolates) isolateHost(isolates, (own) => hosts.connect(own, { isolates: true }));
   isolates = undefined;
+};
+where.connect((port) => {
+  wake();
   hosts.connect(port);
 });
 
@@ -198,6 +201,15 @@ remote.onChange = (change, id) => {
 };
 
 const routes = makeRoutes(root, remote, shared, where.space);
+// On a server, the host passes on HTTP requests for the routes its plugins added: public, so a form or a
+// webhook can reach the space. A space just woken waits for its apps' plugins to start and add theirs.
+where.serve?.(async (request) => {
+  wake();
+  const key = `${request.method} ${request.path}`;
+  const finished = (await onServer?.settled()) ?? 0;
+  for (let waited = 0; !remote.routes.includes(key) && Date.now() - finished < 3000 && waited < 3000; waited += 100) await new Promise((r) => setTimeout(r, 100));
+  return remote.routes.includes(key) ? routes.answer(request) : null;
+});
 remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;
