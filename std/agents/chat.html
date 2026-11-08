@@ -1,0 +1,48 @@
+<!--
+  Chat. chat.js sends { agents, none, about, name, lines, sending }: agents
+  is [{ id, name, description, picked }], the agents with an inbox; none is
+  true when there are none; about is the picked agent's description; lines
+  is [{ n, who, text, tone }], oldest first. The picker sends "agent" with an
+  id, and the form sends "send" with { text }.
+-->
+<style>
+  .chat { display: grid; gap: var(--space-2); }
+  .chat-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
+  .chat-head h2 { margin: 0; }
+  .chat .about { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
+  .chat ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); max-height: 24rem; overflow: auto; }
+  .chat li p { margin: 0; white-space: pre-wrap; }
+  .chat form { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; }
+  .chat input[name="text"] { flex: 1 1 12em; min-width: 0; width: auto; font: inherit; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+  .chat form button { height: 32px; flex: 0 0 auto; width: auto; }
+</style>
+<template id="chat">
+  <ui-card class="chat">
+    <div class="chat-head">
+      <h2>Chat</h2>
+      <template if="!none">
+        <label>With
+          <select data-action="agent" aria-label="Which agent you write to" disabled="{{sending}}">
+            <template for="a of agents"><option key="{{a.id}}" value="{{a.id}}" selected="{{a.picked}}">{{a.name}}</option></template>
+          </select>
+        </label>
+      </template>
+    </div>
+    <template if="none"><p>This app has no agent to write to. Link one with an inbox, such as <code>&lt;link rel="agent" href="/std/agents/assistant.agent.md"&gt;</code>.</p></template>
+    <template if="!none">
+      <p class="about">{{about}}</p>
+      <template if="lines.length">
+        <ol aria-live="polite">
+          <template for="line of lines">
+            <li key="{{line.n}}"><ui-card tone="{{line.tone}}"><p><strong>{{line.who}}:</strong> {{line.text}}</p></ui-card></li>
+          </template>
+        </ol>
+      </template>
+      <form data-action="send">
+        <input name="text" type="text" placeholder="Write to {{name}}" aria-label="Your message" autocomplete="off" maxlength="4000" required>
+        <button type="submit" class="primary" disabled="{{sending}}">Send</button>
+      </form>
+      <template if="sending"><p role="status">{{name}} is working on it. If it asks you something, the board shows the question.</p></template>
+    </template>
+  </ui-card>
+</template>

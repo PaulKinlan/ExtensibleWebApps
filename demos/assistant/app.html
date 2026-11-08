@@ -1,0 +1,58 @@
+<!doctype html>
+<!--
+  Assistant: the reading list, with the two standard agents and a chat to
+  write to them.
+
+  ../reading-list/library.js           owns the `library` collection, and adds
+                                       commands: start the next book, finish
+                                       what you're reading, add a book
+  /std/agents/assistant.agent.md       does what you ask with the app's own
+                                       commands, so it can do only what the
+                                       app's buttons and shortcuts already do
+  /std/agents/builder.agent.md         writes a plugin from what you describe.
+                                       It acts for you (acts-as: person): once
+                                       you let it, the plugins it saves are
+                                       yours, made through it. Each save shows
+                                       you the code first
+  /std/agents/chat.js                  where you write to them
+  /std/commands/palette.js             the same commands, from Ctrl K (Cmd K)
+  /std/board.js                        questions the agents ask you, and what
+                                       they did lately
+  /std/llm/anthropic.js                the model the agents ask
+
+  Try "add Piranesi by Susanna Clarke" with the assistant, or "a card that
+  counts the books I've finished" with the builder.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Assistant</title>
+  <meta name="description" content="A reading list with the standard assistant and builder agents, and a chat to write to them.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="../reading-list/library.js">
+  <!-- The standard agents: Markdown files any app can link. -->
+  <link rel="agent" href="/std/agents/assistant.agent.md">
+  <link rel="agent" href="/std/agents/builder.agent.md">
+  <link rel="plugin" href="/std/agents/chat.js">
+  <link rel="plugin" href="/std/commands/palette.js">
+  <link rel="plugin" href="/std/board.js">
+  <link rel="plugin" href="/std/llm/anthropic.js">
+</head>
+<body>
+  <header>
+    <h1>Assistant</h1>
+    <slot name="commands"></slot>
+    <a href="/workbench/">Workbench</a>
+  </header>
+  <main>
+    <slot name="chat"></slot>
+    <slot name="main"><p>Loading your books…</p></slot>
+  </main>
+  <aside>
+    <slot name="board"></slot>
+    <slot name="side"></slot>
+  </aside>
+</body>
+</html>

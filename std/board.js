@@ -51,13 +51,13 @@ export default function (ctx) {
 
   ctx.on("bus:asked", refresh);
   ctx.on("bus:answered", refresh);
-  ctx.on("agent:wake", ({ agent, run, trigger }) => {
+  ctx.on("agent:wake", ({ agent, run, trigger, as }) => {
     // A check holds something up until the agent answers: show it as being checked.
     if (trigger.kind === "check") {
       checking.set(run, { run, agent, name: trigger.name });
       return draw();
     }
-    did(`${agent} woke: ${trigger.kind === "message" ? `a message from ${trigger.name}` : trigger.name}`);
+    did(`${agent} woke${as === "person" ? ", acting for you" : ""}: ${trigger.kind === "message" ? `a message from ${trigger.name}` : trigger.name}`);
   });
   ctx.on("agent:done", ({ agent, run, stopReason, tools, verdict }) => {
     const check = checking.get(run);
