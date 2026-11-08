@@ -1,13 +1,14 @@
 <!--
   Birthdays coming up. birthdays.js sends { soon: [{ name, date, age, when,
-  tone }], ahead }, sorted and worded.
+  tone }], ahead }, sorted and worded. Each person's <li> carries data-name,
+  so another plugin's transform (next-meeting.js) knows who the row is for.
 -->
 <template id="soon">
   <h3>Birthdays</h3>
   <template if="soon.length">
     <ul>
       <template for="b of soon">
-        <li><strong>{{b.name}}</strong> turns {{b.age}} on {{b.date}} <ui-badge tone="{{b.tone}}">{{b.when}}</ui-badge></li>
+        <li data-name="{{b.name}}"><strong>{{b.name}}</strong> turns {{b.age}} on {{b.date}} <ui-badge tone="{{b.tone}}">{{b.when}}</ui-badge></li>
       </template>
     </ul>
   </template>

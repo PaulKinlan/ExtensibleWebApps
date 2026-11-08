@@ -19,7 +19,7 @@
 // the plugin that drew the view, so it gets exactly that plugin's rights.
 
 import type { Dispatch, Manifest } from "../shared/protocol";
-import { defineHook, hooks } from "./hooks";
+import { BEFORE_WRITE, defineHook, hooks } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import { check, grants } from "./gate";
 import type { RemotePlugins, ServiceProvider } from "./remote";
@@ -103,7 +103,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     const { name } = collection;
     if (!hooks.has(`data:changed:${name}`)) {
       defineHook(`data:changed:${name}`, { mode: "emit", args: "{ collection, id, before?, after? }", description: `A record in ${name} was written or deleted (after is missing for a delete).` });
-      defineHook(`data:beforeWrite:${name}`, { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "{ collection, id, before?, after? }", description: `Before a record in ${name} is written or deleted. Return { block: reason } to stop it.` });
+      defineHook(`data:beforeWrite:${name}`, { ...BEFORE_WRITE, args: "{ collection, id, before?, after? }", description: `Before a record in ${name} is written or deleted. Return { block: reason } to stop it.` });
       root.on(`data:changed:${name}`, () => push(name));
     }
   }

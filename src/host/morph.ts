@@ -78,6 +78,8 @@ function patch(from: Node, to: Node): void {
   }
   // A live canvas belongs to a worker; leave it alone.
   if (from.localName === "canvas") return;
+  // A slot holds other plugins' views (and its fallback): only its name and data-* change.
+  if (from.localName === "slot") return patchAttributes(from, to);
   // An open <details> stays as the person left it.
   const open = from instanceof HTMLDetailsElement ? from.open : undefined;
   // Read both declared values before the children move from `to` into `from`.

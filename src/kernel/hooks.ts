@@ -7,6 +7,12 @@ export interface HookSpec {
   mode: Mode;
   /** Per remote listener. */
   timeoutMs?: number;
+  /**
+   * How long an agent that checks this hook (`- check:` in its file) has to
+   * answer, since a model takes seconds. A hook without one can't be checked
+   * by agents, which keeps hot paths fast.
+   */
+  agentTimeoutMs?: number;
   /** "open": skip a listener that fails or times out. "closed": treat it as a block. */
   onFailure?: "open" | "closed";
   description?: string;
@@ -17,6 +23,9 @@ export interface HookSpec {
 }
 
 export const hooks = new Map<string, HookSpec>();
+
+/** Every collection's `data:beforeWrite:<collection>`: plugins get a second, an agent that checks it 15. */
+export const BEFORE_WRITE: HookSpec = { mode: "serial", timeoutMs: 1000, agentTimeoutMs: 15_000, onFailure: "open" };
 
 export function defineHook(name: string, spec: HookSpec): () => void {
   if (hooks.has(name)) throw new Error(`Hook ${name} is already defined`);

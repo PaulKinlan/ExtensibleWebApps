@@ -156,7 +156,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
     // A plugin turned off (in the workbench, say) changes nothing in the page.
     const manifest = installed?.enabled ? installed.manifest : undefined;
     const unlocked = app ? reviews.grantsFor(o.id).flatMap((g) => (g.startsWith(`unlock:${app}#`) ? [g.split("#")[1]] : [])) : [];
-    return { ...o, name: installed?.manifest.name, places: manifest?.places, unlocked, user: ids.has(o.id) };
+    return { ...o, name: installed?.manifest.name, places: manifest?.places, theme: manifest?.theme, unlocked, user: ids.has(o.id) };
   };
   await apps.open(host, [...links, ...mine], describe);
 }
@@ -256,7 +256,11 @@ hosts.onMessage = async (host, message) => {
       if (message.owner === "review") return reviews.event(message.action, message.trace);
       if (message.owner === "secrets") return secrets.event(message.action, message.value);
       if (message.owner === "plugins") return void plugins.event(message.action, message.value, message.trace);
-      return remote.deliver(message.owner, { t: "event", action: message.action, value: message.value, trace: message.trace });
+      {
+        // The page may name a plugin rather than its instance (it tells a plugin its place changed): a tab-scoped one is this tab's.
+        const owner = remote.live.has(message.owner) || message.owner.includes("@") ? message.owner : `${message.owner}@${host.tab}`;
+        return remote.deliver(remote.live.has(owner) ? owner : message.owner, { t: "event", action: message.action, value: message.value, trace: message.trace });
+      }
     case "spawned":
       return remote.attach(message.plugin, host, message.port);
     case "canvas":

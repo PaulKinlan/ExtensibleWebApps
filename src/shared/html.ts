@@ -69,6 +69,7 @@ export const ELEMENTS: Record<string, string> = {
   meter: "",
   time: "",
   abbr: "",
+  slot: "A room in this view that other plugins fill: `<slot name=\"<your plugin id>.<room>\" data-id=\"…\">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md",
 };
 
 /**
@@ -96,6 +97,7 @@ export const ELEMENT_ATTRIBUTES: Record<string, string[]> = {
   progress: ["value", "max"],
   meter: ["value", "min", "max", "low", "high", "optimum"],
   time: ["datetime"],
+  slot: ["name"],
 };
 
 /** Input types a plugin may use. */
@@ -115,10 +117,12 @@ export const COMPONENTS: Record<string, { attributes: string; about: string }> =
   "ui-spacer": { attributes: "", about: "Takes up the free space in a row." },
   "ui-code": { attributes: "name, label, rows=\"20\", readonly, revision", about: "A plain code editor: a textarea with line numbers, where Tab indents (Escape, then Tab, leaves it). Its text content is the starting code; edits survive redraws until `revision` changes. In a `form` it is sent under its `name`." },
   "ui-commands": { attributes: "label, open-keys=\"Mod+K\", run, no-button, message, message-at", about: "A command palette: a button (and the `open-keys` shortcut) opens a searchable list of the commands inside it, each a `<button data-command=\"name\" data-keys='[\"Mod+B\",\"Shift+N\"]' data-group data-description>Title</button>`. Picking one, or pressing one of its keys anywhere on the page, sends `run` with its name. `message` is announced briefly whenever `message-at` changes." },
+  "ui-diagram": { attributes: "label", about: "A Mermaid diagram: its text content is the diagram, in Mermaid's language (flowchart, sequenceDiagram, …). `label` says what it shows, for screen readers. Mermaid loads the first time one is drawn." },
+  "ui-markdown": { attributes: "src, pages=\"/docs/\", repo, sets-title, compact", about: "A Markdown file in the template's folder (or below it), drawn as a page, with ```mermaid blocks as diagrams. Raw HTML in it shows as text. `pages` is a folder whose .md files are this app's screens (links to them drop .md); `repo` is where links to source go; `sets-title` makes its first heading the page's title; `compact` is for a list of contents." },
   "ui-debug": { attributes: "corner=\"bottom-left|bottom-right|top-left|top-right|inline\", problems, label, toggle", about: "A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy=\"name\"` copies the text of the element with `data-copy-source=\"name\"`, headed with the page's address, browser and time." },
 };
 
-export const DROPPED_WITH_CONTENT = new Set(["script", "style", "template", "iframe", "frame", "frameset", "object", "embed", "link", "meta", "base", "noscript", "svg", "math", "canvas", "video", "audio", "source", "track", "portal", "slot"]);
+export const DROPPED_WITH_CONTENT = new Set(["script", "style", "template", "iframe", "frame", "frameset", "object", "embed", "link", "meta", "base", "noscript", "svg", "math", "canvas", "video", "audio", "source", "track", "portal"]);
 
 /** How a plugin's view reports what the person did. */
 export const ACTIONS = [

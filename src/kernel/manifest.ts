@@ -7,6 +7,7 @@
 // optional comments and trailing commas, and nothing after it but the end of
 // the statement. Anything else is refused.
 
+import { THEME_TOKENS, badThemeValue } from "../shared/theme";
 import type { Manifest } from "../shared/protocol";
 import { checkCollections } from "./records";
 import { checkSchema } from "./schema";
@@ -46,7 +47,9 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   collections: "Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking.",
   settings: "Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form.",
   places:
-    'Optional. Up to 20 places in the app\'s page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin\'s view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md.',
+    'Optional. Up to 20 places in the app\'s page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin\'s view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md.',
+  theme:
+    `Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only ${Object.keys(THEME_TOKENS).join(", ")}, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md.`,
   files:
     "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app.",
 };
@@ -72,7 +75,8 @@ function validate(value: unknown): Manifest {
   if (m.scope !== undefined && m.scope !== "shared" && m.scope !== "tab") throw new ManifestError('`scope` must be "shared" or "tab"');
   if (m.order !== undefined && typeof m.order !== "number") throw new ManifestError("`order` must be a number");
   if (m.settings !== undefined) validateSettings(m.settings);
-  if (m.places !== undefined) validatePlaces(m.places, m.permissions as string[]);
+  if (m.places !== undefined) validatePlaces(m.places, m.permissions as string[], m.id);
+  if (m.theme !== undefined) validateTheme(m.theme, m.permissions as string[]);
   if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 20 || m.files.some((f) => typeof f !== "string" || !FILE_NAME.test(f))))
     throw new ManifestError("`files` must be a list of up to 20 file names, with no folders");
   if (m.collections !== undefined) {
@@ -96,7 +100,17 @@ function validateSettings(settings: unknown) {
   }
 }
 
-function validatePlaces(places: unknown, permissions: string[]) {
+function validateTheme(theme: unknown, permissions: string[]) {
+  if (!theme || typeof theme !== "object" || Array.isArray(theme)) throw new ManifestError("`theme` must be an object of design tokens");
+  if (!permissions.includes("ui:theme")) throw new ManifestError("`theme` needs the ui:theme permission");
+  for (const [token, value] of Object.entries(theme)) {
+    if (!(token in THEME_TOKENS)) throw new ManifestError(`Theme: ${token} isn't a token a theme may set (${Object.keys(THEME_TOKENS).join(", ")})`);
+    const why = badThemeValue(value);
+    if (why) throw new ManifestError(`Theme ${token}: ${why}`);
+  }
+}
+
+function validatePlaces(places: unknown, permissions: string[], id: string) {
   if (!places || typeof places !== "object" || Array.isArray(places)) throw new ManifestError("`places` must be an object");
   const entries = Object.entries(places as Record<string, unknown>);
   if (entries.length > 20) throw new ManifestError("At most 20 places");
@@ -104,10 +118,15 @@ function validatePlaces(places: unknown, permissions: string[]) {
   for (const [name, spec] of entries) {
     if (!/^[a-z][\w-]{0,63}$/.test(name)) throw new ManifestError(`Place ${name}: names are lowercase letters, digits, - and _`);
     const p = spec as Record<string, unknown>;
-    if (!p || typeof p !== "object" || Array.isArray(p)) throw new ManifestError(`Place ${name} must be { at, put, each? }`);
+    if (!p || typeof p !== "object" || Array.isArray(p)) throw new ManifestError(`Place ${name} must be { at, put, each?, in? }`);
     if (typeof p.at !== "string" || !p.at.trim() || p.at.length > 300) throw new ManifestError(`Place ${name} needs \`at\`, a CSS selector of up to 300 characters`);
     if (!PUTS.includes(p.put as (typeof PUTS)[number])) throw new ManifestError(`Place ${name}: \`put\` is one of ${PUTS.join(", ")}`);
     if (p.each !== undefined && typeof p.each !== "boolean") throw new ManifestError(`Place ${name}: \`each\` is true or false`);
+    if (p.in !== undefined) {
+      if (typeof p.in !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(p.in)) throw new ManifestError(`Place ${name}: \`in\` is the id of the plugin whose views it changes`);
+      if (p.in === id) throw new ManifestError(`Place ${name}: a plugin changes its own views by drawing them, not with \`in\``);
+      if (!permissions.includes(`ui:transform:${p.in}`)) throw new ManifestError(`Place ${name} changes ${p.in}'s views, which needs the permission ui:transform:${p.in}`);
+    }
   }
 }
 
