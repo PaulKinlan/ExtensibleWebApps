@@ -90,8 +90,30 @@ function asWritten(): Plugin {
   };
 }
 
+// An address with no file gets 404.html with a 404, as Cloudflare's
+// `not_found_handling: "404-page"` does (wrangler.jsonc), rather than Vite's
+// index.html fallback. 404.html starts the service worker, which answers an
+// app's screens (/demos/reading-list/book/42) with the app's page.
+function notFoundPage(): Plugin {
+  const handler = (root: string, page: string) => (req: { url?: string; method?: string; headers: Record<string, string | string[] | undefined> }, res: any, next: () => void) => {
+    const path = decodeURIComponent(new URL(req.url ?? "/", "http://host").pathname);
+    const navigating = req.method === "GET" && String(req.headers.accept ?? "").includes("text/html");
+    const file = resolve(root, `.${path}`);
+    const exists = file.startsWith(root) && existsSync(file) && (statSync(file).isFile() || existsSync(join(file, "index.html")));
+    if (!navigating || exists || path.split("/").pop()!.includes(".") || path.startsWith("/@") || path.startsWith("/src/") || path.startsWith("/node_modules/")) return next();
+    res.statusCode = 404;
+    res.setHeader("Content-Type", "text/html");
+    return createReadStream(page).pipe(res);
+  };
+  return {
+    name: "not-found-page",
+    configureServer: (server) => void server.middlewares.use(handler(process.cwd(), resolve("public/404.html"))),
+    configurePreviewServer: (server) => void server.middlewares.use(handler(resolve("dist"), resolve("dist/404.html"))),
+  };
+}
+
 export default defineConfig({
-  plugins: [workerPolicy(), asWritten()],
+  plugins: [workerPolicy(), asWritten(), notFoundPage()],
   worker: { format: "es" },
   build: {
     target: "es2022",

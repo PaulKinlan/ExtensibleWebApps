@@ -23,10 +23,10 @@ export default async function (ctx) {
     const when = (days) => (days < 0 ? `${-days} days overdue` : days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`);
     const due = books
       .filter((b) => b.due && b.shelf !== "done")
-      .map((b) => ({ title: b.title, days: Math.round((new Date(`${b.due}T00:00:00`).getTime() - today) / DAY) }))
+      .map((b) => ({ id: b.id, title: b.title, days: Math.round((new Date(`${b.due}T00:00:00`).getTime() - today) / DAY) }))
       .filter((b) => b.days <= 14)
       .sort((a, b) => a.days - b.days)
-      .map((b) => ({ title: b.title, when: when(b.days), tone: b.days < 0 ? "danger" : b.days <= 3 ? "warn" : "neutral" }));
+      .map((b) => ({ href: `book/${encodeURIComponent(b.id)}`, title: b.title, when: when(b.days), tone: b.days < 0 ? "danger" : b.days <= 3 ? "warn" : "neutral" }));
     return { books: due };
   });
 }

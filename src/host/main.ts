@@ -11,6 +11,7 @@
 // workbench (workbench/index.html, the page with the trace) shows every view along
 // with the trace and the plugins panel.
 
+import { folder as appFolder, followLinks, screen } from "./router";
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
 import { customize } from "./customize";
 import { places as makePlaces } from "./places";
@@ -164,8 +165,8 @@ function listen(entry: Entry) {
 const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"], link[rel~="agent"]')].map((link) => link.href);
 /** The platform's own page, with the trace. Every other page is an app, even one that links no plugins. */
 const isWorkbench = !!document.getElementById("devtools");
-/** The app's folder, which names where the person's own plugins for it are kept: `demos/trip` for /demos/trip/app.html. */
-const app = location.pathname.replace(/\/[^/]*$/, "").replace(/^\/+/, "") || "root";
+/** The app's folder, which names where the person's own plugins for it are kept: `demos/trip` for /demos/trip/app.html, and for its screens, /demos/trip/day/2. */
+const app = appFolder.replace(/^\/+|\/+$/g, "") || "root";
 /** Whose views this page shows: its app's plugins, or (on the workbench) everyone's. */
 let shown: Set<string> | "all" = isWorkbench ? "all" : new Set();
 /** Review cards always show: the person must see what a plugin wants to change. */
@@ -194,6 +195,9 @@ async function openApp() {
   }
   send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })), reset, app });
 }
+
+/** The screen this tab shows (/demos/reading-list/book/42 is `/book/42`). The router service hands it to plugins. */
+const sendUrl = () => send({ t: "url", ...screen() });
 
 /** The plugins running for this app, as the kernel last said: the Customize panel lists them. */
 let running: Opened[] = [];
@@ -532,6 +536,9 @@ for (const message of unsent.splice(0)) send(message);
 /** Every app gets the Customize button, where the person adds their own plugins. */
 const panel = isWorkbench ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status() });
 if (!isWorkbench) await openApp();
+sendUrl();
+addEventListener("popstate", sendUrl);
+followLinks();
 
 // For tests and poking around in the console.
 // Tests reach the template filler and the CSS cleaner here, to check them without a plugin.
