@@ -20,9 +20,14 @@ export default async function (page, { check, proof }) {
     const probe = box && document.createElement("b");
     probe?.classList.add("label");
     due?.after(probe);
+    // A page rule that tries to take the containment off, to show the host's !important holds.
+    const override = document.createElement("style");
+    override.textContent = `${icons} slot [data-plugin="due"] { contain: none; }`;
+    document.head.append(override);
     // The box is a flex item of the card's row, so the browser computes board.html's inline-flex as flex (a plain div would be block).
     const result = { box: box && getComputedStyle(box).display, contain: box && getComputedStyle(box).contain, probe: probe && getComputedStyle(probe).borderTopLeftRadius };
     probe?.remove();
+    override.remove();
     return result;
   }, icons);
   check("a host's CSS lays out the box a guest's view comes in, but doesn't reach inside it, and can't take its containment off", proof.room.box === "flex" && proof.room.probe !== "999px" && proof.room.contain === "layout paint", JSON.stringify(proof.room));

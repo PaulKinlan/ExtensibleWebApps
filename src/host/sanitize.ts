@@ -27,7 +27,8 @@ function scopedValue(owner: string, name: string, value: string): string {
 }
 
 /** A custom property's name, and a number with an optional unit: all a `style` attribute may set. */
-const PROPERTY = /^--[a-z][a-z0-9-]{0,31}$/;
+// Custom property names are case-sensitive (--Pct and --pct differ), so the name is kept as written.
+const PROPERTY = /^--[a-z][a-z0-9-]{0,31}$/i;
 const NUMBER = /^-?(\d{1,6}(\.\d{1,4})?|\.\d{1,4})(px|rem|em|ch|%|vh|vw|deg|turn|s|ms|fr)?$/;
 const MAX_PROPERTIES = 8;
 
@@ -43,7 +44,7 @@ export function customProperties(value: string): string | undefined {
     if (!declaration.trim()) continue;
     const colon = declaration.indexOf(":");
     if (colon < 0) continue;
-    const name = declaration.slice(0, colon).trim().toLowerCase();
+    const name = declaration.slice(0, colon).trim();
     const number = declaration.slice(colon + 1).trim();
     if (PROPERTY.test(name) && NUMBER.test(number) && kept.length < MAX_PROPERTIES) kept.push(`${name}: ${number}`);
   }

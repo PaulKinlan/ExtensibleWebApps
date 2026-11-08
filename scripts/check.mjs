@@ -334,8 +334,11 @@ function checkTemplates(file, rules, report) {
       const hole = value.includes("{{");
       if (name === "style") {
         // Only custom properties set to numbers are kept (src/host/sanitize.ts); a {{hole}} must fill in a number.
-        const bad = value.split(";").filter((d) => d.trim() && !/^\s*--[a-z][a-z0-9-]{0,31}\s*:\s*(\{\{[^}]+\}\}|-?[\d.]+)[a-z%]*\s*$/i.test(d));
+        // The same rules as the sanitizer's: name, number, unit, and at most eight declarations.
+        const declarations = value.split(";").filter((d) => d.trim());
+        const bad = declarations.filter((d) => !/^\s*--[a-z][a-z0-9-]{0,31}\s*:\s*(\{\{[^}]+\}\}|-?(\d{1,6}(\.\d{1,4})?|\.\d{1,4}))(px|rem|em|ch|%|vh|vw|deg|turn|s|ms|fr)?\s*$/i.test(d));
         if (bad.length) report("error", file, line, `style= keeps only custom properties set to numbers, such as style="--pct: {{pct}}"; use class with the file's <style> for looks (dropped: ${bad.map((d) => d.trim()).join("; ")})`);
+        else if (declarations.length > 8) report("error", file, line, `style= keeps at most 8 custom properties, so the rest are dropped`);
       } else if (name.startsWith("on")) report("error", file, line, `${name}= isn't allowed in a view: use data-action for events, and class with the file's <style> for looks`);
       else if (name === "slot" || name === "is" || name === "data-plugin") report("warning", file, line, `${name}= is dropped from views`);
       else if (!component && !name.startsWith("aria-") && !name.startsWith("data-") && !rules.GLOBAL_ATTRIBUTES.includes(name) && !(rules.ELEMENT_ATTRIBUTES[tag] ?? []).includes(name)) report("warning", file, line, `${name}= isn't allowed on <${tag}>, so it is dropped`);
