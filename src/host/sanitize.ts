@@ -26,6 +26,31 @@ function scopedValue(owner: string, name: string, value: string): string {
   return value;
 }
 
+/** A custom property's name, and a number with an optional unit: all a `style` attribute may set. */
+// Custom property names are case-sensitive (--Pct and --pct differ), so the name is kept as written.
+const PROPERTY = /^--[a-z][a-z0-9-]{0,31}$/i;
+const NUMBER = /^-?(\d{1,6}(\.\d{1,4})?|\.\d{1,4})(px|rem|em|ch|%|vh|vw|deg|turn|s|ms|fr)?$/;
+const MAX_PROPERTIES = 8;
+
+/**
+ * A `style` attribute, rebuilt from the custom properties it sets to numbers (`--pct: 40`,
+ * `--w: 12.5rem`), so data can size things (`width: calc(var(--pct) * 1%)` in the plugin's CSS).
+ * Nothing else is kept: no other property, nothing that loads, nothing that could break out.
+ * Undefined when nothing is left.
+ */
+export function customProperties(value: string): string | undefined {
+  const kept: string[] = [];
+  for (const declaration of value.split(";")) {
+    if (!declaration.trim()) continue;
+    const colon = declaration.indexOf(":");
+    if (colon < 0) continue;
+    const name = declaration.slice(0, colon).trim();
+    const number = declaration.slice(colon + 1).trim();
+    if (PROPERTY.test(name) && NUMBER.test(number) && kept.length < MAX_PROPERTIES) kept.push(`${name}: ${number}`);
+  }
+  return kept.length ? kept.join("; ") : undefined;
+}
+
 function allowedAttribute(tag: string, name: string): boolean {
   // data-plugin marks which plugin's stylesheet applies to a view, so only the host sets it.
   if (name.startsWith("on") || name === "style" || name === "slot" || name === "is" || name === "data-plugin") return false;
@@ -67,6 +92,11 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
     }
     const out = document.createElement(tag);
     for (const { name, value } of [...el.attributes]) {
+      if (name === "style") {
+        const style = customProperties(value);
+        if (style) out.setAttribute("style", style);
+        continue;
+      }
       if (!allowedAttribute(tag, name)) continue;
       if (name === "href" && !SAFE_HREF.test(value.trim()) && !isLocal(value)) continue;
       // An https image is a request: only plugins allowed on the network may make one. A file next to the template is the plugin's own.
@@ -84,6 +114,8 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       out.setAttribute("rel", "noopener noreferrer");
     }
     if (tag === "img") out.setAttribute("referrerpolicy", "no-referrer");
+    // Something a view says can be picked up (drag.ts). Images and links are draggable already, which data-drag doesn't change.
+    if (out.hasAttribute("data-drag")) out.setAttribute("draggable", "true");
     copy(el, out, owner, remote, base);
     into.appendChild(out);
   }
