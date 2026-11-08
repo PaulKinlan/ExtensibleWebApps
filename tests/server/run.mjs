@@ -14,6 +14,7 @@ import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "../../src/server/serve.ts";
+import { authenticator } from "./authenticator.mjs";
 
 const results = [];
 
@@ -112,6 +113,65 @@ async function client(base, space) {
   };
 }
 
+/** Sign-in with passkeys (src/server/auth/), as a browser on this site would do it, and as others might try. */
+async function signInChecks(base, check) {
+  let cookie = "";
+  const call = async (path, body, { origin = base, keep = true } = {}) => {
+    const headers = { "content-type": "application/json", cookie };
+    if (origin) headers.origin = origin;
+    const res = await fetch(`${base}${path}`, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify(body) });
+    const set = res.headers.getSetCookie?.().find((c) => c.startsWith("ewa-session="));
+    if (set && keep) cookie = set.split(";")[0];
+    return { status: res.status, body: await res.json().catch(() => null), set };
+  };
+  const me = async () => (await call("/auth/me")).body?.user;
+  const key = authenticator();
+
+  const nameless = await call("/auth/register/options", {});
+  const elsewhere = await call("/auth/register/options", { name: "Ada" }, { origin: "https://elsewhere.example" });
+  check("sign-in: an account needs a name, and only this site's pages may ask for one", nameless.status === 400 && elsewhere.status === 403, JSON.stringify([nameless, elsewhere]));
+
+  const options = (await call("/auth/register/options", { name: "Ada" })).body;
+  const registered = await call("/auth/register", await key.create(options, base));
+  const ada = await me();
+  check("sign-in: a new passkey makes an account and signs it in, with a session cookie the page's script can't read", registered.status === 200 && ada?.name === "Ada" && /HttpOnly/.test(registered.set ?? "") && /SameSite=Lax/.test(registered.set ?? ""), JSON.stringify(registered));
+
+  await call("/auth/signout", {});
+  const out = await call("/auth/me");
+  const signin = (await call("/auth/signin/options", {})).body;
+  const answer = await key.get(signin, base);
+  const back = await call("/auth/signin", answer);
+  check("sign-in: signing out ends the session, and the passkey signs back in to the same account", out.status === 401 && back.status === 200 && (await me())?.id === ada?.id, JSON.stringify({ out: out.status, back }));
+
+  const replay = await call("/auth/signin", answer, { keep: false });
+  const otherOrigin = await call("/auth/signin", await key.get((await call("/auth/signin/options", {})).body, "https://elsewhere.example"), { keep: false });
+  const otherSite = await call("/auth/signin", await key.get((await call("/auth/signin/options", {})).body, base, { rpId: "elsewhere.example" }), { keep: false });
+  const backwards = await call("/auth/signin", await key.get((await call("/auth/signin/options", {})).body, base, { counterOverride: 1 }), { keep: false });
+  const forged = await key.get((await call("/auth/signin/options", {})).body, base);
+  forged.response.signature = forged.response.signature.replace(/^.{8}/, "AAAAAAAA");
+  const forgedAnswer = await call("/auth/signin", forged, { keep: false });
+  check(
+    "sign-in: a used challenge, another page's ceremony, another site's passkey, a counter gone back and a forged signature are all refused",
+    replay.status === 400 && otherOrigin.status === 401 && otherSite.status === 401 && backwards.status === 401 && forgedAnswer.status === 401,
+    JSON.stringify([replay, otherOrigin, otherSite, backwards, forgedAnswer].map((r) => `${r.status} ${r.body?.error}`)),
+  );
+
+  const second = authenticator({ alg: "EdDSA" });
+  const more = await call("/auth/register", await second.create((await call("/auth/register/options", {})).body, base));
+  check("sign-in: a signed-in person can add another passkey to their account", more.status === 200 && more.body?.user?.id === ada?.id, JSON.stringify(more));
+
+  const results = {};
+  for (const alg of ["EdDSA", "RS256"]) {
+    cookie = "";
+    const k = authenticator({ alg, counting: false });
+    const made = await call("/auth/register", await k.create((await call("/auth/register/options", { name: alg })).body, base));
+    cookie = "";
+    const again = await call("/auth/signin", await k.get((await call("/auth/signin/options", {})).body, base));
+    results[alg] = `${made.status}/${again.status}`;
+  }
+  check("sign-in: passkeys that sign with Ed25519 or RSA work too, and ones that keep no counter", Object.values(results).every((r) => r === "200/200"), JSON.stringify(results));
+}
+
 async function suite(name, make) {
   const check = (what, ok, detail = "") => results.push({ what: `${name}: ${what}`, ok: !!ok, detail });
   const spaces = await mkdtemp(join(tmpdir(), "spaces-"));
@@ -145,6 +205,8 @@ async function suite(name, make) {
     const listed = await b.command("user:list", { app: "demos/contacts" });
     check("after a restart, the space has what was written to it", Array.isArray(listed) && listed.some((p) => p.id === "hello-space"), JSON.stringify(listed));
     b.close();
+
+    await signInChecks(server.url, check);
 
     if (host.closedByDefault) {
       const closed = await host.closedByDefault();

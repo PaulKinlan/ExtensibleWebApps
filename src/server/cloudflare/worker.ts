@@ -8,13 +8,18 @@
 // Worker of its own, as a facet with its own SQLite database for the space's
 // folder.
 //
-// Until sign-in (step 5 of docs/server.md), anyone who can reach a space can
+// Accounts and sign-in (/auth/, src/server/auth/accounts.ts) are one more
+// Durable Object, `Accounts`, whose SQLite database holds every account.
+//
+// Until spaces have members (step 5 of docs/server.md), anyone who can reach a space can
 // write to it, so spaces are closed unless the SPACES variable is "open":
 // `wrangler dev --var SPACES:open` on this machine, never in production.
 
 import { DurableObject } from "cloudflare:workers";
 // The space kernel's built source, as text (npm run build:cloudflare writes it).
 import kernelSource from "../../../.build/cloudflare/kernel-source.js";
+import { durableFiles, type Sql } from "../../seams/durable.ts";
+import { accounts } from "../auth/accounts.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 /** A new kernel build gets a new isolate; spaces on the old one move over as they restart. */
@@ -23,6 +28,7 @@ const KERNEL_VERSION = kernelSource.version;
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
   SPACE: DurableObjectNamespace<Space>;
+  ACCOUNTS: DurableObjectNamespace<Accounts>;
   LOADER: WorkerLoader;
   /** "open" lets clients join spaces; anything else (the default) refuses them. */
   SPACES?: string;
@@ -65,8 +71,18 @@ export class Space extends DurableObject<Env> {
   }
 }
 
+/** Every account, their passkeys and sessions: one object, so a passkey is only ever registered once. */
+export class Accounts extends DurableObject<Env> {
+  private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql));
+
+  async fetch(request: Request): Promise<Response> {
+    return (await this.auth.handle(request)) ?? new Response("Not found", { status: 404 });
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (new URL(request.url).pathname.startsWith("/auth/")) return env.ACCOUNTS.getByName("accounts").fetch(request);
     const space = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url).pathname)?.[1];
     if (space === undefined) return env.ASSETS.fetch(request);
     if (env.SPACES !== "open") return new Response("Spaces open once sign-in is here", { status: 403 });

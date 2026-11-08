@@ -15,6 +15,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, join, resolve, sep } from "node:path";
 import type { Duplex } from "node:stream";
 import { MessageChannel, Worker } from "node:worker_threads";
+import { nodeFiles } from "../seams/node.ts";
+import { accounts } from "./auth/accounts.ts";
 import { accept } from "./websocket.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -43,6 +45,8 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
   const site = resolve(options.site);
   const spaces = new Map<string, Promise<Worker>>();
   const rules = headerRules(join(site, "_headers"));
+  // Accounts sit beside the spaces, in a folder no space's name can match.
+  const auth = accounts(nodeFiles(join(resolve(options.spaces), "_accounts")));
 
   /** The space's kernel, started on first use. */
   const space = (name: string): Promise<Worker> => {
@@ -87,7 +91,32 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     createReadStream(full).pipe(response);
   };
 
+  /** A request under /auth/, as the web's Request, answered with the accounts' Response. */
+  const signIn = async (request: IncomingMessage, response: ServerResponse) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    for await (const chunk of request) {
+      size += chunk.length;
+      if (size > 64 * 1024) return void response.writeHead(413).end();
+      chunks.push(chunk);
+    }
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : Buffer.concat(chunks);
+    const answer = await auth.handle(new Request(`http://${request.headers.host ?? "localhost"}${request.url}`, { method: request.method, headers, body }));
+    if (!answer) return void response.writeHead(404).end();
+    response.writeHead(answer.status, Object.fromEntries(answer.headers));
+    response.end(Buffer.from(await answer.arrayBuffer()));
+  };
+
   const server = createServer((request, response) => {
+    if (request.url?.startsWith("/auth/")) {
+      return void signIn(request, response).catch((error) => {
+        console.error("Sign-in:", error);
+        if (!response.headersSent) response.writeHead(500);
+        response.end();
+      });
+    }
     if (request.method !== "GET" && request.method !== "HEAD") return void response.writeHead(405).end();
     file(request, response);
   });

@@ -7,6 +7,6 @@
     "lib": ["ES2022"],
     "types": ["@cloudflare/workers-types"]
   },
-  "include": ["src/server/cloudflare/worker.ts", "src/seams/durable.ts"],
+  "include": ["src/server/cloudflare/worker.ts", "src/seams/durable.ts", "src/server/auth/*.ts"],
   "exclude": []
 }

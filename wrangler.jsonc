@@ -9,7 +9,8 @@
 //
 // Each space is a Durable Object, `Space`, which loads the space's kernel as a
 // Dynamic Worker (the LOADER binding) and runs it as a facet, with its own
-// SQLite database for the space's folder.
+// SQLite database for the space's folder. Accounts and sign-in (/auth/) live
+// in one more Durable Object, `Accounts`, with its own database.
 //
 // Deploys come from Cloudflare's Git integration (Workers Builds): build
 // command `npm run build` (which builds the space kernel too), deploy command
@@ -25,9 +26,15 @@
     "not_found_handling": "404-page"
   },
   "durable_objects": {
-    "bindings": [{ "name": "SPACE", "class_name": "Space" }]
+    "bindings": [
+      { "name": "SPACE", "class_name": "Space" },
+      { "name": "ACCOUNTS", "class_name": "Accounts" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Space"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["Space"] },
+    { "tag": "v2", "new_sqlite_classes": ["Accounts"] }
+  ],
   "worker_loaders": [{ "binding": "LOADER" }],
   "previews": {}
 }
