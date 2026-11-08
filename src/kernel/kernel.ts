@@ -5,7 +5,8 @@
 // browser.ts in the browser.
 //
 // Nothing in here draws UI or knows what a note is, except the two trusted
-// demo plugins (store and notes) mounted at the bottom.
+// demo plugins (store and notes) mounted at the bottom. It runs no plugins of
+// its own: each page runs the ones it links.
 
 import { Context } from "cordis";
 import { env } from "./env";
@@ -38,16 +39,6 @@ import { record, recent, setSink, startedAt, tap } from "./trace";
 import { checkApp, userPlugins } from "./user-plugins";
 import type { Opened } from "../shared/protocol";
 
-import wordCount from "../../plugins/word-count.js?raw";
-import editTimes from "../../plugins/edit-times.js?raw";
-import noShouting from "../../plugins/no-shouting.js?raw";
-import tone from "../../plugins/tone.js?raw";
-import bars from "../../plugins/bars.js?raw";
-import pinger from "../../plugins/pinger.js?raw";
-import sneaky from "../../plugins/sneaky.js?raw";
-import fetcher from "../../plugins/fetcher.js?raw";
-import offline from "../../plugins/offline.js?raw";
-import tidy from "../../plugins/tidy.js?raw";
 
 const where = env();
 const shared = where.kind === "shared";
@@ -243,19 +234,6 @@ Object.assign(services, loadServices({ root, store, hosts, remote, apps, reviewe
 // A plugin can't take a service's name as its id, whichever way the service was added.
 for (const name of Object.keys(services)) RESERVED.add(name);
 
-// One per line, with a trailing comma, so two changes that add a plugin land on different lines.
-const BUILT_IN = [
-  wordCount,
-  editTimes,
-  noShouting,
-  tone,
-  bars,
-  tidy,
-  pinger,
-  sneaky,
-  fetcher,
-  offline,
-];
 
 let started = false;
 let loaded = false;
@@ -282,7 +260,8 @@ hosts.onSpawnerChange = (host) => {
   if (!host) return;
   if (!loaded) {
     loaded = true;
-    void plugins.load(BUILT_IN);
+    // The kernel has no plugins of its own: a page links the ones it uses (the workbench links plugins/).
+    void plugins.load([]);
   } else {
     record({ kind: "lifecycle", name: "spawner:handover", detail: host.tab });
     remote.spawnerChanged(host);

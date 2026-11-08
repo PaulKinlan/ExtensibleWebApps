@@ -1,0 +1,42 @@
+<!doctype html>
+<!--
+  Feeds: a feed reader, the second proof app for the space's server
+  (docs/server.md). Two plugins:
+
+  feeds.js  in the browser: the feeds you follow, and their stories
+  fetch.js  on the space's server only (runs: "server"): reads each feed
+            over https every half hour, and keeps the stories
+
+  Open it in a space (/s/<space>/demos/feeds/): the server reads the feeds
+  with no one's browser open, and the stories reach every member's device,
+  to read offline too. Outside a space, the list of feeds still works.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feeds</title>
+  <meta name="description" content="Follow RSS and Atom feeds; the space's server reads them and every member gets the stories.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="feeds.js">
+  <link rel="plugin" href="fetch.js">
+  <!-- A standard plugin: opened in a space, whether this page reaches it. -->
+  <link rel="plugin" href="/std/sync.js">
+</head>
+<body>
+  <header>
+    <h1>Feeds</h1>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <slot name="sync"></slot>
+    <slot name="main"><p>Loading your feeds…</p></slot>
+  </main>
+</body>
+</html>
