@@ -21,6 +21,7 @@
   1. [Spaces, and plugins on a server](guide/spaces-and-servers.md)
   1. [Deploying one app on its own](guide/deploying-an-app.md)
   1. [Loading fast, without jumping](guide/loading-fast.md)
+  1. [The plugin registry](guide/plugin-registry.md)
 - Reference
   - [API reference](api.md)
   - [Permissions](permissions.md)

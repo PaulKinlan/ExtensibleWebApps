@@ -20,7 +20,8 @@
     "test:seams": "node --no-warnings tests/seams/run.mjs",
     "test:server": "npm run build && npm run build:server && node --no-warnings tests/server/run.mjs",
     "test": "npm run build && node tests/platform.test.mjs",
-    "reference": "vite build && node scripts/reference.mjs"
+    "reference": "vite build && node scripts/reference.mjs",
+    "packages": "node scripts/packages.mjs"
   },
   "dependencies": {
     "cordis": "4.0.0-rc.11"

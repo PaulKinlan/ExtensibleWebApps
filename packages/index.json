@@ -1,0 +1,33 @@
+{
+  "packages": [
+    {
+      "id": "clock",
+      "name": "Clock",
+      "description": "Provides the clock service: the time now in any time zone.",
+      "version": "1.0.0",
+      "href": "/packages/clock/clock.js",
+      "permissions": [
+        "provide:clock"
+      ],
+      "provides": [
+        "clock"
+      ],
+      "services": []
+    },
+    {
+      "id": "world-clock",
+      "name": "World clock",
+      "description": "The time in London, New York and Tokyo, at the foot of the page.",
+      "version": "1.0.0",
+      "href": "/packages/world-clock/world-clock.js",
+      "permissions": [
+        "ui",
+        "clock"
+      ],
+      "provides": [],
+      "services": [
+        "clock"
+      ]
+    }
+  ]
+}
