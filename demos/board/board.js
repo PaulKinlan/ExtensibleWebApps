@@ -5,10 +5,10 @@
 // the address says.
 //
 // What makes it a showcase is what it leaves for others. Each card on the
-// board has a room, <slot name="board.card.badges">, carrying the card's id,
+// board has a room, <slot name="studio.card.badges">, carrying the card's id,
 // due date and stage as data-* attributes; due.js and checklist.js fill it
 // without this plugin knowing they exist. The card screen has a bigger room,
-// board.card.detail, where checklist.js draws the whole checklist. And every
+// studio.card.detail, where checklist.js draws the whole checklist. And every
 // column and card says what it is (data-column, data-priority,
 // data-assignee), so a transform such as wip.js or a person's own "Focus"
 // plugin can find them by selector.
@@ -20,8 +20,11 @@
 // A screen belongs to one tab, so this plugin is `scope: "tab"`: each tab's
 // copy draws what its own address says.
 
+// Its id is "studio", not "board": /std/board.js, the agents' board, already has that id, and two
+// plugins with one id can't run side by side. Its collection is "studio-cards", not "cards": a profile
+// that ran this plugin under its old id keeps "cards" registered to "board", and a saved owner wins.
 export const manifest = {
-  id: "board",
+  id: "studio",
   name: "Board",
   description: "The cards, as a board of columns, and each card on its own screen.",
   version: "1.0.0",
@@ -29,7 +32,7 @@ export const manifest = {
   scope: "tab",
   order: 10,
   collections: {
-    cards: {
+    "studio-cards": {
       title: "Cards",
       schema: {
         type: "object",
@@ -115,14 +118,16 @@ export default async function (ctx) {
   const views = ctx.ui.views("board.html");
 
   if (!(await ctx.storage.get("seeded"))) {
-    if (!(await ctx.call("data", "list", "cards")).length) for (const card of SAMPLE()) await ctx.call("data", "put", "cards", card);
+    if (!(await ctx.call("data", "list", "studio-cards")).length) for (const card of SAMPLE()) await ctx.call("data", "put", "studio-cards", card);
     await ctx.storage.set("seeded", true);
   }
 
   /** On the card screen, whether Delete has been pressed once and waits for a second press. */
   let confirming = false;
+  /** On the card screen, why the last change wasn't saved, if it wasn't. */
+  let problem = "";
 
-  const all = async (api) => (await api.call("data", "list", "cards")).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || String(a.createdAt).localeCompare(String(b.createdAt)));
+  const all = async (api) => (await api.call("data", "list", "studio-cards")).sort((a, b) => (a.rank ?? 0) - (b.rank ?? 0) || String(a.createdAt).localeCompare(String(b.createdAt)));
 
   // The board, drawn only on the app's own address.
   const board = views.live("main", "board", async (api) => {
@@ -148,7 +153,7 @@ export default async function (ctx) {
     const { path } = await api.call("router", "current");
     const id = screen(path).card;
     if (id === undefined) return { shown: false };
-    const c = id && (await api.call("data", "get", "cards", id));
+    const c = id && (await api.call("data", "get", "studio-cards", id));
     if (!c) return { shown: true, missing: true };
     const has = new Set(c.labels ?? []);
     const option = (value, current) => ({ value, on: value === current, key: `${value}` });
@@ -166,26 +171,40 @@ export default async function (ctx) {
       labels: LABELS.map((l) => ({ name: l, on: has.has(l) })),
       covers: COVERS.map((cover) => option(cover, c.cover ?? "none")),
       confirming,
+      problem,
     };
   });
 
   ctx.on("router:changed", () => {
     confirming = false;
+    problem = "";
     board.refresh();
     card.refresh();
   });
 
   const current = async () => screen((await ctx.call("router", "current")).path).card;
 
-  /** Saves `fields` onto card `id`. */
-  const update = async (id, fields) => {
-    const c = await ctx.call("data", "get", "cards", id);
-    if (!c) return;
-    const { createdAt, updatedAt, ...rest } = c;
-    const next = { ...rest, ...fields };
-    for (const [k, v] of Object.entries(next)) if (v === "" || v === null || Number.isNaN(v)) delete next[k];
-    await ctx.call("data", "put", "cards", next);
-  };
+  // Every change reads a card and writes it back whole, so two quick changes could each read the
+  // same card and the second would undo the first. Running them one at a time, in order, prevents that.
+  let queue = Promise.resolve();
+  const serial = (job) => (queue = queue.then(job, job));
+
+  /**
+   * Saves a change onto card `id`: `fields`, or a function that gets the card and returns them.
+   * The kernel checks the card against the schema; when it says no (a blank title, 20 points),
+   * the screen says why and draws the card as it was saved, so no edit looks kept that wasn't.
+   */
+  const update = (id, fields) =>
+    serial(async () => {
+      const c = await ctx.call("data", "get", "studio-cards", id);
+      if (!c) return;
+      const { createdAt, updatedAt, ...rest } = c;
+      const next = { ...rest, ...(typeof fields === "function" ? fields(c) : fields) };
+      for (const [k, v] of Object.entries(next)) if (v === "" || v === null || Number.isNaN(v)) delete next[k];
+      const result = await ctx.call("data", "put", "studio-cards", next);
+      problem = result.ok ? "" : (result.errors ?? []).map((e) => `${e.path ? `${e.path}: ` : ""}${e.message}`).join("; ") || "That change wasn't saved.";
+      if (!result.ok) card.refresh();
+    });
 
   /** Adds a card to the end of a column. */
   const add = async (column, title) => {
@@ -193,18 +212,18 @@ export default async function (ctx) {
     if (!title) return null;
     const cards = await all(ctx);
     const rank = Math.max(0, ...cards.filter((c) => c.column === column).map((c) => c.rank ?? 0)) + 1;
-    return (await ctx.call("data", "put", "cards", { title, column, rank, priority: "normal", cover: "none" })).id;
+    return (await ctx.call("data", "put", "studio-cards", { title, column, rank, priority: "normal", cover: "none" })).id;
   };
 
   /** Moves a card one stage left (-1) or right (+1), to the end of that column. */
   const move = async (id, step) => {
-    const c = await ctx.call("data", "get", "cards", id);
-    if (!c) return;
-    const at = COLUMNS.findIndex((col) => col.id === c.column);
-    const to = COLUMNS[Math.min(COLUMNS.length - 1, Math.max(0, at + step))].id;
-    if (to === c.column) return;
-    const rank = Math.max(0, ...(await all(ctx)).filter((x) => x.column === to).map((x) => x.rank ?? 0)) + 1;
-    await update(id, { column: to, rank });
+    const cards = await all(ctx);
+    await update(id, (c) => {
+      const at = COLUMNS.findIndex((col) => col.id === c.column);
+      const to = COLUMNS[Math.min(COLUMNS.length - 1, Math.max(0, at + step))].id;
+      if (to === c.column) return {};
+      return { column: to, rank: Math.max(0, ...cards.filter((x) => x.column === to).map((x) => x.rank ?? 0)) + 1 };
+    });
   };
 
   ctx.ui.onEvent(async (action, value) => {
@@ -223,10 +242,11 @@ export default async function (ctx) {
       return void update(id, { [arg]: value });
     }
     if (verb === "label") {
-      const c = await ctx.call("data", "get", "cards", id);
-      const labels = new Set(c?.labels ?? []);
-      value ? labels.add(arg) : labels.delete(arg);
-      return void update(id, { labels: LABELS.filter((l) => labels.has(l)) });
+      return void update(id, (c) => {
+        const labels = new Set(c.labels ?? []);
+        value ? labels.add(arg) : labels.delete(arg);
+        return { labels: LABELS.filter((l) => labels.has(l)) };
+      });
     }
     if (verb === "delete") {
       if (!confirming) {
@@ -234,8 +254,8 @@ export default async function (ctx) {
         return void card.refresh();
       }
       confirming = false;
-      await ctx.call("data", "delete", "cards", id);
-      return void ctx.call("router", "go", "./");
+      await ctx.call("data", "delete", "studio-cards", id);
+      return void ctx.call("router", "go", "/");
     }
     if (verb === "keep") {
       confirming = false;
@@ -246,11 +266,11 @@ export default async function (ctx) {
   // What the board does, named once: the palette lists them, their keys run them, and agents use them as tools.
   ctx.commands.add({ id: "new", title: "New card in Ideas", group: "Board", keys: ["Alt+N"] }, async () => {
     const id = await add("ideas", "Untitled card");
-    await ctx.call("router", "go", `card/${encodeURIComponent(id)}`);
+    await ctx.call("router", "go", `/card/${encodeURIComponent(id)}`);
     return "Added a card to Ideas";
   });
   ctx.commands.add({ id: "show-board", title: "Show the whole board", group: "Board", keys: ["Alt+B"] }, async () => {
-    await ctx.call("router", "go", "./");
+    await ctx.call("router", "go", "/");
   });
   ctx.commands.add({ id: "advance", title: "Move this card to the next stage", group: "Board", keys: ["Alt+ArrowRight"] }, async () => {
     const id = await current();

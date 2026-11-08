@@ -3,7 +3,7 @@
   over, full, by }; data-over and data-full are there only when true.
 -->
 <style>
-  .gauge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font: 600 0.7rem var(--mono); color: var(--fg-2); background: var(--bg-2); }
+  .gauge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-weight: 600; font-size: 0.7rem; font-family: var(--mono); color: var(--fg-2); background: var(--bg-2); }
   .gauge[data-full] { color: light-dark(#b45309, #fcd34d); background: color-mix(in srgb, var(--warn) 16%, transparent); }
   .gauge[data-over] { color: #fff; background: var(--danger); }
 </style>
