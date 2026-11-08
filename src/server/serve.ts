@@ -45,6 +45,12 @@ export interface Options {
   providers?: Provider[];
   /** The address people reach this server at, such as https://example.com, when a proxy in front of it speaks HTTPS. */
   origin?: string;
+  /**
+   * Hosts on the server's own network that server plugins with `network` may reach anyway (a feed served on
+   * this machine, in development), by name or IP as a URL writes them. Everything else private is refused
+   * (src/server/network-guard.ts).
+   */
+  allowPrivate?: string[];
 }
 
 /** Starts the server; resolves once it is listening, with a way to stop it. */
@@ -66,7 +72,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     let started = spaces.get(name);
     if (!started) {
       started = new Promise<Worker>((ready, fail) => {
-        const worker = new Worker(resolve(options.kernel), { workerData: { dir: join(resolve(options.spaces), name), origin: url } });
+        const worker = new Worker(resolve(options.kernel), { workerData: { dir: join(resolve(options.spaces), name), origin: url, allowPrivate: options.allowPrivate ?? [] } });
         worker.on("message", (m) => m?.t === "ready" && ready(worker));
         worker.on("error", (error) => {
           console.error(`Space ${name}:`, error);
@@ -315,6 +321,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     kernel: arg("kernel", ".build/server/space.js"),
     providers: providersFrom(process.env),
     origin: arg("origin", process.env.PUBLIC_ORIGIN ?? "") || undefined,
+    allowPrivate: arg("allow-private", process.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean),
   });
   console.log(`Serving ${arg("site", "dist")} at ${url}; spaces at ${url.replace("http", "ws")}/s/<space>/kernel, kept in ${arg("spaces", ".spaces")}/`);
 }

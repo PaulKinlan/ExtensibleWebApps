@@ -3,7 +3,8 @@
 // or write files, start processes or workers, or load native code. Its
 // runtime (src/server/isolate.ts, built to .build/server/isolate.js) also
 // keeps it from importing Node's own modules, and takes away fetch and
-// WebSocket unless the plugin has `network`. Messages cross the process's IPC
+// WebSocket unless the plugin has `network`; with it, the plugin reaches the
+// internet but not the server's own network (src/server/network-guard.ts). Messages cross the process's IPC
 // channel, cloned as a worker's are.
 //
 // Cloudflare's isolates are stronger (a Dynamic Worker with no outbound
@@ -14,7 +15,8 @@ import { dirname, resolve } from "node:path";
 import { MessageChannel, type MessagePort } from "node:worker_threads";
 import type { Isolates } from "./index.ts";
 
-export function nodeIsolates(runtime: string): Isolates {
+/** `allowPrivate`: hosts on the server's own network that plugins with `network` may reach anyway (src/server/network-guard.ts). */
+export function nodeIsolates(runtime: string, { allowPrivate = [] }: { allowPrivate?: string[] } = {}): Isolates {
   const file = resolve(runtime);
   const running = new Map<string, { child: ChildProcess; port: MessagePort }>();
 
@@ -47,7 +49,7 @@ export function nodeIsolates(runtime: string): Isolates {
         port1.close();
       });
       running.set(name, { child, port: port1 });
-      child.send({ t: "init", source, network });
+      child.send({ t: "init", source, network, allow: allowPrivate });
       return port2;
     },
     stop,
