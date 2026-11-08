@@ -71,8 +71,12 @@ export function checkSchema(schema: unknown, path = "schema", depth = 0): assert
 
 const typeOf = (value: unknown) => (value === null ? "null" : Array.isArray(value) ? "array" : typeof value);
 
-/** What is wrong with `value`, as `{ path, message }`; empty if nothing. */
-export function validate(schema: Schema, value: unknown, path = ""): { path: string; message: string }[] {
+/**
+ * What is wrong with `value`, as `{ path, message }`; empty if nothing. A
+ * record's required field must hold something (not null or ""); with
+ * `presence`, as for a tool's arguments, it only has to be there.
+ */
+export function validate(schema: Schema, value: unknown, path = "", presence = false): { path: string; message: string }[] {
   const errors: { path: string; message: string }[] = [];
   const at = path || "record";
   const fail = (message: string) => errors.push({ path, message });
@@ -94,14 +98,15 @@ export function validate(schema: Schema, value: unknown, path = ""): { path: str
     if (schema.minimum !== undefined && value < schema.minimum) fail(`${at} must be at least ${schema.minimum}`);
     if (schema.maximum !== undefined && value > schema.maximum) fail(`${at} must be at most ${schema.maximum}`);
   }
-  if (Array.isArray(value) && schema.items) value.forEach((item, i) => errors.push(...validate(schema.items!, item, `${path}[${i}]`)));
+  if (Array.isArray(value) && schema.items) value.forEach((item, i) => errors.push(...validate(schema.items!, item, `${path}[${i}]`, presence)));
   if (value && typeof value === "object" && !Array.isArray(value)) {
     const record = value as Record<string, unknown>;
-    for (const name of schema.required ?? []) if (!Object.hasOwn(record, name) || record[name] === undefined || record[name] === null || record[name] === "") errors.push({ path: path ? `${path}.${name}` : name, message: `${schema.properties?.[name]?.title ?? name} is required` });
+    const empty = (v: unknown) => v === undefined || (!presence && (v === null || v === ""));
+    for (const name of schema.required ?? []) if (!Object.hasOwn(record, name) || empty(record[name])) errors.push({ path: path ? `${path}.${name}` : name, message: `${schema.properties?.[name]?.title ?? name} is required` });
     for (const [name, child] of Object.entries(schema.properties ?? {})) {
       // Only absent fields skip their schema; the kernel drops cleared ones (null or "") before validating.
       if (!Object.hasOwn(record, name) || record[name] === undefined) continue;
-      errors.push(...validate(child, record[name], path ? `${path}.${name}` : name));
+      errors.push(...validate(child, record[name], path ? `${path}.${name}` : name, presence));
     }
   }
   return errors;

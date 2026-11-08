@@ -81,6 +81,21 @@ export function net(secrets: Secrets, capsOf: (plugin: string) => Set<string>): 
         returns: "{ ok, status, headers, text }",
         needs: "network:<host>",
         description: "Fetches `url` (https:, or http: on localhost) and returns the answer as text, up to 4 MB, within two minutes. A header given as `{ secret: name }` is filled with that secret, if the plugin has `secret:<name>` and the host is one the secret is for.",
+        params: [
+          {
+            name: "request",
+            schema: {
+              type: "object",
+              properties: {
+                url: { type: "string", description: "An https: address on a host the manifest names" },
+                method: { type: "string", enum: ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"] },
+                headers: { type: "object" },
+                body: { type: "string" },
+              },
+              required: ["url"],
+            },
+          },
+        ],
       },
     },
     capability: (_method, args) => {

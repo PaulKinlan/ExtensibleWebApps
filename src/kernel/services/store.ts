@@ -10,8 +10,8 @@ export default ({ store, reviewed }: Kernel): ServiceProvider => {
   return {
     description: "The notes. They belong to the notes app, so a plugin's change to one is reviewed first.",
     methods: {
-      list: { args: "()", returns: "[{ id, title, text, updated }]", needs: "data:read:notes", description: "Every note, most recently changed first." },
-      put: { args: "({ id?, text }, reason)", returns: "{ ok, id, outcome }", needs: "data:write:notes", reviewed: true, description: "Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open." },
+      list: { args: "()", returns: "[{ id, title, text, updated }]", needs: "data:read:notes", description: "Every note, most recently changed first.", params: [] },
+      put: { args: "({ id?, text }, reason)", returns: "{ ok, id, outcome }", needs: "data:write:notes", reviewed: true, description: "Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open.", params: [{ name: "note", schema: { type: "object", properties: { id: { type: "string", description: "The note to replace; leave out for a new note" }, text: { type: "string", description: "The note's Markdown; its first line is its title" } }, required: ["text"] } }, { name: "reason", schema: { type: "string", description: "Why, in a sentence the person reads when they review the change" }, optional: true }] },
     },
     capability: (method) => (method === "list" ? "data:read:notes" : "data:write:notes"),
     /** `put({ id?, text }, reason)`: notes belong to the notes app, so a plugin's write is reviewed first. */
