@@ -18,8 +18,8 @@ export default ({ store }: Kernel): ServiceProvider => {
   return {
     description: "The plugin's own data, kept in `plugin-data/<id>.json` with the app's data. Never reviewed, since it is the plugin's own.",
     methods: {
-      get: { args: "(key)", returns: "the value, or null", description: "Reads a value." },
-      set: { args: "(key, value)", returns: "true", description: "Saves a JSON value; null removes it. Up to 1 MB in all." },
+      get: { args: "(key)", returns: "the value, or null", description: "Reads a value.", params: [{ name: "key", schema: { type: "string" } }] },
+      set: { args: "(key, value)", returns: "true", description: "Saves a JSON value; null removes it. Up to 1 MB in all.", params: [{ name: "key", schema: { type: "string" } }, { name: "value", schema: { description: "Any JSON value; null removes the key" } }] },
     },
     capability: () => undefined,
     call: async (plugin, method, args) => {

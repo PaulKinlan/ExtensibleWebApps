@@ -492,6 +492,26 @@ Needs: `data:write:notes`, and the person's review.
 
 Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open.
 
+### tools
+
+The service methods the caller may call, described as tools a language model can call, and a way to call one. The first piece of the agent plugin.
+
+#### tools.call
+
+`tools.call(name, args)` → what the method returns
+
+Needs: nothing.
+
+Calls a tool from `list` with the arguments a model gave, as an object. The arguments are checked against the tool's schema, then the method is called through the gate, needing what it needs and with the same reviews as `ctx.call`.
+
+#### tools.list
+
+`tools.list()` → [{ name, description, parameters, service, method, reviewed }]
+
+Needs: nothing.
+
+The caller's tools: each service method that describes its arguments and that the caller's manifest lets it call. Pass them to `llm.complete` as `tools`. A method that takes a collection is one tool per collection the caller may use, such as `data_put_books` with that collection's fields (one tool listing them, past five).
+
 ## Hooks
 
 ### `bench:ping`
@@ -681,6 +701,7 @@ Reserved ids, which no plugin can take:
 - `settings`
 - `storage`
 - `store`
+- `tools`
 
 Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`.
 

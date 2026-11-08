@@ -31,6 +31,7 @@ export const RESERVED = new Set([
   "settings",
   "storage",
   "store",
+  "tools",
 ]);
 
 /** What each manifest field means. Typed against Manifest, so a new field can't go undocumented. */
