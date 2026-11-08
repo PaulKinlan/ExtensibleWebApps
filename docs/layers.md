@@ -93,14 +93,28 @@ Only the listed modules are built into the kernel, in the browser and on the sit
 | --- | --- | --- |
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
 
+### Saying which services a plugin needs
+
+A plugin's manifest lists the services it calls that not every site runs, so the plugin fails when it starts, with a message naming what is missing, rather than on its first call:
+
+```js
+export const manifest = {
+  id: "palette",
+  name: "Command palette",
+  permissions: ["ui", "commands"],
+  services: ["commands"],
+};
+```
+
+The kernel's own services (`data`, `storage`, `settings` and the rest above) are always there and needn't be listed. The standard plugins list theirs, and so does every agent, which needs `agents`, `bus` and `tools`.
+
 ### Where this is going
 
 The plan, being reviewed now, splits this layer out of the core:
 
 1. Each of the services above becomes a kernel module, as `debug` has, naming the modules it `uses` (agents uses `llm`, `tools` and `bus`). This repo's `kernel.json` lists them all, so no demo changes.
 2. A smaller site lists fewer, and has less built in.
-3. A plugin's manifest says which services it calls. An app whose plugins need a service the site doesn't run fails to open, with a message naming the service, rather than failing later on the first call.
-4. A sandboxed plugin can provide a service too. Then much of what is trusted code today can be a std plugin, and a plugin a person or their agent writes can add a service as first-class as one the platform ships.
+3. A sandboxed plugin can provide a service too. Then much of what is trusted code today can be a std plugin, and a plugin a person or their agent writes can add a service as first-class as one the platform ships.
 
 [`tests/checks/kernel-layers.mjs`](../tests/checks/kernel-layers.mjs) keeps the lists on this page honest: it fails when a file in `src/kernel/` is on neither the core list nor the services list, so a new file has to say which layer it is in.
 

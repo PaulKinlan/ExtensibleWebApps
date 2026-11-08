@@ -30,6 +30,7 @@ export const manifest = {
   description: "Answers the app's llm requests with OpenAI's models, using the person's OpenAI API key.",
   version: "1.1.0",
   permissions: ["provide:llm", "network:api.openai.com", "secret:openai"],
+  services: ["llm"],
   settings: {
     model: {
       type: "string",

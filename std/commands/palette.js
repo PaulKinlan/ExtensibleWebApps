@@ -25,6 +25,7 @@ export const manifest = {
   description: "Search everything the app can do, and run it, or press its shortcut.",
   version: "1.0.0",
   permissions: ["ui", "commands"],
+  services: ["commands"],
   // One per tab: the palette and the keys belong to the page they're on.
   scope: "tab",
   settings: {

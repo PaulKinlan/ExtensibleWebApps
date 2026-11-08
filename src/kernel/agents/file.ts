@@ -187,6 +187,8 @@ export function fromAgentFile(text: string): string {
     description: string("description") ?? `An agent: ${instructions.split("\n")[0].slice(0, 200)}`,
     version: string("version") ?? "1.0.0",
     permissions: [...new Set(caps)],
+    // The loop calls these (runner.js), so an app with an agent fails to open on a site that doesn't run them.
+    services: ["agents", "bus", "tools"],
   };
   const source = `export const manifest = ${JSON.stringify(manifest, null, 2)};\n\nconst AGENT = ${JSON.stringify(config, null, 2)};\n\n${runner}`;
   made.set(source, config);
