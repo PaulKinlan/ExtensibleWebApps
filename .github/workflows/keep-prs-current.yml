@@ -1,0 +1,110 @@
+# Keeps every open pull request merged with main, so no one finds out at merge
+# time that their branch fell behind.
+#
+# Each time main changes, for every open PR whose branch is in this repo:
+#   - main merges cleanly: push the merge commit.
+#   - the only conflict is docs/api.md: that file is generated, so take
+#     either side, run `npm run reference`, and push.
+#   - anything else conflicts: leave the branch alone and keep one comment on
+#     the PR up to date with the files that need a person.
+#
+# It only ever adds merge commits (never rebases or force-pushes), so anyone
+# working on the branch can just pull.
+
+name: Keep PRs current
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: keep-prs-current
+  cancel-in-progress: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Merge main into each open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -u
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          GENERATED="docs/api.md"
+          MARKER="<!-- keep-prs-current -->"
+          tools_ready=""
+
+          # The comment this workflow keeps on a PR: written, replaced, or removed.
+          note() {
+            pr="$1"; body="$2"
+            id=$(gh api "repos/$REPO/issues/$pr/comments" --paginate --jq ".[] | select(.body | startswith(\"$MARKER\")) | .id" | head -1)
+            if [ -n "$body" ]; then
+              if [ -n "$id" ]; then gh api -X PATCH "repos/$REPO/issues/comments/$id" -f body="$MARKER
+          $body" >/dev/null
+              else gh api "repos/$REPO/issues/$pr/comments" -f body="$MARKER
+          $body" >/dev/null; fi
+            elif [ -n "$id" ]; then gh api -X DELETE "repos/$REPO/issues/comments/$id" >/dev/null; fi
+          }
+
+          # GitHub won't let this workflow's token push a change to .github/workflows,
+          # so a merge that brings one in is left for a person.
+          push() {
+            if git push -q origin "$branch"; then note "$pr" ""
+            else
+              git reset -q --hard "origin/$branch"
+              note "$pr" "Main has moved on and merges cleanly into this branch, but this bot couldn't push the merge (main changed \`.github/workflows\`, which its token can't do). Merge main into this branch once by hand."
+            fi
+          }
+
+          gh pr list --repo "$REPO" --state open --json number,headRefName,isCrossRepository \
+            --jq '.[] | select(.isCrossRepository | not) | "\(.number) \(.headRefName)"' |
+          while read -r pr branch; do
+            echo "::group::#$pr ($branch)"
+            git fetch -q origin "$branch" main
+            git checkout -q -B "$branch" "origin/$branch"
+            if git merge-base --is-ancestor origin/main HEAD; then echo "already current"; note "$pr" ""; echo "::endgroup::"; continue; fi
+
+            if git merge -q --no-edit origin/main; then
+              push
+            else
+              conflicts=$(git diff --name-only --diff-filter=U)
+              if [ "$conflicts" = "$GENERATED" ]; then
+                git checkout --theirs -- "$GENERATED"
+                if [ -z "$tools_ready" ]; then
+                  npm ci && npm i --no-save playwright && npx playwright install --with-deps chromium && tools_ready=1
+                fi
+                if npm run reference; then
+                  git add "$GENERATED"
+                  git commit -q --no-edit && push
+                else
+                  git merge --abort
+                  note "$pr" "Main has moved on and \`$GENERATED\` conflicts, but \`npm run reference\` failed on the merged code, so this needs a person: merge main and fix what the build reports."
+                fi
+              else
+                git merge --abort
+                list=$(echo "$conflicts" | sed 's/^/- `/; s/$/`/')
+                note "$pr" "Main has moved on and these files conflict with this branch, so they need a person to merge:
+
+          $list
+
+          After merging, run \`npm run reference\` rather than hand-merging \`$GENERATED\`."
+              fi
+            fi
+            echo "::endgroup::"
+          done
