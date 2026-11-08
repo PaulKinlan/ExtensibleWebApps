@@ -222,6 +222,8 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     return { ok: true, id: recordId, ...(outcome ? { outcome } : {}) };
   }
 
+  const STALE = "It has changed since";
+
   /** Who hears every write by a plugin, with the plugin that made it (services/history.ts). */
   const written = new Set<(change: Change, instance: string) => void>();
 
@@ -230,14 +232,14 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
    * as it undoes a change already made. Only if the record is still `from`, what the change left;
    * data:beforeWrite listeners can still stop it.
    */
-  async function restore(name: string, id: string, from: StoredRecord | undefined, to: StoredRecord | undefined, dispatch: Dispatch): Promise<{ ok: true } | { ok: false; error: string }> {
+  async function restore(name: string, id: string, from: StoredRecord | undefined, to: StoredRecord | undefined, dispatch: Dispatch): Promise<{ ok: true } | { ok: false; error: string; stale?: boolean }> {
     known(name);
     const records = await load(name);
     const change: Change = { collection: name, id, before: from, after: to };
     const verdict = await root.serial(dispatch, `data:beforeWrite:${name}`, change);
     if (verdict && typeof verdict === "object" && "block" in verdict) return { ok: false, error: String(verdict.block) };
     const failed = await serially(name, async () => {
-      if (JSON.stringify(records.get(id)) !== JSON.stringify(from)) return "It has changed since";
+      if (JSON.stringify(records.get(id)) !== JSON.stringify(from)) return STALE;
       if (to && !from && records.size >= MAX_RECORDS) return `The ${name} collection is limited to ${MAX_RECORDS} records`;
       if (to) records.set(id, to);
       else records.delete(id);
@@ -250,7 +252,8 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       }
       return undefined;
     });
-    if (failed) return { ok: false, error: failed };
+    // A record that changed since can never be put back; anything else may work another time.
+    if (failed) return { ok: false, error: failed, ...(failed === STALE ? { stale: true } : {}) };
     root.emit(dispatch, `data:changed:${name}`, change);
     return { ok: true };
   }

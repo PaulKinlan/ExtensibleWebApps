@@ -67,9 +67,18 @@ export default ({ root, apps, collections }: Kernel): ServiceProvider => {
     changed();
   });
 
+  /**
+   * The plugins in the caller's app. A tab's instance (`undo@<tab>`) has only the app open in its
+   * tab, so two apps that both link std/undo.js can't undo each other's changes; a shared instance
+   * has every app that links it. Undefined for a plugin no app links.
+   */
+  const nearOf = (instance: string) => {
+    const tab = instance.split("@")[1];
+    return tab ? new Set(apps.linkedBy(tab) ?? []) : apps.alongside(instance);
+  };
   /** Whether a write is to a collection owned by a plugin in the caller's app (any, for a plugin no app links). */
   const mine = (instance: string, entry: Entry) => {
-    const near = apps.alongside(instance);
+    const near = nearOf(instance);
     const owner = collections.registry.get(entry.change.collection)?.owner;
     return !near || (!!owner && near.has(owner));
   };
@@ -88,16 +97,34 @@ export default ({ root, apps, collections }: Kernel): ServiceProvider => {
     return { kind, collection: change.collection, title, id: change.id, label, by: entry.by, at: new Date(entry.at).toISOString(), text: `${kind} ${label ? `“${label}”` : "a record"} in ${title}` };
   }
 
-  /** Undoes (or redoes) the caller's app's most recent step, moving it to the other list. A step whose record changed since is dropped. */
+  /** One undo or redo at a time, so two presses can't both pick, or drop, the same step. */
+  let queue: Promise<unknown> = Promise.resolve();
+  const serially = <T>(work: () => Promise<T>): Promise<T> => {
+    const run = queue.then(work, work);
+    queue = run.catch(() => {});
+    return run;
+  };
+
+  /**
+   * Undoes (or redoes) the caller's app's most recent step, moving it to the other list. A step
+   * whose record changed since is dropped, as it can never apply; one that failed for another
+   * reason (a listener stopped it, the collection is full, saving failed) stays, to try again.
+   */
   async function step(instance: string, from: Entry[], to: Entry[], undo: boolean, dispatch: { trace?: string }) {
     const at = last(from, instance);
     if (at < 0) return { ok: false, error: `Nothing to ${undo ? "undo" : "redo"}` };
-    const [entry] = from.splice(at, 1);
+    const entry = from[at];
     const { collection, id, before, after } = entry.change;
-    const result = undo ? await collections.restore(collection, id, after, before, dispatch) : await collections.restore(collection, id, before, after, dispatch);
+    const result = await (undo ? collections.restore(collection, id, after, before, dispatch) : collections.restore(collection, id, before, after, dispatch)).catch(
+      (error): { ok: false; error: string; stale?: boolean } => ({ ok: false, error: error instanceof Error ? error.message : String(error) }),
+    );
     const what = describe(entry)!;
     record({ kind: "note", name: undo ? "history:undo" : "history:redo", plugin: instance, trace: dispatch.trace, detail: `${what.text}${result.ok ? "" : ` · not done: ${result.error}`}` });
-    if (result.ok) to.push(entry);
+    if (result.ok || ("stale" in result && result.stale)) from.splice(from.indexOf(entry), 1);
+    if (result.ok) {
+      to.push(entry);
+      if (to.length > KEEP) to.splice(0, to.length - KEEP);
+    }
     changed();
     return result.ok ? { ok: true, step: what } : { ok: false, step: what, error: result.error };
   }
@@ -130,8 +157,8 @@ export default ({ root, apps, collections }: Kernel): ServiceProvider => {
     capability: () => "history",
     call: async (instance, method, _args, dispatch) => {
       if (method === "state") return { undo: describe(done[last(done, instance)]), redo: describe(undone[last(undone, instance)]) };
-      if (method === "undo") return step(instance, done, undone, true, dispatch);
-      if (method === "redo") return step(instance, undone, done, false, dispatch);
+      if (method === "undo") return serially(() => step(instance, done, undone, true, dispatch));
+      if (method === "redo") return serially(() => step(instance, undone, done, false, dispatch));
       throw new Error(`history.${method} is not a method`);
     },
   };
