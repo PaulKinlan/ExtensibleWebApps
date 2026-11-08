@@ -275,6 +275,25 @@ async function serverPluginChecks(base, check, owner, restart) {
     counted?.count === 1 && unrouted.status === 404 && nowhere.status === 404 && big.status === 413,
     JSON.stringify({ counted, unrouted: unrouted.status, nowhere: nowhere.status, big: big.status }),
   );
+  // Email: a server plugin with `email` sends it (written down in the space's outbox), checked, and only so much a day.
+  const notify = (body) => fetch(`${base}/s/guarded/server-app/notify`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json(), () => null);
+  const mailed = await notify({ to: "Sam@Example.com", subject: "3 new answers", text: "See them in the space." });
+  const badTo = await notify({ to: ["not an address"], subject: "x", text: "x" });
+  const badSubject = await notify({ to: ["sam@example.com"], subject: "Two\nlines", text: "x" });
+  const tooMany = await notify({ to: Array.from({ length: 11 }, (_, i) => `p${i}@example.com`), subject: "x", text: "x" });
+  check(
+    "server plugins: a plugin with `email` sends a message; a bad address, a subject of two lines or more than 10 people is refused",
+    mailed?.ok === true && typeof mailed.id === "string" && /address/.test(badTo?.error) && /one line/.test(badSubject?.error) && /at most 10/.test(tooMany?.error),
+    JSON.stringify({ mailed, badTo, badSubject, tooMany }),
+  );
+  let day = 1;
+  let limited;
+  while (day < 60 && !limited) {
+    const answer = await notify({ to: "sam@example.com", subject: `Message ${day + 1}`, text: "x" });
+    if (answer?.ok) day++;
+    else limited = answer;
+  }
+  check("server plugins: a plugin sends at most 50 messages a day", day === 50 && /50 messages a day/.test(limited?.error ?? ""), JSON.stringify({ day, limited }));
   const form = new FormData();
   form.append("text", "Sent as multipart");
   form.append("file", new Blob(["ignored"]), "note.txt");
