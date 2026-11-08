@@ -28,6 +28,7 @@ import isolateSource from "../../../.build/cloudflare/isolate-source.js";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
+import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, spaceRoute, tooLarge } from "../routes.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 /** A new kernel build gets a new isolate; spaces on the old one move over as they restart. */
@@ -44,6 +45,7 @@ interface KernelStub {
   join(client: string, origin: string, send: (text: string) => void, member?: string, host?: PluginHost): Promise<void>;
   deliver(client: string, text: string): Promise<void>;
   leave(client: string): Promise<void>;
+  route(origin: string, request: RouteRequest, host?: PluginHost): Promise<RouteResponse | null>;
 }
 
 type Send = ((message: unknown) => void) & { dup?: () => Send };
@@ -73,9 +75,22 @@ class PluginHost extends RpcTarget {
     super();
   }
 
-  async start(name: string, source: string, network: boolean, send: Send): Promise<void> {
-    await this.stop(name);
+  /** Each plugin's starts and stops, one at a time: a start that overlapped another would share its facet. */
+  private turns = new Map<string, Promise<unknown>>();
+  private inTurn<T>(name: string, work: () => Promise<T>): Promise<T> {
+    const run = (this.turns.get(name) ?? Promise.resolve()).then(work, work);
+    this.turns.set(name, run.catch(() => {}));
+    return run;
+  }
+
+  start(name: string, source: string, network: boolean, send: Send): Promise<void> {
+    // Kept now: a function passed over RPC lasts only as long as the call, and this one may wait its turn.
     const kept = send.dup?.() ?? send;
+    return this.inTurn(name, () => this.starting(name, source, network, kept));
+  }
+
+  private async starting(name: string, source: string, network: boolean, kept: Send): Promise<void> {
+    await this.stopping(name);
     const code = `plugin:${this.space}:${name}:${isolateSource.version}:${network ? "net" : "closed"}:${await hex(source)}`;
     const worker = this.env.LOADER.get(code, () => ({
       compatibilityDate: "2026-11-01",
@@ -96,7 +111,11 @@ class PluginHost extends RpcTarget {
     await this.running.get(name)?.stub.deliver(message);
   }
 
-  async stop(name: string): Promise<void> {
+  stop(name: string): Promise<void> {
+    return this.inTurn(name, () => this.stopping(name));
+  }
+
+  private async stopping(name: string): Promise<void> {
     const one = this.running.get(name);
     if (!one) return;
     this.running.delete(name);
@@ -136,6 +155,12 @@ export class Space extends DurableObject<Env> {
     return this.ctx.facets.get("kernel", () => ({ class: worker.getDurableObjectClass("SpaceKernel") })) as unknown as KernelStub;
   }
 
+  /** A public route's request for this space (src/server/routes.ts), which its kernel answers, or null. */
+  async route(space: string, origin: string, request: RouteRequest): Promise<RouteResponse | null> {
+    this.plugins ??= new PluginHost(this.ctx, this.env, space);
+    return this.kernel(space).route(origin, request, this.plugins);
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const space = /^\/s\/([^/]+)\/kernel$/.exec(url.pathname)?.[1] ?? "";
@@ -171,17 +196,35 @@ export class Accounts extends DurableObject<Env> {
     return (await this.auth.handle(request)) ?? new Response("Not found", { status: 404 });
   }
 
+  /** Whether a space by this name exists. */
+  async exists(space: string): Promise<boolean> {
+    return this.auth.exists(space);
+  }
+
   /** Which member of a space the session in a cookie header is, if it's one. */
   async member(cookie: string, space: string): Promise<string | null> {
     return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.user.id ?? null;
   }
 }
 
+/** A request to /s/<space>/<path> that one of the space's server plugins answers; undefined when none does. */
+async function publicRoute(request: Request, env: Env): Promise<Response | undefined> {
+  const url = new URL(request.url);
+  const at = spaceRoute(url);
+  if (!at || !SPACE.test(at.space) || !(await env.ACCOUNTS.getByName("accounts").exists(at.space))) return undefined;
+  const route = await routeRequest(request, at.path);
+  if (!route) return tooLarge();
+  const result = await env.SPACE.getByName(at.space).route(at.space, url.origin, route);
+  if (result) return routeResponse(result, url, at.space);
+  // Its body is read, so the site's files can't have it: they answer only GET and HEAD anyway.
+  return request.method === "GET" || request.method === "HEAD" ? undefined : new Response("Method not allowed", { status: 405 });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (new URL(request.url).pathname.startsWith("/auth/")) return env.ACCOUNTS.getByName("accounts").fetch(request);
     const space = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url).pathname)?.[1];
-    if (space === undefined) return env.ASSETS.fetch(request);
+    if (space === undefined) return (await publicRoute(request, env)) ?? env.ASSETS.fetch(request);
     if (!SPACE.test(space)) return new Response("Not a space", { status: 404 });
     // A page on another site may open a WebSocket here (they aren't bound by CORS), so a browser's
     // client must come from this site's own pages. A client that isn't a browser sends no Origin.

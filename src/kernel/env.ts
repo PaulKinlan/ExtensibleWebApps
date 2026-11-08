@@ -5,6 +5,7 @@
 // seams (src/seams/), so kernel.ts never reaches for `self` or `navigator`.
 
 import type { Files, Isolates } from "../seams/index.ts";
+import type { RouteRequest, RouteResponse } from "./routes";
 
 export interface KernelEnv {
   /**
@@ -26,6 +27,12 @@ export interface KernelEnv {
   isolates?: Isolates;
   /** On a server, how it reads the site's own files (an app's app.html and plugins), when not with fetch. */
   site?: (url: string) => Promise<Response>;
+  /**
+   * On a server, hands the kernel's answer for the space's public routes (a server plugin's
+   * ctx.routes.add), which the host calls for an HTTP request to /s/<space>/<path> (src/server/routes.ts).
+   * The answer is null when no plugin has that route.
+   */
+  serve?(answer: (request: RouteRequest) => Promise<RouteResponse | null>): void;
 }
 
 let current: KernelEnv | undefined;
