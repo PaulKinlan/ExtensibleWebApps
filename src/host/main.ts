@@ -24,6 +24,7 @@ import { defineElementsIn, onElementError } from "./elements";
 import { morphChildren } from "./morph";
 import { serviceWorker } from "./service-worker";
 import { cleanCss } from "./plugin-styles";
+import { watchCanvasTheme } from "./canvas-theme";
 import { fill, forgetFiles, loadedFile, loadFile } from "./templates";
 import { drawView } from "./views";
 import { workbench } from "./workbench";
@@ -90,6 +91,10 @@ connectBindings((message) => send(message), () => newTrace());
 type Entry = { owner: string; order: number; el: HTMLElement };
 const slots = new Map<Slot, Map<string, Entry>>();
 const canvases = new Map<string, HTMLCanvasElement>();
+// Each canvas went to its plugin with the theme (views/canvas.ts); when the theme changes, they hear it again.
+watchCanvasTheme((theme) => {
+  for (const owner of new Set([...canvases.keys()].map((key) => key.slice(0, key.indexOf("/"))))) send({ t: "canvas:theme", owner, theme });
+});
 
 // Each kind of view is drawn by its own file in views/, named after its type.
 function element(view: View, owner: string): HTMLElement {

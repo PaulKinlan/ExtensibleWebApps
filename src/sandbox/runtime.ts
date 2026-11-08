@@ -8,7 +8,7 @@
 
 import type { Api, Live, RouteRequest } from "../shared/api";
 import { lockdown } from "./lockdown";
-import type { KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
+import type { CanvasTheme, KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
 
 let port: MessagePort;
 let nextListener = 0;
@@ -16,7 +16,8 @@ let nextCall = 0;
 const handlers = new Map<number, (...args: any[]) => unknown>();
 const calls = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 const eventHandlers = new Set<(action: string, value: unknown) => void>();
-const canvasHandlers = new Map<string, (canvas: OffscreenCanvas) => void>();
+const canvasHandlers = new Map<string, (canvas: OffscreenCanvas, theme?: CanvasTheme) => void>();
+const themeHandlers = new Set<(theme: CanvasTheme) => void>();
 /** Each job's listener, by name, so setting a name again replaces the old handler (ctx.schedule). */
 const jobListeners = new Map<string, () => void>();
 /** Each command's listener, by id, so adding an id again replaces the old handler (ctx.commands.add). */
@@ -135,8 +136,12 @@ function api(trace: () => string | undefined): Api {
         eventHandlers.add(handler);
         return () => void eventHandlers.delete(handler);
       },
-      onCanvas(id: string, handler: (canvas: OffscreenCanvas) => void) {
+      onCanvas(id: string, handler: (canvas: OffscreenCanvas, theme?: CanvasTheme) => void) {
         canvasHandlers.set(id, handler);
+      },
+      onTheme(handler: (theme: CanvasTheme) => void) {
+        themeHandlers.add(handler);
+        return () => void themeHandlers.delete(handler);
       },
     },
     settings: {
@@ -342,7 +347,10 @@ async function receive(message: KernelToPlugin) {
       for (const handler of eventHandlers) traced(message.trace, (bound) => handler.call(bound, message.action, message.value));
       return;
     case "canvas":
-      canvasHandlers.get(message.id)?.(message.canvas);
+      canvasHandlers.get(message.id)?.(message.canvas, message.theme);
+      return;
+    case "canvas:theme":
+      for (const handler of themeHandlers) handler(message.theme);
       return;
     case "result": {
       const waiting = calls.get(message.id);

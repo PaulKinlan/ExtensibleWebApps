@@ -306,7 +306,9 @@ hosts.onMessage = async (host, message) => {
       if (hosts.mode === "server" && host !== hosts.spawner) return;
       return remote.attach(message.plugin, host, message.port);
     case "canvas":
-      return remote.deliver(message.owner, { t: "canvas", id: message.id, canvas: message.canvas }, [message.canvas]);
+      return remote.deliver(message.owner, { t: "canvas", id: message.id, canvas: message.canvas, theme: message.theme }, [message.canvas]);
+    case "canvas:theme":
+      return remote.deliver(message.owner, { t: "canvas:theme", theme: message.theme });
     case "bind":
       return records.bind(host, message.id, message.owner, message.collection);
     case "unbind":

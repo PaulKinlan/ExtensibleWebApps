@@ -86,9 +86,14 @@ const CTX: Record<ApiMember<Api>, Doc> = {
     description: "Hears the person use the plugin's views: a button's or field's `action`, with a field's new value.",
   },
   "ui.onCanvas": {
-    signature: "ctx.ui.onCanvas(id, (canvas) => …)",
+    signature: "ctx.ui.onCanvas(id, (canvas, theme) => …)",
     needs: "",
-    description: "Receives the OffscreenCanvas for a canvas view the plugin rendered. Use scope \"tab\" for plugins that draw.",
+    description: "Receives the OffscreenCanvas for a canvas view the plugin rendered, with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope \"tab\" for plugins that draw.",
+  },
+  "ui.onTheme": {
+    signature: "ctx.ui.onTheme((theme) => …) → off()",
+    needs: "",
+    description: "Hears the theme change (light and dark flip, a theme is turned on or off) in a tab where the plugin has a canvas, so it can draw again in the new colours.",
   },
   "settings.get": {
     signature: "ctx.settings.get() → Promise<values>",

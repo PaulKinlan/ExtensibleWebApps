@@ -1,6 +1,8 @@
 // The "canvas" view: a canvas a plugin draws on from its worker, through an
-// OffscreenCanvas.
+// OffscreenCanvas. It goes with the page's theme (../canvas-theme.ts), since a
+// worker can't read CSS.
 
+import { canvasTheme } from "../canvas-theme";
 import type { ViewHost, ViewOf } from "./index";
 
 export default (view: ViewOf<"canvas">, { owner, tab, send, canvases }: ViewHost): HTMLElement => {
@@ -20,7 +22,7 @@ export default (view: ViewOf<"canvas">, { owner, tab, send, canvases }: ViewHost
     el.height = view.height;
     el.dataset.canvas = key;
     const offscreen = el.transferControlToOffscreen();
-    send({ t: "canvas", owner, id: view.id, canvas: offscreen }, [offscreen]);
+    send({ t: "canvas", owner, id: view.id, canvas: offscreen, theme: canvasTheme() }, [offscreen]);
     canvases.set(key, el);
   }
   // A stand-in; the live canvas takes its place once the view is drawn.
