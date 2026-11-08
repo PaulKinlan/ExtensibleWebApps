@@ -231,9 +231,13 @@ function opened(plugins: Opened[]) {
   // The person may have added a plugin again with new files: load its templates afresh.
   forgetFiles(`${space ? `/s/${space}` : ""}/user/${app}/`);
   const before = shown;
-  shown = new Set(plugins.flatMap((p) => (p.id && !p.error ? [p.id] : [])));
-  // A plugin that is no longer shown (turned off) takes its views with it.
-  if (before !== "all") for (const id of before) if (!shown.has(id)) clearOwner(id);
+  // The workbench shows every running plugin's views, not only the ones it links.
+  if (!isWorkbench) {
+    const now = new Set(plugins.flatMap((p) => (p.id && !p.error ? [p.id] : [])));
+    shown = now;
+    // A plugin that is no longer shown (turned off) takes its views with it.
+    if (before !== "all") for (const id of before) if (!now.has(id)) clearOwner(id);
+  }
   // Places first, so held views that go to a place find it.
   pagePlaces.configure(plugins);
   applyThemes(plugins);
@@ -685,7 +689,8 @@ for (const message of unsent.splice(0)) send(message);
 /** Every app gets the Customize button, where the person adds their own plugins. */
 const inspector = isWorkbench ? undefined : inspect({ app, command, places: () => pagePlaces.status() });
 const panel = isWorkbench ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status(), inspect: () => inspector?.start() });
-if (!isWorkbench) await openApp();
+// The workbench is an app too: it links the demo plugins in plugins/, which no other page runs.
+await openApp();
 sendUrl();
 addEventListener("popstate", sendUrl);
 followLinks();

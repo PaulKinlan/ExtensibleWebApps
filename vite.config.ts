@@ -35,7 +35,6 @@ function workerPolicy(): Plugin {
 const NOT_SERVED = [
   "dist",
   "node_modules",
-  "plugins", // built into the kernel
   "public", // Vite copies it itself
   "scripts",
   "src", // built

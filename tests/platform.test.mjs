@@ -102,7 +102,7 @@ export default (ctx) => {
   // The plugins panel: where each plugin came from, on and off, remove.
   const panel = (id) => `aside [data-key="plugins:${id}"]`;
   await a.waitForSelector(`${panel("late")} >> text=with the data`);
-  check("the plugins panel shows built-in plugins and ones kept with the data", (await a.textContent(panel("tone"))).includes("built in"));
+  check("the plugins panel shows the page's own plugins and ones kept with the data", (await a.textContent(panel("tone"))).includes("from an open app"));
   const workers = () => a.evaluate(() => window.__host.workers.size);
   const before = await workers();
   await a.click(`${panel("sneaky")} >> text=Turn off`);
