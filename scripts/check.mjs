@@ -332,7 +332,11 @@ function checkTemplates(file, rules, report) {
     }
     for (const { name, value } of attributes) {
       const hole = value.includes("{{");
-      if (name.startsWith("on") || name === "style") report("error", file, line, `${name}= isn't allowed in a view: use data-action for events, and class with the file's <style> for looks`);
+      if (name === "style") {
+        // Only custom properties set to numbers are kept (src/host/sanitize.ts); a {{hole}} must fill in a number.
+        const bad = value.split(";").filter((d) => d.trim() && !/^\s*--[a-z][a-z0-9-]{0,31}\s*:\s*(\{\{[^}]+\}\}|-?[\d.]+)[a-z%]*\s*$/i.test(d));
+        if (bad.length) report("error", file, line, `style= keeps only custom properties set to numbers, such as style="--pct: {{pct}}"; use class with the file's <style> for looks (dropped: ${bad.map((d) => d.trim()).join("; ")})`);
+      } else if (name.startsWith("on")) report("error", file, line, `${name}= isn't allowed in a view: use data-action for events, and class with the file's <style> for looks`);
       else if (name === "slot" || name === "is" || name === "data-plugin") report("warning", file, line, `${name}= is dropped from views`);
       else if (!component && !name.startsWith("aria-") && !name.startsWith("data-") && !rules.GLOBAL_ATTRIBUTES.includes(name) && !(rules.ELEMENT_ATTRIBUTES[tag] ?? []).includes(name)) report("warning", file, line, `${name}= isn't allowed on <${tag}>, so it is dropped`);
       else if (name === "href" && !hole && /^([a-z][\w+.-]*:|\/\/|\\)/i.test(value.trim()) && !/^(https?:|mailto:)/i.test(value.trim())) report("warning", file, line, `href="${value}" is dropped: a link in a view must start with https:, http:, mailto: or #, or be relative`);

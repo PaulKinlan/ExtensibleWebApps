@@ -95,7 +95,7 @@ The page's own CSS is in no layer, so it beats both the platform and every plugi
 
 ## What a plugin can't do
 
-- Set `style` attributes: they're removed. Use a class.
+- Set `style` attributes, apart from custom properties set to numbers (`style="--pct: 40"`), which size things from data: `.bar { width: calc(var(--pct) * 1%) }`. Anything else in one is removed. Use a class.
 - Load fonts, images or other files from CSS.
 - Style anything outside its own views: the page, the slots, or other plugins.
 - Animate with `@keyframes`. Transitions work: `transition: opacity var(--duration) var(--ease)`.

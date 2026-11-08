@@ -132,7 +132,7 @@ Attributes for each are in the [API reference](../api.md#components).
 The host keeps only listed elements and attributes ([`src/shared/html.ts`](../../src/shared/html.ts)), and drops the rest:
 
 - No `<script>`, `<style>` (inside a view), `<iframe>`, `<object>`, `<svg>`, or event attributes (`onclick`).
-- No `style` attribute. Use `class` with the plugin's stylesheet, or `data-*` and `aria-*` attributes the page's CSS can target.
+- A `style` attribute keeps only custom properties set to numbers, such as `style="--pct: {{pct}}"` or `--w: 12.5rem`, up to 8. That's how data sizes things: the plugin's stylesheet uses them (`width: calc(var(--pct) * 1%)`). Anything else in it is dropped. For everything else use `class` with the plugin's stylesheet, or `data-*` and `aria-*` attributes the page's CSS can target.
 - Links open in a new tab and must be `https:`, `http:`, `mailto:` or `#`. Images must be `data:` images, or `https:` for plugins with the `network` permission.
 - Unknown elements are unwrapped, so their text stays.
 - `id` and `for` are prefixed per plugin, so a plugin's `<label for>` can't point at another's input.
