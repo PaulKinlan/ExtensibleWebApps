@@ -16,7 +16,7 @@
 import type { Command, Opened } from "../shared/protocol";
 import { fragile, type PlaceState } from "./places";
 
-/** In a space (a page at /s/<space>/…), a person's plugins are shared with its members (src/kernel/shared-plugins.ts). */
+/** In a space (a page at /s/<space>/…), a person can share their plugins with its members (src/kernel/shared-plugins.ts). */
 const inSpace = typeof location !== "undefined" && /^\/s\/[^/]+\//.test(location.pathname);
 
 interface UserPlugin {
@@ -28,6 +28,8 @@ interface UserPlugin {
   places?: Record<string, { at: string; put: string; each?: boolean }>;
   on: boolean;
   error?: string;
+  /** In a space: whether it is the space's, shared with every member, rather than the person's own. */
+  shared?: boolean;
 }
 
 type Status = { plugin: string; name: string; at: string; put: string; each: boolean; state: PlaceState; matches: number };
@@ -122,8 +124,8 @@ export function customize(host: CustomizeHost) {
     return button;
   }
 
-  function mine(list: UserPlugin[], running: Opened[]): HTMLElement {
-    if (!list.length) return h("p", { class: "muted" }, "None yet. Add one below.");
+  function mine(list: UserPlugin[], running: Opened[], empty = "None yet. Add one below."): HTMLElement {
+    if (!list.length) return h("p", { class: "muted" }, empty);
     return h(
       "ul",
       { class: "customize-list" },
@@ -133,8 +135,15 @@ export function customize(host: CustomizeHost) {
         toggle.addEventListener("click", () => void run(p.on ? "user:off" : "user:on", { id: p.id }));
         const remove = h("button", { type: "button", "data-remove": p.id ?? p.file }, "Remove");
         remove.addEventListener("click", () => {
-          const where = inSpace ? "for everyone in this space" : "on this device";
+          const where = p.shared ? "for everyone in this space" : "on this device";
           if (confirm(`Remove ${p.name ?? p.file} from this app ${where}?`)) void run("user:remove", { id: p.id }, "Removed");
+        });
+        // In a space, one of your own can become the space's, and the space's can go back to being yours.
+        const share = inSpace && p.id ? h("button", { type: "button", "data-share": p.id }, p.shared ? "Stop sharing" : "Share with the space") : null;
+        share?.addEventListener("click", () => {
+          if (p.shared) {
+            if (confirm(`Stop sharing ${p.name ?? p.file}? It goes from everyone else's devices, and stays here as yours.`)) void run("user:unshare", { id: p.id }, "No longer shared");
+          } else if (confirm(`Share ${p.name ?? p.file} with everyone in this space? It reaches their devices turned off, and each of them decides whether to turn it on.`)) void run("user:share", { id: p.id }, "Shared with the space");
         });
         const places = Object.entries(p.places ?? {});
         return h(
@@ -148,7 +157,7 @@ export function customize(host: CustomizeHost) {
           !p.on && p.permissions ? h("p", { class: "muted" }, `Asks for: ${p.permissions.join(", ") || "nothing"}`) : null,
           !p.on && places.length ? h("p", { class: "muted" }, `Draws: ${places.map(([n, pl]) => `${pl.put} ${pl.at}`).join("; ")}`) : null,
           p.on && p.id ? placeRows(p.id, live?.unlocked ?? []) : null,
-          p.id ? h("div", { class: "customize-actions" }, toggle, remove) : remove,
+          p.id ? h("div", { class: "customize-actions" }, toggle, ...(share ? [share] : []), remove) : remove,
         );
       }),
     );
@@ -224,13 +233,15 @@ export function customize(host: CustomizeHost) {
         "p",
         { class: "muted" },
         inSpace
-          ? "Plugins here are shared with everyone in this space, and each person turns them on for themselves. They can add to this page, replace parts of it or hide them, except where the app's author locked it."
+          ? "Your plugins are yours, on this device, until you share one with the space. The space's plugins reach every member turned off, and each person turns them on for themselves. Plugins can add to this page, replace parts of it or hide them, except where the app's author locked it."
           : "Your plugins are kept on this device. They can add to this page, replace parts of it or hide them, except where the app's author locked it.",
       ),
       message ? h("p", { role: "status" }, message) : null,
       host.inspect ? inspectButton() : null,
       h("h3", {}, "Your plugins"),
-      mine(list, running),
+      mine(list.filter((p) => !p.shared), running),
+      inSpace ? h("h3", {}, "This space's plugins") : null,
+      inSpace ? mine(list.filter((p) => p.shared), running, "None yet. Share one of yours, and everyone in the space gets it.") : null,
       h("h3", {}, "The app's plugins"),
       authors(running),
       h("h3", {}, "Add a plugin"),

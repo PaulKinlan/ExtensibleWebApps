@@ -99,6 +99,8 @@ export type Command =
   | "user:on"
   | "user:off"
   | "user:remove"
+  | "user:share"
+  | "user:unshare"
   | "place:ask"
   | "place:unlock"
   | "place:lock";

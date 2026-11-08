@@ -1,13 +1,17 @@
-// Members' plugins in a space: a plugin a member adds to an app in a space
-// (Customize, at /s/<space>/…) goes to every member's browser. It never runs
+// Space plugins: an app has three levels of plugins. The developer's, which
+// app.html links; the space's, which its members share with each other; and
+// each person's own, which stay private on their device. A plugin a person
+// adds is their own; in a space (Customize, at /s/<space>/…) they can share it
+// with the space, and then it goes to every member's browser. It never runs
 // on the space's server, which runs only the plugins an app's app.html links
 // (server-apps.ts); the space only keeps its files and hands them out.
 //
-// Each device decides for itself whether to run it. A plugin someone else
-// shared arrives turned off, as any plugin added to an app does, and the
-// person turns it on in Customize after seeing what it asks for. When
-// someone changes a plugin, it arrives off again. Removing a shared plugin
-// removes it from the space, and from every member's device.
+// Each device decides for itself whether to run a space plugin. One someone
+// else shared arrives turned off, as any plugin added to an app does, and the
+// person turns it on in Customize after seeing what it asks for. When someone
+// changes it, it arrives off again. Removing a space plugin removes it from
+// the space and from every member's device; stopping sharing it keeps it on
+// the device that stopped, as that person's own again.
 //
 // The space's side keeps the plugins in its own `user/<app>/` folder, and a
 // list of them, with who shared each, in `user/shared.json`. A device keeps
@@ -255,12 +259,19 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts
     } else if (message.op === "plugins:changed") refresh();
   });
   socket.caughtUp.add(() => refresh());
+  /** Whether a plugin here is the space's: it came from the space, or the person shared it and it's on its way. */
+  const isShared = (k: string) => k in state.known ? state.pending[k]?.action !== "remove" : state.pending[k]?.action === "add";
+  const mark = async (k: string, action: "add" | "remove") => {
+    await loaded;
+    state.pending[k] = { action, n: ++state.n };
+    await save();
+    refresh();
+  };
+  // A person's own plugins stay theirs. A new version of a space plugin, made here, goes to the space; one removed here goes from it.
   userAdded.changed.add(({ app, added, removed }) => {
     void loaded.then(async () => {
-      for (const id of added ?? []) state.pending[key(app, id)] = { action: "add", n: ++state.n };
-      if (removed) state.pending[key(app, removed)] = { action: "remove", n: ++state.n };
-      await save();
-      refresh();
+      for (const id of added ?? []) if (isShared(key(app, id))) await mark(key(app, id), "add");
+      if (removed && isShared(key(app, removed))) await mark(key(app, removed), "remove");
     });
   });
 
@@ -356,4 +367,25 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts
       delete state.known[k];
     }
   }
+
+  return {
+    /** The app's plugins on this device, each saying whether it is the space's. */
+    async mark<T extends { id?: string }>(app: string, plugins: T[]): Promise<(T & { shared: boolean })[]> {
+      await loaded;
+      return plugins.map((p) => ({ ...p, shared: !!p.id && isShared(key(app, p.id)) }));
+    },
+    /** Shares one of the person's own plugins with the space. */
+    async share(app: string, id: string): Promise<boolean> {
+      if (!(await userAdded.list(app)).some((p) => p.id === id)) return false;
+      await mark(key(app, id), "add");
+      return true;
+    },
+    /** Stops sharing a space plugin: it goes from the space and every other device, and stays here as the person's own. */
+    async unshare(app: string, id: string): Promise<boolean> {
+      await loaded;
+      if (!isShared(key(app, id))) return false;
+      await mark(key(app, id), "remove");
+      return true;
+    },
+  };
 }

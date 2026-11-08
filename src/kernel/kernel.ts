@@ -114,6 +114,8 @@ const onServer = where.isolates ? serverApps(remote, store, where.origin, where.
 const sync = syncHub(root, store, records, hosts, (app) => onServer?.use(app));
 /** In a browser kernel for a space (a page at /s/<space>/…): its sync with the space, once the folder is known. */
 let device: ReturnType<typeof syncDevice> | undefined;
+/** In a browser kernel for a space: the space's plugins on this device (shared-plugins.ts). */
+let spaceShared: ReturnType<typeof devicePlugins> | undefined;
 const userAdded = userPlugins(store, where.origin, where.kind === "server" ? undefined : where.space);
 // A space keeps the plugins its members share with each other, and never runs them (shared-plugins.ts).
 if (where.kind === "server") sync.plugins = spacePlugins(userAdded, store, hosts, (message) => sync.tell(message)).handle;
@@ -245,7 +247,7 @@ hosts.onHello = (host, folder) => {
     store.use(where.folder ?? folder);
     if (where.space && where.kind !== "server") {
       device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
-      devicePlugins(userAdded, store, hosts, device, reopen);
+      spaceShared = devicePlugins(userAdded, store, hosts, device, reopen);
     }
     return;
   }
@@ -365,7 +367,11 @@ async function customize(name: string, arg: unknown): Promise<unknown> {
   const id = typeof a.id === "string" ? a.id : typeof a.plugin === "string" ? a.plugin : "";
   switch (name) {
     case "user:list":
-      return userAdded.list(app);
+      return spaceShared ? spaceShared.mark(app, await userAdded.list(app)) : userAdded.list(app);
+    case "user:share":
+    case "user:unshare":
+      if (!spaceShared) return { ok: false, error: "Only a plugin in a space can be shared with it" };
+      return { ok: await (name === "user:share" ? spaceShared.share(app, id) : spaceShared.unshare(app, id)) };
     case "user:add": {
       const added = typeof a.url === "string" ? await userAdded.addFromUrl(app, a.url) : await userAdded.add(app, a.files as { name: string; data: Blob | string }[]);
       // Adding a plugin again turns it off: stop the copy that was running.

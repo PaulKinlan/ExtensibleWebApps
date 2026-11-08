@@ -179,7 +179,7 @@ async function device(base, space, cookie, { claim } = {}) {
 }
 
 /** Sync (src/kernel/sync.ts): the space orders changes from its members' devices, refuses stale ones, and lets a device catch up. */
-/** Members' plugins (src/kernel/shared-plugins.ts): the space keeps what members share, tells every device, and never runs it. */
+/** Space plugins (src/kernel/shared-plugins.ts): the space keeps what members share, tells every device, and never runs it. */
 async function sharedPluginChecks(base, check, owner) {
   const cal = await person(base).account("Cal");
   await owner.call("/auth/spaces", { name: "club" });
@@ -214,7 +214,7 @@ export default (ctx) => { ctx.routes.add("GET", "club-note", () => ({ text: "ran
   const got = await ask(theirs, { action: "get", app: "demos/contacts", plugin: "club-note" });
   const entry = listed?.list?.find((p) => p.id === "club-note");
   check(
-    "members' plugins: a plugin a member shares is kept by the space, every device hears of it, and another member gets its files, saying who shared it",
+    "space plugins: a plugin a member shares is kept by the space, every device hears of it, and another member gets its files, saying who shared it",
     shared?.ok && typeof shared.hash === "string" && told && entry?.app === "demos/contacts" && entry.by === ownerId && entry.hash === shared.hash && got?.files?.length === 2 && got.files[0].text === source,
     JSON.stringify({ shared, told, listed, got: got && { ok: got.ok, files: got.files?.map((f) => f.name) } }),
   );
@@ -222,7 +222,7 @@ export default (ctx) => { ctx.routes.add("GET", "club-note", () => ({ text: "ran
   mine.send({ t: "sync", op: "app", app: "demos/contacts" });
   await new Promise((r) => setTimeout(r, 1000));
   const routes = await Promise.all(["/s/club/demos/contacts/club-note", "/s/club/user/demos/contacts/club-note", "/s/club/club-note"].map((path) => fetch(`${base}${path}`).then((r) => r.text(), () => "")));
-  check("members' plugins: the space never runs a plugin a member shared, even one that says it runs on the server", routes.every((text) => !text.includes("ran on the server")));
+  check("space plugins: the space never runs a plugin a member shared, even one that says it runs on the server", routes.every((text) => !text.includes("ran on the server")));
 
   const two = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "a.js", text: source }, { name: "b.js", text: source.replace("club-note", "other-note") }] });
   const big = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: source }, { name: "club-note.html", text: "x".repeat(800_000) }] });
@@ -236,7 +236,7 @@ export default (ctx) => { ctx.routes.add("GET", "club-note", () => ({ text: "ran
   });
   const kept = await ask(theirs, { action: "get", app: "demos/contacts", plugin: "club-note" });
   check(
-    "members' plugins: the space refuses two plugins at once, one over 700 KB, an app that isn't a folder, a file that isn't a plugin, a file its manifest doesn't list, and a file another plugin has",
+    "space plugins: the space refuses two plugins at once, one over 700 KB, an app that isn't a folder, a file that isn't a plugin, a file its manifest doesn't list, and a file another plugin has",
     [two, big, badApp, notPlugin, unlisted, clash].every((r) => r && r.ok === false && r.error) && kept?.files?.find((f) => f.name === "club-note.html")?.text === "<template>hi</template>",
     JSON.stringify([two, big, badApp, notPlugin, unlisted, clash].map((r) => r?.error)),
   );
@@ -247,7 +247,7 @@ export default (ctx) => { ctx.routes.add("GET", "club-note", () => ({ text: "ran
   const now = await ask(theirs, { action: "get", app: "demos/contacts", plugin: "club-note" });
   const relisted = await ask(theirs, { action: "list" });
   check(
-    "members' plugins: a new version replaces the old, leaving none of the files it no longer lists, with a new hash",
+    "space plugins: a new version replaces the old, leaving none of the files it no longer lists, with a new hash",
     changed?.ok && changed.hash !== shared?.hash && now?.files?.length === 1 && now.files[0].text === leaner && relisted?.list?.find((p) => p.id === "club-note")?.hash === changed.hash,
     JSON.stringify({ changed, files: now?.files?.map((f) => f.name) }),
   );
@@ -257,7 +257,7 @@ export default (ctx) => { ctx.routes.add("GET", "club-note", () => ({ text: "ran
   await new Promise((r) => setTimeout(r, 300));
   const after = await ask(mine, { action: "list" });
   check(
-    "members' plugins: any member can remove a shared plugin, and every device hears it went",
+    "space plugins: any member can remove a shared plugin, and every device hears it went",
     removed?.ok && !after?.list?.some((p) => p.id === "club-note") && mine.heard.some((m) => m.op === "plugins:changed") && theirs.heard.filter((m) => m.op === "plugins:changed").length > before,
     JSON.stringify({ removed, after }),
   );
