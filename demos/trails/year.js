@@ -44,7 +44,7 @@ export function streaks(days, today = new Date()) {
 
 export default async function (ctx) {
   const views = ctx.ui.views("year.html");
-  views.live("year", "year", async (api) => {
+  const year = views.live("year", "year", async (api) => {
     const today = new Date();
     const byDay = new Map();
     for (const a of await api.call("data", "list", "activities")) {
@@ -64,10 +64,22 @@ export default async function (ctx) {
       const day = byDay.get(key);
       days.push({ date: key, level: level(day?.effort), title: day ? `${key}: ${day.titles.join(", ")}` : `${key}: rest day`, today: key === iso(today) });
       // A month label over the first week that starts in it.
-      if (d.getDay() === 1 && d.getDate() <= 7) months.push({ name: d.toLocaleDateString(undefined, { month: "short" }), week: Math.floor((d - start) / (7 * 86_400_000)) + 1 });
+      // Counted in days, not milliseconds, so a clock change doesn't shift it a column.
+      if (d.getDay() === 1 && d.getDate() <= 7) months.push({ name: d.toLocaleDateString(undefined, { month: "short" }), week: Math.floor((days.length - 1) / 7) + 1 });
     }
-    const active = new Set([...byDay.keys()].filter((k) => k >= iso(start)));
-    const total = [...byDay.entries()].filter(([k]) => k >= iso(start)).reduce((sum, [, v]) => sum + v.km, 0);
+    // The same days the grid shows: from its first Monday through today, so a future date doesn't count yet.
+    const shown = (k) => k >= iso(start) && k <= iso(today);
+    const active = new Set([...byDay.keys()].filter(shown));
+    const total = [...byDay.entries()].filter(([k]) => shown(k)).reduce((sum, [, v]) => sum + v.km, 0);
     return { days, months, active: active.size, total: Math.round(total).toLocaleString(), ...streaks(active, today), legend: [0, 1, 2, 3, 4].map((l) => ({ l })) };
   });
+  // Today's square, the range and the streaks move on with the calendar: draw again at each local midnight.
+  const atMidnight = () => {
+    const now = new Date();
+    setTimeout(() => {
+      year.refresh();
+      atMidnight();
+    }, new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now + 1000);
+  };
+  atMidnight();
 }

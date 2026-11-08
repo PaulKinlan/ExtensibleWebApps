@@ -99,8 +99,9 @@ export function pace({ kind, km, minutes }) {
   if (!km) return "";
   if (kind === "ride") return `${((km / minutes) * 60).toFixed(1)} km/h`;
   const per = kind === "swim" ? minutes / (km * 10) : minutes / km;
-  const m = Math.floor(per);
-  return `${m}:${String(Math.round((per - m) * 60)).padStart(2, "0")} ${kind === "swim" ? "/100m" : "/km"}`;
+  // Round the whole time to the second first, so 12:59.7 becomes 13:00, not 12:60.
+  const s = Math.round(per * 60);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} ${kind === "swim" ? "/100m" : "/km"}`;
 }
 
 const duration = (minutes) => (minutes >= 60 ? `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m` : `${minutes}m`);

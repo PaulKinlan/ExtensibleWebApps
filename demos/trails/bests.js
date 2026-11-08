@@ -12,10 +12,15 @@ export const manifest = {
 };
 
 const when = (date) => new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+/** Minutes as "m:ss", rounded to the second first so 12:59.7 shows as 13:00, not 12:60. */
+const minSec = (minutes) => {
+  const s = Math.round(minutes * 60);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+};
 const best = (list, score) => list.reduce((top, a) => (top === null || score(a) > score(top) ? a : top), null);
 
 export default async function (ctx) {
-  ctx.ui.views("bests.html").live("side", "bests", async (api) => {
+  const bests = ctx.ui.views("bests.html").live("side", "bests", async (api) => {
     const all = await api.call("data", "list", "activities");
     const of = (kind) => all.filter((a) => a.kind === kind);
     const tile = (id, label, a, value, unit) => (a ? { id, label, value, unit, from: `${a.title}, ${when(a.date)}`, kind: a.kind } : null);
@@ -36,10 +41,19 @@ export default async function (ctx) {
       tiles: [
         tile("run", "Longest run", run, run?.km.toFixed(1), "km"),
         tile("ride", "Longest ride", ride, ride?.km.toFixed(1), "km"),
-        tile("pace", "Fastest 5k+", fast, `${Math.floor(pace)}:${String(Math.round((pace % 1) * 60)).padStart(2, "0")}`, "/km"),
+        tile("pace", "Fastest 5k+", fast, minSec(pace), "/km"),
         tile("climb", "Biggest climb", climb, climb?.climb?.toLocaleString(), "m"),
         tile("swim", "Longest swim", swim, swim?.km.toFixed(1), "km"),
       ].filter(Boolean),
     };
   });
+  // "This month" moves on with the calendar: draw again at each local midnight.
+  const atMidnight = () => {
+    const now = new Date();
+    setTimeout(() => {
+      bests.refresh();
+      atMidnight();
+    }, new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now + 1000);
+  };
+  atMidnight();
 }

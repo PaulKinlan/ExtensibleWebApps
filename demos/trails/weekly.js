@@ -38,6 +38,34 @@ export default async function (ctx) {
   let weeks = [];
   let shown = [];
   let started = 0;
+  let animating = false;
+
+  /** Starts the grow animation, or restarts its clock if one is already running: never two at once. */
+  const animate = () => {
+    started = performance.now();
+    if (!canvas || animating) return;
+    animating = true;
+    requestAnimationFrame(frame);
+  };
+
+  /** The chart as words, for people who can't see it: each week's total, oldest first, and this week by kind. */
+  const describe = () => {
+    if (!weeks.length) return "";
+    const total = (w) => Math.round(Object.values(w.km).reduce((a, b) => a + b, 0));
+    const now = weeks.at(-1);
+    const kinds = Object.entries(now.km).filter(([, km]) => km > 0).map(([k, km]) => `${k} ${Math.round(km)}`);
+    return `This week ${total(now)} km${kinds.length ? ` (${kinds.join(", ")})` : ""}. Weeks before, oldest first: ${weeks.slice(0, -1).map((w) => `${w.label} ${total(w)} km`).join(", ")}.`;
+  };
+  const draw = () =>
+    ctx.ui.render("weeks", "weekly", {
+      type: "stack",
+      children: [
+        { type: "heading", text: "Twelve weeks" },
+        { type: "canvas", id: "weeks", width: W, height: H },
+        { type: "text", text: "Kilometres a week: runs, rides, hikes and swims, stacked.", tone: "muted" },
+        { type: "text", text: describe(), tone: "muted" },
+      ],
+    });
 
   const load = async () => {
     const first = monday(new Date());
@@ -53,8 +81,8 @@ export default async function (ctx) {
       if (i >= 0 && i < WEEKS && next[i].km[a.kind] !== undefined) next[i].km[a.kind] += a.km;
     }
     weeks = next;
-    started = performance.now();
-    if (canvas) requestAnimationFrame(frame);
+    draw();
+    animate();
   };
 
   const frame = (now) => {
@@ -113,20 +141,22 @@ export default async function (ctx) {
       }
     });
     if (grow < 1) requestAnimationFrame(frame);
+    else animating = false;
   };
 
   ctx.on("data:changed:activities", load);
   ctx.ui.onCanvas("weeks", (offscreen) => {
     canvas = offscreen;
-    requestAnimationFrame(frame);
+    animate();
   });
   await load();
-  ctx.ui.render("weeks", "weekly", {
-    type: "stack",
-    children: [
-      { type: "heading", text: "Twelve weeks" },
-      { type: "canvas", id: "weeks", width: W, height: H },
-      { type: "text", text: "Kilometres a week: runs, rides, hikes and swims, stacked.", tone: "muted" },
-    ],
-  });
+  // "This week" moves on with the calendar: load again at each local midnight.
+  const atMidnight = () => {
+    const now = new Date();
+    setTimeout(() => {
+      load();
+      atMidnight();
+    }, new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now + 1000);
+  };
+  atMidnight();
 }
