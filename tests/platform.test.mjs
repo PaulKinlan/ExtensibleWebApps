@@ -70,8 +70,8 @@ try {
   // ---- One tab ----
   const a = await openTab();
   t.a = a;
-  await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "plugin:ready").length >= 10, null, { timeout: 10000 });
-  check("all ten sandboxed plugins start in their own workers", (await a.evaluate(() => window.__host.workers.size)) === 10);
+  await a.waitForFunction(() => window.__host.traces.filter((e) => e.name === "plugin:ready").length >= 11, null, { timeout: 10000 });
+  check("all eleven sandboxed plugins start in their own workers", (await a.evaluate(() => window.__host.workers.size)) === 11);
 
   // Manifests are read before any code runs.
   const refused = await a.evaluate(() => window.__host.command("install", "export const manifest = { id: 'bad', name: 'Bad', permissions: ['ui'].concat(['network']) };\nexport default () => {};"));
@@ -122,9 +122,12 @@ export default (ctx) => {
   const onDisk = readFileSync(new globalThis.URL("../docs/api.md", import.meta.url), "utf8");
   check("docs/api.md is what the kernel prints about itself", reference.markdown === onDisk, reference.markdown === onDisk ? "" : "run npm run reference");
   const hookNames = await a.evaluate(() => window.__host.command("reference").then((r) => r.data.hooks.map((h) => h.name)));
-  check("the reference lists every hook and service the kernel has", ["data:changed", "data:beforeWrite", "note:open", "debug:trace"].every((h) => hookNames.includes(h)) && ["audio", "store", "files", "storage", "kernel", "settings", "data", "debug"].every((s) => reference.data.services.some((x) => x.name === s)));
+  check("the reference lists every hook and service the kernel has", ["debug:trace", "bench:ping", "commands:ran"].every((h) => hookNames.includes(h)) && ["audio", "files", "hooks", "storage", "kernel", "settings", "data", "debug"].every((s) => reference.data.services.some((x) => x.name === s)));
+  check("the kernel's reference has no app's hooks in it: the notes plugin's and its collection's are its own", !hookNames.some((h) => h.startsWith("notes:") || h.startsWith("note:") || h.startsWith("data:")), hookNames.filter((h) => /^(notes?|data):/.test(h)).join(" "));
   const wordCount = reference.data.plugins.find((p) => p.id === "word-count");
-  check("the live reference says which hooks each running plugin listens to", wordCount?.hooks.includes("note:open") && /## Installed now/.test(reference.live), wordCount?.hooks.join(" "));
+  check("the live reference says which hooks each running plugin listens to", wordCount?.hooks.includes("notes:open") && /## Installed now/.test(reference.live), wordCount?.hooks.join(" "));
+  const notesPlugin = reference.data.plugins.find((p) => p.id === "notes");
+  check("the live reference says which hooks a plugin defines", ["notes:open", "notes:change", "notes:save", "notes:close"].every((h) => notesPlugin?.defines.includes(h)), notesPlugin?.defines.join(" "));
   await a.evaluate(() => window.__host.command("install", `export const manifest = { id: 'reader', name: 'Reader', permissions: ['ui'] };
 export default async (ctx) => {
   const ref = await ctx.call('kernel', 'reference');
@@ -374,7 +377,7 @@ export default async (ctx) => {
   check("no-shouting.js blocks the write from its worker", true);
 
   // The gate.
-  check("the gate refuses a hook the manifest doesn't grant", await startupHas(a, `(e) => e.kind === "denied" && e.plugin === "sneaky" && e.name === "hook:intercept:data:beforeWrite"`));
+  check("the gate refuses a hook the manifest doesn't grant", await startupHas(a, `(e) => e.kind === "denied" && e.plugin === "sneaky" && e.name === "hook:intercept:data:beforeWrite:notes"`));
   check("the gate refuses a service the manifest doesn't grant", await startupHas(a, `(e) => e.kind === "denied" && e.plugin === "sneaky" && e.name === "audio"`));
 
   // Audio: DSP in an AudioWorklet, registered by a plugin in a worker.
@@ -416,17 +419,17 @@ export default async (ctx) => {
     const blocked = window.__host.traces.find((e) => e.kind === "remote" && e.plugin === "no-shouting" && e.detail?.includes("all capitals"));
     return blocked ? window.__host.traces.filter((e) => e.trace === blocked.trace).map((e) => `${e.kind}:${e.name}`) : [];
   });
-  check("a trace id links the click, the kernel dispatch and the plugin's answer", saveTrace.includes("dispatch:data:beforeWrite") && saveTrace.includes("remote:data:beforeWrite"), saveTrace.join(", "));
+  check("a trace id links the click, the kernel dispatch and the plugin's answer", saveTrace.includes("dispatch:data:beforeWrite:notes") && saveTrace.includes("remote:data:beforeWrite:notes"), saveTrace.join(", "));
   await a.fill("textarea", "Hello there\n\nOne two three four five six seven eight nine ten.");
   await a.waitForTimeout(400);
   await a.click("main button >> text=Save");
   await a.waitForSelector("main >> text=Saved");
   await a.waitForTimeout(300);
   const afterAwait = await a.evaluate(() => {
-    const changed = window.__host.traces.filter((e) => e.kind === "dispatch" && e.name === "data:changed" && e.trace).at(-1);
+    const changed = window.__host.traces.filter((e) => e.kind === "dispatch" && e.name === "data:changed:notes" && e.trace).at(-1);
     return changed ? window.__host.traces.filter((e) => e.trace === changed.trace).map((e) => `${e.kind}:${e.name}`) : [];
   });
-  check("the trace id survives the awaits between a write's check and its change event", afterAwait.includes("dispatch:data:beforeWrite") && afterAwait.includes("dispatch:data:changed") && afterAwait.includes("dispatch:note:save"), afterAwait.join(", "));
+  check("the trace id survives the awaits between a write's check and its change event", afterAwait.includes("dispatch:data:beforeWrite:notes") && afterAwait.includes("dispatch:data:changed:notes") && afterAwait.includes("dispatch:notes:save"), afterAwait.join(", "));
 
   // Change review: a plugin's write outside its own data shows a diff first.
   const messy = "Hello there   \n\n\n\nOne two three four five six seven eight nine ten.";
@@ -461,13 +464,13 @@ export default async (ctx) => {
   const mine = `${messy}\nMy newer line.`;
   await saveText(mine);
   await a.click(`${card} >> text=Accept`);
-  await a.waitForSelector("aside >> text=the note changed while the review was open");
+  await a.waitForSelector("aside >> text=The record changed while the review was open");
   check("accepting a review after the note changed doesn't overwrite the newer text", (await textarea()) === mine);
 
   await saveText(messy);
   await a.click("text=Tidy this note");
   await a.waitForSelector(card);
-  await a.click(`${card} >> text=Always allow in notes`);
+  await a.click(`${card} >> text=Always allow in data:notes`);
   await a.waitForFunction((t) => document.querySelector("textarea").value === t, tidied, { timeout: 5000 });
   await saveText(messy);
   const asked = await a.evaluate(() => window.__host.traces.filter((e) => e.name === "review:asked").length);
@@ -475,7 +478,7 @@ export default async (ctx) => {
   await a.waitForFunction((t) => document.querySelector("textarea").value === t, tidied, { timeout: 5000 });
   const askedAfter = await a.evaluate(() => window.__host.traces.filter((e) => e.name === "review:asked").length);
   check("“always allow” is remembered, so the next change goes through without asking", askedAfter === asked && !(await a.$(card)));
-  await a.waitForSelector('aside [data-key="plugins:tidy"] >> text=Changes notes without asking');
+  await a.waitForSelector('aside [data-key="plugins:tidy"] >> text=Changes data:notes without asking');
   await a.click('aside [data-key="plugins:tidy"] >> text=Forget');
   await a.waitForFunction(() => !document.querySelector('aside [data-key="plugins:tidy"]').textContent.includes("without asking"));
   check("the plugins panel lists the grant, and forgetting it takes it away", true);
@@ -544,15 +547,22 @@ export default async (ctx) => {
   check("plugin views appear in the second tab", (await b.textContent("aside")).includes("Tone"));
 
   // Hand over: close the spawner tab; the second tab starts the plugins again.
+  // The notes plugin's worker starts again too: an edit not saved yet, typed in the second tab, is still there after.
+  const unsaved = "Typed in the second tab, not saved yet";
+  await b.fill("textarea", unsaved);
+  await b.waitForFunction(() => window.__host.traces.some((e) => e.name === "storage.set" && e.plugin === "notes"), null, { timeout: 5000 }).catch(() => {});
+  await b.waitForTimeout(500);
   await a.close({ runBeforeUnload: true });
-  await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 11, null, { timeout: 10000 });
+  await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 12, null, { timeout: 10000 });
   check("closing the spawner tab moves the plugin workers to the other tab", true);
+  const draftKept = await b.waitForFunction((t) => document.querySelector("textarea")?.value === t, unsaved, { timeout: 5000 }).then(() => true, () => false);
+  check("an unsaved edit survives the notes plugin starting again in another tab", draftKept, await b.inputValue("textarea").catch(() => "no editor"));
   // A worker is there before its plugin has run, and "ready" comes before the plugin's own code: wait until
-  // word-count is ready in this tab and the kernel lists its note:open listener, or the click below can open the
+  // word-count is ready in this tab and the kernel lists its notes:open listener, or the click below can open the
   // note before it listens, and the status bar never fills.
   const bTab = await b.evaluate(() => window.__host.tab);
   await b.waitForFunction((t) => window.__host.traces.some((e) => e.name === "plugin:ready" && e.plugin === "word-count" && e.detail === `in tab ${t}`), bTab, { timeout: 10000 });
-  await b.waitForFunction(async () => (await window.__host.command("reference")).data.plugins.find((p) => p.id === "word-count")?.hooks.includes("note:open"), null, { timeout: 10000, polling: 100 });
+  await b.waitForFunction(async () => (await window.__host.command("reference")).data.plugins.find((p) => p.id === "word-count")?.hooks.includes("notes:open"), null, { timeout: 10000, polling: 100 });
   await b.click("nav >> text=Hello there");
   await b.waitForFunction(() => /\d+ words/.test(document.querySelector("footer").textContent), null, { timeout: 5000 });
   check("plugins work again after the handover", true, await status(b));
@@ -576,7 +586,7 @@ export default async (ctx) => {
   const c = await isolated.newPage();
   c.on("pageerror", (e) => errors.push(e.message));
   await c.goto(`${WORKBENCH}?kernel=dedicated`);
-  await c.waitForFunction(() => window.__host && window.__host.workers.size === 10, null, { timeout: 10000 });
+  await c.waitForFunction(() => window.__host && window.__host.workers.size === 11, null, { timeout: 10000 });
   check("the kernel also runs in a dedicated worker", (await c.textContent("#mode")).includes("dedicated worker"));
   await isolated.close();
 

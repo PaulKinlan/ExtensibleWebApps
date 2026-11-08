@@ -20,6 +20,22 @@ Needs: nothing.
 
 Adds a command the plugin answers: a palette lists it, its `keys` run it, and plugins with `commands` (an agent, through its tools) run it with `commands.run("<plugin>/<id>")`. The handler runs with this plugin's own rights; `by` says which plugin ran it, and what it returns goes back to the caller. Throwing fails the run. See the commands service.
 
+### ctx.hooks.call
+
+`ctx.hooks.call(key, value) → Promise<answer>`
+
+Needs: nothing.
+
+Runs one of the plugin's own serial, bail or waterfall hooks and waits for its listeners, each within the hook's time limit: a serial hook answers `{ block }` when a listener stops the action, a bail hook with the first answer, and a waterfall with value as the listeners changed it. Listening needs `hook:intercept:<id>:<key>`.
+
+### ctx.hooks.emit
+
+`ctx.hooks.emit(key, value) → Promise`
+
+Needs: nothing.
+
+Tells every listener of one of the plugin's own emit or parallel hooks (the manifest's `hooks`), with value. No other plugin can run it. Listeners hear it with `ctx.on("<id>:<key>", …)` and `hook:listen:<id>:<key>`.
+
 ### ctx.log
 
 `ctx.log(text, level?)`
@@ -544,6 +560,26 @@ Needs: `history`.
 
 Takes back the app's most recent write: the record goes back to how it was, with no review. If the record changed since, that step is dropped and the answer says so; the next undo takes the one before.
 
+### hooks
+
+The hooks a plugin defines in its manifest's `hooks`, named `<plugin>:<key>`. Only the plugin that defines a hook runs it; others listen with ctx.on, as for the kernel's own hooks.
+
+#### hooks.call
+
+`hooks.call(key, value)` → what the listeners answer: the first answer of a serial or bail hook ({ block } stops the action), or value as the listeners left it after a waterfall
+
+Needs: nothing.
+
+Runs one of the plugin's own serial, bail or waterfall hooks and waits for its listeners, each within the hook's time limit. ctx.hooks.call(key, value) is the same.
+
+#### hooks.emit
+
+`hooks.emit(key, value)` → nothing
+
+Needs: nothing.
+
+Tells every listener of one of the plugin's own emit or parallel hooks, with value. ctx.hooks.emit(key, value) is the same.
+
 ### kernel
 
 The kernel itself.
@@ -788,26 +824,6 @@ Needs: nothing.
 
 Saves a JSON value; null removes it. Up to 1 MB in all.
 
-### store
-
-The notes. They belong to the notes app, so a plugin's change to one is reviewed first.
-
-#### store.list
-
-`store.list()` → [{ id, title, text, updated }]
-
-Needs: `data:read:notes`.
-
-Every note, most recently changed first.
-
-#### store.put
-
-`store.put({ id?, text }, reason)` → { ok, id, outcome }
-
-Needs: `data:write:notes`, and the person's review.
-
-Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open.
-
 ### sync
 
 How a page in a space stands with it, and the drafts it kept when someone else changed a record first.
@@ -885,6 +901,8 @@ Needs: `transfer`, and the person's review.
 Asks the person for a CSV or JSON file and adds its rows to the collection, after one review of them all. Columns match fields by name or title; rows that don't fit the schema are skipped and listed; a row whose id is in the collection replaces that record. Only right after the person clicks, as the browser opens a file chooser only then.
 
 ## Hooks
+
+The kernel's own hooks. A plugin defines more in its manifest's `hooks`, named `<plugin>:<key>`, which only it runs (with `ctx.hooks`), and each collection has `data:beforeWrite:<collection>` and `data:changed:<collection>` (see Collections). Those last while their plugin is installed, so they are listed under Installed now.
 
 ### `agent:beforeTool`
 
@@ -998,22 +1016,6 @@ Mode: `emit`. Listening needs `commands`.
 
 Listeners get `{ name, plugin, id, by, as?, ok, error? }`.
 
-### `data:beforeWrite`
-
-Before a record is written. Return { block: reason } to stop the write.
-
-Mode: `serial`, 1000 ms per listener, fails open. Listening needs `hook:intercept:data:beforeWrite`.
-
-Listeners get `{ collection, id, before?, after }`.
-
-### `data:changed`
-
-A record was written.
-
-Mode: `emit`. Listening needs `hook:listen:data:changed`.
-
-Listeners get `{ collection, id, before?, after }`.
-
 ### `debug:trace`
 
 New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read.
@@ -1053,38 +1055,6 @@ Asks which language models are available. A provider returns { providers: [...pr
 Mode: `waterfall`, 2000 ms per listener, fails open. Listening needs `provide:llm`.
 
 Listeners get `{ providers: [{ id, name, model?, ready }] }`.
-
-### `note:change`
-
-The person typed in the open note (unsaved is true).
-
-Mode: `emit`. Listening needs `hook:listen:note:change`.
-
-Listeners get `{ path, url, title, siteName, text, bodyStart, selection, unsaved }`.
-
-### `note:close`
-
-The open note was closed.
-
-Mode: `emit`. Listening needs `hook:listen:note:close`.
-
-Listeners get `null`.
-
-### `note:open`
-
-The person opened a note.
-
-Mode: `emit`. Listening needs `hook:listen:note:open`.
-
-Listeners get `{ path, url, title, siteName, text, bodyStart, selection, unsaved }`.
-
-### `note:save`
-
-The open note was saved, by the person or by a reviewed write.
-
-Mode: `emit`. Listening needs `hook:listen:note:save`.
-
-Listeners get `{ path, url, title, siteName, text, bodyStart, selection, unsaved }`.
 
 ### `plugins:changed`
 
@@ -1160,9 +1130,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `bus:send:<to>` | Call bus.send. |
 | `commands` | Call commands.list, commands.run. |
 | `data:read:<collection>` | Call data.list, data.get. |
-| `data:read:notes` | Call store.list. |
 | `data:write:<collection>` | Call data.put, data.delete. |
-| `data:write:notes` | Call store.put. |
 | `debug:read` | Call debug.recent, debug.app. |
 | `email` | Call email.send. |
 | `files:<folder>` | Call files.read, files.write. |
@@ -1183,8 +1151,8 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 
 | Editor permission | Capabilities |
 | --- | --- |
-| `post:read` | `hook:listen:note:*` |
-| `post:write` | `hook:intercept:data:beforeWrite` |
+| `post:read` | `hook:listen:notes:*` |
+| `post:write` | `data:read:notes`, `hook:intercept:data:beforeWrite:notes` |
 | `ui` | `ui` |
 
 ## Manifest
@@ -1205,6 +1173,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin's view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `theme` | Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only --bg, --bg-2, --surface, --fg, --fg-2, --border, --accent, --accent-fg, --ok, --warn, --danger, --radius-sm, --radius, --radius-lg, --shadow-1, --font, --mono, color-scheme, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md. |
+| `hooks` | Optional. Up to 20 hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook `<id>:<key>` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (1000 ms if not given, at most 5000); an agent that checks it has agentTimeoutMs (at most 30 s; without one, agents can't check it). A hook lasts while its plugin is installed. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
 Reserved ids, which no plugin can take:
@@ -1219,11 +1188,11 @@ Reserved ids, which no plugin can take:
 - `email`
 - `files`
 - `history`
+- `hooks`
 - `host`
 - `kernel`
 - `llm`
 - `net`
-- `notes`
 - `page`
 - `plugins`
 - `review`
@@ -1238,7 +1207,7 @@ Reserved ids, which no plugin can take:
 - `tools`
 - `transfer`
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`.
 
 ## Collections
 

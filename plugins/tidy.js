@@ -1,14 +1,14 @@
 // Tidies the open note and exports it as Markdown. Both are writes outside
-// this plugin's own data (the note belongs to the notes app; the file is in
-// the data folder), so the person reviews a diff before either happens. Its
-// own counts live in its own storage, which needs no review.
+// this plugin's own data (the note is in the notes plugin's collection; the
+// file is in the data folder), so the person reviews a diff before either
+// happens. Its own counts live in its own storage, which needs no review.
 
 export const manifest = {
   id: "tidy",
   name: "Tidy",
   description: "Tidies the open note's spacing and exports it as Markdown, to show change review.",
   version: "1.0.0",
-  permissions: ["ui", "hook:listen:note:open", "hook:listen:note:save", "hook:listen:note:close", "data:write:notes", "files:exports"],
+  permissions: ["ui", "hook:listen:notes:open", "hook:listen:notes:save", "hook:listen:notes:close", "data:write:notes", "files:exports"],
   order: 25,
 };
 
@@ -41,12 +41,13 @@ export default async function (ctx) {
     note = snapshot;
     draw();
   };
-  ctx.on("note:open", (snapshot) => {
+  // The notes plugin's own hooks: notes:<key>.
+  ctx.on("notes:open", (snapshot) => {
     status = "";
     track(snapshot);
   });
-  ctx.on("note:save", track);
-  ctx.on("note:close", () => track(null));
+  ctx.on("notes:save", track);
+  ctx.on("notes:close", () => track(null));
 
   ctx.ui.onEvent(async (action) => {
     if (!note || (action !== "tidy" && action !== "export")) return;
@@ -58,10 +59,10 @@ export default async function (ctx) {
           status = "Already tidy";
         } else {
           // The person may open another note while the review is open; remember which one this is.
-          const target = note.path;
-          const id = target.replace(/^notes\//, "").replace(/\.md$/, "");
-          const result = await here.call("store", "put", { id, text }, "Trim trailing spaces and extra blank lines");
-          if (note?.path === target) note = { ...note, text };
+          const { id, title } = note;
+          const result = await here.call("data", "put", "notes", { id, title, text }, "Trim trailing spaces and extra blank lines");
+          if (!result.ok) throw new Error(`Not saved: ${result.error ?? (result.errors ?? []).join(", ")}`);
+          if (note?.id === id) note = { ...note, text };
           counts.tidied++;
           status = `Tidied (${result.outcome})`;
         }

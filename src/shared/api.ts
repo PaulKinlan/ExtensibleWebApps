@@ -64,6 +64,14 @@ export interface CommandSpec {
 export interface Api {
   on(name: string, handler: (...args: any[]) => unknown): () => void;
   call(service: string, method: string, ...args: unknown[]): Promise<unknown>;
+  /**
+   * The hooks this plugin defines in its manifest's `hooks`: `emit("open", note)` tells the listeners of
+   * `<id>:open`; `call("save", change)` runs a serial, bail or waterfall hook and gives back the answer.
+   */
+  hooks: {
+    emit(key: string, value?: unknown): Promise<void>;
+    call(key: string, value?: unknown): Promise<unknown>;
+  };
   ui: {
     /** Draws a view: HTML (a string, or what `ui.html` returns), a JSON view, or null to remove it. */
     render(slot: Slot, key: string, view: View | string | null, order?: number): void;

@@ -10,7 +10,7 @@ export const manifest = {
 };
 ```
 
-Ask for exactly what you use. The person sees the list in Customize, view source and the plugin editor, and a short list is easier to trust. A trailing `*` grants everything starting with what comes before it (`hook:listen:note:*`), but use it sparingly.
+Ask for exactly what you use. The person sees the list in Customize, view source and the plugin editor, and a short list is easier to trust. A trailing `*` grants everything starting with what comes before it (`hook:listen:notes:*`), but use it sparingly.
 
 ```mermaid
 flowchart LR
@@ -75,4 +75,4 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 
 ## Editor permissions
 
-Plugins written for the Markdown editor can use its older permission names, which stand for capabilities: `post:read` is `hook:listen:note:*`, and `post:write` is `hook:intercept:data:beforeWrite`.
+Plugins written for the Markdown editor can use its older permission names, which stand for capabilities: `post:read` is `hook:listen:notes:*`, and `post:write` is `data:read:notes` and `hook:intercept:data:beforeWrite:notes`: the notes plugin's hooks and collection.

@@ -1,5 +1,5 @@
-// Change review: a write outside a plugin's own data (a note, which belongs
-// to the notes app, or a file in the data folder) is shown to the person as
+// Change review: a write outside a plugin's own data (a record in another
+// plugin's collection, or a file in the data folder) is shown to the person as
 // a diff with the plugin's reason before it happens. They accept it once,
 // allow that plugin to change that place without asking again, or decline.
 // A request nobody answers within five minutes is cancelled.
@@ -33,7 +33,7 @@ export interface Request {
   /** The plugin instance that asked; its request is cancelled if that instance stops. */
   instance: string;
   name: string; // plugin's display name
-  /** What a grant covers: `notes`, or `files:<folder>`. */
+  /** What a grant covers: `data:<collection>`, or `files:<folder>`. */
   place: string;
   /** What is being changed, as the person should read it. */
   target: string;

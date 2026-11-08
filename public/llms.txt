@@ -14,6 +14,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [Styling](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/styling.md): design tokens, plugin stylesheets, page overrides
 - [Sharing data between apps](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/sharing-data-between-apps.md): one app reading another's collection
 - [Commands and the command palette](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/commands.md): commands plugins add, run from a palette, a shortcut or an agent
+- [Hooks of your own](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/plugin-hooks.md): a manifest's `hooks`, named <plugin>:<key>, run with ctx.hooks.emit or ctx.hooks.call, listened to with ctx.on
 - [Routes and the service worker](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/routes.md): plugins answering links, forms and fetches
 - [Agents](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/agents.md): a Markdown file linked with <link rel="agent">, run as a plugin that asks a model and calls tools through the gate
 - [Deploying one app on its own](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/deploying-an-app.md): npm run deploy:app puts one app on a Cloudflare Worker of its own, with the whole platform

@@ -1,37 +1,20 @@
-// The store: a trusted plugin that provides the `store` service. Notes are
-// kept in one JSON file in the kernel's folder. The same folder holds the
-// plugins installed with the data (`plugins/<id>.js`) and their settings
-// (`plugins.json`), so a folder carries its own extensions with it.
+// The store: the kernel's data folder. It holds the plugins installed with
+// the data (`plugins/<id>.js`), their settings (`plugins.json`), the
+// collections' records and everything else the kernel keeps, so a folder
+// carries its own data and extensions with it.
 //
 // The folder is the `files` seam (src/seams/), so the same store works on any
 // host. In the browser the host passes a folder handle in (the origin private
 // file system, or a folder the person picked), which crosses into workers.
 
 import { Service } from "cordis";
-import type { Dispatch } from "../shared/protocol";
 import type { Files } from "../seams/index.ts";
 import { opfsFiles } from "../seams/opfs.ts";
 import { record } from "./trace";
 
-export interface Note {
-  id: string;
-  title: string;
-  text: string;
-  updated: number;
-}
-
-export interface Change {
-  collection: "notes";
-  id: string;
-  before?: Note;
-  after: Note;
-}
-
-const FILE = "notes.json";
 const PLUGINS = "plugins";
 
 export class Store extends Service {
-  notes = new Map<string, Note>();
   private files?: Files;
   ready: Promise<void>;
   private open!: (folder: FileSystemDirectoryHandle | Files | undefined) => void;
@@ -50,37 +33,6 @@ export class Store extends Service {
     const handle = (f: typeof folder): f is FileSystemDirectoryHandle => typeof (f as FileSystemDirectoryHandle)?.getFileHandle === "function";
     this.files = folder && !handle(folder) ? folder : opfsFiles(folder ?? (await navigator.storage.getDirectory()));
     record({ kind: "lifecycle", name: "store:open", detail: !folder ? "worker's own OPFS" : handle(folder) ? "folder handle from the tab" : "files from the host" });
-    try {
-      for (const note of JSON.parse((await this.files.readText(FILE)) ?? "[]") as Note[]) this.notes.set(note.id, note);
-    } catch {
-      // A notes file that can't be read starts empty, as before.
-    }
-  }
-
-  list(): Note[] {
-    return [...this.notes.values()].sort((a, b) => b.updated - a.updated);
-  }
-
-  get(id: string): Note | undefined {
-    return this.notes.get(id);
-  }
-
-  /**
-   * Writes a note unless a `data:beforeWrite` listener blocks it. With
-   * `expected` (the text the person reviewed, or null for "no such note"),
-   * the write only happens if the note still matches it at that moment.
-   */
-  async put(note: Note, dispatch: Dispatch = {}, expected?: string | null): Promise<{ ok: true } | { ok: false; reason: string }> {
-    const change: Change = { collection: "notes", id: note.id, before: this.notes.get(note.id), after: note };
-    const ctx = this.ctx as any;
-    const verdict = await ctx.serial(dispatch, "data:beforeWrite", change);
-    if (verdict && typeof verdict === "object" && "block" in verdict) return { ok: false, reason: String(verdict.block) };
-    // Checked after the awaits, right before the write, so nothing can slip in between.
-    if (expected !== undefined && (this.notes.get(note.id)?.text ?? null) !== expected) return { ok: false, reason: "the note changed while the review was open" };
-    this.notes.set(note.id, note);
-    await this.flush();
-    ctx.emit(dispatch, "data:changed", change);
-    return { ok: true };
   }
 
   /** Reads a JSON file from the data folder, or `fallback` when there is none. */
@@ -170,10 +122,5 @@ export class Store extends Service {
   async removePlugin(id: string): Promise<void> {
     await this.ready;
     await this.files!.remove(`${PLUGINS}/${id}.js`);
-  }
-
-  private async flush(): Promise<void> {
-    if (!this.files) return;
-    await this.files.write(FILE, JSON.stringify(this.list()));
   }
 }
