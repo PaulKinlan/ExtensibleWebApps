@@ -1,0 +1,292 @@
+<!--
+  The board's two views. board.js sends:
+
+  board  { shown, columns: [{ id, title, hint, count, points, cards }] }, each
+         card with its fields plus { initial, labels: [{ name }], loud,
+         first, last }
+  card   { shown, missing, card, columns, priorities, people, labels,
+         covers, confirming }: one card, and the choices for each field,
+         each choice with `on` when it is the card's
+
+  There are no style attributes in a view, so everything that varies with
+  the data is an attribute the CSS below selects: data-cover="ember",
+  data-label="bug", data-person="Mei", data-priority="urgent". A whole-hole
+  attribute such as data-loud="{{c.loud}}" is there only when it is true.
+
+  This <style> reaches only the views board.js draws, and sits under the
+  page's own styles, so app.html can still restyle any of it.
+-->
+<style>
+  /* ---------- The board ---------- */
+  .board {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(236px, 1fr);
+    gap: var(--space-4);
+    overflow-x: auto;
+    padding: var(--space-1) var(--space-1) var(--space-4);
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: var(--space-1);
+  }
+  .column {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-3);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    scroll-snap-align: start;
+  }
+  .column-head { display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-1); }
+  .column-head h2 { margin: 0; font-size: var(--text-md); letter-spacing: 0.01em; }
+  .column-head .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--stage); box-shadow: 0 0 0 3px color-mix(in srgb, var(--stage) 25%, transparent); }
+  .column-head .count { margin-left: auto; font: 600 var(--text-sm) var(--mono); color: var(--fg-2); }
+  .column[data-column="ideas"] { --stage: #a78bfa; }
+  .column[data-column="next"] { --stage: #60a5fa; }
+  .column[data-column="doing"] { --stage: #f59e0b; }
+  .column[data-column="review"] { --stage: #f472b6; }
+  .column[data-column="done"] { --stage: #34d399; }
+  .cards { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+  .empty { margin: 0; padding: var(--space-4) var(--space-3); text-align: center; color: var(--fg-2); font-size: var(--text-sm); border: 1.5px dashed var(--border); border-radius: var(--radius); }
+
+  /* ---------- A card ---------- */
+  .card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 1px 2px light-dark(rgb(15 23 42 / 0.06), rgb(0 0 0 / 0.4));
+    transition: transform var(--duration) var(--ease), box-shadow var(--duration) var(--ease), border-color var(--duration) var(--ease);
+  }
+  .card:hover, .card:focus-within { transform: translateY(-2px); box-shadow: 0 10px 24px -8px light-dark(rgb(15 23 42 / 0.25), rgb(0 0 0 / 0.7)); border-color: color-mix(in srgb, var(--accent) 35%, var(--border)); }
+  .card[data-column="done"] .title { color: var(--fg-2); }
+  .card[data-loud]::before { content: ""; position: absolute; inset: 10px auto 10px -1px; width: 3px; border-radius: 0 3px 3px 0; background: var(--warn); }
+  .card[data-priority="urgent"]::before { background: var(--danger); }
+  .cover { height: 56px; margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) 0; border-radius: var(--radius) var(--radius) 0 0; }
+  .title { margin: 0; font-weight: 600; font-size: var(--text-md); line-height: 1.35; }
+  /* The whole card is the link to its screen; the buttons sit above it. */
+  .title a { color: inherit; text-decoration: none; }
+  .title a::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+  .title a:focus-visible { outline: none; }
+  .card:has(.title a:focus-visible) { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--text-sm); color: var(--fg-2); }
+  .meta .end { margin-left: auto; display: flex; gap: 2px; position: relative; z-index: 1; }
+  .points { font: 600 0.75rem var(--mono); padding: 1px 6px; border-radius: 999px; background: var(--bg-2); color: var(--fg-2); }
+  .move { height: 24px; width: 24px; padding: 0; border-radius: 50%; border-color: transparent; background: transparent; color: var(--fg-2); opacity: 0; transition: opacity var(--duration) var(--ease), background var(--duration) var(--ease); }
+  .move:hover { background: var(--bg-2); color: var(--fg); }
+  .move:disabled { visibility: hidden; }
+  .card:hover .move, .card:focus-within .move { opacity: 1; }
+  @media (hover: none) { .move { opacity: 1; } }
+  /* Other plugins' badges land in this room. Each arrives wrapped in a block the host adds, so the room lays them out inline. */
+  .badges { display: contents; }
+  .badges > [data-plugin], .badges .html-view { display: inline-flex; }
+
+  /* ---------- Shared pieces: labels, avatars, covers ---------- */
+  .labels { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .label { --hue: var(--fg-2); display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; text-transform: capitalize; color: color-mix(in srgb, var(--hue) 75%, var(--fg)); background: color-mix(in srgb, var(--hue) 14%, transparent); }
+  .label::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--hue); }
+  [data-label="design"] { --hue: #8b5cf6; }
+  [data-label="build"] { --hue: #3b82f6; }
+  [data-label="research"] { --hue: #14b8a6; }
+  [data-label="bug"] { --hue: #ef4444; }
+  [data-label="words"] { --hue: #d97706; }
+  .avatar { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 50%; font: 700 0.7rem var(--font); color: #fff; background: var(--fg-2); box-shadow: 0 0 0 2px var(--surface); }
+  [data-person="Mei"] { --person: linear-gradient(135deg, #f472b6, #8b5cf6); }
+  [data-person="Kofi"] { --person: linear-gradient(135deg, #34d399, #0ea5e9); }
+  [data-person="Ines"] { --person: linear-gradient(135deg, #fbbf24, #f97316); }
+  [data-person="Rafa"] { --person: linear-gradient(135deg, #60a5fa, #6366f1); }
+  [data-person="Sam"] { --person: linear-gradient(135deg, #a3e635, #14b8a6); }
+  .avatar[data-person] { background: var(--person); }
+  [data-cover="dawn"] { --cover: linear-gradient(120deg, #fbc2eb 0%, #a6c1ee 100%); }
+  [data-cover="lagoon"] { --cover: linear-gradient(120deg, #4facfe 0%, #00f2fe 100%); }
+  [data-cover="meadow"] { --cover: linear-gradient(120deg, #d4fc79 0%, #96e6a1 100%); }
+  [data-cover="ember"] { --cover: linear-gradient(120deg, #f6d365 0%, #fda085 100%); }
+  [data-cover="dusk"] { --cover: linear-gradient(120deg, #667eea 0%, #764ba2 100%); }
+  [data-cover="none"] { --cover: repeating-linear-gradient(45deg, var(--bg-2) 0 6px, var(--surface) 6px 12px); }
+  .cover, .hero, .swatch { background: var(--cover, var(--bg-2)); }
+
+  /* ---------- Adding a card ---------- */
+  .add input { width: 100%; box-sizing: border-box; height: 36px; padding: 0 var(--space-3); font: inherit; color: var(--fg); background: transparent; border: 1.5px dashed var(--border); border-radius: var(--radius); transition: border-color var(--duration) var(--ease), background var(--duration) var(--ease); }
+  .add input:hover { border-color: color-mix(in srgb, var(--stage) 60%, var(--border)); }
+  .add input:focus { outline: none; border-style: solid; border-color: var(--stage); background: var(--surface); }
+
+  /* ---------- The card screen ---------- */
+  .sheet { max-width: 960px; margin: 0 auto; border-radius: var(--radius-lg); overflow: hidden; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 24px 48px -24px light-dark(rgb(15 23 42 / 0.35), rgb(0 0 0 / 0.8)); }
+  .hero { position: relative; min-height: 132px; padding: var(--space-4) var(--space-5); display: flex; flex-direction: column; justify-content: space-between; gap: var(--space-4); }
+  .hero[data-cover="none"] { min-height: 88px; }
+  .hero a { align-self: flex-start; padding: 4px 12px; border-radius: 999px; font-size: var(--text-sm); font-weight: 600; text-decoration: none; color: #0f172a; background: rgb(255 255 255 / 0.75); }
+  .hero a:hover { background: #fff; }
+  .hero .stage { align-self: flex-start; padding: 2px 10px; border-radius: 999px; font-size: var(--text-sm); font-weight: 600; color: #fff; background: rgb(15 23 42 / 0.45); }
+  .sheet-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: var(--space-5); padding: var(--space-5); }
+  .title-input { width: 100%; box-sizing: border-box; padding: var(--space-1) 0; font: 700 var(--text-2xl)/1.2 var(--font); color: var(--fg); background: transparent; border: 0; border-bottom: 2px solid transparent; }
+  .title-input:hover { border-bottom-color: var(--border); }
+  .title-input:focus { outline: none; border-bottom-color: var(--accent); }
+  .props { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-3) var(--space-4); align-items: center; margin: var(--space-4) 0; }
+  .props > .name { font-size: var(--text-sm); color: var(--fg-2); font-weight: 600; }
+  .notes { width: 100%; box-sizing: border-box; min-height: 140px; padding: var(--space-3); font: var(--text-md)/1.6 var(--font); color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); resize: vertical; }
+  .notes:focus { outline: 3px solid color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
+  .side { display: flex; flex-direction: column; gap: var(--space-4); }
+
+  /* Choices drawn from plain radios and checkboxes: the input is hidden but still focusable, the label is what shows. */
+  .choices { display: flex; flex-wrap: wrap; gap: 6px; }
+  .choices input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+  .choices label { cursor: pointer; user-select: none; transition: background var(--duration) var(--ease), box-shadow var(--duration) var(--ease), transform var(--duration) var(--ease); }
+  .choices input:focus-visible + label { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .segmented { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border-radius: 999px; background: var(--bg-2); }
+  .segmented label { text-transform: capitalize; padding: 4px 12px; border-radius: 999px; font-size: var(--text-sm); color: var(--fg-2); }
+  .segmented input:checked + label { background: var(--surface); color: var(--fg); font-weight: 600; box-shadow: 0 1px 3px light-dark(rgb(15 23 42 / 0.15), rgb(0 0 0 / 0.5)); }
+  .segmented[data-kind="priority"] input:checked + label[data-value="high"] { color: var(--warn); }
+  .segmented[data-kind="priority"] input:checked + label[data-value="urgent"] { color: #fff; background: var(--danger); }
+  .people label .avatar { width: 32px; height: 32px; font-size: 0.85rem; opacity: 0.45; filter: saturate(0.4); transition: opacity var(--duration) var(--ease), filter var(--duration) var(--ease), transform var(--duration) var(--ease); }
+  .people label:hover .avatar { opacity: 0.8; }
+  .people input:checked + label .avatar { opacity: 1; filter: none; transform: scale(1.1); box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+  .chips label.label { display: inline-flex; flex-direction: row; padding: 3px 10px; font-size: var(--text-sm); opacity: 0.55; }
+  .chips input:checked + label.label { opacity: 1; box-shadow: inset 0 0 0 1.5px var(--hue); }
+  .swatch { display: block; width: 36px; height: 24px; border-radius: 6px; box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.08); }
+  .covers input:checked + label .swatch { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+  .fields { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+  .fields input { height: 32px; padding: 0 var(--space-2); font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); }
+  .fields input[type="number"] { width: 5rem; }
+  .danger-zone { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; padding-top: var(--space-4); border-top: 1px solid var(--border); }
+  .danger-zone button[data-action="delete"] { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+  .danger-zone[data-confirming] button[data-action="delete"] { color: #fff; background: var(--danger); border-color: var(--danger); }
+
+  @media (max-width: 720px) {
+    .board { grid-auto-columns: 84%; gap: var(--space-3); }
+    .sheet-body { grid-template-columns: minmax(0, 1fr); padding: var(--space-4); }
+    .hero { padding: var(--space-3) var(--space-4); }
+    .props { grid-template-columns: minmax(0, 1fr); gap: var(--space-1); }
+    .props > .name { margin-top: var(--space-2); }
+    .title-input { font-size: var(--text-xl); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .card, .card:hover, .card:focus-within { transition: none; transform: none; }
+  }
+</style>
+
+<template id="board">
+  <template if="shown">
+    <div class="board" role="list" aria-label="Board">
+      <template for="col of columns">
+        <section class="column" key="{{col.id}}" data-column="{{col.id}}" role="listitem" aria-label="{{col.title}}">
+          <header class="column-head" data-column="{{col.id}}" data-count="{{col.count}}" data-points="{{col.points}}">
+            <span class="dot" aria-hidden="true"></span>
+            <h2>{{col.title}}</h2>
+            <span class="count" title="{{col.points}} points">{{col.count}}</span>
+          </header>
+          <template if="col.cards.length">
+            <ul class="cards">
+              <template for="c of col.cards">
+                <li class="card" key="{{c.id}}" data-id="{{c.id}}" data-column="{{c.column}}" data-priority="{{c.priority}}" data-assignee="{{c.assignee}}" data-loud="{{c.loud}}">
+                  <template if="c.cover"><div class="cover" data-cover="{{c.cover}}"></div></template>
+                  <template if="c.labels.length">
+                    <ul class="labels" aria-label="Labels">
+                      <template for="l of c.labels"><li class="label" data-label="{{l.name}}">{{l.name}}</li></template>
+                    </ul>
+                  </template>
+                  <h3 class="title"><a href="card/{{c.id}}">{{c.title}}</a></h3>
+                  <div class="meta">
+                    <template if="c.assignee"><span class="avatar" data-person="{{c.assignee}}" title="{{c.assignee}}">{{c.initial}}</span></template>
+                    <template if="c.points"><span class="points" title="Points">{{c.points}} pt</span></template>
+                    <slot class="badges" name="board.card.badges" data-id="{{c.id}}" data-due="{{c.due}}" data-column="{{c.column}}" data-title="{{c.title}}"></slot>
+                    <span class="end">
+                      <button class="move" data-action="move" data-value="{{c.id}}|-1" disabled="{{c.first}}" aria-label="Move back a stage" title="Move back">‹</button>
+                      <button class="move" data-action="move" data-value="{{c.id}}|1" disabled="{{c.last}}" aria-label="Move on a stage" title="Move on">›</button>
+                    </span>
+                  </div>
+                </li>
+              </template>
+            </ul>
+          </template>
+          <template if="!col.cards.length"><p class="empty">{{col.hint}}</p></template>
+          <form class="add" data-action="add:{{col.id}}">
+            <input name="title" placeholder="+ Add a card" aria-label="Add a card to {{col.title}}" maxlength="140" autocomplete="off">
+          </form>
+        </section>
+      </template>
+    </div>
+  </template>
+</template>
+
+<template id="card">
+  <template if="shown">
+    <template if="missing">
+      <ui-empty heading="That card isn't on the board any more">
+        <p><a href="./">Back to the board</a></p>
+      </ui-empty>
+    </template>
+    <template if="card">
+      <article class="sheet" data-id="{{card.id}}">
+        <header class="hero" data-cover="{{card.cover}}">
+          <a href="./">← Board</a>
+          <span class="stage">{{card.stage}}</span>
+        </header>
+        <div class="sheet-body">
+          <div>
+            <input class="title-input" data-action="set:title" value="{{card.title}}" aria-label="Title" maxlength="140" required>
+            <div class="props">
+              <span class="name">Stage</span>
+              <div class="choices segmented" role="radiogroup" aria-label="Stage">
+                <template for="o of columns">
+                  <input type="radio" name="stage" id="stage-{{o.value}}" value="{{o.value}}" checked="{{o.on}}" data-action="set:column">
+                  <label for="stage-{{o.value}}">{{o.title}}</label>
+                </template>
+              </div>
+              <span class="name">Priority</span>
+              <div class="choices segmented" data-kind="priority" role="radiogroup" aria-label="Priority">
+                <template for="o of priorities">
+                  <input type="radio" name="priority" id="priority-{{o.value}}" value="{{o.value}}" checked="{{o.on}}" data-action="set:priority">
+                  <label for="priority-{{o.value}}" data-value="{{o.value}}">{{o.value}}</label>
+                </template>
+              </div>
+              <span class="name">Who</span>
+              <div class="choices people" role="radiogroup" aria-label="Who">
+                <template for="o of people">
+                  <input type="radio" name="assignee" id="person-{{o.value}}" value="{{o.value}}" checked="{{o.on}}" data-action="set:assignee">
+                  <label for="person-{{o.value}}" title="{{o.value}}"><span class="avatar" data-person="{{o.value}}">{{o.initial}}</span></label>
+                </template>
+              </div>
+              <span class="name">Labels</span>
+              <div class="choices chips">
+                <template for="l of labels">
+                  <input type="checkbox" id="label-{{l.name}}" checked="{{l.on}}" data-action="label:{{l.name}}">
+                  <label for="label-{{l.name}}" class="label" data-label="{{l.name}}">{{l.name}}</label>
+                </template>
+              </div>
+              <span class="name">Cover</span>
+              <div class="choices covers" role="radiogroup" aria-label="Cover">
+                <template for="o of covers">
+                  <input type="radio" name="cover" id="cover-{{o.value}}" value="{{o.value}}" checked="{{o.on}}" data-action="set:cover">
+                  <label for="cover-{{o.value}}" title="{{o.value}}"><span class="swatch" data-cover="{{o.value}}"></span></label>
+                </template>
+              </div>
+              <span class="name">Due &amp; size</span>
+              <div class="fields">
+                <input type="date" value="{{card.due}}" data-action="set:due" aria-label="Due">
+                <input type="number" min="0" max="13" value="{{card.points}}" data-action="set:points" aria-label="Points" placeholder="pts">
+              </div>
+            </div>
+            <textarea class="notes" data-action="set:notes" placeholder="Notes, links, what done looks like…" aria-label="Notes" maxlength="4000">{{card.notes}}</textarea>
+          </div>
+          <div class="side">
+            <!-- A room for other plugins: checklist.js draws the card's steps here. -->
+            <slot name="board.card.detail" data-id="{{card.id}}" data-title="{{card.title}}"></slot>
+            <div class="danger-zone" data-confirming="{{confirming}}">
+              <template if="!confirming"><button type="button" data-action="delete">Delete card</button></template>
+              <template if="confirming">
+                <button type="button" data-action="delete">Yes, delete it</button>
+                <button type="button" data-action="keep">Keep it</button>
+              </template>
+            </div>
+          </div>
+        </div>
+      </article>
+    </template>
+  </template>
+</template>

@@ -1,0 +1,58 @@
+<!--
+  checklist.js's two views.
+
+  count  { done, total, all }: the badge on a card; data-all is there when
+         every step is done, and turns it green
+  steps  { card, steps: [{ id, text, done }], done, total, all }: the
+         checklist on the card's screen
+-->
+<style>
+  .count { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border-radius: 999px; font: 600 0.72rem var(--mono); color: var(--fg-2); background: var(--bg-2); }
+  .count::before { content: "☑"; font-family: var(--font); }
+  .count[data-all] { color: light-dark(#047857, #6ee7b7); background: color-mix(in srgb, var(--ok) 16%, transparent); }
+
+  .checklist { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--bg-2); }
+  .checklist h3 { display: flex; align-items: baseline; margin: 0; font-size: var(--text-md); }
+  .checklist h3 small { margin-left: auto; font: 600 var(--text-sm) var(--mono); color: var(--fg-2); }
+  .checklist progress { width: 100%; height: 8px; border: 0; border-radius: 999px; overflow: hidden; appearance: none; background: color-mix(in srgb, var(--fg) 10%, transparent); }
+  .checklist progress::-webkit-progress-bar { background: transparent; }
+  .checklist progress::-webkit-progress-value { border-radius: 999px; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #22d3ee)); transition: width var(--duration) var(--ease); }
+  .checklist progress::-moz-progress-bar { border-radius: 999px; background: var(--accent); }
+  .checklist[data-all] progress::-webkit-progress-value { background: var(--ok); }
+  .checklist[data-all] progress::-moz-progress-bar { background: var(--ok); }
+  .checklist ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
+  .checklist li { display: flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-2); border-radius: var(--radius); transition: background var(--duration) var(--ease); }
+  .checklist li:hover { background: color-mix(in srgb, var(--surface) 80%, transparent); }
+  .checklist label { flex: 1; display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
+  .checklist input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+  .checklist li[data-done] label span { color: var(--fg-2); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--fg-2) 60%, transparent); }
+  .checklist .remove { height: 22px; width: 22px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--fg-2); opacity: 0; }
+  .checklist li:hover .remove, .checklist li:focus-within .remove { opacity: 1; }
+  @media (hover: none) { .checklist .remove { opacity: 1; } }
+  .checklist form input { width: 100%; box-sizing: border-box; height: 34px; padding: 0 var(--space-3); font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .checklist form input:focus { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); border-color: var(--accent); }
+  .checklist .cheer { margin: 0; font-size: var(--text-sm); color: light-dark(#047857, #6ee7b7); font-weight: 600; }
+</style>
+
+<template id="count">
+  <span class="count" data-all="{{all}}" title="{{done}} of {{total}} steps done">{{done}}/{{total}}</span>
+</template>
+
+<template id="steps">
+  <section class="checklist" data-all="{{all}}" aria-label="Checklist">
+    <h3>Checklist <small>{{done}}/{{total}}</small></h3>
+    <template if="total"><progress value="{{done}}" max="{{total}}">{{done}} of {{total}}</progress></template>
+    <template if="all"><p class="cheer">Every step done. Ready to move on?</p></template>
+    <ul>
+      <template for="s of steps">
+        <li key="{{s.id}}" data-done="{{s.done}}">
+          <label><input type="checkbox" checked="{{s.done}}" data-action="tick:{{s.id}}"> <span>{{s.text}}</span></label>
+          <button class="remove" data-action="remove:{{s.id}}" aria-label="Remove {{s.text}}" title="Remove">×</button>
+        </li>
+      </template>
+    </ul>
+    <form data-action="add:{{card}}">
+      <input name="text" placeholder="+ Add a step" aria-label="Add a step" maxlength="200" autocomplete="off">
+    </form>
+  </section>
+</template>
