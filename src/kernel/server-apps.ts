@@ -7,7 +7,8 @@
 //
 // Only an app's own plugins run here, the files the site serves: the
 // author's, which the deployment chose to serve. A person's own plugins stay
-// in their browser.
+// in their browser. The app's browser plugins don't run here, but their
+// collections are registered, so a server plugin can read what they keep.
 //
 // Kept in the space's folder:
 //   server/apps.json   the apps opened in the space
@@ -97,15 +98,21 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
         continue;
       }
       const source = await answer.text();
-      let runs: string | undefined;
+      let manifest: ReturnType<typeof readManifest>;
       try {
-        runs = readManifest(source).runs;
+        manifest = readManifest(source);
       } catch (error) {
         record({ kind: "error", name: "server:plugin", detail: `${href}: ${error instanceof Error ? error.message : error}` });
         continue;
       }
       loadedPlugins.add(href);
-      if (runs !== "server" && runs !== "both") continue;
+      const runs = manifest.runs;
+      // A plugin that runs only in the browser still says which collections it keeps, so the space's server
+      // plugins can read the records it writes there (a survey a member made, say). It isn't started here.
+      if (runs !== "server" && runs !== "both") {
+        remote.onManifest?.(manifest);
+        continue;
+      }
       const result = await remote.install(source, { origin: "server", href });
       record({ kind: "lifecycle", name: "server:plugin", detail: `${app}: ${href}${result.ok ? "" : ` · ${result.error}`}` });
     }
