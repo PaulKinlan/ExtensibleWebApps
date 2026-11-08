@@ -27,6 +27,17 @@ interface UserPlugin {
   error?: string;
 }
 
+/** A plugin in the registry's index (packages/index.json). */
+interface Package {
+  id: string;
+  name: string;
+  description: string;
+  href: string;
+  permissions: string[];
+  provides: string[];
+  services: string[];
+}
+
 type Status = { plugin: string; name: string; at: string; put: string; each: boolean; state: PlaceState; matches: number };
 
 export interface CustomizeHost {
@@ -71,15 +82,19 @@ export function customize(host: CustomizeHost) {
   });
 
   let message = "";
+  /** True while a registry package (and what it needs) is being added, across the panel redrawing itself. */
+  let addingPackage = false;
   const say = (text: string) => {
     message = text;
     void refresh();
   };
 
-  async function run(name: Command, arg: Record<string, unknown>, done?: string) {
+  /** Runs a panel command and says how it went; true if it worked. */
+  async function run(name: Command, arg: Record<string, unknown>, done?: string): Promise<boolean> {
     const result = (await host.command(name, { app: host.app, ...arg })) as { ok?: boolean; error?: string } | boolean | undefined;
-    if (result && typeof result === "object" && result.ok === false) say(result.error ?? "That didn't work");
-    else say(done ?? "");
+    const failed = !!result && typeof result === "object" && result.ok === false;
+    say(failed ? ((result as { error?: string }).error ?? "That didn't work") : (done ?? ""));
+    return !failed;
   }
 
   function placeRows(plugin: string, unlocked: string[]): HTMLElement | null {
@@ -197,6 +212,72 @@ export function customize(host: CustomizeHost) {
     );
   }
 
+  /**
+   * The plugin registry (/packages/, built by scripts/packages.mjs): plugins this site offers but no app
+   * links. Adding one adds the packages that provide the services it needs too, so it can start.
+   */
+  function browser(mine: UserPlugin[]): HTMLElement {
+    const box = h("div", { class: "customize-registry" }, h("p", { class: "muted" }, "Loading the plugin registry…"));
+    void (async () => {
+      let packages: Package[] = [];
+      try {
+        const response = await fetch("/packages/index.json");
+        if (!response.ok) throw new Error(String(response.status));
+        packages = ((await response.json()) as { packages?: Package[] }).packages ?? [];
+      } catch {
+        return box.replaceChildren(h("p", { class: "muted" }, "This site has no plugin registry."));
+      }
+      const have = new Set(mine.map((p) => p.id));
+      // The services this app already has, from the kernel or a running plugin: a package that needs one adds no provider for it.
+      const reference = (await host.command("reference").catch(() => undefined)) as { data?: { services?: { name: string }[] } } | undefined;
+      const running = new Set((reference?.data?.services ?? []).map((s) => s.name));
+      const providerOf = (service: string) => (running.has(service) ? undefined : packages.find((p) => p.provides.includes(service)));
+      /** The package and, first, every package that provides a service it needs and isn't here yet. */
+      const withNeeds = (pkg: Package, seen = new Set<string>()): Package[] => {
+        if (seen.has(pkg.id)) return [];
+        seen.add(pkg.id);
+        const needs = pkg.services.map(providerOf).filter((p): p is Package => !!p && !have.has(p.id));
+        return [...needs.flatMap((p) => withNeeds(p, seen)), pkg];
+      };
+      box.replaceChildren(
+        h("p", {}, "From this site's plugin registry:"),
+        h(
+          "ul",
+          { class: "customize-list" },
+          ...packages.map((pkg) => {
+            const add = h("button", { type: "button", "data-package": pkg.id }, have.has(pkg.id) ? "Added" : "Add");
+            if (have.has(pkg.id) || addingPackage) add.setAttribute("disabled", "");
+            const adding = withNeeds(pkg);
+            add.addEventListener("click", async () => {
+              // One package at a time, and none added twice: adding a plugin again would turn it off.
+              if (addingPackage) return;
+              addingPackage = true;
+              for (const button of box.querySelectorAll("button[data-package]")) button.setAttribute("disabled", "");
+              try {
+                const added = new Set(((await host.command("user:list", { app: host.app })) as { id?: string }[]).map((p) => p.id));
+                const todo = adding.filter((p) => !added.has(p.id));
+                for (const p of todo) if (!(await run("user:add", { url: p.href }))) return;
+                say(`Added ${todo.map((p) => p.name).join(" and ")}. Turn ${todo.length > 1 ? "them" : "it"} on above.`);
+              } finally {
+                addingPackage = false;
+              }
+            });
+            const also = adding.filter((p) => p.id !== pkg.id);
+            return h(
+              "li",
+              {},
+              h("strong", {}, pkg.name),
+              pkg.description ? h("p", { class: "muted" }, pkg.description) : null,
+              h("p", { class: "muted" }, `Asks for: ${pkg.permissions.join(", ") || "nothing"}${also.length ? `. Adds ${also.map((p) => p.name).join(", ")} too, which it needs.` : ""}`),
+              h("div", { class: "customize-actions" }, add),
+            );
+          }),
+        ),
+      );
+    })();
+    return box;
+  }
+
   function inspectButton(): HTMLElement {
     const button = h("button", { type: "button", "data-inspect-start": "" }, "Inspect the page");
     button.addEventListener("click", () => {
@@ -224,6 +305,7 @@ export function customize(host: CustomizeHost) {
       h("h3", {}, "The app's plugins"),
       authors(running),
       h("h3", {}, "Add a plugin"),
+      browser(list),
       adder(),
       close,
       ].filter((n): n is HTMLElement => !!n),

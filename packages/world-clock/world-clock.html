@@ -1,0 +1,14 @@
+<!-- The world clock's strip: one clock per city, from the clock service. -->
+<style>
+  .world-clock { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-4) auto; padding: var(--space-2) var(--space-3); max-width: 60rem; border-radius: var(--radius); background: var(--bg-2); }
+  .world-clock div { display: grid; }
+  .world-clock strong { font-size: var(--text-lg); font-variant-numeric: tabular-nums; }
+  .world-clock span { color: var(--fg-2); font-size: var(--text-sm); }
+</style>
+<template id="clocks">
+  <div class="world-clock" aria-label="World clock">
+    <template for="clock of clocks">
+      <div><span>{{clock.city}}</span><strong>{{clock.time}}</strong><span>{{clock.date}}</span></div>
+    </template>
+  </div>
+</template>

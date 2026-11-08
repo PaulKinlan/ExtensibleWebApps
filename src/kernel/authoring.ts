@@ -82,6 +82,7 @@ export function explain(permission: string): string {
   if (permission === "plugins:read") return "See which plugins this page has, which are on, and their code.";
   if (permission === "plugins:manage") return "Turn this page's plugins on and off.";
   if (permission === "plugins:author") return "Read the code of this page's plugins, and save plugins you write. Each save is shown to you first.";
+  if (kind === "provide" && verb) return `Answer every call this page's plugins make to the ${[verb, what].filter(Boolean).join(":")} service.`;
   if (permission === "debug:read") return "See everything every plugin does, as the debug console does.";
   return `Use ${permission}.`;
 }
