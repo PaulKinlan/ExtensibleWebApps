@@ -67,7 +67,7 @@ These are capabilities with trusted code in the kernel: an app may use them, but
 | `bus` | [`services/bus.ts`](../src/kernel/services/bus.ts) | Inboxes between agents, plugins and the person |
 | `llm` | [`services/llm.ts`](../src/kernel/services/llm.ts) | The one interface to every model; the vendors are std plugins ([`std/llm/`](../std/llm/)) |
 | `transfer` | [`services/transfer.ts`](../src/kernel/services/transfer.ts), [`csv.ts`](../src/kernel/csv.ts) | Import and export, reviewed once for the whole file |
-| `email` | [`services/email.ts`](../src/kernel/services/email.ts) | Mail from a space's server, with daily limits |
+| `email` | [`services/email.ts`](../src/kernel/services/email.ts), [`address.ts`](../src/kernel/address.ts) | Mail from a space's server to its members, with daily limits |
 | `schedule` | [`services/schedule.ts`](../src/kernel/services/schedule.ts) | Wakes plugins that aren't running |
 | `history` | [`services/history.ts`](../src/kernel/services/history.ts) | Undo across every plugin's writes |
 | `commands` | [`services/commands.ts`](../src/kernel/services/commands.ts) | Commands from any plugin, run from a palette or a key |
