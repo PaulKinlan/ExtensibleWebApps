@@ -72,7 +72,7 @@ function validate(value: unknown): Manifest {
   if (m.scope !== undefined && m.scope !== "shared" && m.scope !== "tab") throw new ManifestError('`scope` must be "shared" or "tab"');
   if (m.order !== undefined && typeof m.order !== "number") throw new ManifestError("`order` must be a number");
   if (m.settings !== undefined) validateSettings(m.settings);
-  if (m.places !== undefined) validatePlaces(m.places, m.permissions as string[]);
+  if (m.places !== undefined) validatePlaces(m.places, m.permissions as string[], m.id);
   if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 20 || m.files.some((f) => typeof f !== "string" || !FILE_NAME.test(f))))
     throw new ManifestError("`files` must be a list of up to 20 file names, with no folders");
   if (m.collections !== undefined) {
@@ -96,7 +96,7 @@ function validateSettings(settings: unknown) {
   }
 }
 
-function validatePlaces(places: unknown, permissions: string[]) {
+function validatePlaces(places: unknown, permissions: string[], id: string) {
   if (!places || typeof places !== "object" || Array.isArray(places)) throw new ManifestError("`places` must be an object");
   const entries = Object.entries(places as Record<string, unknown>);
   if (entries.length > 20) throw new ManifestError("At most 20 places");
@@ -110,6 +110,7 @@ function validatePlaces(places: unknown, permissions: string[]) {
     if (p.each !== undefined && typeof p.each !== "boolean") throw new ManifestError(`Place ${name}: \`each\` is true or false`);
     if (p.in !== undefined) {
       if (typeof p.in !== "string" || !/^[a-z][a-z0-9-]{0,63}$/.test(p.in)) throw new ManifestError(`Place ${name}: \`in\` is the id of the plugin whose views it changes`);
+      if (p.in === id) throw new ManifestError(`Place ${name}: a plugin changes its own views by drawing them, not with \`in\``);
       if (!permissions.includes(`ui:transform:${p.in}`)) throw new ManifestError(`Place ${name} changes ${p.in}'s views, which needs the permission ui:transform:${p.in}`);
     }
   }
