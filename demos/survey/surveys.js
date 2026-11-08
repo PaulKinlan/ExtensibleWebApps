@@ -16,6 +16,8 @@
 //
 // Share link hands a survey's public address to the system's share sheet (the
 // share service), or copies it where there is none, as the reading list does.
+// The share sheet opens only in the tab that was clicked, and what's being
+// edited is that tab's own, so this plugin is `scope: "tab"`: a copy per tab.
 
 export const manifest = {
   id: "surveys",
@@ -23,6 +25,7 @@ export const manifest = {
   description: "Build surveys, share a link anyone can answer, and see the answers come in.",
   version: "1.0.0",
   permissions: ["ui", "data:read:answers", "sync", "share"],
+  scope: "tab",
   order: 10,
   collections: {
     surveys: {

@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "../../src/server/serve.ts";
 
-const VIEW = '[data-plugin="surveys"][data-key="surveys:surveys"]';
+const VIEW = '[data-plugin="surveys"]';
 
 export default async function ({ check, context, errors }) {
   const browser = context.browser();
@@ -46,7 +46,9 @@ export default async function ({ check, context, errors }) {
     check("survey share: Share link hands the survey's whole public address in the space to the share sheet", shown && sent?.url === address && sent?.title === "How was the launch party?", JSON.stringify({ shown, sent }));
 
     // And that address is the form, for someone who isn't signed in.
-    const form = await fetch(address).then((r) => r.text());
+    // The sample reaches the space's server through sync, a moment after the tab shows it.
+    let form = "";
+    for (const until = Date.now() + 8000; Date.now() < until && !/<form method="post"/.test(form); await new Promise((r) => setTimeout(r, 200))) form = await fetch(address).then((r) => r.text());
     check("survey share: the shared address is the survey's form, for anyone", /<form method="post"/.test(form) && form.includes("How was the launch party?"));
   } finally {
     await phone.close().catch(() => {});

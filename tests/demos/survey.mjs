@@ -2,7 +2,7 @@
 // collected, and shows each survey's questions (tests/server/run.mjs checks
 // the public form and the answers, on a space's server).
 export default async function (page, { check, proof }) {
-  const view = '[data-plugin="surveys"][data-key="surveys:surveys"]';
+  const view = '[data-plugin="surveys"]';
   await page.waitForSelector(`${view} .survey`, { timeout: 8000 });
   proof.sample = await page.locator(`${view} .survey[key="sample-launch"] .results > li`).count();
   proof.note = await page.locator(`${view} .note`).count();
