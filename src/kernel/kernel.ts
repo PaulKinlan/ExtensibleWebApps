@@ -63,7 +63,7 @@ defineHook("note:close", { mode: "emit", args: "null", description: "The open no
 defineHook("debug:trace", { mode: "emit", needs: "debug:read", args: "[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]", description: "New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read." });
 defineHook("bench:ping", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "n", description: "Used by the round-trip benchmark; answer with anything." });
 
-const hosts = new Hosts(shared ? "shared" : "dedicated");
+const hosts = new Hosts(where.kind);
 setSink((events) => {
   hosts.broadcast({ t: "trace", events });
   root.emit("debug:trace", events);

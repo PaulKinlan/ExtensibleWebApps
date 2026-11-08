@@ -98,7 +98,7 @@ export type Command =
 
 // kernel -> host
 export type KernelToHost =
-  | { t: "welcome"; tab: string; spawner: boolean; mode: "shared" | "dedicated" }
+  | { t: "welcome"; tab: string; spawner: boolean; mode: "shared" | "dedicated" | "server" }
   | { t: "render"; slot: Slot; key: string; owner: string; order: number; view: View | null }
   | { t: "spawn"; plugin: string; source: string; network: boolean }
   | { t: "terminate"; plugin: string }
