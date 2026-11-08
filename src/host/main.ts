@@ -8,7 +8,7 @@
 // kernel to run it, along with the plugins the person added to this app
 // themselves, and shows only the views those plugins draw: in the page's
 // slots, or in places their manifests name (places.ts). The platform's own
-// workbench (workbench/index.html, the page with the trace) shows every view along
+// workbench (site/workbench/index.html, the page with the trace) shows every view along
 // with the trace and the plugins panel.
 
 import { folder as appFolder, followLinks, screen } from "./router";

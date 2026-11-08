@@ -32,20 +32,33 @@ function workerPolicy(): Plugin {
 // That is every top-level folder except the ones below, and every .html or
 // .js file at the top. Nothing lists them, so a change that adds a folder
 // (a new app area, the service worker) doesn't edit this file.
+//
+// site/ is this website's own pages (the front page, the homepage chapters,
+// the workbench), kept apart so the top of the repo is the platform. What is
+// in it is served at the site's root, as if it were at the top: site/home/ is
+// /home/ and site/index.html is /.
 const NOT_SERVED = [
   "dist",
   "node_modules",
   "public", // Vite copies it itself
   "scripts",
+  "site", // served at the root, below
   "src", // built
   "tests",
 ];
-const asWrittenPaths = (root: string): string[] =>
-  readdirSync(root, { withFileTypes: true })
-    .filter((e) => !e.name.startsWith("."))
-    .filter((e) => (e.isDirectory() ? !NOT_SERVED.includes(e.name) : e.isFile() && /\.(html|js)$/.test(e.name)))
-    .map((e) => e.name)
-    .sort();
+const SITE = "site";
+/** Each file or folder served as written: `url` is its name at the site's root, `disk` where it is in the repo. */
+const asWrittenEntries = (root: string): { url: string; disk: string }[] => {
+  const list = (dir: string, skip: string[]) =>
+    readdirSync(join(root, dir), { withFileTypes: true })
+      .filter((e) => !e.name.startsWith("."))
+      .filter((e) => (e.isDirectory() ? !skip.includes(e.name) : e.isFile() && /\.(html|js)$/.test(e.name)))
+      .map((e) => ({ url: e.name, disk: dir ? `${dir}/${e.name}` : e.name }));
+  const entries = [...list("", NOT_SERVED), ...(existsSync(join(root, SITE)) ? list(SITE, []) : [])];
+  const twice = entries.map((e) => e.url).filter((url, i, all) => all.indexOf(url) !== i);
+  if (twice.length) throw new Error(`site/ and the top of the repo both have ${twice.join(", ")}: one address, one file`);
+  return entries.sort((a, b) => a.url.localeCompare(b.url));
+};
 // Two stable URLs every page uses: the platform's stylesheet and its host
 // script. In development the script redirects to the TypeScript source (so
 // its relative worker URLs resolve); in the build it is emitted at this path.
@@ -71,18 +84,34 @@ function asWritten(): Plugin {
           return res.end();
         }
         if (path === "/platform/host.css") return serve(res, resolve(root, HOST_CSS));
-        const paths = asWrittenPaths(root);
+        // site/ is served at the root, never under /site/, as in the build.
+        if (path === `/${SITE}` || path.startsWith(`/${SITE}/`)) {
+          res.statusCode = 404;
+          return res.end();
+        }
+        const entries = asWrittenEntries(root);
         // A top-level file is served only by its exact name ("/" is index.html); a folder serves what is inside it.
         const name = path === "/" ? "index.html" : path.slice(1);
-        if (paths.includes(name) && statSync(join(root, name)).isFile()) return serve(res, resolve(root, name));
-        const top = paths.find((d) => statSync(join(root, d)).isDirectory() && path.startsWith(`/${d}/`));
-        const file = resolve(root, `.${path}`);
-        if (!top || !file.startsWith(resolve(root, top) + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
+        const exact = entries.find((e) => e.url === name);
+        if (exact && statSync(join(root, exact.disk)).isFile()) return serve(res, resolve(root, exact.disk));
+        // A folder of site/ named without its slash (/workbench) goes to its address with one, as Vite does for the others.
+        const folder = entries.find((e) => e.disk.startsWith(`${SITE}/`) && path === `/${e.url}` && statSync(join(root, e.disk)).isDirectory());
+        if (folder) {
+          res.statusCode = 301;
+          res.setHeader("Location", `/${folder.url}/${new URL(req.url ?? "/", "http://host").search}`);
+          return res.end();
+        }
+        const top = entries.find((e) => statSync(join(root, e.disk)).isDirectory() && path.startsWith(`/${e.url}/`));
+        if (!top) return next();
+        // A folder's address serves its index.html, as Vite (and Cloudflare) do for the folders at the top.
+        const file = resolve(root, top.disk, `.${path.slice(top.url.length + 1)}${path.endsWith("/") ? "index.html" : ""}`);
+        if (!file.startsWith(resolve(root, top.disk) + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
         return serve(res, file);
       });
     },
     generateBundle() {
-      for (const path of asWrittenPaths(root)) for (const file of files(path)) this.emitFile({ type: "asset", fileName: file.split(sep).join("/"), source: readFileSync(join(root, file)) });
+      for (const { url, disk } of asWrittenEntries(root))
+        for (const file of files(disk)) this.emitFile({ type: "asset", fileName: url + file.slice(disk.length).split(sep).join("/"), source: readFileSync(join(root, file)) });
       this.emitFile({ type: "asset", fileName: "platform/host.css", source: readFileSync(join(root, HOST_CSS)) });
     },
   };
@@ -96,8 +125,11 @@ function notFoundPage(): Plugin {
   const handler = (root: string, page: string) => (req: { url?: string; method?: string; headers: Record<string, string | string[] | undefined> }, res: any, next: () => void) => {
     const path = decodeURIComponent(new URL(req.url ?? "/", "http://host").pathname);
     const navigating = req.method === "GET" && String(req.headers.accept ?? "").includes("text/html");
-    const file = resolve(root, `.${path}`);
-    const exists = file.startsWith(root) && existsSync(file) && (statSync(file).isFile() || existsSync(join(file, "index.html")));
+    // In development a page may be in site/ (served at the root); the build has it at the root already.
+    const exists = [root, join(root, SITE)].some((base) => {
+      const file = resolve(base, `.${path}`);
+      return file.startsWith(base) && existsSync(file) && (statSync(file).isFile() || existsSync(join(file, "index.html")));
+    });
     if (!navigating || exists || path.split("/").pop()!.includes(".") || path.startsWith("/@") || path.startsWith("/src/") || path.startsWith("/node_modules/")) return next();
     res.statusCode = 404;
     res.setHeader("Content-Type", "text/html");

@@ -125,6 +125,6 @@ The full API, generated from the running kernel, is in [docs/api.md](../docs/api
 3. **`spending/expenses.js`** and **`expenses.html`**: the same data model with a view written by hand, a table and a form that saves through the `data` service.
 4. **`spending/budget.js`**: a setting, and a dashboard computed from another plugin's data.
 5. **`spending/categories.js`**: a view built in code with `ctx.ui.html` instead of a template.
-6. **`../plugins/tone.js`** and **`../plugins/bars.js`**: audio in an AudioWorklet and drawing on an OffscreenCanvas, without plugin code on the main thread.
+6. **`../site/workbench/plugins/tone.js`** and **`bars.js`** beside it: audio in an AudioWorklet and drawing on an OffscreenCanvas, without plugin code on the main thread.
 
-The files in `plugins/` are the platform's own test plugins and run on the workbench (`/`), not in apps.
+The files in [`site/workbench/plugins/`](../site/workbench/plugins/) are the platform's own demo and test plugins and run on the workbench (`/workbench/`), not in apps.

@@ -1,4 +1,4 @@
-// The homepage (index.html at /): an app made of plugins that explains the
+// The homepage (site/index.html, at /): an app made of plugins that explains the
 // platform. Its plugins draw, the switchboard and the chapters switch them,
 // a hook stops a note, turning everything off leaves the bare page, and
 // ?reset brings it all back.

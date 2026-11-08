@@ -69,7 +69,7 @@ body:not(.workbench) > footer { grid-area: footer; padding: 8px 24px; border-top
   body:not(.workbench) > main, body:not(.workbench) > aside { padding: 16px; }
 }
 
-/* ---- The workbench (index.html): notes, every plugin's views, the plugins panel and the trace ---- */
+/* ---- The workbench (site/workbench/index.html): notes, every plugin's views, the plugins panel and the trace ---- */
 .workbench { display: grid; grid-template-rows: auto 1fr auto auto; grid-template-columns: minmax(0, 1fr); }
 .workbench header { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--bg-2); }
 .workbench header .spacer { flex: 1; }

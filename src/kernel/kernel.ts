@@ -5,7 +5,7 @@
 // browser.ts in the browser.
 //
 // Nothing in here draws UI or knows about any app. It runs no plugins of its
-// own: each page runs the ones it links (the notes app is plugins/notes.js,
+// own: each page runs the ones it links (the notes app is site/workbench/plugins/notes.js,
 // which only the workbench links).
 
 import { Context } from "cordis";

@@ -2,7 +2,7 @@
 
 A platform for malleable web apps: a small kernel, and everything else is a plugin. That includes the UI shell, storage, sync and the AI agents. Plugins run in their own workers, can only do what their manifest asks for, and draw their UI as plain HTML. An app needs no server, and can open in a **space** that a group of people share, where the same kernel runs on a server too, with plugins of its own.
 
-**Try it:** https://extensibleweb.app/ explains the platform with a page made of plugins you can switch off and change ([`index.html`](index.html) and [`home/`](home/README.md)). The workbench, with every plugin, the trace and the benchmarks, is at [`/workbench/`](workbench/index.html). The demo apps are in [`demos/`](demos/README.md): a reading list, spending, recipes, contacts, a calendar, habits, a survey and a feed reader with plugins on the server, a household app made for a space, a debugger, and more. The docs are at [`/docs/`](https://extensibleweb.app/docs/), from [`docs/`](docs/README.md).
+**Try it:** https://extensibleweb.app/ explains the platform with a page made of plugins you can switch off and change ([`site/`](site/README.md)). The workbench, with every plugin, the trace and the benchmarks, is at [`/workbench/`](site/workbench/index.html). The demo apps are in [`demos/`](demos/README.md): a reading list, spending, recipes, contacts, a calendar, habits, a survey and a feed reader with plugins on the server, a household app made for a space, a debugger, and more. The docs are at [`/docs/`](https://extensibleweb.app/docs/), from [`docs/`](docs/README.md).
 
 ![The reading list demo](docs/images/collections.png)
 
@@ -11,11 +11,34 @@ A platform for malleable web apps: a small kernel, and everything else is a plug
 | If you want to… | Read |
 | --- | --- |
 | Build an app or a plugin | The [developer guide](docs/guide/README.md), or [`AGENTS.md`](AGENTS.md) for the short version |
-| See what writing an app looks like | [`demos/`](demos/), starting with [`demos/README.md`](demos/README.md), and the homepage in [`home/`](home/README.md) |
+| See what writing an app looks like | [`demos/`](demos/), starting with [`demos/README.md`](demos/README.md), and the homepage in [`site/home/`](site/home/README.md) |
 | Look up an API | [`docs/api.md`](docs/api.md), generated from the running kernel |
 | Understand how the kernel works | [`docs/kernel.md`](docs/kernel.md) and [`docs/architecture.md`](docs/architecture.md) |
 | Share an app between people, or run plugins on a server | [`docs/guide/spaces-and-servers.md`](docs/guide/spaces-and-servers.md), then [`docs/server.md`](docs/server.md) |
 | Know why it is built this way | [`docs/spike.md`](docs/spike.md) and the [plan](https://claude.ai/artifact/S7NdMrp2PkNSqHZFNdqGrC) |
+
+## What's in this repo
+
+The top of the repo is the platform; everything else has a folder that says what it is.
+
+| Folder | What it is |
+| --- | --- |
+| **The platform** | What every app is made of. An app loads it with two lines. |
+| [`src/`](src/) | The host (the page's side), the kernel, the plugin sandbox, the server and its seams, in TypeScript |
+| [`elements/`](elements/README.md) | The `ui-*` custom elements views are built from (`ui-card`, `ui-table`, `ui-form`…), one file each, served at `/elements/` |
+| [`std/`](std/README.md) | Standard plugins any app can link: the debug console, undo, import and export, sync, model providers, agents… |
+| [`sw/`](sw/) and [`sw.js`](sw.js) | The service worker, one file per job |
+| [`account/`](account/index.html) | The sign-in and spaces page every deployment serves at `/account/` |
+| [`vendor/`](vendor/) | Third-party code served as is (Mermaid, for `ui-diagram`) |
+| **Learning from it** | |
+| [`demos/`](demos/README.md) | Apps written to show the programming model, one folder per app |
+| [`starter/`](starter/) | The app `npm run new-app` copies to begin a new one |
+| [`docs/`](docs/README.md) | The guide and reference, drawn at `/docs/` |
+| [`AGENTS.md`](AGENTS.md) | The short version, for AI agents and people building apps |
+| **This website** | |
+| [`site/`](site/README.md) | The site's own pages, served at its root: the front page and its chapters (`site/home/`), and the workbench with its demo plugins (`site/workbench/`). Not part of the platform. |
+| **Tooling** | |
+| [`scripts/`](scripts/), [`tests/`](tests/), [`public/`](public/) | Commands (`check`, `new-app`, `deploy:app`, create), the checks, and files copied to the site as they are (`404.html`, `_headers`, `llms.txt`) |
 
 ## How it fits together
 
@@ -58,7 +81,7 @@ Each kind of code has its own place:
   - [`sanitize.ts`](src/host/sanitize.ts) keeps only the HTML listed in [`src/shared/html.ts`](src/shared/html.ts)
   - [`morph.ts`](src/host/morph.ts) updates a view in place
   - [`templates.ts`](src/host/templates.ts) fills a plugin's view templates with its data
-  - [`workbench.ts`](src/host/workbench.ts) is the trace and benchmarks on the workbench page (`workbench/index.html`)
+  - [`workbench.ts`](src/host/workbench.ts) is the trace and benchmarks on the workbench page (`site/workbench/index.html`)
   - [`elements.ts`](src/host/elements.ts) loads the `ui-*` elements from [`elements/`](elements/)
   - [`bindings.ts`](src/host/bindings.ts) connects `<ui-form>` and `<ui-table>` to collections
   - [`service-worker.ts`](src/host/service-worker.ts) starts the service worker and passes its questions to the kernel
@@ -101,10 +124,10 @@ Each kind of code has its own place:
 - the plugin API's types
 - the HTML allowlist
 
-Plugins live in two places:
+Plugins live in three places:
 - [`demos/`](demos/) holds apps written to show the programming model, one folder per app.
 - [`std/`](std/) holds standard plugins any app can link, such as the [debug console](std/README.md): a bug button that shows errors and the trace, ready to copy into a bug report.
-- [`plugins/`](plugins/) holds the demo plugins the [workbench](workbench/index.html) links (no other page runs them; the kernel has no plugins of its own):
+- [`site/workbench/plugins/`](site/workbench/plugins/) holds the demo plugins the [workbench](site/workbench/index.html) links (no other page runs them; the kernel has no plugins of its own):
   - `word-count.js` and `edit-times.js`, copied unchanged from the [Markdown editor](https://github.com/PaulKinlan/MarkdownEdiitor)
   - `tidy.js` (change review), `tone.js` (audio) and `bars.js` (canvas)
   - test plugins that check the security rules

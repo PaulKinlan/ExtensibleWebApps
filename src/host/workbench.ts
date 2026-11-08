@@ -1,4 +1,4 @@
-// The workbench page (workbench/index.html): every plugin's views,
+// The workbench page (site/workbench/index.html): every plugin's views,
 // the plugins panel, and a trace of everything the kernel does, with buttons
 // to measure it. App pages (app.html) leave all of this out.
 
