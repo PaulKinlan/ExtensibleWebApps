@@ -36,7 +36,7 @@
   --shadow-1: 0 1px 2px light-dark(rgb(16 16 32 / 0.06), rgb(0 0 0 / 0.4)), 0 1px 1px light-dark(rgb(16 16 32 / 0.03), rgb(0 0 0 / 0.2));
   --shadow-2: 0 4px 12px light-dark(rgb(16 16 32 / 0.08), rgb(0 0 0 / 0.45)), 0 1px 3px light-dark(rgb(16 16 32 / 0.06), rgb(0 0 0 / 0.3));
   /* The focus ring, the same on every control. */
-  --ring: color-mix(in srgb, var(--accent) 45%, transparent);
+  --ring: color-mix(in srgb, var(--accent) 70%, transparent);
   --duration: 140ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
@@ -54,7 +54,7 @@ slot, .fallback { display: contents; }
 /* ---- App pages (app.html): header, main, an optional aside, footer. One column on phones. ---- */
 body:not(.workbench) { display: grid; grid-template: "header header" auto "main aside" 1fr "footer footer" auto / minmax(0, 1fr) minmax(0, 320px); }
 body:not(.workbench):not(:has(> aside)) { grid-template: "header" auto "main" 1fr "footer" auto / minmax(0, 1fr); }
-body:not(.workbench) > header { grid-area: header; position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; min-height: 56px; padding: 10px 24px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: saturate(1.6) blur(10px); }
+body:not(.workbench) > header { grid-area: header; display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: center; min-height: 56px; padding: 10px 24px; border-bottom: 1px solid var(--border); background: var(--surface); }
 body > header :is(h1, strong) a { color: inherit; text-decoration: none; }
 body:not(.workbench) > header h1 { margin: 0; font-size: var(--text-lg); font-weight: 650; letter-spacing: -0.01em; }
 body:not(.workbench) > main, body:not(.workbench) > aside { min-width: 0; padding: 24px; display: flex; flex-direction: column; align-content: start; gap: var(--space-4); }
@@ -99,11 +99,12 @@ dialog#review > [data-key] + [data-key] { margin-top: 16px; padding-top: 16px; b
 h2 { font-size: 15px; margin: 0; }
 /* Buttons, and links made to look like one (<a class="button">). */
 button, a.button { font: inherit; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 32px; padding: 0 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-1); cursor: pointer; text-decoration: none; white-space: nowrap; transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease); }
-:where(button, a.button):hover { background: var(--bg-2); border-color: color-mix(in srgb, var(--fg) 22%, var(--border)); }
-:where(button, a.button):active { box-shadow: none; transform: translateY(0.5px); }
-:where(button, a.button):disabled { opacity: 0.5; cursor: not-allowed; }
+/* States name the element as the base rule does, so they outrank it. */
+button:hover, a.button:hover { background: var(--bg-2); border-color: color-mix(in srgb, var(--fg) 22%, var(--border)); }
+button:active, a.button:active { box-shadow: none; transform: translateY(0.5px); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.primary, a.button.primary, form > button[type="submit"]:only-of-type { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-:where(button.primary, a.button.primary, form > button[type="submit"]:only-of-type):hover { background: color-mix(in srgb, var(--accent) 88%, black); border-color: color-mix(in srgb, var(--accent) 88%, black); }
+button.primary:hover, a.button.primary:hover, form > button[type="submit"]:only-of-type:hover { background: color-mix(in srgb, var(--accent) 88%, black); border-color: color-mix(in srgb, var(--accent) 88%, black); }
 :where(button, a.button, input, select, textarea, summary):focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
 /* Fields on a plain page (an HTML view and label.field style their own below). */
 :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select) { font: inherit; min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); transition: border-color var(--duration) var(--ease); }
@@ -141,8 +142,8 @@ body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
 .place-pending { outline: 2px dashed var(--accent); outline-offset: 4px; }
 /* The Customize button and panel, on every app page. */
 .customize-button { position: fixed; left: 16px; bottom: 16px; z-index: 10; box-shadow: var(--shadow-2); background: var(--surface); border-radius: 999px; }
-/* The debug console's bug sits in the same corner by default: the button moves along beside it. */
-body:has(slot[name="debug"] ui-debug:not([corner]), slot[name="debug"] ui-debug[corner="bottom-left"]) .customize-button { left: 68px; }
+/* The debug console's bug sits in the same corner by default, and grows with its count: the button goes above it. */
+body:has(slot[name="debug"] ui-debug:not([corner]), slot[name="debug"] ui-debug[corner="bottom-left"]) .customize-button { bottom: 68px; }
 dialog.customize { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); font: var(--text-md)/1.5 var(--font); box-shadow: var(--shadow-2); }
 dialog.customize::backdrop { background: rgb(10 10 20 / 0.4); backdrop-filter: blur(2px); }
 dialog.customize h2 { font-size: var(--text-lg); }
