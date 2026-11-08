@@ -303,7 +303,11 @@ export default async (ctx) => {
   const linkedIds = (name) => {
     const page = readFileSync(new globalThis.URL(`../demos/${name}/app.html`, import.meta.url), "utf8");
     // An href is relative to the app's folder, or (for standard plugins) to the site: /std/debug-console.js.
-    return [...page.matchAll(/<link rel="plugin" href="([^"]+)">/g)].map(([, href]) => readFileSync(new globalThis.URL(href.startsWith("/") ? `..${href}` : `../demos/${name}/${href}`, import.meta.url), "utf8").match(/id: "([^"]+)"/)[1]);
+    // A plugin without the ui permission (a model provider, say) has nothing to draw.
+    return [...page.matchAll(/<link rel="plugin" href="([^"]+)">/g)]
+      .map(([, href]) => readFileSync(new globalThis.URL(href.startsWith("/") ? `..${href}` : `../demos/${name}/${href}`, import.meta.url), "utf8"))
+      .filter((source) => /permissions: \[[^\]]*"ui"/.test(source))
+      .map((source) => source.match(/id: "([^"]+)"/)[1]);
   };
   const drawn = [];
   const leaks = [];

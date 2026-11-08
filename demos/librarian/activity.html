@@ -1,0 +1,17 @@
+<!--
+  The activity list. activity.js sends { lines: [{ id, kind, text, tone }] },
+  newest first.
+-->
+<template id="activity">
+  <h3>Agent activity</h3>
+  <template if="lines.length">
+    <ul>
+      <template for="line of lines">
+        <li><ui-badge tone="{{line.tone}}">{{line.kind}}</ui-badge> {{line.text}}</li>
+      </template>
+    </ul>
+  </template>
+  <template if="!lines.length">
+    <p><small>Nothing yet. Add a book with only its title, and the librarian fills in the rest.</small></p>
+  </template>
+</template>

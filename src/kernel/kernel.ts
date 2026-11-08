@@ -25,6 +25,7 @@ import { routed } from "./services/router";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
+import { asPlugin } from "./agents/file";
 import { authoring } from "./authoring";
 import { record, recent, setSink, startedAt, tap } from "./trace";
 import { checkApp, userPlugins } from "./user-plugins";
@@ -270,8 +271,9 @@ hosts.onMessage = async (host, message) => {
         // An app's plugins may read collections whose owners aren't running: know those first.
         // Opened with ?reset: the app's plugins the person turned off come back on first.
         // Only plugins this app may load: not one whose id belongs to a different running plugin.
-        if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ source }) => {
+        if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ href, source: linked }) => {
           try {
+            const source = asPlugin(href, linked);
             const id = readManifest(source).id;
             const running = remote.installed.get(id);
             return !running || running.source === source ? [id] : [];
