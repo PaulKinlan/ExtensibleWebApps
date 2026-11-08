@@ -7,12 +7,12 @@
 // (tests/checks/space-server.mjs).
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, symlinkSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { request } from "node:http";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { serve } from "../../src/server/serve.ts";
 import { providersFrom } from "../../src/server/auth/providers.ts";
 import { authenticator } from "./authenticator.mjs";
@@ -31,11 +31,25 @@ const freePort = () =>
     });
   });
 
+let site;
+
+/**
+ * The built site, with tests/fixtures/server-app/ at /server-app/: an app with a plugin that runs on the
+ * space's server. (Only on Node for now: Cloudflare's isolates come next.)
+ */
+async function siteWithFixtures() {
+  const site = await mkdtemp(join(tmpdir(), "ewa-site-"));
+  for (const name of readdirSync("dist")) symlinkSync(resolve("dist", name), join(site, name));
+  symlinkSync(resolve("tests/fixtures/server-app"), join(site, "server-app"));
+  return site;
+}
+
 /** Each host: start it on a folder of spaces (again, for a restart), and say where its own folder for a space is. */
 const hosts = {
   node: (spaces) => ({
     async start() {
-      return serve({ port: 0, host: "127.0.0.1", spaces, site: "dist", kernel: ".build/server/space.js", providers: providersFrom(fake.env) });
+      site ??= await siteWithFixtures();
+      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env) });
     },
     wrote: (space) => existsSync(join(spaces, space, "files", "user", "demos", "contacts", "hello-space.js")),
   }),
@@ -97,6 +111,8 @@ async function client(base, space, cookie) {
         setTimeout(() => fail(new Error(`No answer to ${name}`)), 5000);
         ws.send(JSON.stringify({ t: "command", id: n, name, arg }));
       }),
+    /** Sends any message, as a tab would. */
+    send: (message) => ws.send(JSON.stringify(message)),
     close: () => ws.close(),
   };
 }
@@ -126,6 +142,8 @@ async function device(base, space, cookie, { claim } = {}) {
     /** Every change heard, in order. */
     changes: () => heard.filter((m) => m.op === "changes").flatMap((m) => m.changes),
     heard,
+    /** Says an app was opened on this device in the space. */
+    app: (app) => ws.send(JSON.stringify({ t: "sync", op: "app", app })),
     async hello(since = 0) {
       ws.send(JSON.stringify({ t: "sync", op: "hello", since }));
       await settle();
@@ -197,6 +215,61 @@ async function syncChecks(base, check, owner, restart) {
 
   const outsider = await person(url).account("Out");
   check("sync: someone who isn't a member can't connect to sync", !(await opens(url, "shared", outsider.cookie)));
+}
+
+/** Server plugins (src/kernel/server-apps.ts): an app's plugin that runs on the space's server, in an isolate. */
+async function serverPluginChecks(base, check, owner, restart) {
+  await owner.call("/auth/spaces", { name: "guarded" });
+  const phone = await device(base, "guarded", owner.cookie);
+  await phone.hello(0);
+  phone.app("server-app");
+  // The space reads the app's app.html and starts guard.js; until then a memo that says "forbidden" gets in.
+  let refused;
+  for (let i = 0; i < 40 && !refused; i++) {
+    const answer = await phone.push([{ collection: "memos", id: `try-${i}`, base: 0, after: { id: `try-${i}`, title: "A forbidden word" } }]);
+    if (!answer?.[0]?.ok) refused = answer[0];
+    else await new Promise((r) => setTimeout(r, 250));
+  }
+  const fine = await phone.push([{ collection: "memos", id: "fine", base: 0, after: { id: "fine", title: "A fine word" } }]);
+  check("server plugins: an app's plugin with runs: \"server\" starts in the space when a device opens the app there, and its data:beforeWrite stops a device's change", /Guard: that word/.test(refused?.error ?? "") && fine?.[0]?.ok, JSON.stringify({ refused, fine }));
+
+  await phone.settle();
+  const reach = phone.changes().find((c) => c.id === "reach");
+  const said = JSON.parse(reach?.after?.title ?? "{}");
+  check("server plugins: what a server plugin writes reaches every device, as a change by that plugin", reach?.by === "plugin:guard", JSON.stringify(reach));
+  check(
+    "server plugins: a server plugin runs in a sandbox with no Node modules, no process and no network",
+    said["node:fs"] === "refused" && said["node:child_process"] === "refused" && said["node:net"] === "refused" && said.process === "undefined" && said.fetch === "undefined",
+    JSON.stringify(said),
+  );
+  phone.close();
+
+  // A member's client can't run its own code on the server, or replace the app's plugin.
+  const c = await client(base, "guarded", owner.cookie);
+  const mine = 'export const manifest = { id: "guard", name: "Mine", permissions: [] };\nexport default () => {};';
+  // Opening an app with its own copy of the plugin, as a tab would.
+  c.send({ t: "open", plugins: [{ href: `${base}/server-app/guard.js`, source: mine }], app: "server-app" });
+  await new Promise((r) => setTimeout(r, 500));
+  const open = c.heard.find((m) => m.t === "opened");
+  const stillGuarded = await device(base, "guarded", owner.cookie);
+  await stillGuarded.hello(0);
+  const after = await stillGuarded.push([{ collection: "memos", id: "again", base: 0, after: { id: "again", title: "Forbidden again" } }]);
+  check("server plugins: a member's client can't replace a space's server plugin with its own source", !after?.[0]?.ok && /Guard/.test(after[0].error ?? ""), JSON.stringify({ open, after }));
+  stillGuarded.close();
+  c.close();
+
+  // The space starts its apps' server plugins again when it restarts, with no device asking.
+  const url = await restart();
+  const later = await device(url, "guarded", owner.cookie);
+  await later.hello(0);
+  let again;
+  for (let i = 0; i < 40 && !again; i++) {
+    const answer = await later.push([{ collection: "memos", id: `later-${i}`, base: 0, after: { id: `later-${i}`, title: "Forbidden later" } }]);
+    if (!answer?.[0]?.ok) again = answer[0];
+    else await new Promise((r) => setTimeout(r, 250));
+  }
+  check("server plugins: after a restart the space starts its apps' server plugins again by itself", /Guard/.test(again?.error ?? ""), JSON.stringify(again));
+  later.close();
 }
 
 /** Someone using the site's /auth/ routes, with their own cookie: `account()` signs them up with a passkey. */
@@ -492,6 +565,13 @@ async function suite(name, make) {
       owner.base = server.url;
       return server.url;
     });
+    if (name === "node")
+      await serverPluginChecks(server.url, check, owner, async () => {
+        await server.stop();
+        server = await host.start();
+        owner.base = server.url;
+        return server.url;
+      });
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {

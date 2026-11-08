@@ -16,6 +16,8 @@ export interface Host {
   url?: { path: string; query: Record<string, string>; at: number };
   /** On a server: the member of the space this client is signed in as, which the server tells the kernel. */
   member?: string;
+  /** On a server: the kernel's own client that starts plugins in isolates (isolate-host.ts), never a remote one. */
+  isolates?: true;
 }
 
 type Rendered = { slot: Slot; key: string; owner: string; order: number; view: View | null; tab?: string };
@@ -33,8 +35,8 @@ export class Hosts {
   constructor(readonly mode: "shared" | "dedicated" | "server") {}
 
   get spawner(): Host | undefined {
-    // On a server no client starts plugin workers: the space runs its own (the isolate seam).
-    return this.mode === "server" ? undefined : this.list[0];
+    // On a server no remote client starts plugin workers: the space runs its own (the isolate seam, isolate-host.ts).
+    return this.mode === "server" ? this.list.find((host) => host.isolates) : this.list[0];
   }
 
   /** The clients that start tab-scoped plugins' workers: every tab, and none on a server. */
@@ -42,12 +44,13 @@ export class Hosts {
     return this.mode === "server" ? [] : this.list;
   }
 
-  connect(port: MessagePort): void {
+  /** A new client. `isolates` is for the kernel's own isolate host alone: what a client says can't make it one. */
+  connect(port: MessagePort, { isolates = false } = {}): void {
     let host: Host | undefined;
     port.onmessage = (e: MessageEvent<HostToKernel>) => {
       const message = e.data;
       if (message.t === "hello") {
-        host = { tab: message.tab, port, ...(typeof message.member === "string" ? { member: message.member } : {}) };
+        host = { tab: message.tab, port, ...(typeof message.member === "string" ? { member: message.member } : {}), ...(isolates ? { isolates: true as const } : {}) };
         this.list.push(host);
         this.onHello?.(host, message.folder);
         // Each tab holds a Web Lock named after it for as long as it lives;

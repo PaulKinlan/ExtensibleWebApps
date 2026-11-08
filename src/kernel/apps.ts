@@ -47,13 +47,16 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     const { href } = link;
     let id: string;
     let source: string;
+    let runs: string | undefined;
     try {
       // An agent file (rel="agent") runs as the plugin the kernel makes from it.
       source = asPlugin(href, link.source);
-      id = readManifest(source).id;
+      ({ id, runs } = readManifest(source));
     } catch (error) {
       return { href, error: error instanceof Error ? error.message : String(error) };
     }
+    // A plugin that runs only on a space's server (runs: "server") isn't started here (server-apps.ts).
+    if (runs === "server") return { href, id };
     const running = remote.installed.get(id);
     if (running && running.source !== source) return { href, id, error: `Another plugin with the id “${id}” is already running` };
     // The tab counts as a user before anything is awaited, so a tab that

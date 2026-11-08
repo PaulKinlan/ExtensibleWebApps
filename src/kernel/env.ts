@@ -4,7 +4,7 @@
 // space kernel. Everything that differs between hosts is in here or in the
 // seams (src/seams/), so kernel.ts never reaches for `self` or `navigator`.
 
-import type { Files } from "../seams/index.ts";
+import type { Files, Isolates } from "../seams/index.ts";
 
 export interface KernelEnv {
   /**
@@ -22,6 +22,8 @@ export interface KernelEnv {
   folder?: Files;
   /** In a browser, the space this kernel keeps a copy of and syncs with (sync-device.ts), if it isn't the person's own. */
   space?: string;
+  /** On a server, where the space's plugins run (src/seams/index.ts): without it, no plugin runs there. */
+  isolates?: Isolates;
 }
 
 let current: KernelEnv | undefined;

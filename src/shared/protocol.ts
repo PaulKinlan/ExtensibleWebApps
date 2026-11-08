@@ -172,6 +172,8 @@ export interface Manifest {
   order?: number;
   /** "shared" (default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or hold view state. */
   scope?: "shared" | "tab";
+  /** Where it runs: in the browser (the default), on a space's server, or both. */
+  runs?: "browser" | "server" | "both";
   /** Collections this plugin owns: `{ books: { title?, schema } }`, each schema a JSON Schema subset. */
   collections?: Record<string, { title?: string; schema: unknown }>;
   /** Settings the person can change; the shell builds the form from these. */
