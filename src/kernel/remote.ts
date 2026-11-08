@@ -450,7 +450,14 @@ export class Remote {
    */
   private agentSpec(name: string, spec: HookSpec): HookSpec | undefined {
     const agent = made.get(this.plugin.source);
-    if (!agent || spec.mode === "emit" || spec.mode === "parallel") return spec;
+    if (!agent) return spec;
+    if (spec.mode === "emit" || spec.mode === "parallel") {
+      if (!agent.checks.includes(name)) return spec;
+      // A hook that only tells can't be stopped: a check of it would answer to no one.
+      record({ kind: "error", name: "hook:agent-refused", plugin: this.instance, detail: `${name} only tells that something happened, so it can't be checked; wake on it with \`- hook:\`` });
+      this.post({ t: "event", action: "kernel:error", value: `${name} can't be checked` });
+      return undefined;
+    }
     if (!spec.agentTimeoutMs) {
       record({ kind: "error", name: "hook:agent-refused", plugin: this.instance, detail: `${name} gives agents no time to answer, so an agent can't check it` });
       this.post({ t: "event", action: "kernel:error", value: `${name} can't be checked by an agent` });

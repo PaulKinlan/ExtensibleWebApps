@@ -9,7 +9,7 @@
 //   agent:wake        a run began: { agent, run, trigger: { kind, name } }
 //   agent:toolResult  the agent called a tool: { agent, run, tool, ok }
 //   agent:done        a run ended: { agent, run, stopReason, steps, tools, usage, verdict? }
-//                     stopReason: completed | steps | budget | error;
+//                     stopReason: completed | steps | budget | error | timeout;
 //                     verdict, for a check: allow | block
 //   agent:beforeTool  an agent is about to call a tool: { agent, run, tool, args }.
 //                     A listener (a security agent, say) may return { block: reason }.
@@ -28,7 +28,7 @@
 // Found by name: this file is src/kernel/services/agents.ts, so it is `ctx.call("agents", …)`.
 
 import { made, type AgentConfig } from "../agents/file";
-import { defineHook } from "../hooks";
+import { BEFORE_WRITE, defineHook, hooks } from "../hooks";
 import { callService, type ServiceProvider } from "../remote";
 import { record } from "../trace";
 import type { Kernel } from "./index";
@@ -40,14 +40,23 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 /** What an agent has used: runs in the hour that began at `hour`, tokens on `day`. */
 type Usage = { hour: number; runs: number; day: string; tokens: number };
-type Run = { agent: string; instance: string; tools: number; usage: { input: number; output: number } };
+type Run = {
+  agent: string;
+  instance: string;
+  tools: number;
+  usage: { input: number; output: number };
+  /** For a check: the agents whose tool call it checks, and this one; their calls aren't checked by them again. */
+  chain: string[];
+  /** For a check: when the action stops waiting for it. */
+  timer?: ReturnType<typeof setTimeout>;
+};
 
 export default ({ root, remote, store }: Kernel): ServiceProvider => {
   defineHook("agent:run", { mode: "emit", needs: "agent", args: "{ agent }", description: "Someone ran one of an agent's commands (agents.run). The named agent fetches it with agents.next, which only that agent may call." });
   defineHook("agent:wake", { mode: "emit", args: "{ agent, run, trigger: { kind, name } }", description: "An agent began a run. kind is hook, check (it was asked whether something may happen), command, message or topic." });
-  defineHook("agent:beforeTool", { mode: "serial", timeoutMs: 1000, agentTimeoutMs: 15_000, onFailure: "open", args: "{ agent, run, tool, args }", description: "An agent is about to call one of its tools, with these arguments. Return { block: reason } to stop the call; the agent hears the reason." });
+  defineHook("agent:beforeTool", { mode: "serial", timeoutMs: 1000, agentTimeoutMs: 15_000, onFailure: "open", args: "{ agent, run, tool, args, chain }", description: "An agent is about to call one of its tools, with these arguments. chain is the agents in the call's line: the caller, and any agents whose tool call it is checking. Return { block: reason } to stop the call; the agent hears the reason." });
   defineHook("agent:toolResult", { mode: "emit", args: "{ agent, run, tool, ok }", description: "An agent called one of its tools; ok is false if the call failed." });
-  defineHook("agent:done", { mode: "emit", args: "{ agent, run, stopReason, steps, tools, usage: { input, output }, verdict? }", description: "An agent's run ended. stopReason is completed, steps (it reached its step limit), budget or error. A check's run says its verdict: allow or block." });
+  defineHook("agent:done", { mode: "emit", args: "{ agent, run, stopReason, steps, tools, usage: { input, output }, verdict? }", description: "An agent's run ended. stopReason is completed, steps (it reached its step limit), budget, error or timeout (a check that ran out of time). A check's run says its verdict: allow or block." });
   defineHook("agent:budget", { mode: "emit", args: '{ agent, limit: "runs-per-hour" | "tokens-per-day", used, max }', description: "An agent reached one of its limits, so a run didn't start or was stopped." });
 
   const FILE = "agents/usage.json";
@@ -84,6 +93,19 @@ export default ({ root, remote, store }: Kernel): ServiceProvider => {
     const hit = starting && u.runs >= config.limits.runsPerHour ? { limit: "runs-per-hour", used: u.runs, max: config.limits.runsPerHour } : u.tokens >= config.limits.tokensPerDay ? { limit: "tokens-per-day", used: u.tokens, max: config.limits.tokensPerDay } : undefined;
     if (hit) root.emit(dispatch, "agent:budget", { agent: config.id, ...hit });
     return !!hit;
+  }
+
+  /** Ends a run, once: by the agent (agents.end), or by the kernel when a check runs out of time. */
+  function finish(run: string, e: Record<string, unknown>, dispatch: { trace?: string }) {
+    const r = runs.get(run);
+    if (!r) return;
+    runs.delete(run);
+    clearTimeout(r.timer);
+    const stopReason = ["completed", "steps", "budget", "error", "timeout"].includes(e.stopReason as string) ? e.stopReason : "error";
+    // The model's last words stay in the trace, for the person; listeners hear only how the run ended.
+    if (e.text) record({ kind: "lifecycle", name: "agent:done", plugin: r.agent, detail: String(e.text).slice(0, 2000) });
+    const verdict = e.verdict === "allow" || e.verdict === "block" ? { verdict: e.verdict } : {};
+    root.emit(dispatch, "agent:done", { agent: r.agent, run, stopReason, steps: Number(e.steps) || 0, tools: r.tools, usage: r.usage, ...verdict });
   }
 
   return {
@@ -141,9 +163,17 @@ export default ({ root, remote, store }: Kernel): ServiceProvider => {
         u.runs++;
         void save();
         const run = `${config.id}-${++nextRun}`;
-        runs.set(run, { agent: config.id, instance, tools: 0, usage: { input: 0, output: 0 } });
         const t = isObject(trigger) ? trigger : {};
+        const chain = Array.isArray(t.chain) ? t.chain.filter((a): a is string => typeof a === "string").slice(0, 8) : [];
+        const r: Run = { agent: config.id, instance, tools: 0, usage: { input: 0, output: 0 }, chain: [...new Set([...chain, config.id])] };
+        runs.set(run, r);
         root.emit(dispatch, "agent:wake", { agent: config.id, run, trigger: { kind: String(t.kind), name: String(t.name) } });
+        // A check has as long as the hook gives an agent. Past it the action has gone on without it,
+        // so the run ends there: what the model says later calls no tool and decides nothing.
+        if (t.kind === "check") {
+          const limit = (hooks.get(String(t.name)) ?? (String(t.name).startsWith("data:beforeWrite:") ? BEFORE_WRITE : undefined))?.agentTimeoutMs ?? 0;
+          r.timer = setTimeout(() => finish(run, { stopReason: "timeout", steps: 0 }, dispatch), limit);
+        }
         return { ok: true, run };
       }
       if (method === "complete") {
@@ -165,7 +195,7 @@ export default ({ root, remote, store }: Kernel): ServiceProvider => {
         r.tools++;
         let result: { ok: boolean; value?: unknown; error?: string };
         // Whoever checks agents' tool calls (a security agent) may stop this one first.
-        const verdict = await root.serial(dispatch, "agent:beforeTool", { agent: config.id, run: args[0], tool: String(name), args: toolArgs ?? {} });
+        const verdict = await root.serial(dispatch, "agent:beforeTool", { agent: config.id, run: args[0], tool: String(name), args: toolArgs ?? {}, chain: r.chain });
         if (isObject(verdict) && "block" in verdict) result = { ok: false, error: `Blocked: ${String(verdict.block)}` };
         else {
           try {
@@ -178,14 +208,8 @@ export default ({ root, remote, store }: Kernel): ServiceProvider => {
         return result;
       }
       if (method === "end") {
-        const r = runOf(instance, args[0]);
-        runs.delete(args[0] as string);
-        const e = isObject(args[1]) ? args[1] : {};
-        const stopReason = ["completed", "steps", "budget", "error"].includes(e.stopReason as string) ? e.stopReason : "error";
-        // The model's last words stay in the trace, for the person; listeners hear only how the run ended.
-        if (e.text) record({ kind: "lifecycle", name: "agent:done", plugin: config.id, detail: String(e.text).slice(0, 2000) });
-        const verdict = e.verdict === "allow" || e.verdict === "block" ? { verdict: e.verdict } : {};
-        root.emit(dispatch, "agent:done", { agent: config.id, run: args[0], stopReason, steps: Number(e.steps) || 0, tools: r.tools, usage: r.usage, ...verdict });
+        runOf(instance, args[0]);
+        finish(args[0] as string, isObject(args[1]) ? args[1] : {}, dispatch);
         return true;
       }
       throw new Error(`agents.${method} is not a method`);

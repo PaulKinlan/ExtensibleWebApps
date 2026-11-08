@@ -84,15 +84,16 @@ export default async function (ctx) {
   }
 
   async function run(trigger) {
-    const begun = await ctx.call("agents", "begin", { kind: trigger.kind, name: trigger.name });
+    const begun = await ctx.call("agents", "begin", { kind: trigger.kind, name: trigger.name, ...(trigger.chain ? { chain: trigger.chain } : {}) });
     if (!begun.ok) {
       ctx.log(`${AGENT.name}: didn't run: ${begun.reason}`);
       return { stopReason: begun.reason, text: `${AGENT.name} didn't run: it reached its limit` };
     }
     const runId = begun.run;
     const checking = trigger.kind === "check";
-    const own = (await ctx.call("tools", "list")).slice(0, 64).map(({ name, description, parameters }) => ({ name, description, parameters }));
-    const tools = checking ? [...own.filter((t) => t.name !== "allow" && t.name !== "block"), ...VERDICTS] : own;
+    // A model takes 64 tools at most; a check keeps two of them for its answer.
+    const own = (await ctx.call("tools", "list")).filter((t) => !checking || (t.name !== "allow" && t.name !== "block"));
+    const tools = [...own.slice(0, checking ? 64 - VERDICTS.length : 64).map(({ name, description, parameters }) => ({ name, description, parameters })), ...(checking ? VERDICTS : [])];
     /** A check's answer, once the model gives one. */
     let verdict;
     const messages = [{ role: "user", content: describe(trigger) }];
@@ -114,10 +115,10 @@ export default async function (ctx) {
         text = answer.text ?? "";
         if (!answer.toolCalls?.length) break;
         for (const call of answer.toolCalls) {
+          // The answer ends a check: no tool the model asked for after it runs.
           if (checking && (call.name === "allow" || call.name === "block")) {
-            verdict ??= call.name === "block" ? { block: String(call.args?.reason || `${AGENT.name} blocked it`) } : { allow: true };
-            messages.push({ role: "tool", id: call.id, name: call.name, content: "Done." });
-            continue;
+            verdict = call.name === "block" ? { block: String(call.args?.reason || `${AGENT.name} blocked it`) } : { allow: true };
+            break;
           }
           const result = await ctx.call("agents", "tool", runId, call.name, call.args ?? {});
           if (result.ok) remember(call.name, call.args, result.value);
@@ -131,18 +132,23 @@ export default async function (ctx) {
       text = error instanceof Error ? error.message : String(error);
     }
     const decided = verdict ? (verdict.block ? "block" : "allow") : undefined;
-    await ctx.call("agents", "end", runId, { stopReason, text, steps: Math.min(steps, AGENT.limits.steps), ...(checking && decided ? { verdict: decided } : {}) });
+    // A check that ran out of time was ended by the kernel already.
+    await ctx.call("agents", "end", runId, { stopReason, text, steps: Math.min(steps, AGENT.limits.steps), ...(checking && decided ? { verdict: decided } : {}) }).catch(() => {});
     return { stopReason, text, verdict };
   }
 
   /** Asked whether something may happen: answers { block: reason } to stop it, or nothing to let it through. */
   async function check(hook, value) {
-    // An agent's own tool calls aren't news to it.
-    if (hook === "agent:beforeTool" && value?.agent === AGENT.id) return undefined;
+    // A tool call made by this agent, or for a check this agent is part of, isn't checked by it again:
+    // two agents checking each other's tool calls would otherwise wake each other forever.
+    const chain = hook === "agent:beforeTool" && Array.isArray(value?.chain) ? value.chain : [];
+    if (chain.includes(AGENT.id)) return undefined;
     if (!matches(hook, value)) return undefined;
     const unsure = (why) => (AGENT.ifUnsure === "block" ? { block: `${AGENT.name} couldn't check it: ${why}` } : undefined);
+    // The model sees at most ANSWER characters of it: what it can't see whole, it can't say is safe.
+    if (JSON.stringify(value ?? null, null, 2).length > ANSWER) return unsure("it was too large to show the agent whole");
     try {
-      const { stopReason, verdict } = await run({ kind: "check", name: hook, value });
+      const { stopReason, verdict } = await run({ kind: "check", name: hook, value, chain });
       if (verdict) return verdict.block ? { block: verdict.block } : undefined;
       return unsure(stopReason === "completed" ? "it gave no answer" : stopReason);
     } catch (error) {

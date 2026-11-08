@@ -23,6 +23,11 @@ function model(ctx) {
         return call("block", { reason: "The author field holds what looks like a card number" });
       }
       if (first.includes("5555")) return { text: "I can't tell.", stop: "end", usage };
+      if (first.includes("6011")) {
+        // Too slow: the write has gone on without it by the time it answers.
+        await new Promise((resolve) => setTimeout(resolve, 17000));
+        return call("data_list_library", {});
+      }
       if (first.includes('"tool": "data_delete_library"')) return call("block", { reason: "Agents may not delete books" });
       return call("allow", {});
     }
@@ -66,6 +71,13 @@ export default async function ({ a, check, openTab, URL, plugin, pluginLog }) {
     await add("Unsure test", "5555 5555 5555 4444");
     check("with if-unsure: block, a check the agent didn't answer blocks the write", await formSays("Security couldn't check it: it gave no answer"));
 
+    // An agent that takes longer than the hook's agentTimeoutMs: with if-unsure: block the write is refused,
+    // the kernel ends the run, and what the model asks for afterwards doesn't run.
+    await add("Slow test", "6011 0000 0000 0004");
+    check("a check past the hook's agentTimeoutMs blocks, with if-unsure: block", await formSays("could not answer data:beforeWrite:library", 20000));
+    await page.waitForFunction(() => document.querySelector('[data-key="agent-activity:activity"]')?.textContent.includes("timeout"), null, { timeout: 5000 }).catch(() => {});
+    check("the kernel ends a check that ran out of time", /timeout\s*security/.test(await activity()), (await activity()).replace(/\s+/g, " ").slice(0, 200));
+
     // No long run of digits: `when` doesn't match, so the security agent isn't asked about the write.
     // The librarian wakes and fills it in; the security agent is asked about that tool call first, and allows it.
     await add("Middlemarch");
@@ -84,6 +96,7 @@ export default async function ({ a, check, openTab, URL, plugin, pluginLog }) {
     await page.waitForFunction(() => document.querySelector('[data-key="agent-activity:activity"]')?.textContent.includes("data_delete_library, which failed"), null, { timeout: 10000 }).catch(() => {});
     check("an agent that checks agent:beforeTool can block another agent's tool call", /librarian called data_delete_library, which failed/.test(await activity()) && (await tableHas("Burn after reading", 2000)), (await activity()).replace(/\s+/g, " ").slice(0, 300));
     check("agent:done says how a check ended", /block\s*security/.test(await activity()) && /allow\s*security/.test(await activity()));
+    check("a check's model can't call tools once its time is up", !/security called data_list_library/.test(await activity()));
 
     // agent:beforeTool carries the tool's arguments, so hearing it needs hook:intercept, not hook:listen:agent:*.
     await plugin(`export const manifest = { id: "tool-snoop", name: "Tool snoop", permissions: ["hook:listen:agent:*"] };

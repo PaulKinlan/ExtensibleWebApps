@@ -65,10 +65,10 @@ Any plugin can listen to these with `hook:listen:agent:<name>`, or `hook:listen:
 | --- | --- |
 | `agent:wake` | `{ agent, run, trigger: { kind, name } }`: a run began. `kind` is `hook`, `check`, `command`, `message` or `topic`. |
 | `agent:toolResult` | `{ agent, run, tool, ok }`: the agent called a tool; `ok` is false if the call failed. |
-| `agent:done` | `{ agent, run, stopReason, steps, tools, usage: { input, output }, verdict? }`: a run ended. `stopReason` is `completed`, `steps` (it reached its step limit), `budget` or `error`. A check's run says its `verdict`, `allow` or `block`. |
+| `agent:done` | `{ agent, run, stopReason, steps, tools, usage: { input, output }, verdict? }`: a run ended. `stopReason` is `completed`, `steps` (it reached its step limit), `budget`, `error` or `timeout` (a check that ran out of time). A check's run says its `verdict`, `allow` or `block`. |
 | `agent:budget` | `{ agent, limit, used, max }`: the agent reached `runs-per-hour` or `tokens-per-day`, so a run didn't start or was stopped. |
 
-One more hook isn't an event: `agent:beforeTool`, `{ agent, run, tool, args }`, comes before each tool call an agent makes, and a listener may return `{ block: reason }` to stop it; the agent is told the reason. It carries the call's arguments, so listening needs `hook:intercept:agent:beforeTool`, which `hook:listen:agent:*` doesn't give.
+One more hook isn't an event: `agent:beforeTool`, `{ agent, run, tool, args, chain }`, comes before each tool call an agent makes, and a listener may return `{ block: reason }` to stop it; the agent is told the reason. It carries the call's arguments, so listening needs `hook:intercept:agent:beforeTool`, which `hook:listen:agent:*` doesn't give.
 
 ## Checks: stopping something before it happens
 
@@ -85,12 +85,12 @@ if-unsure: block
 
 Before a book is saved, if it holds a long run of digits, the agent is asked whether it looks like a card number. Before another agent calls a tool, it is asked whether the call is all right.
 
-1. A check runs at once, beside any other run of the agent, since something waits for it. The model gets two more tools, `allow` and `block`, and the run ends when it calls one. A block's reason goes back to whoever tried: a form shows it, an agent hears it as its tool's error.
-2. A model takes seconds, so an agent gets the hook's `agentTimeoutMs`, not its `timeoutMs`: 15 seconds for each collection's `data:beforeWrite:<collection>` and for `agent:beforeTool`, where a plugin gets one. A hook without an `agentTimeoutMs` can't be checked by an agent, which keeps fast paths fast. The API reference says which hooks have one.
-3. Something the agent couldn't decide (it ran out of time, reached a limit, failed, or ended without `allow` or `block`) goes ahead, unless the file says `if-unsure: block`. A hook that already blocks on failure stays that way.
+1. A check runs at once, beside any other run of the agent, since something waits for it. The model gets two more tools, `allow` and `block`, and the run ends when it calls one; no tool it asked for after that runs. A block's reason goes back to whoever tried: a form shows it, an agent hears it as its tool's error.
+2. A model takes seconds, so an agent gets the hook's `agentTimeoutMs`, not its `timeoutMs`: 15 seconds for each collection's `data:beforeWrite:<collection>` and for `agent:beforeTool`, where a plugin gets one. When it runs out, the kernel ends the run (`agent:done` says `timeout`), and anything the model asks for later is refused. A hook without an `agentTimeoutMs` can't be checked by an agent, which keeps fast paths fast, and neither can a hook that only tells, such as `data:changed:<collection>`. The API reference says which hooks have one.
+3. Something the agent couldn't decide (it ran out of time, reached a limit, failed, ended without `allow` or `block`, or was too large to show the model whole) goes ahead, unless the file says `if-unsure: block`. A hook that already blocks on failure stays that way.
 4. While it waits, the [board](../../std/board.js) shows it as being checked by the agent, and `agent:done` says how it ended.
 
-A check costs a model call, so use `when` to wake the agent only for what might matter: most of the library's writes don't wake the security agent at all. Checking `data:beforeWrite:<collection>` needs `data:read:<collection>`, as hearing it change does. An agent's own tool calls never come to its own `agent:beforeTool` check.
+A check costs a model call, so use `when` to wake the agent only for what might matter: most of the library's writes don't wake the security agent at all. Checking `data:beforeWrite:<collection>` needs `data:read:<collection>`, as hearing it change does. An agent's own tool calls never come to its own `agent:beforeTool` check, and nor do the calls of a check it is part of: `chain` lists the agents in the call's line, so two agents that check each other's tool calls don't wake each other forever.
 
 ## Starting a command
 
