@@ -19,11 +19,11 @@
 
     <h3>Make one with a single command</h3>
     <p>You need <a href="https://nodejs.org/">Node.js</a> 22 or later. In a terminal:</p>
-    <pre><code>npx github:PaulKinlan/ExtensibleWebApps packing-list
+    <pre><code>npm create extensible-app packing-list
 cd packing-list
 npm run dev</code></pre>
     <p>The first line makes a folder called <code>packing-list</code> with a copy of the whole platform in it, installs it, and makes your app in <code>demos/packing-list/</code> from the starter: a list you can add to and tick off. Then open <code>http://localhost:5173/demos/packing-list/</code>. Change <code>main.js</code> and <code>app.html</code>, and run <code>npm run check</code> to find mistakes before you open the page.</p>
-    <p class="note">The copy is yours: the platform, the standard plugins and every demo, to read and change. Already have a checkout of the repo? <code>npm run new-app -- packing-list</code> makes just the app.</p>
+    <p class="note">The command runs the platform's own create script straight from GitHub, so you always get the latest. <code>npx github:PaulKinlan/ExtensibleWebApps packing-list</code> does the same without the npm package. The copy is yours: the platform, the standard plugins and every demo, to read and change. Already have a checkout of the repo? <code>npm run new-app -- packing-list</code> makes just the app.</p>
 
     <h3>Put it online by itself</h3>
     <pre><code>npx wrangler login

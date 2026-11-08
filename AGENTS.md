@@ -13,7 +13,7 @@ Instructions for AI agents (and people) building apps and plugins on this platfo
 - A plugin can define **hooks of its own** in its manifest (`hooks: { open: { mode: "emit" } }`, heard by others as `<id>:open`) and run them with `ctx.hooks.emit` or `ctx.hooks.call`: [hooks of your own](docs/guide/plugin-hooks.md).
 - **No build step.** Write plain JavaScript (JSDoc and `// @ts-check` are welcome), HTML and CSS. The browser runs the files as written. Don't add bundlers, frameworks or npm dependencies to apps or plugins.
 
-Start with `npm run new-app -- my-app` (with no checkout, `npx github:PaulKinlan/ExtensibleWebApps my-app` makes a project with the platform and runs it for you): it copies [`starter/`](starter/), a list you can add to and tick off, to `demos/my-app/`. [`demos/habits/`](demos/habits/) is the smallest complete demo, and [the guide](docs/guide/writing-a-plugin.md) walks through it.
+Start with `npm run new-app -- my-app` (with no checkout, `npm create extensible-app my-app` makes a project with the platform and runs it for you): it copies [`starter/`](starter/), a list you can add to and tick off, to `demos/my-app/`. [`demos/habits/`](demos/habits/) is the smallest complete demo, and [the guide](docs/guide/writing-a-plugin.md) walks through it.
 
 ## Rules the kernel enforces
 

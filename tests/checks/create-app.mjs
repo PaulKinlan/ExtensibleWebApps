@@ -15,6 +15,10 @@ export default async function ({ check, context, URL, errors }) {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   check("npx finds scripts/create-app.mjs as the repo's one command", pkg.bin?.["create-extensible-app"] === "scripts/create-app.mjs" && readFileSync("scripts/create-app.mjs", "utf8").startsWith("#!/usr/bin/env node"));
 
+  const wrapper = JSON.parse(readFileSync("scripts/create-extensible-app/package.json", "utf8"));
+  const runs = readFileSync("scripts/create-extensible-app/index.mjs", "utf8");
+  check("npm create extensible-app is a package that runs the repo's command from GitHub", wrapper.name === "create-extensible-app" && wrapper.bin?.["create-extensible-app"] === "index.mjs" && wrapper.files?.includes("index.mjs") && runs.startsWith("#!/usr/bin/env node") && runs.includes('"github:PaulKinlan/ExtensibleWebApps"'));
+
   const scratch = mkdtempSync(join(tmpdir(), "create-app-"));
   try {
     const run = (...args) => spawnSync(process.execPath, ["scripts/create-app.mjs", ...args], { encoding: "utf8" });
@@ -47,7 +51,7 @@ export default async function ({ check, context, URL, errors }) {
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto(URL);
   const chapter = 'slot[name="your-app"] .chapter';
-  const shown = await page.waitForSelector(`${chapter} >> text=npx github:PaulKinlan/ExtensibleWebApps packing-list`, { state: "attached", timeout: 8000 }).then(() => true, () => false);
+  const shown = await page.waitForSelector(`${chapter} >> text=npm create extensible-app packing-list`, { state: "attached", timeout: 8000 }).then(() => true, () => false);
   const appHtml = shown && (await page.textContent(`${chapter} pre`)).includes('<link rel="plugin" href="main.js">');
   check("chapter 10 shows an app.html as text and the command that makes an app of your own", shown && appHtml);
   await own.close();
