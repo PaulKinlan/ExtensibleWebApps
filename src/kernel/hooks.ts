@@ -36,6 +36,8 @@ export const PLUGIN_HOOKS = {
   timeoutMs: 5000,
   /** The most `agentTimeoutMs` may be. */
   agentTimeoutMs: 30_000,
+  /** The most a value sent with ctx.hooks may be, in characters of JSON. */
+  maxValue: 1_000_000,
 };
 
 /** The plugin that defined each plugin hook, `<plugin>:<key>`. The kernel's own hooks aren't in here. */

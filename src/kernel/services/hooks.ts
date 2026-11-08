@@ -4,12 +4,9 @@
 // ctx.on and the usual hook:listen or hook:intercept capability.
 // Found by name: this file is src/kernel/services/hooks.ts, so it is `ctx.call("hooks", …)`.
 
-import { hookOwners, hooks } from "../hooks";
+import { hookOwners, hooks, PLUGIN_HOOKS } from "../hooks";
 import type { Kernel } from "./index";
 import type { ServiceProvider } from "../remote";
-
-/** What a plugin may send with a hook, as JSON. */
-const MAX_VALUE = 100_000;
 
 export default ({ root }: Kernel): ServiceProvider => {
   return {
@@ -31,7 +28,7 @@ export default ({ root }: Kernel): ServiceProvider => {
       const spec = hookOwners.get(name) === id ? hooks.get(name) : undefined;
       if (!spec) throw new Error(`${id} has no hook ${key}: define it in the manifest's hooks`);
       const value = args[1] === undefined ? null : args[1];
-      if (JSON.stringify(value).length > MAX_VALUE) throw new Error(`A hook's value is limited to ${MAX_VALUE} characters of JSON`);
+      if (JSON.stringify(value).length > PLUGIN_HOOKS.maxValue) throw new Error(`A hook's value is limited to ${PLUGIN_HOOKS.maxValue} characters of JSON`);
       const tells = spec.mode === "emit" || spec.mode === "parallel";
       if (method === "emit") {
         if (!tells) throw new Error(`${name} is a ${spec.mode} hook, which waits for answers: run it with hooks.call`);

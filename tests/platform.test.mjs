@@ -547,9 +547,16 @@ export default async (ctx) => {
   check("plugin views appear in the second tab", (await b.textContent("aside")).includes("Tone"));
 
   // Hand over: close the spawner tab; the second tab starts the plugins again.
+  // The notes plugin's worker starts again too: an edit not saved yet, typed in the second tab, is still there after.
+  const unsaved = "Typed in the second tab, not saved yet";
+  await b.fill("textarea", unsaved);
+  await b.waitForFunction(() => window.__host.traces.some((e) => e.name === "storage.set" && e.plugin === "notes"), null, { timeout: 5000 }).catch(() => {});
+  await b.waitForTimeout(500);
   await a.close({ runBeforeUnload: true });
   await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 12, null, { timeout: 10000 });
   check("closing the spawner tab moves the plugin workers to the other tab", true);
+  const draftKept = await b.waitForFunction((t) => document.querySelector("textarea")?.value === t, unsaved, { timeout: 5000 }).then(() => true, () => false);
+  check("an unsaved edit survives the notes plugin starting again in another tab", draftKept, await b.inputValue("textarea").catch(() => "no editor"));
   await b.click("nav >> text=Hello there");
   await b.waitForFunction(() => /\d+ words/.test(document.querySelector("footer").textContent), null, { timeout: 5000 });
   check("plugins work again after the handover", true, await status(b));

@@ -271,7 +271,14 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
         permissions: p.manifest.permissions,
         instances,
         hooks: [...new Set(instances.flatMap((i) => remote.live.get(i)?.heard ?? []))],
-        defines: [...hookOwners].filter(([, owner]) => owner === p.id).map(([name]) => name),
+        // Its own hooks, and the hooks of the collections it owns.
+        defines: [
+          ...[...hookOwners].filter(([, owner]) => owner === p.id).map(([name]) => name),
+          ...[...hooks.keys()].filter((name) => {
+            const collection = /^data:(?:changed|beforeWrite):(.+)$/.exec(name)?.[1];
+            return !!collection && remote.collectionOwner?.(collection) === p.id;
+          }),
+        ],
       };
     }),
   };

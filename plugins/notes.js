@@ -41,8 +41,15 @@ export default async function (ctx) {
   let status = "";
   /** The draft has edits the person hasn't saved (also after a save was refused). */
   let dirty = false;
+  /** Counts the person's edits, so a save that comes back after a newer edit doesn't mark that edit saved. */
+  let revision = 0;
 
   const list = async (api = ctx) => (notes = await api.call("data", "list", "notes"));
+  /**
+   * The open note and its draft, kept in the plugin's own storage: this one worker serves every tab, and
+   * it starts again in another tab when the tab it ran in closes, so a draft mustn't live only in memory.
+   */
+  const remember = (api) => api.storage.set("open", openId ? { id: openId, draft, dirty } : null);
   const find = (id) => notes.find((n) => n.id === id);
 
   /** What a note's hooks carry: the Markdown editor's post, for its extensions. */
@@ -84,18 +91,25 @@ export default async function (ctx) {
     draft = find(id)?.text ?? "";
     status = "";
     dirty = false;
+    revision++;
     render(api);
+    await remember(api);
     await api.hooks.emit("open", snapshot(false));
   };
 
   const save = async (api) => {
-    const note = openId && find(openId);
-    if (!note) return;
-    const result = await api.call("data", "put", "notes", { id: note.id, title: titleOf(draft), text: draft });
+    if (!openId) return;
+    // A note deleted elsewhere while the person kept editing it is made again with what they wrote.
+    const id = openId;
+    const saving = revision;
+    const result = await api.call("data", "put", "notes", { id, title: titleOf(draft), text: draft });
+    await list(api);
+    // The person moved on (typed more, or opened another note) while the save was on its way: keep their edits as they are.
+    if (openId !== id || revision !== saving) return render(api);
     status = result.ok ? "Saved" : `Not saved: ${result.error ?? (result.errors ?? []).join(", ")}`;
     if (result.ok) dirty = false;
-    await list(api);
     render(api);
+    await remember(api);
     if (result.ok) await api.hooks.emit("save", snapshot(false));
   };
 
@@ -112,6 +126,8 @@ export default async function (ctx) {
       draft = String(value ?? "");
       status = "Unsaved changes";
       dirty = true;
+      revision++;
+      void remember(here);
       return here.hooks.emit("change", snapshot(true));
     }
     if (action === "save") return save(here);
@@ -122,9 +138,21 @@ export default async function (ctx) {
   ctx.on("data:changed:notes", async function (change) {
     const here = this ?? ctx;
     await list(here);
+    // The open note was deleted elsewhere. With nothing unsaved it closes; unsaved edits stay, and Save makes it again.
+    if (change.id === openId && !change.after) {
+      if (dirty) status = "Deleted elsewhere: Save keeps your text as a new copy";
+      else {
+        openId = undefined;
+        await remember(here);
+        await here.hooks.emit("close", null);
+      }
+      return render(here);
+    }
     const text = change.after?.text ?? "";
-    if (change.id === openId && change.after && !dirty && draft !== text) {
+    if (change.id === openId && !dirty && draft !== text) {
       draft = text;
+      revision++;
+      await remember(here);
       status = "Changed by a plugin";
       render(here);
       // Tell note listeners (word count, the editor shim) what the note now says.
@@ -138,5 +166,14 @@ export default async function (ctx) {
     await ctx.call("data", "put", "notes", { id: "welcome", title: "Welcome", text: WELCOME });
     await list();
   }
-  render();
+  // Started again (its tab closed, or the kernel did): carry on with the note that was open, edits and all.
+  const kept = await ctx.storage.get("open");
+  if (kept && typeof kept === "object" && typeof kept.id === "string" && (find(kept.id) || kept.dirty)) {
+    openId = kept.id;
+    draft = String(kept.draft ?? "");
+    dirty = !!kept.dirty;
+    status = dirty ? "Unsaved changes" : "";
+    render();
+    await ctx.hooks.emit("open", snapshot(dirty));
+  } else render();
 }
