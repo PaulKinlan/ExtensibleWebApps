@@ -33,6 +33,7 @@ const MAX_BYTES = 700_000;
 const MAX_PLUGINS = 200;
 const TEXT = /\.(js|mjs|html|css|json|svg|txt|md)$/i;
 const ID = /^[\w-]{1,64}$/;
+const FILE_NAME = /^[\w-][\w.-]{0,63}$/;
 
 const toBase64 = (bytes: Uint8Array) => {
   let out = "";
@@ -40,7 +41,8 @@ const toBase64 = (bytes: Uint8Array) => {
   return btoa(out);
 };
 const fromBase64 = (text: string) => Uint8Array.from(atob(text), (c) => c.charCodeAt(0));
-const sizeOf = (files: SharedFile[]) => files.reduce((n, f) => n + f.name.length + ("text" in f ? f.text.length : f.base64.length), 0);
+/** Bytes as sent, in UTF-8: what the WebSocket limit counts. */
+const sizeOf = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 
 /** A plugin's files as they are kept for an app: the plugin, and each file its manifest lists. */
 async function filesOf(store: Store, userAdded: UserPlugins, app: string, id: string): Promise<SharedFile[] | undefined> {
@@ -59,6 +61,49 @@ async function filesOf(store: Store, userAdded: UserPlugins, app: string, id: st
     }
   }
   return out;
+}
+
+/**
+ * Why a shared plugin can't go in an app's folder, if it can't: it is one plugin, every other file is one
+ * its manifest lists, and none of its files belongs to another plugin there (which it would overwrite).
+ */
+async function problem(store: Store, userAdded: UserPlugins, app: string, files: SharedFile[]): Promise<string | undefined> {
+  const plugins = files.filter((f) => f.name.endsWith(".js"));
+  if (plugins.length !== 1 || !("text" in plugins[0])) return "Share one plugin (.js) at a time";
+  let manifest;
+  try {
+    manifest = readManifest(plugins[0].text);
+  } catch (error) {
+    return `${plugins[0].name}: ${error instanceof Error ? error.message : error}`;
+  }
+  const listed = new Set(manifest.files ?? []);
+  const badName = files.find((f) => !FILE_NAME.test(f.name));
+  if (badName) return `${badName.name}: a file name is letters, digits, ., - and _`;
+  const extra = files.find((f) => f !== plugins[0] && !listed.has(f.name));
+  if (extra) return `${extra.name} isn't one of the files ${manifest.id} lists`;
+  const ours = new Set([`${manifest.id}.js`, ...listed]);
+  for (const other of await userAdded.list(app)) {
+    if (!other.id || other.id === manifest.id) continue;
+    const source = (await store.readText(`user/${app}/${other.file}`)) ?? "";
+    let theirs: string[] = [];
+    try {
+      theirs = readManifest(source).files ?? [];
+    } catch {}
+    const clash = [other.file, ...theirs].find((name) => ours.has(name));
+    if (clash) return `${clash} belongs to ${other.name ?? other.id}, another plugin for this app`;
+  }
+  return undefined;
+}
+
+/**
+ * Puts a shared plugin in an app's folder, quietly (it isn't sent back to the space), and off. A plugin
+ * already there with that id goes first, so files it listed and this one doesn't aren't left behind.
+ */
+async function put(userAdded: UserPlugins, app: string, files: SharedFile[]) {
+  const source = files.find((f) => f.name.endsWith(".js"));
+  const id = source && "text" in source ? readManifest(source.text).id : undefined;
+  if (id) await userAdded.remove(app, id, { quiet: true });
+  return userAdded.add(app, decode(files), { quiet: true });
 }
 
 /** The files, as `user:add` takes them. */
@@ -125,9 +170,10 @@ export function spacePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts,
     if (m.action === "add") {
       if (!wellFormed(m.files)) return { ok: false, error: "A shared plugin is between 1 and 21 files" };
       if (sizeOf(m.files) > MAX_BYTES) return { ok: false, error: "A shared plugin and its files are 700 KB at most" };
-      if (m.files.filter((f) => f.name.endsWith(".js")).length !== 1) return { ok: false, error: "Share one plugin (.js) at a time" };
       return serially(async () => {
-        const added = await userAdded.add(app, decode(m.files), { quiet: true });
+        const wrong = await problem(store, userAdded, app, m.files);
+        if (wrong) return { ok: false, error: wrong };
+        const added = await put(userAdded, app, m.files);
         if (!added.ok) return { ok: false, error: added.error };
         const id = added.ids[0];
         if (!index[app]?.[id] && count() >= MAX_PLUGINS) {
@@ -167,18 +213,24 @@ interface DeviceSocket {
  * other members share in this device's copy, turned off. `reopen` starts an app's plugins again, when a
  * plugin that was on here changes or goes.
  */
-export function devicePlugins(userAdded: UserPlugins, store: Store, socket: DeviceSocket, reopen: (app: string) => unknown) {
+export function devicePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts, socket: DeviceSocket, reopen: (app: string) => unknown) {
   const key = (app: string, id: string) => `${app} ${id}`;
   const split = (k: string) => {
     const at = k.lastIndexOf(" ");
     return { app: k.slice(0, at), id: k.slice(at + 1) };
   };
-  /** `known`: what this device has from the space, by hash. `pending`: what the person did here that the space hasn't heard yet. */
-  let state: { known: Record<string, string>; pending: Record<string, "add" | "remove"> } = { known: {}, pending: {} };
+  /**
+   * `known`: what this device has from the space, by hash. `pending`: what the person did here that the space
+   * hasn't heard yet, each numbered, so the answer to one doesn't clear a newer one made while it was out.
+   */
+  let state: { known: Record<string, string>; pending: Record<string, { action: "add" | "remove"; n: number }>; n: number } = { known: {}, pending: {}, n: 0 };
   const loaded = store.readJson<unknown>(STATE, null).then((saved) => {
     const s = saved as typeof state | null;
-    if (s && typeof s === "object") state = { known: { ...s.known }, pending: { ...s.pending } };
+    if (s && typeof s === "object") state = { known: { ...s.known }, pending: { ...s.pending }, n: Number(s.n) || 0 };
   });
+  const settled = (k: string, n: number) => {
+    if (state.pending[k]?.n === n) delete state.pending[k];
+  };
   const save = () => store.writeJson(STATE, state);
 
   const waiting = new Map<number, (reply: Extract<SyncToDevice, { op: "plugins:reply" }> | undefined) => void>();
@@ -205,8 +257,8 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, socket: Devi
   socket.caughtUp.add(() => refresh());
   userAdded.changed.add(({ app, added, removed }) => {
     void loaded.then(async () => {
-      for (const id of added ?? []) state.pending[key(app, id)] = "add";
-      if (removed) state.pending[key(app, removed)] = "remove";
+      for (const id of added ?? []) state.pending[key(app, id)] = { action: "add", n: ++state.n };
+      if (removed) state.pending[key(app, removed)] = { action: "remove", n: ++state.n };
       await save();
       refresh();
     });
@@ -231,45 +283,69 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, socket: Devi
 
   async function sync() {
     // First what the person did here, so the list the space sends back has it.
-    for (const [k, action] of Object.entries(state.pending)) {
+    for (const [k, { action, n }] of Object.entries(state.pending)) {
       const { app, id } = split(k);
       if (action === "add") {
         const files = await filesOf(store, userAdded, app, id);
-        if (!files) {
-          delete state.pending[k];
+        // Over the limit, it would never fit: say so, rather than send it again at every connection.
+        const tooBig = files && sizeOf(files) > MAX_BYTES;
+        if (!files || tooBig) {
+          if (tooBig) refused(app, id, "it and its files are over 700 KB");
+          settled(k, n);
           continue;
         }
         const reply = await ask({ action: "add", app, files });
         if (!reply) return save();
         if (reply.ok && reply.hash) state.known[k] = reply.hash;
-        else trace({ kind: "error", name: "shared-plugin:refused", plugin: id, detail: `${app}: ${reply.error}` });
+        else refused(app, id, reply.error ?? "the space didn't take it");
       } else {
         const reply = await ask({ action: "remove", app, plugin: id });
         if (!reply) return save();
         delete state.known[k];
       }
-      delete state.pending[k];
+      settled(k, n);
       await save();
     }
 
     const listed = await ask({ action: "list" });
     if (!listed?.ok || !listed.list) return;
-    const there = new Set<string>();
-    /** Apps with a plugin that was on here and changed or went: they start their plugins again. */
+    /** Apps with a plugin that was on here and changed or went: they start their plugins again, however this ends. */
     const restart = new Set<string>();
+    try {
+      await take(listed.list, restart);
+    } finally {
+      await save();
+      for (const app of restart) await reopen(app);
+    }
+  }
+
+  function refused(app: string, id: string, why: string) {
+    trace({ kind: "error", name: "shared-plugin:refused", plugin: id, detail: `${app}: ${why}` });
+    hosts.broadcast({ t: "notice", text: `${id} wasn't shared with the space: ${why}. It's still on this device.`, tone: "error" });
+  }
+
+  /** Puts what the space lists here: the plugins this device hasn't got, and takes away the ones that went. */
+  async function take(list: SharedSummary[], restart: Set<string>) {
+    const there = new Set<string>();
     const wasOn = async (app: string, id: string) => (await userAdded.list(app)).some((p) => p.id === id && p.on);
-    for (const s of listed.list) {
+    for (const s of list) {
       const k = key(s.app, s.id);
       there.add(k);
       if (state.pending[k] || state.known[k] === s.hash) continue;
       const got = await ask({ action: "get", app: s.app, plugin: s.id });
-      if (!got) return save();
+      if (!got) return;
       if (!got.ok || !got.files) continue;
-      if (await wasOn(s.app, s.id)) restart.add(s.app);
-      // Added quietly, so it isn't sent back; added, so it arrives off.
-      const added = await userAdded.add(s.app, decode(got.files), { quiet: true });
-      if (added.ok) state.known[k] = s.hash;
-      else trace({ kind: "error", name: "shared-plugin:take", plugin: s.id, detail: `${s.app}: ${added.error}` });
+      // The space checked it, but this device may have a plugin of its own that the files would overwrite.
+      const wrong = await problem(store, userAdded, s.app, got.files);
+      let error = wrong;
+      if (!wrong) {
+        if (await wasOn(s.app, s.id)) restart.add(s.app);
+        const added = await put(userAdded, s.app, got.files);
+        if (!added.ok) error = added.error;
+      }
+      // Kept by its hash either way, so a plugin that can't go here isn't fetched again and again.
+      state.known[k] = s.hash;
+      if (error) trace({ kind: "error", name: "shared-plugin:take", plugin: s.id, detail: `${s.app}: ${error}` });
     }
     // Shared once, and removed from the space since by someone.
     for (const k of Object.keys(state.known)) {
@@ -279,7 +355,5 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, socket: Devi
       await userAdded.remove(app, id, { quiet: true });
       delete state.known[k];
     }
-    await save();
-    for (const app of restart) await reopen(app);
   }
 }

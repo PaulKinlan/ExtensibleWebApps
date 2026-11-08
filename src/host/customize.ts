@@ -16,6 +16,9 @@
 import type { Command, Opened } from "../shared/protocol";
 import { fragile, type PlaceState } from "./places";
 
+/** In a space (a page at /s/<space>/…), a person's plugins are shared with its members (src/kernel/shared-plugins.ts). */
+const inSpace = typeof location !== "undefined" && /^\/s\/[^/]+\//.test(location.pathname);
+
 interface UserPlugin {
   file: string;
   id?: string;
@@ -130,7 +133,8 @@ export function customize(host: CustomizeHost) {
         toggle.addEventListener("click", () => void run(p.on ? "user:off" : "user:on", { id: p.id }));
         const remove = h("button", { type: "button", "data-remove": p.id ?? p.file }, "Remove");
         remove.addEventListener("click", () => {
-          if (confirm(`Remove ${p.name ?? p.file} from this app on this device?`)) void run("user:remove", { id: p.id }, "Removed");
+          const where = inSpace ? "for everyone in this space" : "on this device";
+          if (confirm(`Remove ${p.name ?? p.file} from this app ${where}?`)) void run("user:remove", { id: p.id }, "Removed");
         });
         const places = Object.entries(p.places ?? {});
         return h(
@@ -216,7 +220,13 @@ export function customize(host: CustomizeHost) {
     dialog.append(
       ...[
       h("h2", { id: "customize-title" }, "Customize this app"),
-      h("p", { class: "muted" }, "Your plugins are kept on this device. They can add to this page, replace parts of it or hide them, except where the app's author locked it."),
+      h(
+        "p",
+        { class: "muted" },
+        inSpace
+          ? "Plugins here are shared with everyone in this space, and each person turns them on for themselves. They can add to this page, replace parts of it or hide them, except where the app's author locked it."
+          : "Your plugins are kept on this device. They can add to this page, replace parts of it or hide them, except where the app's author locked it.",
+      ),
       message ? h("p", { role: "status" }, message) : null,
       host.inspect ? inspectButton() : null,
       h("h3", {}, "Your plugins"),

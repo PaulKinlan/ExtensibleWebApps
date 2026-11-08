@@ -245,7 +245,7 @@ hosts.onHello = (host, folder) => {
     store.use(where.folder ?? folder);
     if (where.space && where.kind !== "server") {
       device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
-      devicePlugins(userAdded, store, device, reopen);
+      devicePlugins(userAdded, store, hosts, device, reopen);
     }
     return;
   }

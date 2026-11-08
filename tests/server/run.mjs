@@ -228,10 +228,28 @@ export default (ctx) => { ctx.routes.add("GET", "club-note", () => ({ text: "ran
   const big = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: source }, { name: "club-note.html", text: "x".repeat(800_000) }] });
   const badApp = await ask(mine, { action: "add", app: "../etc", files: [{ name: "club-note.js", text: source }] });
   const notPlugin = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: "export default 1;" }] });
+  const unlisted = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: source }, { name: "club-note.html", text: "<template></template>" }, { name: "stray.txt", text: "x" }] });
+  const clash = await ask(theirs, {
+    action: "add",
+    app: "demos/contacts",
+    files: [{ name: "other-note.js", text: 'export const manifest = { id: "other-note", name: "Other", permissions: [], files: ["club-note.html"] };\nexport default () => {};' }, { name: "club-note.html", text: "<template>mine now</template>" }],
+  });
+  const kept = await ask(theirs, { action: "get", app: "demos/contacts", plugin: "club-note" });
   check(
-    "members' plugins: the space refuses two plugins at once, one over 700 KB, an app that isn't a folder, and a file that isn't a plugin",
-    [two, big, badApp, notPlugin].every((r) => r && r.ok === false && r.error),
-    JSON.stringify([two, big, badApp, notPlugin].map((r) => r?.error)),
+    "members' plugins: the space refuses two plugins at once, one over 700 KB, an app that isn't a folder, a file that isn't a plugin, a file its manifest doesn't list, and a file another plugin has",
+    [two, big, badApp, notPlugin, unlisted, clash].every((r) => r && r.ok === false && r.error) && kept?.files?.find((f) => f.name === "club-note.html")?.text === "<template>hi</template>",
+    JSON.stringify([two, big, badApp, notPlugin, unlisted, clash].map((r) => r?.error)),
+  );
+
+  // A new version that no longer lists its template: the old template goes, and others' lists change.
+  const leaner = source.replace(', files: ["club-note.html"]', "");
+  const changed = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: leaner }] });
+  const now = await ask(theirs, { action: "get", app: "demos/contacts", plugin: "club-note" });
+  const relisted = await ask(theirs, { action: "list" });
+  check(
+    "members' plugins: a new version replaces the old, leaving none of the files it no longer lists, with a new hash",
+    changed?.ok && changed.hash !== shared?.hash && now?.files?.length === 1 && now.files[0].text === leaner && relisted?.list?.find((p) => p.id === "club-note")?.hash === changed.hash,
+    JSON.stringify({ changed, files: now?.files?.map((f) => f.name) }),
   );
 
   const before = theirs.heard.filter((m) => m.op === "plugins:changed").length;
