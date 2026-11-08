@@ -12,15 +12,15 @@ import { apps as makeApps } from "./apps";
 import { makeRoutes } from "./routes";
 import { catalog } from "./catalog";
 import { changeLog } from "./changes";
-import { checkPath, PathError } from "./paths";
 import { allowed, reviews as makeReviews } from "./review";
 import { net } from "./net";
 import { notesApp } from "./notes";
 import { grants } from "./gate";
-import { readManifest } from "./manifest";
+import { readManifest, RESERVED } from "./manifest";
 import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
+import { loadServices } from "./services";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
@@ -88,7 +88,6 @@ const notes = notesApp(root, store, hosts);
 const log = changeLog(store);
 const reviews = makeReviews(store, hosts, log);
 const base = (instance: string) => instance.split("@")[0];
-const titleOf = (text: string) => text.split("\n")[0].replace(/^#+\s*/, "").trim().slice(0, 60) || "Untitled";
 
 /** Asks the person to review a write by `instance`; throws unless they allow it. */
 async function reviewed(instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: { trace?: string }) {
@@ -101,167 +100,8 @@ async function reviewed(instance: string, place: string, target: string, before:
   return outcome;
 }
 
-/** Each plugin's own data: `plugin-data/<id>.json`. No review, since it is the plugin's own. */
-const ownData = new Map<string, Promise<Record<string, unknown>>>();
-/** A record with no prototype, so keys such as `constructor` or `__proto__` are just keys. */
-const record0 = (from: unknown): Record<string, unknown> => Object.assign(Object.create(null), from && typeof from === "object" && !Array.isArray(from) ? from : {});
-const dataOf = (id: string) => {
-  if (!ownData.has(id)) ownData.set(id, store.readJson<unknown>(`plugin-data/${id}.json`, {}).then(record0));
-  return ownData.get(id)!;
-};
-
-const services: Record<string, ServiceProvider> = {
-  audio: {
-    description: "Sound, played by the tab that runs the plugin workers. Audio runs in an AudioWorklet, never through hooks.",
-    methods: {
-      registerProcessor: { args: "(name, source)", returns: "true", needs: "audio", description: "Registers an AudioWorklet processor, from its source, under a name." },
-      play: { args: "({ processor, ms?, options? })", returns: "{ played, state }", needs: "audio", description: "Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions." },
-    },
-    capability: () => "audio",
-    call: (_plugin, method, args, dispatch) => hosts.bridge("audio", method, args, dispatch),
-  },
-  store: {
-    description: "The notes. They belong to the notes app, so a plugin's change to one is reviewed first.",
-    methods: {
-      list: { args: "()", returns: "[{ id, title, text, updated }]", needs: "data:read:notes", description: "Every note, most recently changed first." },
-      put: { args: "({ id?, text }, reason)", returns: "{ ok, id, outcome }", needs: "data:write:notes", reviewed: true, description: "Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open." },
-    },
-    capability: (method) => (method === "list" ? "data:read:notes" : "data:write:notes"),
-    /** `put({ id?, text }, reason)`: notes belong to the notes app, so a plugin's write is reviewed first. */
-    call: async (plugin, method, args, dispatch) => {
-      if (method === "list") return store.list();
-      if (method !== "put") throw new Error(`store.${method} is not a method`);
-      const [input, reason] = args as [{ id?: unknown; text?: unknown }, unknown];
-      if (!input || typeof input.text !== "string") throw new Error("store.put takes { id?, text }");
-      const id = typeof input.id === "string" && /^[\w-]{1,64}$/.test(input.id) ? input.id : Math.random().toString(36).slice(2, 8);
-      const before = store.get(id);
-      const title = titleOf(input.text);
-      const outcome = await reviewed(plugin, "notes", `the note “${before?.title ?? title}”`, before?.text ?? "", input.text, reason, dispatch);
-      // Only if the note is still what the person reviewed.
-      const result = await store.put({ id, title, text: input.text, updated: Date.now() }, dispatch, before?.text ?? null);
-      if (!result.ok) throw new Error(`Not saved: ${result.reason}`);
-      return { ok: true, id, outcome };
-    },
-  },
-  files: {
-    description: "Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.",
-    methods: {
-      read: { args: "(path)", returns: "text or null", needs: "files:<folder>", description: "Reads a file. `<folder>` is the path's first folder." },
-      write: { args: "(path, text, reason)", returns: "{ ok, path, outcome } or { ok, unchanged }", needs: "files:<folder>", reviewed: true, description: "Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open." },
-    },
-    /** Each folder is its own capability: `files:exports` lets a plugin use `exports/...`. */
-    capability: (_method, args) => `files:${typeof args[0] === "string" ? args[0].split("/")[0] : ""}`,
-    call: async (plugin, method, args, dispatch) => {
-      let path: string;
-      try {
-        path = checkPath(args[0]).join("/");
-      } catch (error) {
-        if (error instanceof PathError) record({ kind: "denied", name: "files:path", plugin, trace: dispatch.trace, detail: error.message });
-        throw error;
-      }
-      if (method === "read") return (await store.readText(path)) ?? null;
-      if (method !== "write") throw new Error(`files.${method} is not a method`);
-      const text = args[1];
-      if (typeof text !== "string") throw new Error("files.write takes (path, text, reason)");
-      if (text.length > 5_000_000) throw new Error("The file is too large");
-      const existing = await store.readText(path);
-      if (existing === text) return { ok: true, unchanged: true };
-      const outcome = await reviewed(plugin, `files:${path.split("/")[0]}`, path, existing ?? "", text, args[2], dispatch);
-      // Written only if the file is still what the person reviewed (or still missing).
-      await store.writeText(path, text, existing ?? null);
-      return { ok: true, path, outcome };
-    },
-  },
-  storage: {
-    description: "The plugin's own data, kept in `plugin-data/<id>.json` with the app's data. Never reviewed, since it is the plugin's own.",
-    methods: {
-      get: { args: "(key)", returns: "the value, or null", description: "Reads a value." },
-      set: { args: "(key, value)", returns: "true", description: "Saves a JSON value; null removes it. Up to 1 MB in all." },
-    },
-    capability: () => undefined,
-    call: async (plugin, method, args) => {
-      const id = base(plugin);
-      const data = await dataOf(id);
-      if (typeof args[0] !== "string") throw new Error("Storage keys are strings");
-      const key = args[0];
-      if (method === "get") return Object.hasOwn(data, key) ? data[key] : null;
-      if (method !== "set") throw new Error(`storage.${method} is not a method`);
-      // Try the change on a copy first, so a refused write leaves the stored data as it was.
-      const next = record0(data);
-      if (args[1] === undefined || args[1] === null) delete next[key];
-      else Object.defineProperty(next, key, { value: JSON.parse(JSON.stringify(args[1])), enumerable: true, writable: true, configurable: true });
-      const text = JSON.stringify(next);
-      if (text.length > 1_000_000) throw new Error("A plugin's own storage is limited to 1 MB");
-      await store.writeText(`plugin-data/${id}.json`, text);
-      for (const k of Object.keys(data)) delete data[k];
-      Object.assign(data, next);
-      return true;
-    },
-  },
-  debug: {
-    description: "The trace: everything the kernel, the pages and plugins did, and every error. For developer tools such as std/debug-console.js; hear new events with the `debug:trace` hook.",
-    methods: {
-      recent: {
-        args: "()",
-        returns: "{ startedAt, events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? }",
-        needs: "debug:read",
-        description: "The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.",
-      },
-      app: {
-        args: "()",
-        returns: "{ tab?, app? }",
-        needs: "debug:read",
-        description: "For a tab-scoped caller: its `tab`, and the ids of the plugins the app open there links, or no `app` if the tab hasn't opened one yet. The trace's `app:open` event says when to ask again.",
-      },
-    },
-    capability: () => "debug:read",
-    call: (plugin, method) => {
-      const tab = plugin.split("@")[1];
-      const where = tab ? { tab, app: apps.linkedBy(tab) } : {};
-      if (method === "app") return where;
-      if (method === "recent") return { startedAt, events: recent(), ...where };
-      throw new Error(`debug.${method} is not a method`);
-    },
-  },
-  page: {
-    description: "The app's own page, as far as a plugin's places reach into it.",
-    methods: {
-      matches: {
-        args: "(place)",
-        returns: "[{ text, data }]",
-        needs: "ui",
-        description:
-          "What one of the plugin's places matches in the page: each element's text (up to 500 characters) and its data-* attributes, in page order. A plugin with `each: true` draws a view per match by rendering to `<place>#<index>`.",
-      },
-    },
-    capability: () => "ui",
-    call: (plugin, method, args, dispatch) => {
-      if (method !== "matches") throw new Error(`page.${method} is not a method`);
-      const id = base(plugin);
-      if (typeof args[0] !== "string" || !remote.installed.get(id)?.manifest.places?.[args[0]]) throw new Error(`${id} has no place named ${String(args[0])}`);
-      // A tab-scoped plugin asks its own tab; a shared one, any tab with its app open.
-      const tab = plugin.split("@")[1];
-      const host = hosts.list.find((h) => (tab ? h.tab === tab : apps.linkedBy(h.tab)?.includes(id)));
-      if (!host) throw new Error("No tab has this plugin's app open");
-      return hosts.bridge("page", "matches", [id, args[0]], dispatch, host);
-    },
-  },
-  kernel: {
-    description: "The kernel itself.",
-    methods: {
-      ping: { args: "()", returns: '"pong"', description: "Answers at once; for checking the connection." },
-      hooks: { args: "()", returns: "{ [name]: { mode, timeoutMs?, onFailure?, args?, description? } }", description: "Every hook and its contract." },
-      reference: { args: "()", returns: "the reference, as data", description: "This API reference, as the kernel describes itself." },
-    },
-    capability: () => undefined,
-    call: (_plugin, method) => {
-      if (method === "ping") return "pong";
-      if (method === "hooks") return Object.fromEntries(hooks);
-      if (method === "reference") return describe();
-      throw new Error(`kernel.${method} is not a method`);
-    },
-  },
-};
+// Services set here belong to a module made below; every other service is a file in services/.
+const services: Record<string, ServiceProvider> = {};
 
 const remote = new RemotePlugins(root, hosts, services);
 const secrets = makeSecrets(store, hosts, (instance) => remote.installed.get(base(instance))?.manifest.name ?? base(instance));
@@ -351,6 +191,11 @@ services.plugins = pluginSwitches.service;
 
 /** The kernel's API reference, built from the registries above as they are now. */
 const describe = () => reference(services, remote);
+
+// The rest of the services are a file each in services/, found by name.
+Object.assign(services, loadServices({ root, store, hosts, remote, apps, reviewed, describe }));
+// A plugin can't take a service's name as its id, whichever way the service was added.
+for (const name of Object.keys(services)) RESERVED.add(name);
 
 // One per line, with a trailing comma, so two changes that add a plugin land on different lines.
 const BUILT_IN = [

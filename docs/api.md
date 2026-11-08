@@ -148,178 +148,6 @@ Needs: `audio`.
 
 Registers an AudioWorklet processor, from its source, under a name.
 
-### store
-
-The notes. They belong to the notes app, so a plugin's change to one is reviewed first.
-
-#### store.list
-
-`store.list()` → [{ id, title, text, updated }]
-
-Needs: `data:read:notes`.
-
-Every note, most recently changed first.
-
-#### store.put
-
-`store.put({ id?, text }, reason)` → { ok, id, outcome }
-
-Needs: `data:write:notes`, and the person's review.
-
-Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open.
-
-### files
-
-Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.
-
-#### files.read
-
-`files.read(path)` → text or null
-
-Needs: `files:<folder>`.
-
-Reads a file. `<folder>` is the path's first folder.
-
-#### files.write
-
-`files.write(path, text, reason)` → { ok, path, outcome } or { ok, unchanged }
-
-Needs: `files:<folder>`, and the person's review.
-
-Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open.
-
-### storage
-
-The plugin's own data, kept in `plugin-data/<id>.json` with the app's data. Never reviewed, since it is the plugin's own.
-
-#### storage.get
-
-`storage.get(key)` → the value, or null
-
-Needs: nothing.
-
-Reads a value.
-
-#### storage.set
-
-`storage.set(key, value)` → true
-
-Needs: nothing.
-
-Saves a JSON value; null removes it. Up to 1 MB in all.
-
-### debug
-
-The trace: everything the kernel, the pages and plugins did, and every error. For developer tools such as std/debug-console.js; hear new events with the `debug:trace` hook.
-
-#### debug.app
-
-`debug.app()` → { tab?, app? }
-
-Needs: `debug:read`.
-
-For a tab-scoped caller: its `tab`, and the ids of the plugins the app open there links, or no `app` if the tab hasn't opened one yet. The trace's `app:open` event says when to ask again.
-
-#### debug.recent
-
-`debug.recent()` → { startedAt, events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? }
-
-Needs: `debug:read`.
-
-The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.
-
-### page
-
-The app's own page, as far as a plugin's places reach into it.
-
-#### page.matches
-
-`page.matches(place)` → [{ text, data }]
-
-Needs: `ui`.
-
-What one of the plugin's places matches in the page: each element's text (up to 500 characters) and its data-* attributes, in page order. A plugin with `each: true` draws a view per match by rendering to `<place>#<index>`.
-
-### kernel
-
-The kernel itself.
-
-#### kernel.hooks
-
-`kernel.hooks()` → { [name]: { mode, timeoutMs?, onFailure?, args?, description? } }
-
-Needs: nothing.
-
-Every hook and its contract.
-
-#### kernel.ping
-
-`kernel.ping()` → "pong"
-
-Needs: nothing.
-
-Answers at once; for checking the connection.
-
-#### kernel.reference
-
-`kernel.reference()` → the reference, as data
-
-Needs: nothing.
-
-This API reference, as the kernel describes itself.
-
-### secrets
-
-API keys and tokens. A plugin never reads one: it asks the person for it by name, then uses it in requests it makes with net.fetch, which the kernel sends only to the hosts the secret was given for.
-
-#### secrets.forget
-
-`secrets.forget(name)` → true
-
-Needs: `secret:<name>`.
-
-Removes the secret.
-
-#### secrets.has
-
-`secrets.has(name)` → { set, hosts }
-
-Needs: `secret:<name>`.
-
-Whether the person has given this secret, and the hosts it may be sent to.
-
-#### secrets.request
-
-`secrets.request(name, { hosts, label? })` → { set }
-
-Needs: `secret:<name>`.
-
-Asks the person to paste the secret, in a card the kernel draws; resolves when they save it or say not now (or after ten minutes). `hosts` are the only hosts it will ever be sent to.
-
-### net
-
-Web requests the kernel makes for a plugin, to the hosts its manifest names. A header can hold a secret the plugin never sees.
-
-#### net.fetch
-
-`net.fetch({ url, method?, headers?, body? })` → { ok, status, headers, text }
-
-Needs: `network:<host>`.
-
-Fetches `url` (https:, or http: on localhost) and returns the answer as text, up to 4 MB, within two minutes. A header given as `{ secret: name }` is filled with that secret, if the plugin has `secret:<name>` and the host is one the secret is for.
-
-### settings
-
-The plugin's own settings, from the form the plugins panel builds out of its manifest.
-
-#### settings.get
-
-`settings.get()` → { [key]: value }
-
-Needs: nothing.
-
-The plugin's settings: saved values over the manifest's defaults.
-
 ### authoring
 
 Helps a plugin editor: reads the code of the plugins in the caller's app and files next to the caller, checks a draft's manifest, and saves the person's own plugins, after they review each one. The caller must be tab-scoped.
@@ -424,6 +252,98 @@ Needs: `data:write:<collection>`, and the person's review.
 
 Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection.
 
+### debug
+
+The trace: everything the kernel, the pages and plugins did, and every error. For developer tools such as std/debug-console.js; hear new events with the `debug:trace` hook.
+
+#### debug.app
+
+`debug.app()` → { tab?, app? }
+
+Needs: `debug:read`.
+
+For a tab-scoped caller: its `tab`, and the ids of the plugins the app open there links, or no `app` if the tab hasn't opened one yet. The trace's `app:open` event says when to ask again.
+
+#### debug.recent
+
+`debug.recent()` → { startedAt, events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], tab?, app? }
+
+Needs: `debug:read`.
+
+The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.
+
+### files
+
+Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.
+
+#### files.read
+
+`files.read(path)` → text or null
+
+Needs: `files:<folder>`.
+
+Reads a file. `<folder>` is the path's first folder.
+
+#### files.write
+
+`files.write(path, text, reason)` → { ok, path, outcome } or { ok, unchanged }
+
+Needs: `files:<folder>`, and the person's review.
+
+Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open.
+
+### kernel
+
+The kernel itself.
+
+#### kernel.hooks
+
+`kernel.hooks()` → { [name]: { mode, timeoutMs?, onFailure?, args?, description? } }
+
+Needs: nothing.
+
+Every hook and its contract.
+
+#### kernel.ping
+
+`kernel.ping()` → "pong"
+
+Needs: nothing.
+
+Answers at once; for checking the connection.
+
+#### kernel.reference
+
+`kernel.reference()` → the reference, as data
+
+Needs: nothing.
+
+This API reference, as the kernel describes itself.
+
+### net
+
+Web requests the kernel makes for a plugin, to the hosts its manifest names. A header can hold a secret the plugin never sees.
+
+#### net.fetch
+
+`net.fetch({ url, method?, headers?, body? })` → { ok, status, headers, text }
+
+Needs: `network:<host>`.
+
+Fetches `url` (https:, or http: on localhost) and returns the answer as text, up to 4 MB, within two minutes. A header given as `{ secret: name }` is filled with that secret, if the plugin has `secret:<name>` and the host is one the secret is for.
+
+### page
+
+The app's own page, as far as a plugin's places reach into it.
+
+#### page.matches
+
+`page.matches(place)` → [{ text, data }]
+
+Needs: `ui`.
+
+What one of the plugin's places matches in the page: each element's text (up to 500 characters) and its data-* attributes, in page order. A plugin with `each: true` draws a view per match by rendering to `<place>#<index>`.
+
 ### plugins
 
 The plugins in the caller's app, and a switch for each. The caller must be tab-scoped; hear changes with the `plugins:changed` hook.
@@ -443,6 +363,86 @@ Every plugin the caller's app links, in the order its app.html lists them. Empty
 Needs: `plugins:manage`.
 
 Turns one of the app's plugins on or off. Saved, and applies in every tab, as the plugins panel's switch does.
+
+### secrets
+
+API keys and tokens. A plugin never reads one: it asks the person for it by name, then uses it in requests it makes with net.fetch, which the kernel sends only to the hosts the secret was given for.
+
+#### secrets.forget
+
+`secrets.forget(name)` → true
+
+Needs: `secret:<name>`.
+
+Removes the secret.
+
+#### secrets.has
+
+`secrets.has(name)` → { set, hosts }
+
+Needs: `secret:<name>`.
+
+Whether the person has given this secret, and the hosts it may be sent to.
+
+#### secrets.request
+
+`secrets.request(name, { hosts, label? })` → { set }
+
+Needs: `secret:<name>`.
+
+Asks the person to paste the secret, in a card the kernel draws; resolves when they save it or say not now (or after ten minutes). `hosts` are the only hosts it will ever be sent to.
+
+### settings
+
+The plugin's own settings, from the form the plugins panel builds out of its manifest.
+
+#### settings.get
+
+`settings.get()` → { [key]: value }
+
+Needs: nothing.
+
+The plugin's settings: saved values over the manifest's defaults.
+
+### storage
+
+The plugin's own data, kept in `plugin-data/<id>.json` with the app's data. Never reviewed, since it is the plugin's own.
+
+#### storage.get
+
+`storage.get(key)` → the value, or null
+
+Needs: nothing.
+
+Reads a value.
+
+#### storage.set
+
+`storage.set(key, value)` → true
+
+Needs: nothing.
+
+Saves a JSON value; null removes it. Up to 1 MB in all.
+
+### store
+
+The notes. They belong to the notes app, so a plugin's change to one is reviewed first.
+
+#### store.list
+
+`store.list()` → [{ id, title, text, updated }]
+
+Needs: `data:read:notes`.
+
+Every note, most recently changed first.
+
+#### store.put
+
+`store.put({ id?, text }, reason)` → { ok, id, outcome }
+
+Needs: `data:write:notes`, and the person's review.
+
+Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open.
 
 ## Hooks
 
@@ -540,18 +540,18 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `audio` | Call audio.registerProcessor, audio.play. |
+| `data:read:<collection>` | Call data.list, data.get. |
 | `data:read:notes` | Call store.list. |
+| `data:write:<collection>` | Call data.put, data.delete. |
 | `data:write:notes` | Call store.put. |
-| `files:<folder>` | Call files.read, files.write. |
 | `debug:read` | Call debug.recent, debug.app. |
-| `ui` | Call page.matches. |
-| `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
+| `files:<folder>` | Call files.read, files.write. |
 | `network:<host>` | Call net.fetch. |
 | `plugins:author` | Call authoring.source, authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file, authoring.check. |
-| `data:read:<collection>` | Call data.list, data.get. |
-| `data:write:<collection>` | Call data.put, data.delete. |
-| `plugins:read` | Call plugins.app. |
 | `plugins:manage` | Call plugins.setEnabled. |
+| `plugins:read` | Call plugins.app. |
+| `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
+| `ui` | Call page.matches. |
 
 Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
 
@@ -579,7 +579,24 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin's view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
-Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`, `net`, `secrets`, `authoring`.
+Reserved ids, which no plugin can take:
+
+- `audio`
+- `authoring`
+- `data`
+- `debug`
+- `files`
+- `host`
+- `kernel`
+- `net`
+- `notes`
+- `page`
+- `plugins`
+- `review`
+- `secrets`
+- `settings`
+- `storage`
+- `store`
 
 Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`.
 
