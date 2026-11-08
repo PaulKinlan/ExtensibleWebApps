@@ -20,7 +20,7 @@
   <style>
     :host { display: block; }
     .editor { display: grid; grid-template-columns: auto minmax(0, 1fr); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
-    .editor:focus-within { outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 1px; }
+    .editor:focus-within { outline: 2px solid transparent; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
     .lines, textarea { margin: 0; padding: var(--space-2); font: var(--text-sm)/1.6 var(--mono); tab-size: 2; }
     .lines { min-width: 3.5ch; text-align: right; color: var(--fg-2); background: var(--bg-2); user-select: none; overflow: hidden; white-space: pre; }
     textarea { width: 100%; border: 0; resize: vertical; color: var(--fg); background: transparent; white-space: pre; overflow: auto; outline: none; }

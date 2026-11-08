@@ -9,20 +9,31 @@
 -->
 <template>
   <style>
-    :host { display: block; min-width: 0; overflow-x: auto; }
+    /* The table sits on a surface of its own, like a card, and scrolls sideways inside it on a phone. */
+    :host { display: block; min-width: 0; overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
     table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-    th, td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); vertical-align: top; }
-    th { font-size: var(--text-sm); color: var(--fg-2); font-weight: 600; white-space: nowrap; }
+    th, td { text-align: left; padding: 10px var(--space-4); border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: 0; }
+    thead th { position: sticky; top: 0; background: color-mix(in srgb, var(--bg-2) 60%, var(--surface)); font-size: var(--text-sm); color: var(--fg-2); font-weight: 600; white-space: nowrap; }
     th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+    th button:hover, th[aria-sort] button { color: var(--fg); }
     td.number, th.number { text-align: right; }
+    tbody tr { transition: background var(--duration, 140ms) var(--ease, ease); }
     tbody tr:hover { background: color-mix(in srgb, var(--accent) 5%, transparent); }
-    caption { text-align: left; }
+    /* The caption is the table's title bar: its name and how many rows. */
+    caption, caption.status { text-align: left; padding: var(--space-3) var(--space-4); font-size: var(--text-md); font-weight: 600; color: var(--fg); border-bottom: 1px solid var(--border); }
     button.link { all: unset; cursor: pointer; color: var(--accent); font-weight: 500; }
-    button.remove { font: inherit; font-size: var(--text-sm); height: 24px; padding: 0 var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: none; color: var(--fg-2); cursor: pointer; }
+    button.link:hover { text-decoration: underline; text-underline-offset: 3px; }
+    /* Delete stays quiet until it's pointed at. */
+    button.remove { font: inherit; font-size: var(--text-sm); font-weight: 500; height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--fg-2); cursor: pointer; transition: color var(--duration, 140ms), background var(--duration, 140ms), border-color var(--duration, 140ms); }
+    button.remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
+    td:has(> button.remove) { text-align: right; width: 1%; }
     /* After the resets above, so `all: unset` doesn't remove the focus ring. */
-    button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 1px; border-radius: var(--radius-sm); }
-    .empty, .status { color: var(--fg-2); font-size: var(--text-sm); padding: var(--space-3) 0; }
-    .error { color: var(--danger); font-size: var(--text-sm); }
+    button:focus-visible { outline: 3px solid var(--ring, color-mix(in srgb, var(--accent) 70%, transparent)); outline-offset: 1px; border-radius: var(--radius-sm); }
+    /* On a phone, rows stay one line each and the table scrolls sideways, rather than names folding into columns of words. */
+    @media (max-width: 600px) { th, td { padding: 10px var(--space-3); white-space: nowrap; } }
+    .empty, .status:not(caption) { color: var(--fg-2); font-size: var(--text-sm); padding: var(--space-4); margin: 0; }
+    .error { color: var(--danger); font-size: var(--text-sm); padding: var(--space-4); margin: 0; }
   </style>
 </template>
 <script type="module" src="ui-table.js"></script>

@@ -154,7 +154,8 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, attrs: Record<string, 
 }
 
 export function inspect(host: InspectHost) {
-  const panel = h("aside", { id: "inspect", class: "inspect", role: "dialog", "aria-label": "Inspect", tabindex: "-1", hidden: "" });
+  // A div, not an aside: an <aside> in the body gives an app page its second column (styles.css), even while hidden.
+  const panel = h("div", { id: "inspect", class: "inspect", role: "dialog", "aria-label": "Inspect", tabindex: "-1", hidden: "" });
   document.body.append(panel);
   let on = false;
   let hovered: Element | null = null;
