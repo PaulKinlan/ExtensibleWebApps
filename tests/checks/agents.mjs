@@ -91,7 +91,7 @@ export default async (ctx) => {
 export default async (ctx) => {
   ctx.on("agent:budget", (e) => ctx.log("again-budget " + e.limit + " " + (e.used >= e.max)));
   await ctx.call("agents", "run", "librarian", "fill-missing");
-  const [agent] = await ctx.call("agents", "list");
+  const agent = (await ctx.call("agents", "list")).find((a) => a.id === "librarian");
   ctx.log("again-list " + JSON.stringify({ id: agent?.id, commands: agent?.commands, over: agent?.used.tokens >= agent?.limits.tokensPerDay }));
 };`);
     check("past its tokens a day, an agent doesn't run, and the app hears agent:budget", (await pluginLog("agent-caller-2", "again-budget").catch(() => "")) === "again-budget tokens-per-day true");

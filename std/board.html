@@ -1,0 +1,51 @@
+<!--
+  The board. board.js sends { open, waiting, questions, lately }: whether the
+  panel is open, how many questions wait, each question ({ id, name,
+  question, choices? }) and the last things the agents did. A choice is its
+  own little form, so the answer goes with the question's id.
+-->
+<style>
+  .board { display: grid; gap: var(--space-2); }
+  .board ul { margin: 0; padding-left: var(--space-4); }
+  .board .question { display: grid; gap: var(--space-2); }
+  .board .choices { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .board .choices form { display: inline; }
+</style>
+<template id="board">
+  <div class="board">
+    <ui-toolbar>
+      <button type="button" data-action="toggle">Board</button>
+      <template if="waiting"><ui-badge tone="warn">{{waiting}} waiting</ui-badge></template>
+    </ui-toolbar>
+    <template if="open">
+      <template for="q of questions">
+        <ui-card key="{{q.id}}" tone="warn" class="question">
+          <p><strong>{{q.name}}</strong> asks: {{q.question}}</p>
+          <template if="q.choices">
+            <div class="choices">
+              <template for="choice of q.choices">
+                <form data-action="answer" key="{{choice}}">
+                  <input type="hidden" name="id" value="{{q.id}}">
+                  <input type="hidden" name="answer" value="{{choice}}">
+                  <button type="submit">{{choice}}</button>
+                </form>
+              </template>
+            </div>
+          </template>
+          <template if="q.open">
+            <form data-action="answer">
+              <input type="hidden" name="id" value="{{q.id}}">
+              <label>Your answer to {{q.name}}: <input type="text" name="answer" required></label>
+              <button type="submit">Answer</button>
+            </form>
+          </template>
+        </ui-card>
+      </template>
+      <template if="!questions.length"><p><small>No questions waiting.</small></p></template>
+      <template if="lately.length">
+        <h4>Lately</h4>
+        <ul><template for="item of lately"><li key="{{item.id}}">{{item.text}}</li></template></ul>
+      </template>
+    </template>
+  </div>
+</template>

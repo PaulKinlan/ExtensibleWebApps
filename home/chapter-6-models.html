@@ -1,0 +1,21 @@
+<!--
+  Chapter 6's words. It takes no data. Ask the page draws itself in the same
+  "ask" slot, just below this chapter.
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter ol { padding-left: 1.25em; }
+  .chapter li { margin-bottom: var(--space-1); }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">6</ui-badge> Ask a model</h2>
+    <p>Any plugin can ask a language model, if its manifest asks for the <code>llm</code> permission. It never holds an API key, and it doesn't need to know whose model answers.</p>
+    <ol>
+      <li><strong>Models are plugins too.</strong> This page links three from <code>/std/llm/</code>: Claude, OpenAI and Gemini. Another, <code>openai-compatible.js</code>, reaches Ollama on your own computer. Each one turns the platform's request into its vendor's API. They're on the switchboard with the rest.</li>
+      <li><strong>You bring the key.</strong> The first time a model is asked, the kernel asks you for its key on a card of its own. It keeps the key in this browser and adds it only to requests to that vendor's address. No plugin can read it, the model's own plugin included.</li>
+      <li><strong>Ask the page</strong>, below, is a plugin with <code>llm</code> and <code>plugins:read</code>. It tells the model what each plugin on this page does and may do, and sends the code of any plugin your question names. Open "What it sent the model" under an answer to see exactly what left the page.</li>
+    </ol>
+    <p>Try "How does Quiet please stop a note?", then switch Quiet please off and ask again.</p>
+  </ui-card>
+</template>
