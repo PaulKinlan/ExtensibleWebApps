@@ -53,7 +53,11 @@ export async function draw(text, target, label = "") {
       drawn.setAttribute("role", "img");
       if (label) drawn.setAttribute("aria-label", label);
       drawn.removeAttribute("height");
-      drawn.style.maxWidth = "100%";
+      // Never wider than its natural size (Mermaid's own max-width), nor than the page.
+      const natural = drawn.style.maxWidth;
+      drawn.style.maxWidth = natural ? `min(100%, ${natural})` : "100%";
+      drawn.style.display = "block";
+      drawn.style.margin = "0 auto";
     }
   } catch (error) {
     const note = document.createElement("p");
