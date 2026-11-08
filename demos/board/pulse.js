@@ -26,11 +26,15 @@ const STAGES = [
   ["done", "Shipped"],
 ];
 const PEOPLE = ["Mei", "Kofi", "Ines", "Rafa", "Sam"];
-const today = () => new Date().toISOString().slice(0, 10);
+/** Today as YYYY-MM-DD, by the local calendar, as the board and due.js count days. */
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 export default async function (ctx) {
   const views = ctx.ui.views("pulse.html");
-  views.live("side", "pulse", async (api) => {
+  const pulse = views.live("side", "pulse", async (api) => {
     const cards = await api.call("data", "list", "cards");
     const points = (list) => list.reduce((sum, c) => sum + (c.points ?? 0), 0);
     const total = points(cards);
@@ -52,4 +56,14 @@ export default async function (ctx) {
       }),
     };
   });
+
+  // "Overdue" depends on the date as well as the cards: draw again at each local midnight.
+  const atMidnight = () => {
+    const now = new Date();
+    setTimeout(() => {
+      pulse.refresh();
+      atMidnight();
+    }, new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - now + 1000);
+  };
+  atMidnight();
 }

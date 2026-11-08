@@ -2,8 +2,8 @@
 // draws in two rooms the board leaves for it, and never touches the board's
 // own view:
 //
-//   board.card.badges  a small "2/5" on each card that has steps
-//   board.card.detail  the whole checklist on the card's own screen, with a
+//   studio.card.badges  a small "2/5" on each card that has steps
+//   studio.card.detail  the whole checklist on the card's own screen, with a
 //                      progress bar, a tick per step and a field to add one
 //
 // A step is { card, text, done, rank }; `card` is the card's id, which the
@@ -35,8 +35,8 @@ export const manifest = {
   },
 };
 
-const BADGES = "board.card.badges";
-const DETAIL = "board.card.detail";
+const BADGES = "studio.card.badges";
+const DETAIL = "studio.card.detail";
 
 // Steps for the board's sample cards (board.js gives them fixed ids).
 const SAMPLE = [

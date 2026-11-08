@@ -131,6 +131,7 @@
   .props > .name { font-size: var(--text-sm); color: var(--fg-2); font-weight: 600; }
   .notes { width: 100%; box-sizing: border-box; min-height: 140px; padding: var(--space-3); font-size: var(--text-md); line-height: 1.6; font-family: var(--font); color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); resize: vertical; }
   .notes:focus { outline: 3px solid color-mix(in srgb, var(--accent) 40%, transparent); border-color: var(--accent); }
+  .problem { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius); color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); font-size: var(--text-sm); }
   .side { display: flex; flex-direction: column; gap: var(--space-4); }
 
   /* Choices drawn from plain radios and checkboxes: the input is hidden but still focusable, the label is what shows. */
@@ -194,7 +195,7 @@
                   <div class="meta">
                     <template if="c.assignee"><span class="avatar" data-person="{{c.assignee}}" title="{{c.assignee}}">{{c.initial}}</span></template>
                     <template if="c.points"><span class="points" title="Points">{{c.points}} pt</span></template>
-                    <slot class="badges" name="board.card.badges" data-id="{{c.id}}" data-due="{{c.due}}" data-column="{{c.column}}" data-title="{{c.title}}"></slot>
+                    <slot class="badges" name="studio.card.badges" data-id="{{c.id}}" data-due="{{c.due}}" data-column="{{c.column}}" data-title="{{c.title}}"></slot>
                     <span class="end">
                       <button class="move" data-action="move" data-value="{{c.id}}|-1" disabled="{{c.first}}" aria-label="Move back a stage" title="Move back">‹</button>
                       <button class="move" data-action="move" data-value="{{c.id}}|1" disabled="{{c.last}}" aria-label="Move on a stage" title="Move on">›</button>
@@ -272,11 +273,12 @@
                 <input type="number" min="0" max="13" value="{{card.points}}" data-action="set:points" aria-label="Points" placeholder="pts">
               </div>
             </div>
+            <template if="problem"><p class="problem" role="alert">Not saved: {{problem}}</p></template>
             <textarea class="notes" data-action="set:notes" placeholder="Notes, links, what done looks like…" aria-label="Notes" maxlength="4000">{{card.notes}}</textarea>
           </div>
           <div class="side">
             <!-- A room for other plugins: checklist.js draws the card's steps here. -->
-            <slot name="board.card.detail" data-id="{{card.id}}" data-title="{{card.title}}"></slot>
+            <slot name="studio.card.detail" data-id="{{card.id}}" data-title="{{card.title}}"></slot>
             <div class="danger-zone" data-confirming="{{confirming}}">
               <template if="!confirming"><button type="button" data-action="delete">Delete card</button></template>
               <template if="confirming">

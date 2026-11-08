@@ -1,5 +1,5 @@
 // Due dates: a badge on every card that has one, in the room the board
-// leaves on each card (<slot name="board.card.badges">). It needs no data
+// leaves on each card (<slot name="studio.card.badges">). It needs no data
 // permission at all: the board puts each card's due date and stage on the
 // slot as data-due and data-column, and page.slots hands them over. So this
 // plugin can say "Due tomorrow" without being able to read a single card.
@@ -19,7 +19,7 @@ export const manifest = {
   order: 20,
 };
 
-const SLOT = "board.card.badges";
+const SLOT = "studio.card.badges";
 const DAY = 86_400_000;
 
 /** How a due date reads, and how loud it should be: { text, tone } or null. */
@@ -54,10 +54,15 @@ export default async function (ctx) {
   });
   await fill();
 
-  // At the next midnight, and every day after, the words change.
-  const midnight = new Date(new Date().toDateString()).getTime() + DAY - Date.now();
-  setTimeout(() => {
-    fill();
-    setInterval(fill, DAY);
-  }, midnight + 1000);
+  // At each local midnight the words change ("Tomorrow" becomes "Due today"). The next midnight is
+  // worked out again every time, so a day that is 23 or 25 hours long (clocks changing) still lands on it.
+  const atMidnight = () => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+    setTimeout(() => {
+      fill();
+      atMidnight();
+    }, next - now + 1000);
+  };
+  atMidnight();
 }
