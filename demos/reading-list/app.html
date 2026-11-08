@@ -8,6 +8,8 @@
                  so the person reviews each change
   book-page.js   shows one book on its own screen, at book/<id>, so a
                  book has an address to bookmark or share
+  book-share.js  adds a page shared to the app (once it is installed) as a
+                 book to read; manifest.webmanifest makes it a share target
 
   It also links two standard plugins: a debug console, and a command palette
   that lists the commands library.js adds.
@@ -22,12 +24,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reading list</title>
   <meta name="description" content="Books to read, and when they're due back.">
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="library.js">
   <link rel="plugin" href="due-soon.js">
   <link rel="plugin" href="book-import.js">
   <link rel="plugin" href="book-page.js">
+  <link rel="plugin" href="book-share.js">
   <!-- A plugin the person may add themselves, in Customize; it draws in a place, as the app has no slot for it. -->
   <link rel="plugin-sample" href="samples/goal.js" title="Reading goal">
   <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
