@@ -2,12 +2,11 @@
 // (data:read:studio-cards) and draws live, so every move on the board shows here
 // without this plugin listening for anything.
 //
-// The ring and the flow bar are sized by numbers in the data, and a view
-// has no style attributes. So the template puts each number on an attribute
-// (data-pct="62", data-n="3") and pulse.html's CSS reads it with typed
-// attr(): `calc(attr(data-pct type(<number>)) * 1%)`. A <meter> beside each
-// says the same in words for screen readers, and for browsers without typed
-// attr().
+// The ring and the flow bar are sized by numbers in the data. A view's
+// style attribute may set custom properties to numbers and nothing else, so
+// the template writes style="--pct: {{pct}}" and pulse.html's CSS reads it:
+// `calc(var(--pct) * 1%)`. A <meter> beside each says the same in words for
+// screen readers.
 
 export const manifest = {
   id: "pulse",

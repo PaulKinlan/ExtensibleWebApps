@@ -13,6 +13,10 @@
 // data-assignee), so a transform such as wip.js or a person's own "Focus"
 // plugin can find them by selector.
 //
+// A card can be dragged to another column, or up and down its own: each
+// card has data-drag, each column data-drop, and a drop comes back as the
+// event `drop` with the card, the column and the card it landed on.
+//
 // Everything on the card screen is a plain control with data-action: radio
 // buttons styled as segmented controls, checkboxes styled as chips. Each
 // change saves at once; there is no Save button to forget.
@@ -142,7 +146,7 @@ export default async function (ctx) {
           ...column,
           count: list.length,
           points: list.reduce((sum, c) => sum + (c.points ?? 0), 0),
-          cards: list.map(forBoard),
+          cards: list.map((c, i) => ({ ...forBoard(c), top: i === 0, bottom: i === list.length - 1 })),
         };
       }),
     };
@@ -226,13 +230,46 @@ export default async function (ctx) {
     });
   };
 
+  /** Puts a card in a column, just above the card `before` when it was dropped on one, else at the end. */
+  const place = async (id, to, before) => {
+    if (!COLUMNS.some((col) => col.id === to)) return;
+    // In the order the board shows (all() breaks a tie in rank by age).
+    const column = (await all(ctx)).filter((x) => x.column === to && x.id !== id);
+    const at = column.findIndex((x) => x.id === before);
+    const rank = at < 0 ? Math.max(0, ...column.map((x) => x.rank ?? 0)) + 1 : at === 0 ? (column[0].rank ?? 0) - 1 : ((column[at - 1].rank ?? 0) + (column[at].rank ?? 0)) / 2;
+    // Between two cards whose ranks are equal, or so close a number can't fall between: number the column again.
+    if (at > 0 && !(rank > (column[at - 1].rank ?? 0) && rank < (column[at].rank ?? 0))) {
+      const order = [...column.slice(0, at).map((x) => x.id), id, ...column.slice(at).map((x) => x.id)];
+      const ranks = new Map((await all(ctx)).map((x) => [x.id, x.rank]));
+      for (const [i, card] of order.entries()) if (card === id || ranks.get(card) !== i + 1) await update(card, card === id ? { column: to, rank: i + 1 } : { rank: i + 1 });
+      return;
+    }
+    await update(id, { column: to, rank });
+  };
+
+  /** Moves a card up (-1) or down (+1) in its column: the ↑ ↓ buttons, for when there's no pointer to drag with. */
+  const reorder = async (id, step) => {
+    const c = await ctx.call("data", "get", "cards", id);
+    if (!c) return;
+    const column = (await all(ctx)).filter((x) => x.column === c.column);
+    const at = column.findIndex((x) => x.id === id);
+    if (step < 0 && at > 0) await place(id, c.column, column[at - 1].id);
+    if (step > 0 && at < column.length - 1) await place(id, c.column, column[at + 2]?.id);
+  };
+
   ctx.ui.onEvent(async (action, value) => {
     const [verb, arg] = action.split(":");
+    // A card dragged onto a column (the ‹ › buttons do the same without a pointer).
+    if (verb === "drop") return void place(String(value?.item), String(value?.value), value?.before);
     // On the board.
     if (verb === "add") return void add(arg, value?.title);
     if (verb === "move") {
       const [id, step] = String(value).split("|");
       return void move(id, Number(step));
+    }
+    if (verb === "order") {
+      const [id, step] = String(value).split("|");
+      return void reorder(id, Number(step));
     }
     // On the card screen: every control names the field it sets.
     const id = await current();

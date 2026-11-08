@@ -36,7 +36,7 @@ export default async function ({ check, openTab, URL }) {
     ["careless.js", /slot "side"/],
     ["careless.js", /no <template id="list"> in other\.html/],
     ["careless.html", /<script> isn't allowed/],
-    ["careless.html", /style= isn't allowed/],
+    ["careless.html", /style= keeps only custom properties.*color: red/],
     ["careless.html", /onclick= isn't allowed/],
     ["careless.html", /<marquee> isn't on the HTML allowlist/],
     ["careless.html", /javascript:void 0/],
