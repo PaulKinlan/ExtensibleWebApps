@@ -29,6 +29,15 @@ export default async function ({ check, context, URL, errors }) {
   const diagram = await page.waitForFunction((s) => document.querySelector(s)?.shadowRoot?.querySelector("figure.diagram svg"), shown, { timeout: 15000 }).then(() => true, () => false);
   check("a ```mermaid block is drawn as a diagram", diagram);
 
+  // A link to a heading on another page keeps its #, and the page scrolls there.
+  await page.goto(`${URL}docs/guide/styling`);
+  await drawn(shown);
+  await page.click(`${shown} >> a[href="/docs/guide/views-and-templates#template-files"]`);
+  const scrolled = await page
+    .waitForFunction((s) => location.hash === "#template-files" && document.title.startsWith("Views") && document.querySelector(s)?.shadowRoot?.getElementById("template-files")?.getBoundingClientRect().top < 200, shown, { timeout: 8000 })
+    .then(() => true, () => false);
+  check("a link to a heading on another page goes to that heading", scrolled, page.url());
+
   // An address straight to a page, and one with no page.
   await page.goto(`${URL}docs/guide/agents`);
   check("an address of a page opens it", await drawn(shown) && (await page.title()).startsWith("Agents"), await page.title());
@@ -54,6 +63,49 @@ export default async function ({ check, context, URL, errors }) {
     div.append(parse('<img src=x onerror="window.ran = 1">\n\n[x](javascript:alert(1))', { link: (h) => (h.startsWith("javascript:") ? "" : h), image: (s) => s, code: () => undefined }));
     return { img: !!div.querySelector("img"), text: div.textContent, href: div.querySelector("a")?.getAttribute("href") ?? null };
   });
+  const more = await page.evaluate(async () => {
+    const { parse } = await import("/elements/markdown.js");
+    const div = document.createElement("div");
+    div.append(parse("one  \ntwo\n\n<https://example.com/a>", { link: () => "" }));
+    return { br: !!div.querySelector("p br"), autolink: div.querySelectorAll("a").length };
+  });
+  check("two spaces at a line's end are a hard break", more.br);
+  check("an autolink goes through the same check as any link", more.autolink === 0);
+
+  // A plugin's attributes can't turn a link into script, and an image from another site isn't loaded.
+  const hostile = await page.evaluate(async () => {
+    const make = (src) => new Promise((resolve) => {
+      const md = document.createElement("ui-markdown");
+      md.setAttribute("repo", "javascript:alert(1)//");
+      md.setAttribute("pages", "javascript:alert(2)");
+      md.setAttribute("src", src);
+      md.addEventListener("load", () => resolve(md), { once: true });
+      document.body.append(md);
+      setTimeout(() => resolve(md), 4000);
+    });
+    const found = await make("/docs/README.md");
+    const missing = await make("/docs/not-here.md");
+    const hrefs = [found, missing].flatMap((md) => [...md.shadowRoot.querySelectorAll("a")].map((a) => a.getAttribute("href") ?? ""));
+    found.remove();
+    missing.remove();
+    return { script: hrefs.filter((h) => /^\s*javascript:/i.test(h)), links: hrefs.length };
+  });
+  check("repo and pages can't make a javascript: link", hostile.links > 0 && !hostile.script.length, JSON.stringify(hostile));
+  // An image from another site would be a request the plugin may not make: it shows as its words.
+  await own.route("**/docs/test-remote-image.md", (route) => route.fulfill({ contentType: "text/markdown", body: "# Images\n\n![a cat](https://example.com/cat.png) ![ours](images/spike.png)" }));
+  const remote = await page.evaluate(() => new Promise((resolve) => {
+    const md = document.createElement("ui-markdown");
+    md.setAttribute("src", "/docs/test-remote-image.md");
+    md.addEventListener("load", () => {
+      const srcs = [...md.shadowRoot.querySelectorAll("img")].map((i) => i.getAttribute("src"));
+      resolve({ srcs, text: md.shadowRoot.textContent.includes("a cat") });
+      md.remove();
+    }, { once: true });
+    document.body.append(md);
+    setTimeout(() => resolve({ timeout: true }), 4000);
+  }));
+  check("an image from another site shows as its words; one from this site shows", remote.text && remote.srcs?.length === 1 && remote.srcs[0].endsWith("/docs/images/spike.png"), JSON.stringify(remote));
+
   check("raw HTML in Markdown shows as text", !raw.img && raw.text.includes("<img src=x") && !raw.text.includes(")") && raw.href === null, JSON.stringify(raw));
   await own.close();
 }

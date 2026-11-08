@@ -15,6 +15,8 @@ export default class UiMarkdown extends HTMLElement {
   #load = 0;
   /** The page's title as it loaded, which sets-title adds to. */
   static #title = document.title;
+  /** Marks the page being read when the address changes; added while the element is on the page. */
+  #onMove = () => this.#mark();
 
   connectedCallback() {
     if (!this.shadowRoot) {
@@ -22,9 +24,13 @@ export default class UiMarkdown extends HTMLElement {
       const template = /** @type {typeof UiMarkdown} */ (this.constructor).template;
       if (template) root.append(document.importNode(template.content, true));
       root.addEventListener("click", (event) => this.#jump(/** @type {MouseEvent} */ (event)));
-      addEventListener("popstate", () => this.#mark());
     }
+    addEventListener("popstate", this.#onMove);
     void this.#render();
+  }
+
+  disconnectedCallback() {
+    removeEventListener("popstate", this.#onMove);
   }
 
   /** @param {string} name @param {string | null} before @param {string | null} after */
@@ -56,7 +62,7 @@ export default class UiMarkdown extends HTMLElement {
       const missing = document.createElement("p");
       missing.className = "missing";
       missing.textContent = "This page isn't here. ";
-      const pages = this.getAttribute("pages");
+      const pages = this.#pages;
       if (pages) {
         const home = document.createElement("a");
         home.href = pages;
@@ -93,6 +99,28 @@ export default class UiMarkdown extends HTMLElement {
     this.dispatchEvent(new Event("load"));
   }
 
+  /** The `pages` folder, as a path on this site, or "" when it isn't one. */
+  get #pages() {
+    const pages = this.getAttribute("pages");
+    if (!pages) return "";
+    try {
+      const url = new URL(pages, document.baseURI);
+      return url.origin === location.origin ? url.pathname : "";
+    } catch {
+      return "";
+    }
+  }
+
+  /** The `repo` address, when it is an https one; links to source aren't rewritten otherwise. */
+  get #repo() {
+    const repo = this.getAttribute("repo") ?? "";
+    try {
+      return new URL(repo).protocol === "https:" ? repo.replace(/\/+$/, "") : "";
+    } catch {
+      return "";
+    }
+  }
+
   /** Where a link goes: a screen for a page of the docs, the repository for source, or as written. */
   /** @param {string} href */
   #link(href) {
@@ -107,13 +135,13 @@ export default class UiMarkdown extends HTMLElement {
     if (url.protocol === "mailto:") return url.href;
     if (url.protocol !== "https:" && url.protocol !== "http:") return "";
     if (url.origin !== location.origin) return url.href;
-    const pages = this.getAttribute("pages");
+    const pages = this.#pages;
     if (pages && url.pathname.startsWith(pages) && url.pathname.endsWith(".md")) {
       const screen = url.pathname.slice(0, -3).replace(/(^|\/)README$/, "$1");
       return screen + url.search + url.hash;
     }
     // A path from the site's root (/workbench/) is an address on the site; a relative one names a file.
-    const repo = this.getAttribute("repo");
+    const repo = this.#repo;
     if (repo && !href.startsWith("/") && !SHOWN.test(url.pathname)) {
       const folder = url.pathname.endsWith("/");
       return `${repo}/${folder ? "tree" : "blob"}/main${url.pathname}${url.hash}`;
@@ -121,12 +149,15 @@ export default class UiMarkdown extends HTMLElement {
     return url.pathname + url.search + url.hash;
   }
 
-  /** An image's address: from this site, or any https address. */
-  /** @param {string} src */
+  /**
+   * An image's address: only from this site. An image elsewhere would be a request the plugin that
+   * drew this may not be allowed to make, so it shows as its alt text instead.
+   * @param {string} src
+   */
   #image(src) {
     try {
       const url = new URL(src, this.#file);
-      return url.origin === location.origin || url.protocol === "https:" ? url.href : "";
+      return url.origin === location.origin ? url.href : "";
     } catch {
       return "";
     }

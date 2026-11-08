@@ -140,9 +140,10 @@ function blocks(lines, parent, options) {
       continue;
     }
 
-    const body = [line.trim()];
+    // Leading spaces go; trailing ones stay, since two at the end of a line are a hard break.
+    const body = [line.trimStart()];
     i++;
-    while (i < lines.length && lines[i].trim() && !interrupts(lines[i])) body.push(lines[i++].trim());
+    while (i < lines.length && lines[i].trim() && !interrupts(lines[i])) body.push(lines[i++].trimStart());
     const p = el("p");
     inline(body.join("\n"), p, options);
     parent.appendChild(p);
@@ -341,9 +342,13 @@ function inline(text, parent, options) {
       const auto = /^<(https?:\/\/[^\s>]+)>/.exec(rest);
       if (auto) {
         flush();
-        const a = el("a", auto[1]);
-        a.setAttribute("href", auto[1]);
-        a.setAttribute("rel", "noopener");
+        // The same callback as a bracketed link, so an autolink to a page becomes its screen too.
+        const href = options.link ? options.link(auto[1]) : auto[1];
+        const a = el(href ? "a" : "span", auto[1]);
+        if (href) {
+          a.setAttribute("href", href);
+          if (/^https?:/i.test(href) && !href.startsWith(location.origin)) a.setAttribute("rel", "noopener");
+        }
         parent.appendChild(a);
         i += auto[0].length;
         continue;
