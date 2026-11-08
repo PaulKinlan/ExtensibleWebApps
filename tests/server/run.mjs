@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import { cpSync, existsSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { request } from "node:http";
+import { createServer as createHttpServer, request } from "node:http";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -54,7 +54,8 @@ const hosts = {
   node: (spaces) => ({
     async start() {
       site ??= await siteWithFixtures();
-      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env) });
+      // 127.0.0.1, as written, is the one private host server plugins may reach here (the network guard's checks use it).
+      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env), allowPrivate: ["127.0.0.1"] });
     },
     wrote: (space) => existsSync(join(spaces, space, "files", "user", "demos", "contacts", "hello-space.js")),
   }),
@@ -321,6 +322,34 @@ async function serverPluginChecks(base, check, owner, restart) {
 }
 
 /** Someone using the site's /auth/ routes, with their own cookie: `account()` signs them up with a passkey. */
+/** On Node, a server plugin with `network` reaches the internet but not the server's own network (src/server/network-guard.ts). */
+async function networkGuardChecks(base, check) {
+  // A server on this machine: / says hello, and /hop redirects to the same server by the name localhost.
+  const local = createHttpServer((req, res) => {
+    if (req.url === "/hop") return res.writeHead(302, { location: `http://localhost:${local.address().port}/` }).end();
+    res.end("hello from inside");
+  });
+  await new Promise((r) => local.listen(0, "127.0.0.1", r));
+  const port = local.address().port;
+  const probe = (url) => fetch(`${base}/s/guarded/server-app/probe`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) }).then((r) => r.json(), (e) => ({ ok: false, error: String(e) }));
+  const seen = {
+    byName: await probe(`http://localhost:${port}/`),
+    ipv6: await probe(`http://[::1]:${port}/`),
+    mapped: await probe(`http://[::ffff:127.0.0.1]:${port}/`),
+    metadata: await probe("http://169.254.169.254/latest/meta-data/"),
+    redirect: await probe(`http://127.0.0.1:${port}/hop`),
+    allowed: await probe(`http://127.0.0.1:${port}/`),
+  };
+  local.close();
+  const refused = (r) => r?.ok === false && /server's own network/.test(r.error);
+  check(
+    "network guard: a server plugin with network can't reach the server's own network: localhost, ::1, a mapped address, the metadata service, or a redirect inside",
+    refused(seen.byName) && refused(seen.ipv6) && refused(seen.mapped) && refused(seen.metadata) && refused(seen.redirect),
+    JSON.stringify(seen),
+  );
+  check("network guard: a private host the deployment allows is reached", seen.allowed?.ok && seen.allowed.text === "hello from inside", JSON.stringify(seen.allowed));
+}
+
 function person(base) {
   const me = {
     cookie: "",
@@ -620,6 +649,8 @@ async function suite(name, make) {
       owner.base = server.url;
       return server.url;
     });
+    // Workers can't reach a private network in production; wrangler's local runtime isn't a guide to that.
+    if (name === "node") await networkGuardChecks(server.url, check);
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {

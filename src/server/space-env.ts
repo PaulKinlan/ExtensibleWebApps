@@ -10,14 +10,14 @@ import { setEnv } from "../kernel/env";
 import { nodeFiles } from "../seams/node.ts";
 import { nodeIsolates } from "../seams/node-isolates.ts";
 
-const { dir, origin } = workerData as { dir: string; origin: string };
+const { dir, origin, allowPrivate } = workerData as { dir: string; origin: string; allowPrivate?: string[] };
 
 setEnv({
   kind: "server",
   origin,
   folder: nodeFiles(join(dir, "files")),
   // Each of the space's plugins in a process of its own, from the runtime built beside this file.
-  isolates: nodeIsolates(fileURLToPath(new URL("./isolate.js", import.meta.url))),
+  isolates: nodeIsolates(fileURLToPath(new URL("./isolate.js", import.meta.url)), { allowPrivate }),
   connect(accept) {
     parentPort!.on("message", (message: { t?: string; port?: MessagePort }) => {
       if (message?.t === "connect" && message.port) accept(message.port);
