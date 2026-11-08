@@ -118,7 +118,9 @@ export default async function (ctx) {
       await ctx.call("data", "put", "chores", { ...rest, doneOn: iso(new Date()), ...(me ? { doneBy: me } : {}) });
     }
     if (action === "add" && value.name?.trim()) {
-      await ctx.call("data", "put", "chores", { name: value.name.trim(), every: Number(value.every) || 7 });
+      const saved = await ctx.call("data", "put", "chores", { name: value.name.trim(), every: Number(value.every) || 7 });
+      // A refused add (a data:beforeWrite listener blocked it, say) keeps what was typed.
+      if (!saved.ok) return;
       added++;
       view.refresh();
     }
