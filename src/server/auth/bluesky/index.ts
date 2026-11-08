@@ -23,7 +23,8 @@
 // com.atproto.identity.resolveHandle) may be set, and "insecure": true lets
 // http:// servers through, for the server checks only.
 
-import { capped, checkedHandle, DID, issuerOf, resolveHandle, account, safeUrl, serverMeta, type Settings } from "./resolve.ts";
+import { guardedFetch } from "./guarded-fetch.ts";
+import { checkedHandle, DID, issuerOf, resolveHandle, account, safeUrl, serverMeta, type Settings } from "./resolve.ts";
 import { newKey, post, type Jwk } from "./dpop.ts";
 import type { Flow } from "../providers.ts";
 
@@ -55,7 +56,8 @@ export function bluesky(entry: Record<string, unknown>): Flow {
     dns: String(entry.dns ?? "https://cloudflare-dns.com/dns-query"),
     resolver: typeof entry.resolver === "string" ? entry.resolver.replace(/\/$/, "") : undefined,
     insecure: entry.insecure === true,
-    fetch: (url, init) => fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT) }),
+    // On Node, a fetch that won't connect to a private address, whatever a name resolves to.
+    fetch: (url, init) => (entry.insecure === true ? fetch : guardedFetch)(url, { ...init, signal: AbortSignal.timeout(TIMEOUT) }),
   };
   if (settings.insecure) console.warn("Bluesky sign-in is insecure (it asks http:// servers): for the server checks only");
   const id = "bluesky";
@@ -73,10 +75,12 @@ export function bluesky(entry: Record<string, unknown>): Flow {
     ask: { name: "handle", label: "Your Bluesky handle", placeholder: "you.bsky.social" },
 
     async start({ url, back, state, challenge }) {
-      // The loopback client must come back to 127.0.0.1, so its cookie must be set there.
+      // The loopback client must come back to 127.0.0.1, so it must start there too: back to the account
+      // page at that address, to start again from it (a start sent on from here would come from another site).
       if (url.hostname === "localhost" && url.protocol === "http:") {
-        const there = new URL(url);
+        const there = new URL("/account/", url);
         there.hostname = "127.0.0.1";
+        there.searchParams.set("error", "Bluesky sign-in works at this address: start it again here");
         return { location: there.href };
       }
       const client = clientId(url, back);
@@ -103,14 +107,14 @@ export function bluesky(entry: Record<string, unknown>): Flow {
       const key = await newKey();
       const form: Record<string, string> = { client_id: client, redirect_uri: back, response_type: "code", code_challenge: challenge, code_challenge_method: "S256", state, scope: "atproto" };
       if (kept.handle ?? kept.did) form.login_hint = (kept.handle ?? kept.did)!;
-      const { answer, nonce } = await post(key, meta.pushed_authorization_request_endpoint, form, undefined, settings.fetch);
-      const { request_uri } = parsed<{ request_uri?: unknown }>(await capped(answer));
+      const answer = await post(key, meta.pushed_authorization_request_endpoint, form, undefined, settings.fetch);
+      const { request_uri } = parsed<{ request_uri?: unknown }>(answer.text);
       if (!answer.ok || typeof request_uri !== "string") throw new Error(`${new URL(issuer).host} wouldn't start a sign-in (${answer.status})`);
 
       const to = new URL(meta.authorization_endpoint);
       to.searchParams.set("client_id", client);
       to.searchParams.set("request_uri", request_uri);
-      return { location: to.href, data: { key, issuer, token: meta.token_endpoint, nonce, ...kept } satisfies Kept };
+      return { location: to.href, data: { key, issuer, token: meta.token_endpoint, nonce: answer.nonce, ...kept } satisfies Kept };
     },
 
     async finish({ url, back, data, verifier }) {
@@ -118,8 +122,8 @@ export function bluesky(entry: Record<string, unknown>): Flow {
       // The answer must come from the server this sign-in went to (RFC 9207), not one pretending.
       if (url.searchParams.get("iss") !== kept.issuer) throw new Error("That answer came from another server");
       const code = url.searchParams.get("code") ?? "";
-      const { answer } = await post(kept.key, kept.token, { grant_type: "authorization_code", code, redirect_uri: back, code_verifier: verifier, client_id: clientId(url, back) }, kept.nonce, settings.fetch);
-      const tokens = parsed<{ sub?: unknown; scope?: unknown; token_type?: unknown }>(await capped(answer));
+      const answer = await post(kept.key, kept.token, { grant_type: "authorization_code", code, redirect_uri: back, code_verifier: verifier, client_id: clientId(url, back) }, kept.nonce, settings.fetch);
+      const tokens = parsed<{ sub?: unknown; scope?: unknown; token_type?: unknown }>(answer.text);
       const sub = typeof tokens.sub === "string" && DID.test(tokens.sub) ? tokens.sub : null;
       if (!answer.ok || !sub || String(tokens.token_type).toLowerCase() !== "dpop" || !String(tokens.scope ?? "").split(" ").includes("atproto")) {
         throw new Error("Bluesky didn't say who you are");
