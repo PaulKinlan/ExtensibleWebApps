@@ -20,4 +20,5 @@
   - [Standard plugins](plugins.md)
   - [Glossary](glossary.md)
   - [The kernel](kernel.md)
+  - [Servers (phase 2b)](server.md)
   - [What the first spike found](spike.md)

@@ -209,3 +209,7 @@ slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-left"]) { inset: var
 slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-right"]) { inset: var(--space-4) var(--space-4) auto auto; }
 slot[name="debug"] > [data-plugin]:has(ui-debug[corner="inline"]) { position: static; }
 }
+
+/* The site's own links in an app's header (Home, All demos, Docs, Workbench), pushed to the end. */
+body > header nav.site { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-left: auto; }
+body > header nav.site a[aria-current="page"] { color: inherit; text-decoration: none; font-weight: 600; }

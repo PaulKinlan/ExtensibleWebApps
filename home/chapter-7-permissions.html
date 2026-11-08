@@ -1,0 +1,34 @@
+<!--
+  Chapter 7's words. chapter-7-permissions.js sends { permissions, tried }:
+  its own permissions, and the last try, null until a button is pressed, or
+  { asked, needs, answer, refused }. The buttons send "read" and "switch".
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter pre { overflow-x: auto; padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); font-size: var(--text-sm); }
+  .chapter .try { padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); }
+  .chapter .try p:first-child { margin-top: 0; }
+  .chapter .try-buttons { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .chapter .answer { margin: var(--space-2) 0 0; }
+  .chapter .refused { color: var(--danger, inherit); }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">7</ui-badge> What a plugin may do</h2>
+    <p>Every plugin says what it needs in its manifest, before any of its code runs. Note stats, for example, asks to draw and to read your notes, and nothing else:</p>
+    <pre><code>permissions: ["ui", "data:read:learning"]</code></pre>
+    <p>Everything a plugin does is a message to the kernel, and the kernel's <strong>gate</strong> checks each one against that list. Anything not on it is refused, and the refusal is recorded in the trace. A plugin can't get around the gate either. It runs in a worker of its own with no page to touch, and no network unless it asked for it.</p>
+    <p>That's why the list is worth reading before you turn a plugin on. Customize and view source show it in plain words.</p>
+    <div class="try">
+      <p><strong>Try it.</strong> This chapter is a plugin too, and its manifest asks only for <code>{{permissions}}</code>. Ask it to do more:</p>
+      <div class="try-buttons">
+        <button type="button" data-action="read">Read my notes</button>
+        <button type="button" data-action="switch">Switch Note stats off</button>
+      </div>
+      <template if="tried">
+        <p class="answer" role="status">It called <code>{{tried.asked}}</code>, which needs <code>{{tried.needs}}</code>. <template if="tried.refused"><span class="refused">The kernel refused:</span> {{tried.answer}}</template><template if="!tried.refused">{{tried.answer}}</template></p>
+      </template>
+    </div>
+    <p>Read more: <a href="/docs/permissions">every permission, in plain words</a>, and <a href="/docs/security">the security model</a>.</p>
+  </ui-card>
+</template>

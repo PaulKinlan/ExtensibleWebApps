@@ -53,6 +53,16 @@ Each wake is one run, and runs go one at a time in the order they woke the agent
 2. It asks the model, with its instructions as the system prompt and its [tools](tools.md): every service method its manifest lets it call, such as `data_put_library`.
 3. It calls the tools the model picks, through the gate, and gives the model their answers, until the model stops calling tools or the run reaches its step limit.
 
+```mermaid
+flowchart LR
+    Wake["Something wakes it<br/>a hook, a command,<br/>a message or a topic"] --> Run["agent:wake<br/>a run begins"]
+    Run --> Model["The model<br/>its instructions, and what woke it"]
+    Model -->|calls a tool| Tool["The tool, through the gate"]
+    Tool -->|agent:toolResult| Model
+    Model -->|answers| Done["agent:done"]
+    Tool -.->|step or budget limit| Done
+```
+
 A change the agent makes wakes other plugins as usual, but not the agent itself: the `data:changed` its own committed write causes is skipped. Anyone else's change to the same record still wakes it.
 
 The loop reaches the model and its tools through the `agents` service, not `llm` and `tools` directly. So the kernel, not the agent, counts each run and token against its limits, and the kernel tells the app what happened.
