@@ -22,6 +22,15 @@ export default async function ({ a, check, openTab, URL }) {
     JSON.stringify(open),
   );
 
+  // A theme may say which colour schemes it is made for, and only that.
+  const schemes = themeCss([{ "color-scheme": "dark" }, { "color-scheme": "dark; } body { display: none" }]);
+  const badScheme = await install('export const manifest = { id: "th5", name: "T", permissions: ["ui:theme"], theme: { "color-scheme": "only red" } };\nexport default () => {};');
+  check(
+    "a theme can set color-scheme to light, dark or both, and to nothing else",
+    schemes.includes("color-scheme: dark;") && !schemes.includes("display") && badScheme.ok === false && /color-scheme/.test(badScheme.error),
+    JSON.stringify({ schemes, badScheme }),
+  );
+
   const page = await openTab(`${URL}demos/trip/app.html`);
   // The app has opened (its plugins have drawn) before a theme is added, so turning it on opens the app again.
   await page.waitForSelector("[data-plugin][data-key]", { timeout: 8000 });

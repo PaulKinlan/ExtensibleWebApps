@@ -13,6 +13,19 @@ export default async function (page, { check, proof }) {
   const icons = `${board} .card[data-id="card-icons"]`;
   proof.badges = await page.waitForSelector(`${icons} [data-plugin="due"] .due`, { timeout: 5000 }).then(() => page.locator(`${icons} slot [data-plugin]`).count(), () => 0);
   check("two plugins put badges in a card's room: when it's due, and its checklist", proof.badges === 2);
+  // board.html lays out the box each badge comes in, but its CSS stops at what the badge's plugin drew.
+  proof.room = await page.evaluate((icons) => {
+    const box = document.querySelector(`${icons} slot [data-plugin="due"]`);
+    const due = box?.querySelector(".due");
+    const probe = box && document.createElement("b");
+    probe?.classList.add("label");
+    due?.after(probe);
+    // The box is a flex item of the card's row, so the browser computes board.html's inline-flex as flex (a plain div would be block).
+    const result = { box: box && getComputedStyle(box).display, contain: box && getComputedStyle(box).contain, probe: probe && getComputedStyle(probe).borderTopLeftRadius };
+    probe?.remove();
+    return result;
+  }, icons);
+  check("a host's CSS lays out the box a guest's view comes in, but doesn't reach inside it, and can't take its containment off", proof.room.box === "flex" && proof.room.probe !== "999px" && proof.room.contain === "layout paint", JSON.stringify(proof.room));
 
   // wip.js transforms the board's view: a gauge in the headers of the columns it limits.
   proof.gauge = await page.waitForSelector(`${board} .column[data-column="doing"] .column-head [data-plugin="wip"] .gauge`, { timeout: 5000 }).then((el) => el.textContent(), () => "");

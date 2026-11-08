@@ -83,9 +83,10 @@
   .move:disabled { visibility: hidden; }
   .card:hover .move, .card:focus-within .move { opacity: 1; }
   @media (hover: none) { .move { opacity: 1; } }
-  /* Other plugins' badges land in this room. Each arrives wrapped in a block the host adds, so the room lays them out inline. */
+  /* Other plugins' badges land in this room. Each arrives wrapped in a block the host adds, so the room lays them out
+     inline. This CSS can reach that box, but not what the badge's plugin drew inside it. */
   .badges { display: contents; }
-  .badges > [data-plugin], .badges .html-view { display: inline-flex; }
+  .badges > [data-plugin] { display: inline-flex; }
 
   /* ---------- Shared pieces: labels, avatars, covers ---------- */
   .labels { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }

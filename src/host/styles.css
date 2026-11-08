@@ -123,6 +123,8 @@ body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
 .place-pending { outline: 2px dashed var(--accent); outline-offset: 4px; }
 /* The Customize button and panel, on every app page. */
 .customize-button { position: fixed; left: 16px; bottom: 16px; z-index: 10; box-shadow: var(--shadow-1); background: var(--surface); }
+/* The debug console's bug sits in the same corner unless it is told otherwise: the button moves up, above it. */
+:root:has(slot[name="debug"] > [data-plugin] :is(ui-debug:not([corner]), ui-debug[corner="bottom-left"])) .customize-button { bottom: 64px; }
 dialog.customize { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); font: var(--text-md)/1.5 var(--font); }
 dialog.customize::backdrop { background: rgb(0 0 0 / 0.35); }
 dialog.customize h2 { font-size: var(--text-lg); }
@@ -199,8 +201,9 @@ body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; o
 :where(ui-stack, ui-grid, ui-card, ui-toolbar, ui-stat, ui-empty, ui-table, ui-form):not(:defined) { display: block; }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 
-/* Each view entry is drawn by one plugin (data-plugin, set by the host). Containment keeps what it draws inside it. */
-[data-plugin] { contain: layout paint; overflow-clip-margin: 4px; }
+/* Each view entry is drawn by one plugin (data-plugin, set by the host). Containment keeps what it draws inside it:
+   !important here, in the first layer, beats any other declaration, so no plugin and no page can take it off. */
+[data-plugin] { contain: layout paint !important; overflow-clip-margin: 4px; }
 
 /* The "debug" slot floats: what is drawn there (std/debug-console.js's bug) stays in a corner of the screen, where <ui-debug corner> says. */
 slot[name="debug"] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); }

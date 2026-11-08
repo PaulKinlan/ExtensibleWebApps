@@ -39,6 +39,7 @@ export default function () {}
 ```
 
 - **Which tokens:** the colours, the corners, the shadow and the two typefaces (`--bg` … `--danger`, `--radius-sm` … `--radius-lg`, `--shadow-1`, `--font`, `--mono`). Spacing and type sizes stay the platform's, so a theme can't break layouts.
+- **Which schemes:** a dark-only theme sets `"color-scheme": "dark"` (or `"light"`, or `"light dark"`). Every `light-dark()` on the page follows it, in other plugins' CSS too, so their colours suit the theme rather than the device's setting.
 - **Plain values only.** `light-dark(light, dark)` gives each mode its own value. Nothing that loads a file (`url()`, `image-set()`) and nothing that ends the declaration is accepted. The kernel refuses such a manifest.
 - **Where it sits:** in the plugins layer, above the platform's defaults and below the page's own styles, so the author's choices still win. When several plugins set a token, the later one wins, and a person's own plugins come after the app's.
 - **Turning it off** takes it away.
@@ -65,15 +66,15 @@ The host installs it as:
 
 ```css
 @layer plugins {
-  @scope ([data-plugin="month"] > *) {
+  @scope ([data-plugin="month"] > *) to (:scope [data-plugin] > *) {
     .month { table-layout: fixed; }
     …
   }
 }
 ```
 
-- **Scoped.** It reaches only views this plugin drew, so `.month td` can't touch another plugin's table, and another plugin's `.month` can't touch yours. Every view entry carries `data-plugin`, which only the host can set.
-- **Contained.** Each entry has `contain: layout paint`, so nothing a plugin styles is drawn outside its own box, even with `position: fixed`. The scope starts inside the entry, so a plugin's CSS can't undo that.
+- **Scoped.** It reaches only views this plugin drew, so `.month td` can't touch another plugin's table, and another plugin's `.month` can't touch yours. Every view entry carries `data-plugin`, which only the host can set. When another plugin draws in one of your slots, your CSS can lay out the box its view comes in (`.room > [data-plugin] { display: inline-flex }`) but stops there: what that plugin drew is its own.
+- **Contained.** Each entry has `contain: layout paint`, so nothing a plugin styles is drawn outside its own box, even with `position: fixed`. It is set with `!important` in the platform's layer, which nothing else can beat, so neither a plugin whose slot holds the entry nor the page can undo it.
 - **Cleaned.** The browser parses the CSS, then the host keeps style rules (nesting included) and the `@media`, `@supports`, `@container` and `@layer` blocks around them. It drops `@import`, `@font-face`, `@keyframes`, any declaration that loads something (`url()`, `src()`, `image-set()`), and `!important`.
 - **Below the page.** It sits under the page's own styles, so the app can override it.
 
