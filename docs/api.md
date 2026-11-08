@@ -226,11 +226,11 @@ Sound, played by the tab that runs the plugin workers. Audio runs in an AudioWor
 
 #### audio.play
 
-`audio.play({ processor, ms?, options? })` → { played, state }
+`audio.play({ processor, ms?, at?, options? })` → { played, state }
 
 Needs: `audio`.
 
-Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions.
+Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions. With `at`, a time in ms since the epoch (Date.now()), it starts then on the audio clock: ask about 100 ms ahead. The processor's options get `start`, in the audio clock's seconds; output silence until currentTime reaches it to begin on the exact sample.
 
 #### audio.registerProcessor
 

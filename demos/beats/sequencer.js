@@ -3,9 +3,11 @@
 // VOICES source below), which the audio service runs on the page's audio
 // thread; this plugin only says "play a kick now".
 //
-// The clock runs here, in the plugin's worker. Each step it asks the audio
-// service to play the hits on that step, and draws the grid again with the
-// playing column lit, eight times a second at 120 bpm. That redraw is the
+// The clock runs here, in the plugin's worker. A little before each step it
+// asks the audio service to play that step's hits `at` the step's time, so
+// they land on the audio clock's exact sample however long the message took.
+// On the step it draws the grid again with the playing column lit, eight
+// times a second at 120 bpm. That redraw is the
 // stress test: the host morphs only the cells whose attributes changed.
 //
 // It writes what is playing to a record of its own, `transport/now`
@@ -76,6 +78,8 @@ registerProcessor("beat-voice", class extends AudioWorkletProcessor {
     this.voice = o.voice || "kick";
     this.freq = o.freq || 220;
     this.gain = o.gain ?? 0.8;
+    // When to begin, on the audio clock (seconds): the audio service passes it, so the hit lands on its sample.
+    this.start = o.start || 0;
     this.t = 0;
     this.phase = 0;
     this.phase2 = 0;
@@ -125,6 +129,10 @@ registerProcessor("beat-voice", class extends AudioWorkletProcessor {
     const dt = 1 / sampleRate;
     const n = out[0].length;
     for (let i = 0; i < n; i++) {
+      if (currentTime + i * dt < this.start) {
+        for (const channel of out) channel[i] = 0;
+        continue;
+      }
       const s = this.t < this.length ? this.sample(dt) * this.gain : 0;
       for (const channel of out) channel[i] = s;
       this.t += dt;
@@ -176,7 +184,7 @@ export default async function (ctx) {
   let step = -1;
   let startedAt = 0;
   let timer = null;
-  let last = -1; // the count of the last step played since startedAt
+  let last = -1; // the count of the last step sent since startedAt (it sounds up to AHEAD ms later)
   let hits = 0;
 
   const load = async () => {
@@ -220,17 +228,23 @@ export default async function (ctx) {
   /** How long a sixteenth lasts at the pattern's tempo, in ms. */
   const sixteenth = () => 60_000 / (pattern()?.bpm ?? 120) / 4;
 
-  /** Plays step `i`'s hits, and lights its column. */
-  const tick = (i) => {
-    step = i;
+  /** How far ahead (ms) each step's hits are sent, so they reach the audio thread before they are due. */
+  const AHEAD = 100;
+
+  /** Sends step `i`'s hits to play at `due` on the audio clock, and lights its column when it comes. */
+  const tick = (i, due) => {
     const p = pattern();
     for (const t of TRACKS) {
       if (muted.has(t.id) || row(p, t.id)[i] !== "x") continue;
       const freq = t.id === "bell" ? BELL[i % 8] : t.id === "bass" ? BASS[i % 8] : undefined;
-      ctx.call("audio", "play", { processor: "beat-voice", ms: 1300, options: { voice: t.id, freq } }).catch(() => {});
+      ctx.call("audio", "play", { processor: "beat-voice", ms: 1300, at: due, options: { voice: t.id, freq } }).catch(() => {});
       hits++;
     }
-    draw();
+    setTimeout(() => {
+      if (!playing) return;
+      step = i;
+      draw();
+    }, Math.max(0, due - Date.now()));
   };
 
   /**
@@ -244,15 +258,15 @@ export default async function (ctx) {
     timer = setTimeout(() => {
       if (!playing) return;
       last = n;
-      tick(n % STEPS);
+      tick(n % STEPS, due);
       schedule(n + 1);
-    }, Math.max(0, due - Date.now()));
+    }, Math.max(0, due - AHEAD - Date.now()));
   };
 
   const play = async () => {
     if (playing) return;
     playing = true;
-    startedAt = Date.now() + 60;
+    startedAt = Date.now() + AHEAD;
     last = -1;
     schedule(0);
     await announce();
@@ -274,7 +288,8 @@ export default async function (ctx) {
   const retime = (before) => {
     if (!playing || before === sixteenth()) return;
     const now = Date.now();
-    const pos = Math.min(Math.max((now - startedAt) / before, last), last + 1);
+    // The last step sent may not have sounded yet: the arm is between the one before it and it.
+    const pos = Math.min(Math.max((now - startedAt) / before, last - 1), last);
     startedAt = now - pos * sixteenth();
     clearTimeout(timer);
     schedule(last + 1);
