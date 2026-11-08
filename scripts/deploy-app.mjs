@@ -105,9 +105,19 @@ export function layoutApp(app, { name, dist = join(ROOT, "dist"), out } = {}) {
     `<!doctype html>\n<!-- This Worker serves one app: /${path}/ (scripts/deploy-app.mjs). -->\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>${title}</title>\n  <meta http-equiv="refresh" content="0; url=/${escapeHtml(path)}/">\n  <script>location.replace(${JSON.stringify(`/${path}/`)} + location.search + location.hash);</script>\n</head>\n<body>\n  <p><a href="/${escapeHtml(path)}/">Open ${title}</a></p>\n</body>\n</html>\n`,
   );
 
-  // Links in app.html to pages this Worker won't have (a demo's header links to /docs/, say).
+  // The main site's navigation (<nav class="site">: Home, All demos, Docs, Workbench) points at pages this
+  // Worker doesn't have, so the deployed copy of app.html leaves it out. The app's own files are untouched.
+  // A <nav> whose class attribute has the token `site` (not site-tools, not data-class="site").
+  const served = html.replace(/\s*<nav\b([^>]*)>[\s\S]*?<\/nav>/gi, (whole, attrs) => {
+    const cls = /(?:^|\s)class\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/i.exec(attrs);
+    const tokens = cls ? (cls[1] ?? cls[2] ?? cls[3]).split(/\s+/) : [];
+    return tokens.includes("site") ? "" : whole;
+  });
+  if (served !== html) writeFileSync(join(site, path, "app.html"), served);
+
+  // Links in the deployed app.html to pages this Worker won't have.
   const warnings = [];
-  for (const href of new Set(linksIn(html))) {
+  for (const href of new Set(linksIn(served))) {
     if (href === "/") continue;
     const file = join(site, href);
     const served = (existsSync(file) && statSync(file).isFile()) || existsSync(join(file, "index.html")) || existsSync(join(file, "app.html"));
