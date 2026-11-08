@@ -2,10 +2,13 @@
 // of its own. Its site has the platform and that app, none of this site's
 // own pages, the folders the app links with ../, and a front page that sends
 // people to the app; its config is the site's Worker under a new name.
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { layoutApp } from "../../scripts/deploy-app.mjs";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 export default async function ({ check }) {
   const out = mkdtempSync(join(tmpdir(), "ewa-app-"));
@@ -27,6 +30,42 @@ export default async function ({ check }) {
     // The security demo links plugins from two other demos with ../: those folders come too.
     const security = layoutApp("demos/security", { out, name: "security-test" });
     check("an app's Worker brings the folders its app.html links with ../", ["demos/reading-list/library.js", "demos/librarian/activity.js"].every((p) => existsSync(join(security.site, p))));
+
+    // An app outside the repo, linking a sibling folder without quotes: both come, at the same distance apart.
+    const away = mkdtempSync(join(tmpdir(), "ewa-away-"));
+    try {
+      cpSync(join(root, "starter"), join(away, "trip-kit"), { recursive: true });
+      mkdirSync(join(away, "shared", "widgets"), { recursive: true });
+      writeFileSync(join(away, "shared", "widgets", "w.js"), "");
+      writeFileSync(join(away, "shared", "lib.js"), "");
+      const page = join(away, "trip-kit", "app.html");
+      writeFileSync(page, readFileSync(page, "utf8").replace("</head>", "<link rel=plugin href=../shared/widgets/w.js>\n<link rel=plugin href=../shared/lib.js>\n</head>"));
+      const external = layoutApp(join(away, "trip-kit"), { out });
+      check(
+        "an app outside the repo brings its ../ folders, quoted or not",
+        external.path === "trip-kit" && existsSync(join(external.site, "trip-kit/app.html")) && existsSync(join(external.site, "shared/widgets/w.js")) && existsSync(join(external.site, "shared/lib.js")),
+      );
+      writeFileSync(page, readFileSync(page, "utf8").replace("</head>", '<link rel="plugin" href="../../too-far.js">\n</head>'));
+      let above = "";
+      try {
+        layoutApp(join(away, "trip-kit"), { out });
+      } catch (error) {
+        above = error.message;
+      }
+      check("deploy:app refuses an app linking above the site's root", /outside/.test(above), above);
+    } finally {
+      rmSync(away, { recursive: true, force: true });
+    }
+
+    // A top-level folder of this repo is an app too, though the build copies it into dist/ as well.
+    const top = join(root, "zz-deploy-app-check");
+    try {
+      cpSync(join(root, "starter"), top, { recursive: true });
+      const own = layoutApp(top, { out });
+      check("a top-level folder of the repo deploys as an app", own.path === "zz-deploy-app-check" && existsSync(join(own.site, "zz-deploy-app-check/app.html")));
+    } finally {
+      rmSync(top, { recursive: true, force: true });
+    }
 
     let refused = "";
     try {

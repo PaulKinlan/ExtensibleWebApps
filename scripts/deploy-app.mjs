@@ -36,8 +36,15 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** dist/'s pages that are this site's own, not the platform's: an app's Worker doesn't serve them. */
 export const SITE_PAGES = ["demos", "docs", "home", "workbench", "starter", "index.html", "llms.txt"];
 
+/** The platform's own top-level folders in dist/: an app can't live at one of these paths. */
+export const PLATFORM_FOLDERS = ["platform", "assets", "std", "elements", "sw", "account", "vendor", "auth", "s", "user"];
+
+/** An attribute's value, quoted or not (`href=../shared/plugin.js` is valid HTML, and the host reads it). */
+const VALUE = String.raw`\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))`;
+const values = (html, attr) => [...html.matchAll(new RegExp(`\\b(?:${attr})${VALUE}`, "gi"))].map((m) => (m[1] ?? m[2] ?? m[3]).split(/[#?]/)[0]);
+
 /** Top-level paths an app may link to absolutely and still find on its own Worker (checked against site/). */
-const linksIn = (html) => [...html.matchAll(/\b(?:href|src)\s*=\s*["'](\/[^"'#?]*)/gi)].map((m) => m[1]);
+const linksIn = (html) => values(html, "href|src").filter((v) => v.startsWith("/") && !v.startsWith("//"));
 
 /** Reads JSONC: the root wrangler.jsonc has comments, but no comment markers inside its strings. */
 const jsonc = (text) => JSON.parse(text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1"));
@@ -59,30 +66,35 @@ export function layoutApp(app, { name, dist = join(ROOT, "dist"), out } = {}) {
   // Cloudflare's rule for a Worker's name, which is also the first label of its workers.dev address.
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(worker)) throw new Error(`"${worker}" can't name a Worker: lowercase letters, digits and dashes, at most 63, no dash at either end. Give one with --name.`);
 
-  // Inside this repo the app keeps its path; outside it, it goes at /<folder name>/.
+  // Inside this repo the app keeps its path; outside it, it goes at /<folder name>/. Either way,
+  // `base` is the folder that maps to the site's root, so the app's ../ links land where they did.
   const inside = relative(ROOT, folder);
-  const path = inside && !inside.startsWith("..") ? inside.split("\\").join("/") : basename(folder);
+  const base = inside && !inside.startsWith("..") ? ROOT : dirname(folder);
+  const onSite = (p) => relative(base, p).split("\\").join("/");
+  const path = onSite(folder);
   const top = path.split("/")[0];
-  if (existsSync(join(dist, top)) && !SITE_PAGES.includes(top)) {
-    throw new Error(`/${path}/ is one of the platform's own folders: move the app into a folder of its own`);
-  }
+  if (PLATFORM_FOLDERS.includes(top)) throw new Error(`/${path}/ is inside the platform's own /${top}/: move the app into a folder of its own`);
 
   const target = out ?? join(ROOT, ".build", "apps", worker);
   const site = join(target, "site");
   rmSync(target, { recursive: true, force: true });
   mkdirSync(site, { recursive: true });
-  for (const entry of readdirSync(dist)) if (!SITE_PAGES.includes(entry)) cpSync(join(dist, entry), join(site, entry), { recursive: true });
+  // The app's own top folder comes from its source below (a top-level folder here is copied into dist/ too).
+  for (const entry of readdirSync(dist)) if (!SITE_PAGES.includes(entry) && entry !== top) cpSync(join(dist, entry), join(site, entry), { recursive: true });
 
   // The app's own files as written (they're copied unchanged into dist/ too), and each folder it links
   // with ../ (a plugin another app owns: ../reading-list/library.js), at their paths beside it.
   const copyFolder = (from, to) => cpSync(from, join(site, to), { recursive: true, filter: (f) => !basename(f).startsWith(".") && basename(f) !== "node_modules" });
   copyFolder(folder, path);
   const html = readFileSync(page, "utf8");
-  for (const [, href] of html.matchAll(/\b(?:href|src)\s*=\s*["'](\.\.\/[^"'#?]*)/gi)) {
+  for (const href of values(html, "href|src").filter((v) => v.startsWith("../"))) {
     const linked = resolve(folder, href);
-    const its = relative(ROOT, dirname(linked));
-    if (!its || its.startsWith("..") || !existsSync(dirname(linked))) continue;
-    if (!existsSync(join(site, its))) copyFolder(dirname(linked), its.split("\\").join("/"));
+    const its = onSite(dirname(linked));
+    // A link above the site's root has nowhere to go on the Worker: refuse, rather than deploy an app missing a plugin.
+    if (!its || its.startsWith("..")) throw new Error(`app.html links ${href}, which is outside ${relative(process.cwd(), base) || "."}/ and so can't be served beside the app`);
+    if (PLATFORM_FOLDERS.includes(its.split("/")[0])) throw new Error(`app.html links ${href}, inside the platform's own /${its.split("/")[0]}/`);
+    if (!existsSync(linked)) continue; // npm run check reports a missing file
+    if (!existsSync(join(site, onSite(linked)))) copyFolder(dirname(linked), its);
   }
 
   // The front page sends people to the app. A plain page, not a Worker route, so the Worker's code stays
@@ -128,6 +140,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const flag = (f) => (args.includes(f) ? (args.splice(args.indexOf(f), 1), true) : false);
   const nameAt = args.indexOf("--name");
   const name = nameAt >= 0 ? args.splice(nameAt, 2)[1] : undefined;
+  if (nameAt >= 0 && (!name || name.startsWith("--"))) {
+    console.error("--name needs the Worker's name after it");
+    process.exit(2);
+  }
   const noBuild = flag("--no-build");
   const noDeploy = flag("--no-deploy");
   const dev = flag("--dev");
