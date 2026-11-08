@@ -197,6 +197,8 @@ export interface Manifest {
   theme?: Record<string, string>;
   /** Hooks it defines, by key: `{ open: { mode: "emit", args: "{ id }" } }` is the hook `<id>:open`, which only it can run. */
   hooks?: Record<string, PluginHook>;
+  /** Services it calls that not every site runs (kernel modules, docs/layers.md): `["llm", "bus"]`. It isn't started without them. */
+  services?: string[];
 }
 
 /** A hook a plugin defines in its manifest. The limits are the kernel's (PLUGIN_HOOKS in src/kernel/hooks.ts). */

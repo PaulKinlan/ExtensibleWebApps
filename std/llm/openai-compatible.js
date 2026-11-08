@@ -23,6 +23,7 @@ export const manifest = {
   description: "Answers the app's llm requests with a model served on this computer by Ollama, or another OpenAI-style API.",
   version: "1.0.0",
   permissions: ["provide:llm", "network:localhost:11434"],
+  services: ["llm"],
   settings: {
     model: {
       type: "string",

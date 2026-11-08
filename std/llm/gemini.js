@@ -26,6 +26,7 @@ export const manifest = {
   description: "Answers the app's llm requests with Gemini, using the person's Gemini API key.",
   version: "1.1.0",
   permissions: ["provide:llm", "network:generativelanguage.googleapis.com", "secret:gemini"],
+  services: ["llm"],
   settings: {
     model: {
       type: "string",

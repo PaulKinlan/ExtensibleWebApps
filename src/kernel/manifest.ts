@@ -52,6 +52,8 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   theme:
     `Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only ${Object.keys(THEME_TOKENS).join(", ")}, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md.`,
   hooks: `Optional. Up to ${PLUGIN_HOOKS.max} hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook \`<id>:<key>\` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (${PLUGIN_HOOKS.defaultTimeoutMs} ms if not given, at most ${PLUGIN_HOOKS.timeoutMs}); an agent that checks it has agentTimeoutMs (at most ${PLUGIN_HOOKS.agentTimeoutMs / 1000} s; without one, agents can't check it). A hook lasts while its plugin is installed.`,
+  services:
+    'Optional. Up to 30 services the plugin calls that not every site runs, by name: ["llm", "bus"]. The kernel\'s own services (data, storage, settings and the rest) are always there and needn\'t be listed. A plugin that lists a service the site doesn\'t run isn\'t started, and says which one is missing, so an app that needs it fails when it opens rather than on its first call. The site lists the services it runs in kernel.json (docs/layers.md).',
   files:
     "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app.",
 };
@@ -84,6 +86,8 @@ function validate(value: unknown): Manifest {
   if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 20 || m.files.some((f) => typeof f !== "string" || !FILE_NAME.test(f))))
     throw new ManifestError("`files` must be a list of up to 20 file names, with no folders");
   if (m.hooks !== undefined) validateHooks(m.hooks, m.id);
+  if (m.services !== undefined && (!Array.isArray(m.services) || m.services.length > 30 || m.services.some((s) => typeof s !== "string" || !ID.test(s))))
+    throw new ManifestError("`services` must be a list of up to 30 service names");
   if (m.collections !== undefined) {
     try {
       checkCollections(m.collections, checkSchema);
