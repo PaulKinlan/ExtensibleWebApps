@@ -1,0 +1,51 @@
+<!doctype html>
+<!--
+  Security: the librarian, with an agent that checks things before they happen.
+
+  ../reading-list/library.js            owns the `library` collection
+  ../librarian/librarian.agent.md       fills in each new book's author and year
+  ../librarian/bibliographer.agent.md   answers the librarian when it isn't sure
+  security.agent.md                     an agent with two checks: before a book is
+                                        saved, it blocks one that holds what looks
+                                        like a card number; before another agent
+                                        calls a tool, it blocks a delete
+  ../librarian/activity.js              lists what the agents did
+  /std/board.js                         shows what is waiting while an agent
+                                        checks it, and the agents' questions
+  /std/llm/anthropic.js                 the model the agents ask
+
+  Try adding a book with "4111 1111 1111 1111" as its author: the save waits while the
+  security agent checks it, then is refused with its reason. A book with no
+  long run of digits doesn't wake it at all.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Security</title>
+  <meta name="description" content="A reading list with a security agent that checks writes and other agents' tool calls before they happen.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="../reading-list/library.js">
+  <link rel="plugin" href="../librarian/activity.js">
+  <link rel="agent" href="../librarian/librarian.agent.md">
+  <link rel="agent" href="../librarian/bibliographer.agent.md">
+  <!-- Asked before a book is saved and before another agent calls a tool; it may block either. -->
+  <link rel="agent" href="security.agent.md">
+  <link rel="plugin" href="/std/board.js">
+  <link rel="plugin" href="/std/llm/anthropic.js">
+</head>
+<body>
+  <header>
+    <h1>Security</h1>
+    <a href="/workbench/">Workbench</a>
+  </header>
+  <main>
+    <slot name="main"><p>Loading your books…</p></slot>
+  </main>
+  <aside>
+    <slot name="board"></slot>
+    <slot name="side"></slot>
+  </aside>
+</body>
+</html>

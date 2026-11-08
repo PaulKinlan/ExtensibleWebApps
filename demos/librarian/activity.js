@@ -28,8 +28,12 @@ export default async function (ctx) {
 
   ctx.on("agent:wake", ({ agent, trigger }) => add("woke", `${agent}: ${trigger.kind === "command" ? `asked to ${trigger.name}` : trigger.name}`, "accent"));
   ctx.on("agent:toolResult", ({ agent, tool, ok }) => add("tool", `${agent} called ${tool}${ok ? "" : ", which failed"}`, ok ? "ok" : "danger"));
-  ctx.on("agent:done", ({ agent, stopReason, tools, usage }) =>
-    add(stopReason === "completed" ? "done" : stopReason, `${agent}: ${tools} tool call${tools === 1 ? "" : "s"}, ${usage.input + usage.output} tokens`, stopReason === "completed" ? "neutral" : "warn"),
+  ctx.on("agent:done", ({ agent, stopReason, tools, usage, verdict }) =>
+    add(
+      verdict ?? (stopReason === "completed" ? "done" : stopReason),
+      `${agent}: ${tools} tool call${tools === 1 ? "" : "s"}, ${usage.input + usage.output} tokens`,
+      verdict === "block" ? "danger" : stopReason === "completed" ? "neutral" : "warn",
+    ),
   );
   ctx.on("agent:budget", ({ agent, limit, used, max }) => add("limit", `${agent} reached its ${limit} limit: ${used} of ${max}`, "warn"));
   views.render("side", "activity", { lines });
