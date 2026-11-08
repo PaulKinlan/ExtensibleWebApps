@@ -107,6 +107,7 @@ npm test           # build, then every check in Chromium, and the measurements (
 npm run reference  # rewrite docs/api.md from the running kernel
 npm run check      # find mistakes in every app in demos/ (or the folders you name) without a browser; --json for tools
 npm run new-app -- my-app   # copy starter/ to demos/my-app/, a small app to begin from
+npx github:PaulKinlan/ExtensibleWebApps my-app   # no checkout needed: a my-app/ folder with the platform, installed, and the app in demos/my-app/
 npm run deploy:app -- demos/my-app   # deploy just that app as its own Cloudflare Worker (docs/guide/deploying-an-app.md)
 npm run typecheck
 ```

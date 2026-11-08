@@ -21,6 +21,7 @@ off, what's left is the page's own HTML and the kernel.
 | [`chapter-7-permissions.js`](chapter-7-permissions.js) | What a plugin may do: permissions and the gate. Its own manifest asks only for `ui`, and its buttons ask for more, so you watch the kernel refuse. |
 | [`chapter-8-data.js`](chapter-8-data.js) | Your data, and your say: collections, schemas and review. It has `data:write:learning`, so adding a note shows you a review card, and a note that isn't text is refused by the schema. |
 | [`chapter-9-views.js`](chapter-9-views.js) | Views are HTML: how plugins draw, and a box whose HTML it draws as written, so you see what the page's allowlist keeps. |
+| [`chapter-10-your-app.js`](chapter-10-your-app.js) | An app of your own: what an `app.html` is, the one command that makes a project of your own (`npx github:PaulKinlan/ExtensibleWebApps my-app`, [`/scripts/create-app.mjs`](../scripts/create-app.mjs)), and how to put the app online by itself with `npm run deploy:app`. |
 
 Each chapter's words are in the `.html` file next to it, so a chapter is
 edited like any view. The page also links standard plugins from

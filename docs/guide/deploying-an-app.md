@@ -12,7 +12,7 @@ npm run new-app -- packing-list             # make the app (skip this to deploy 
 npm run deploy:app -- demos/packing-list    # build, lay out, deploy
 ```
 
-That is two commands for each new app, and one more the first time on a machine. The last one prints the address, `https://packing-list.<your subdomain>.workers.dev/`, which goes straight to the app.
+That is two commands for each new app, and one more the first time on a machine. With no checkout, `npx github:PaulKinlan/ExtensibleWebApps packing-list` makes one: a `packing-list/` folder with a copy of the platform, installed, and the app already made in `demos/packing-list/` ([`scripts/create-app.mjs`](../../scripts/create-app.mjs)). The last one prints the address, `https://packing-list.<your subdomain>.workers.dev/`, which goes straight to the app.
 
 To try it on this machine first, with no account, add `--dev`: it runs `wrangler dev` on the same files. `--name` picks a different Worker name (and so address), and `--no-deploy` only writes the files.
 
