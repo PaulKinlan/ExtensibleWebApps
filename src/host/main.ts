@@ -666,7 +666,7 @@ send({ t: "hello", tab, folder });
 introduced = true;
 for (const message of unsent.splice(0)) send(message);
 /** Every app gets the Customize button, where the person adds their own plugins. */
-const inspector = isWorkbench ? undefined : inspect({ app, command });
+const inspector = isWorkbench ? undefined : inspect({ app, command, places: () => pagePlaces.status() });
 const panel = isWorkbench ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status(), inspect: () => inspector?.start() });
 if (!isWorkbench) await openApp();
 sendUrl();

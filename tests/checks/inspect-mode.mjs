@@ -44,4 +44,27 @@ export default async function ({ check, openTab, URL }) {
   for (const p of notes.filter((p) => p.id?.startsWith("note-"))) await trip.evaluate((id) => window.__host.command("user:remove", { app: "demos/trip", id }), p.id);
   check("inspect mode adds a note beside a part of the app's own page", /app's own page/.test(where) && note, JSON.stringify({ where: where.slice(0, 80), note }));
   await trip.close();
+
+  // Parts nothing names apart (every price on the menu reads data-part="price") still get a selector
+  // that finds only them; and the keyboard picks as well as the pointer does.
+  const menu = await openTab(`${URL}demos/menu/app.html`);
+  await menu.waitForSelector('[data-part="price"] >> nth=2', { timeout: 8000 });
+  await menu.evaluate(() => window.__host.inspect());
+  const third = (await menu.$$('[data-part="price"]'))[2];
+  await third.click();
+  const sel = (await menu.textContent("#inspect code")) ?? "";
+  const only = await menu.evaluate(([sel, el]) => {
+    const all = [...document.body.querySelectorAll(sel)];
+    return all.length === 1 && all[0] === el;
+  }, [sel, third]);
+  check("inspect mode's selector finds only the part picked, even among parts named alike", only, sel);
+  await menu.keyboard.press("Escape");
+  await menu.keyboard.press("ArrowDown");
+  await menu.keyboard.press("ArrowDown");
+  await menu.keyboard.press("Enter");
+  const keyed = await menu.evaluate(() => !!document.querySelector(".inspect-picked") && document.activeElement?.getAttribute("data-inspect") === "hide");
+  check("inspect mode picks with the arrow keys and Enter, and moves focus to what can be done", keyed);
+  await menu.keyboard.press("Escape");
+  await menu.keyboard.press("Escape");
+  await menu.close();
 }
