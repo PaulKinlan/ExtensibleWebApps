@@ -18,6 +18,8 @@ export function capabilities(manifest: Manifest): Set<string> {
     // Reading a collection includes hearing that it changed: data:read:x grants hook:listen:data:changed:x.
     const read = /^data:read:(.+)$/.exec(permission);
     if (read) out.add(`hook:listen:data:changed:${read[1]}`);
+    // Writing plugins includes reading them: plugins:author grants plugins:read.
+    if (permission === "plugins:author") out.add("plugins:read");
   }
   return out;
 }
