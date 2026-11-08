@@ -1,11 +1,14 @@
 // The kernel: Cordis core plus the bridge, the gate and the trace tap. It
 // runs in a shared worker so every open tab talks to the same kernel, or in
-// a dedicated worker where shared workers aren't available.
+// a dedicated worker where shared workers aren't available, or on a server
+// as a space's kernel. An entry sets where (env.ts) before importing this:
+// browser.ts in the browser.
 //
 // Nothing in here draws UI or knows what a note is, except the two trusted
 // demo plugins (store and notes) mounted at the bottom.
 
 import { Context } from "cordis";
+import { env } from "./env";
 import { defineHook, hooks } from "./hooks";
 import { Hosts } from "./hosts";
 import { apps as makeApps } from "./apps";
@@ -42,8 +45,8 @@ import fetcher from "../../plugins/fetcher.js?raw";
 import offline from "../../plugins/offline.js?raw";
 import tidy from "../../plugins/tidy.js?raw";
 
-declare const SharedWorkerGlobalScope: { new (): unknown } | undefined;
-const shared = typeof SharedWorkerGlobalScope !== "undefined" && self instanceof SharedWorkerGlobalScope;
+const where = env();
+const shared = where.kind === "shared";
 
 const root: any = new Context();
 tap(root);
@@ -67,20 +70,10 @@ setSink((events) => {
 });
 
 // The kernel's own mistakes go in the trace too, so a debug console can show them.
-self.addEventListener("error", (e) => record({ kind: "error", name: "kernel:error", detail: String((e as ErrorEvent).message ?? e) }));
-self.addEventListener("unhandledrejection", (e) => {
-  const reason = (e as PromiseRejectionEvent).reason;
-  record({ kind: "error", name: "kernel:unhandled", detail: String(reason instanceof Error ? reason.message : reason) });
-});
+where.onError((name, detail) => record({ kind: "error", name, detail }));
 
-// Wire up connections first, so no tab's connect event is missed. Wiring: a shared worker gets a port per tab; a dedicated worker gets one port from its tab.
-if (shared) {
-  (self as any).onconnect = (e: MessageEvent) => hosts.connect(e.ports[0]);
-} else {
-  self.onmessage = (e: MessageEvent) => {
-    if (e.data?.t === "connect") hosts.connect(e.ports[0]);
-  };
-}
+// Wire up connections first, so no tab's connect event is missed.
+where.connect((port) => hosts.connect(port));
 
 // Constructing the store directly (rather than root.plugin) keeps it synchronous;
 // it is still a Cordis service on root.
@@ -117,7 +110,7 @@ remote.onDispose = (instance) => {
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
-const userAdded = userPlugins(store, self.location.origin);
+const userAdded = userPlugins(store, where.origin);
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
@@ -224,7 +217,7 @@ let loaded = false;
 hosts.onHello = (host, folder) => {
   if (!started) {
     started = true;
-    store.use(folder);
+    store.use(where.folder ?? folder);
     void notes.start();
     return;
   }
@@ -434,4 +427,4 @@ async function reloadTest(n: number) {
   return result;
 }
 
-record({ kind: "lifecycle", name: "kernel:start", detail: shared ? "shared worker" : "dedicated worker" });
+record({ kind: "lifecycle", name: "kernel:start", detail: { shared: "shared worker", dedicated: "dedicated worker", server: "space kernel" }[where.kind] });

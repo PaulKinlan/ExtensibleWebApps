@@ -5,7 +5,7 @@ The browser kernel is the source of truth on each device, and an app works with 
 It is built in steps, each its own pull request:
 
 1. **Seams and conformance checks**: this step, described below.
-2. **Kernel core**: the host-independent parts of `src/kernel/kernel.ts` behind an environment object, shared by a browser entry and a server entry.
+2. **Kernel core**: the host-independent parts of `src/kernel/kernel.ts` behind an environment object, shared by a browser entry and a server entry. The store keeps its folder through the `files` seam (`src/seams/opfs.ts` in the browser), and `kernel.ts` reads what differs between hosts (who connects, its origin, its folder, where its errors go) from `src/kernel/env.ts`, which `src/kernel/browser.ts` sets in the browser.
 3. **Node host**: `npm run serve`, a space kernel on the Node seams.
 4. **Cloudflare host**: a Durable Object per space, on DO SQLite, R2, Dynamic Workers and alarms.
 5. **Sign-in and spaces**: one OAuth provider, sessions, members.
