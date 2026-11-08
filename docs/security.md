@@ -1,0 +1,74 @@
+# The security model
+
+An app on this platform runs code that its author didn't write: a plugin a person added, a copy they changed, or one an AI agent wrote for them. So the platform assumes any plugin may be careless or hostile, and gives each one only what its manifest asks for. Then the person can see what that was.
+
+This page says what keeps a plugin in its place, layer by layer. Each layer is enforced by the platform, not left to the plugin's good manners.
+
+```mermaid
+flowchart TB
+    subgraph Worker["1. Its own worker"]
+        Code["The plugin's code"]
+    end
+    Code -->|"2. messages only"| Gate["3. The gate<br/>checks the manifest"]
+    Gate --> Review["4. Review<br/>the person decides"]
+    Gate --> Services["Services"]
+    Review --> Services
+    Services -->|"a view"| Sanitise["5. The host<br/>sanitises it"]
+    Sanitise --> Page["The page"]
+    Services --> Trace["6. The trace and the change log<br/>record everything"]
+```
+
+## 1. Each plugin runs in its own worker
+
+A plugin is a module in a dedicated Web Worker of its own. It has no `document`, so it can't read or change the page, other plugins' views or what the person types elsewhere. It shares no memory with other plugins either.
+
+The worker's content security policy allows only the plugin's own module (`script-src 'self' blob:`), and no workers of its own (`worker-src 'none'`). It allows no network at all (`connect-src 'none'`). A plugin with the `network` permission runs in a second copy of the runtime that may reach `https:` and `wss:` hosts. The policies are in [`vite.config.ts`](../vite.config.ts) for development and [`public/_headers`](../public/_headers) for the hosted site.
+
+## 2. The manifest is read before the code runs
+
+`export const manifest = { … }` must be the module's first statement, and a plain literal. The kernel reads it from the source text before starting the worker ([`src/kernel/manifest.ts`](../src/kernel/manifest.ts)). That way a manifest can't be computed, hidden in a string, or changed after the fact. When the plugin starts, the manifest it reports must match. One that changes itself is uninstalled.
+
+## 3. The gate checks every message
+
+Everything a plugin does is a message to the kernel: calling a service, listening to a hook, drawing a view. The gate ([`src/kernel/gate.ts`](../src/kernel/gate.ts)) checks each one against the capabilities in the plugin's manifest. A message the manifest doesn't allow is refused, and the refusal is traced.
+
+- A service method that isn't in the kernel's reference can't be called at all, so there is no hidden API.
+- Hooks are split in two. `hook:listen:<hook>` hears that something happened. `hook:intercept:<hook>` takes part, and can change or stop it. Most plugins only need to listen.
+- Reading a collection (`data:read:<name>`) includes hearing that it changed, and nothing more.
+
+The full list is in [Permissions](permissions.md).
+
+## 4. The person decides about changes to what isn't the plugin's
+
+A plugin owns the collections its manifest declares, and reads and writes them freely. Any write to something else waits for the person: another plugin's collection, a note, a file, the person's own plugins. The kernel shows a card with the plugin's name, its reason and a diff of the change ([`src/kernel/review.ts`](../src/kernel/review.ts)). The person accepts it once, always allows that plugin to make that kind of change, or declines. The call fails if they decline or don't answer within five minutes.
+
+The same goes for a person's own plugins. One saved from the plugin editor waits for a card that shows its code and what it asks for. One added in **Customize** starts off, showing what it asks for, until the person turns it on.
+
+**Path checks** run before any file is read or written, whatever the plugin's capabilities ([`src/kernel/paths.ts`](../src/kernel/paths.ts)). Paths must be relative and inside a folder, with no `..` or hidden names. They can never touch the platform's own files (its plugins, grants, change log or keys). So a plugin can never install or approve another plugin by writing a file.
+
+## 5. Views are data, sanitised on the page
+
+A plugin describes its view as HTML, and the host keeps only the elements and attributes on its allowlist ([`src/shared/html.ts`](../src/shared/html.ts), [`src/host/sanitize.ts`](../src/host/sanitize.ts)). That means no scripts, no event attributes, no `style` attributes, no frames and no `javascript:` links. Template holes are filled as text, never as HTML. An `https:` image is a request, so only a plugin with `network` may show one. Links to other sites open in a new tab without a referrer.
+
+A plugin's stylesheet is cleaned (no `url()`, `@import` or `!important`) and scoped to its own views ([`src/host/plugin-styles.ts`](../src/host/plugin-styles.ts)). It sits in a layer below the page's own styles, so the app always has the last word, and each view is contained so nothing is drawn outside its box.
+
+A view's actions go back only to the plugin that drew it. A `<ui-table>` or `<ui-form>` acts with the rights of the plugin whose view it sits in, which the host tracks itself, so a plugin can't borrow another's rights with an attribute.
+
+## 6. Keys are never handed to a plugin
+
+A plugin that needs an API key asks for it by name (`secret:<name>`). The person types it into a card drawn by the kernel, which says which hosts the key may be sent to. The plugin then writes `{ secret: name }` in a request header, and the kernel fills it in, only for those hosts ([API keys and web requests](guide/keys-and-requests.md)). The plugin never sees the key. A request to any other host is refused, and the trace names the secret used, never its value.
+
+A plugin that asks a language model through the `llm` service needs only the `llm` permission. It never sees the key, or which vendor's key it is.
+
+## 7. Everything is recorded, and nothing is final
+
+- **The trace** records every message, check and refusal, with timings, grouped by the action that started it. The workbench, the debug console and the hook tracer show it.
+- **The change log** records every install, removal, switch, setting, grant and reviewed write, with its outcome ([`src/kernel/changes.ts`](../src/kernel/changes.ts)).
+- **Any plugin can be switched off**, which stops its workers at once. Opening any app with `?reset` turns its plugins back on, before any of them runs, so a page can always be recovered.
+- **An author's marks.** An app's author can mark parts of the page `review` or `locked`, and a person's plugin that wants to draw there waits for their approval or is refused ([Places](guide/places.md)).
+
+## What it doesn't do yet
+
+- **Limits on a plugin's time or memory.** A plugin can't stall the kernel, because hooks that wait for an answer have time limits, but a busy plugin can slow its own worker. Switching it off stops it.
+- **Servers and many people.** Everything above runs in one browser. Accounts, sharing between people and keys provided by the deployment come with the servers in phase 2b.
+- **Signed plugins.** A plugin is trusted for what its manifest says it may do, not for who wrote it.

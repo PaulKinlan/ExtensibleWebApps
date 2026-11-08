@@ -34,6 +34,16 @@ nothing from the host and can't act for another plugin.
 a textarea. Its text content is the starting value, and a redraw keeps what
 the person typed until the view changes its `revision` attribute.
 
+## Documents and diagrams
+
+[`ui-markdown`](ui-markdown.html) draws a Markdown file, and
+[`ui-diagram`](ui-diagram.html) a Mermaid diagram written as its text. Both
+build their DOM from the text, so nothing in a file can run. The parsing is
+in [`markdown.js`](markdown.js), and [`mermaid.js`](mermaid.js) loads Mermaid
+from [`/vendor/mermaid/`](../vendor/mermaid/) the first time a page has a
+diagram to draw. The docs at `/docs/` ([`docs/app.html`](../docs/app.html))
+are drawn this way.
+
 ## Adding an element
 
 1. Write `elements/ui-name.html` with a `<template>`.
