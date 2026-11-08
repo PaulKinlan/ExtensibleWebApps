@@ -252,6 +252,41 @@ async function serverPluginChecks(base, check, owner, restart) {
     said["node:fs"] === "refused" && said["node:child_process"] === "refused" && said["node:net"] === "refused" && said.process === "undefined" && said.fetch === "undefined",
     JSON.stringify(said),
   );
+
+  // Public routes: a server plugin's route answers anyone, signed in or not, from any site.
+  const posted = await fetch(`${base}/s/guarded/server-app/entry`, { method: "POST", redirect: "manual", headers: { "content-type": "application/x-www-form-urlencoded", origin: "https://elsewhere.example" }, body: "text=Hello+from+outside" });
+  let entry;
+  for (let i = 0; i < 20 && !entry; i++) {
+    await phone.settle();
+    entry = phone.changes().find((c) => c.id?.startsWith("entry-"));
+    if (!entry) await new Promise((r) => setTimeout(r, 100));
+  }
+  check(
+    "server plugins: a server plugin's route at /s/<space>/<app>/… answers anyone, from any site, and what it writes reaches devices",
+    posted.status === 303 && posted.headers.get("location")?.endsWith("/s/guarded/server-app/thanks") && entry?.by === "plugin:inbox" && entry.after?.text === "Hello from outside",
+    JSON.stringify({ status: posted.status, location: posted.headers.get("location"), entry }),
+  );
+  const counted = await fetch(`${base}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
+  const unrouted = await fetch(`${base}/s/guarded/server-app/nothing-here`);
+  const nowhere = await fetch(`${base}/s/nobody-here/server-app/count`);
+  const big = await fetch(`${base}/s/guarded/server-app/entry`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: `text=${"x".repeat(70_000)}` });
+  check(
+    "server plugins: a route answers GET too; a path no plugin answers, or a space that doesn't exist, is the site's as before; a body over 64 KB is refused",
+    counted?.count === 1 && unrouted.status === 404 && nowhere.status === 404 && big.status === 413,
+    JSON.stringify({ counted, unrouted: unrouted.status, nowhere: nowhere.status, big: big.status }),
+  );
+  const form = new FormData();
+  form.append("text", "Sent as multipart");
+  form.append("file", new Blob(["ignored"]), "note.txt");
+  const multipart = await fetch(`${base}/s/guarded/server-app/entry`, { method: "POST", redirect: "manual", body: form });
+  const head = await fetch(`${base}/s/guarded/server-app/count`, { method: "HEAD" });
+  const twice = await fetch(`${base}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
+  check(
+    "server plugins: a multipart form reaches a route as its string fields, and HEAD is answered by the GET route",
+    multipart.status === 303 && head.status === 200 && head.headers.get("content-type")?.startsWith("application/json") && twice?.count === 2,
+    JSON.stringify({ multipart: multipart.status, head: head.status, twice }),
+  );
+  check("server plugins: a plugin linked only inside an HTML comment doesn't start on the server", !phone.changes().some((c) => c.collection === "ghosts"), JSON.stringify(phone.changes().filter((c) => c.collection === "ghosts")));
   phone.close();
 
   // A member's client can't run its own code on the server, or replace the app's plugin.
@@ -270,6 +305,9 @@ async function serverPluginChecks(base, check, owner, restart) {
 
   // The space starts its apps' server plugins again when it restarts, with no device asking.
   const url = await restart();
+  // A request to a public route wakes the space, with no device connected.
+  const woken = await fetch(`${url}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
+  check("server plugins: a public route wakes a space that isn't running, and its plugin answers", woken?.count === 2, JSON.stringify(woken));
   const later = await device(url, "guarded", owner.cookie);
   await later.hello(0);
   let again;
