@@ -49,6 +49,18 @@ export interface RouteResponse {
   text?: string;
 }
 
+/** A command, as `ctx.commands.add` takes it. */
+export interface CommandSpec {
+  id: string;
+  title: string;
+  description?: string;
+  /** Up to 3 shortcuts: "Mod+K" (Cmd on a Mac, Ctrl elsewhere), "Shift+N", "?". */
+  keys?: string[];
+  group?: string;
+  /** What the handler takes, as an object schema; a palette shows only commands that need no arguments. */
+  args?: unknown;
+}
+
 export interface Api {
   on(name: string, handler: (...args: any[]) => unknown): () => void;
   call(service: string, method: string, ...args: unknown[]): Promise<unknown>;
@@ -80,6 +92,13 @@ export interface Api {
    */
   routes: {
     add(method: RouteMethod, path: string, handler: (request: RouteRequest) => RouteResponse | undefined | Promise<RouteResponse | undefined>): () => void;
+  };
+  /**
+   * Things the person, or an agent, can do: a command palette lists them, their keys run them, and
+   * `commands.run` runs them. `add({ id: "finish", title: "Mark what I'm reading as done", keys: ["Alt+D"] }, (args, { by }) => …)`.
+   */
+  commands: {
+    add(command: CommandSpec, handler: (args: Record<string, unknown>, about: { by: string }) => unknown): () => void;
   };
   traced(): Api;
   log(text: string, level?: "info" | "error"): void;
