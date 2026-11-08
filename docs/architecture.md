@@ -66,19 +66,19 @@ Everything a plugin does is a message to the kernel. The gate checks each one ag
 flowchart TB
     Call["ctx.call('data', 'put', 'library', record)"] --> Gate{"The gate:<br/>does the manifest allow it?"}
     Gate -->|no| Refused["Refused<br/>the call fails, and the trace says why"]
-    Gate -->|yes| Own{"The plugin's own collection?"}
+    Gate -->|yes| Schema{"Fits the schema?"}
+    Schema -->|no| Invalid["The call fails, naming the field"]
+    Schema -->|yes| Own{"The plugin's own collection?"}
     Own -->|yes| Hook
     Own -->|no| Review["A review card<br/>the person accepts or declines"]
     Review -->|accepted| Hook["data:beforeWrite<br/>any listener may stop it"]
     Review -->|declined| Declined["The call fails"]
-    Hook -->|let through| Schema{"Fits the schema?"}
+    Hook -->|let through| Save[("Saved")]
     Hook -->|stopped| Blocked["The call fails, with the reason"]
-    Schema -->|yes| Save[("Saved")]
-    Schema -->|no| Invalid["The call fails, naming the field"]
     Save --> Changed["data:changed<br/>told to every plugin that may read it"]
 ```
 
-The same shape holds for every service: the gate, then the service's own rules, then hooks that let other plugins take part. The [security model](security.md) explains why each step is there.
+The same shape holds for every service: the gate, then the service's own rules and checks, then hooks that let other plugins take part. The [security model](security.md) explains why each step is there.
 
 ## Where things are kept
 

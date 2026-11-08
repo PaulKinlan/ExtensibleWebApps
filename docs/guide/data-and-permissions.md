@@ -111,11 +111,11 @@ sequenceDiagram
     participant O as Library (the owner)
 
     P->>K: data.put("library", record, reason)
-    K->>K: the gate: data:write:library?
+    K->>K: the gate (data:write:library?), then the schema check
     K->>Person: a review card: the plugin, its reason, and a diff
     alt Accept, or Always allow
         Person->>K: yes
-        K->>K: data:beforeWrite, then the schema check, then save
+        K->>K: data:beforeWrite, then save
         K-->>O: data:changed:library
         K-->>P: { ok: true, outcome }
     else Decline, or five minutes pass
