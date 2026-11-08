@@ -63,8 +63,8 @@ export default async function (page, { check, openTab, URL, context }) {
   const stranger = await context.browser().newContext();
   try {
     const first = await stranger.newPage();
-    const status = await first.goto(`${URL}demos/reading-list/book/${dune.id}`).then((r) => r?.status());
-    // A new browser has its own data, with new ids: the book's screen opens, and says this library hasn't got it.
+    const status = await first.goto(`${URL}demos/reading-list/book/a-book-added-elsewhere`).then((r) => r?.status());
+    // A new browser has its own data (the sample books, but not what someone added): the book's screen opens, and says this library hasn't got it.
     const opened = await first.waitForSelector(`${card} >> text=isn't in the library`, { timeout: 15000 }).then(() => true, () => false);
     check("a first visit to a screen's address gets the server's 404.html, which starts the service worker and opens the app there", status === 404 && opened, `first answer ${status}`);
     await first.goto(`${URL}no-such-place/at-all`);

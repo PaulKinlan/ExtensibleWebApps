@@ -222,6 +222,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     if (committed) return committed;
     root.emit(dispatch, `data:changed:${name}`, change);
     for (const heard of written) heard(change, instance);
+    for (const heard of local) heard(change);
     return { ok: true, id: recordId, ...(outcome ? { outcome } : {}) };
   }
 
@@ -229,6 +230,8 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
 
   /** Who hears every write by a plugin, with the plugin that made it (services/history.ts). */
   const written = new Set<(change: Change, instance: string) => void>();
+  /** Who hears every change made on this device (a write, or an undo), but not one from another device (sync-device.ts). */
+  const local = new Set<(change: Change) => void>();
 
   /**
    * Puts a record back as it was (`to`, or deleted when it is missing), for the person: no review,
@@ -258,6 +261,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     // A record that changed since can never be put back; anything else may work another time.
     if (failed) return { ok: false, error: failed, ...(failed === STALE ? { stale: true } : {}) };
     root.emit(dispatch, `data:changed:${name}`, change);
+    for (const heard of local) heard(change);
     return { ok: true };
   }
 
@@ -368,6 +372,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     },
     registry,
     written,
+    local,
     restore,
     apply,
     /** One record, for a service that checks rights itself; null if there is none. */

@@ -12,20 +12,29 @@
 // What a handler returns becomes the response: { redirect } (a 303 to a page
 // on this site), { html } (a page in which no script runs), { json }, or
 // { text }, each with an optional status. Nothing means no plugin answered: 404.
+//
+// An app opened in a space (/s/<space>/…) runs in a kernel of that space's own,
+// with a table of its own: its plugins are linked from inside the space, so
+// their routes are too, and that kernel answers them, through one of the
+// space's tabs.
 
-const TABLE = new Request("/routes.json");
+const SPACE = /^\/s\/([a-z0-9][a-z0-9-]{0,62})\//;
 
-/** "GET /demos/reading-list/books.json", for each route a running plugin added. */
-let table = null;
-new BroadcastChannel("platform:routes").onmessage = (e) => (table = new Set(e.data));
+/** For each kernel ("" for the person's own, else a space's name): "GET /demos/reading-list/books.json", for each route a running plugin added. */
+const tables = new Map();
+new BroadcastChannel("platform:routes").onmessage = (e) => {
+  if (e.data && Array.isArray(e.data.table)) tables.set(String(e.data.space ?? ""), new Set(e.data.table));
+};
 
-async function routes() {
-  if (table) return table;
-  const kept = await (await caches.open("platform-routes")).match(TABLE);
+/** @param {string} space */
+async function routes(space) {
+  if (tables.has(space)) return tables.get(space);
+  // Where src/kernel/routes.ts keeps each kernel's table.
+  const kept = await (await caches.open("platform-routes")).match(new Request(space ? `/routes/${space}.json` : "/routes.json"));
   const list = kept ? await kept.json() : [];
   // A broadcast that arrived while the cache was read is newer: keep it.
-  table ??= new Set(list);
-  return table;
+  if (!tables.has(space)) tables.set(space, new Set(list));
+  return tables.get(space);
 }
 
 /**
@@ -49,20 +58,21 @@ const PAGE_CSP = "sandbox allow-forms allow-same-origin; default-src 'none'; sty
 
 export default {
   name: "plugins",
-  /** @param {Request} request @param {URL} url @param {{ kernel(name: string, arg: unknown): Promise<any> }} env */
+  /** @param {Request} request @param {URL} url @param {{ kernel(name: string, arg: unknown, space?: string): Promise<any> }} env */
   async handle(request, url, env) {
     const key = `${request.method} ${url.pathname}`;
-    if (!(await routes()).has(key)) return undefined;
+    const space = SPACE.exec(url.pathname)?.[1] ?? "";
+    if (!(await routes(space)).has(key)) return undefined;
     const safe = request.method === "GET" || request.method === "HEAD";
     if (!safe && !fromThisSite(request, url)) return new Response("Only a page on this site can send this", { status: 403 });
     const form = safe ? undefined : await fields(request);
     let result;
     try {
-      result = await env.kernel("route", { method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams), form });
+      result = await env.kernel("route", { method: request.method, path: url.pathname, query: Object.fromEntries(url.searchParams), form }, space);
     } catch (error) {
       return new Response(`Open the app to use this: ${error instanceof Error ? error.message : error}`, { status: 503 });
     }
-    return respond(result, url);
+    return respond(result, url, space);
   },
 };
 
@@ -78,8 +88,8 @@ async function fields(request) {
   return out;
 }
 
-/** @param {any} result @param {URL} url */
-function respond(result, url) {
+/** @param {any} result @param {URL} url @param {string} space */
+function respond(result, url, space) {
   if (!result || typeof result !== "object") return new Response("No plugin answered", { status: 404 });
   const status = Number.isInteger(result.status) && result.status >= 200 && result.status < 600 ? result.status : 200;
   // These statuses can't have a body.
@@ -87,6 +97,8 @@ function respond(result, url) {
   if (typeof result.redirect === "string") {
     const to = new URL(result.redirect, url);
     if (to.origin !== url.origin) return new Response("A plugin can only send people to a page on this site", { status: 500 });
+    // A plugin in a space sends people to a page in the same space.
+    if (space && !to.pathname.startsWith(`/s/${space}/`)) to.pathname = `/s/${space}${to.pathname}`;
     return new Response(null, { status: 303, headers: { Location: to.href } });
   }
   if (typeof result.html === "string") return new Response(result.html, { status, headers: { "Content-Type": "text/html; charset=utf-8", "Content-Security-Policy": PAGE_CSP } });

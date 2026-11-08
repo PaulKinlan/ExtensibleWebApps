@@ -1,0 +1,31 @@
+<!--
+  A page in a space: whether it reaches the space, and the drafts it kept.
+  sync.js sends { space, status, drafts, problem }; each draft has
+  { ref, text, why, when }. Nothing is drawn outside a space.
+-->
+<style>
+  .sync { display: grid; gap: var(--space-2); margin-block-end: var(--space-3); }
+  .sync .status { margin: 0; color: var(--muted, inherit); font-size: 0.9em; }
+  .sync .drafts { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+  .sync .draft { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; padding: var(--space-2); border: 1px solid var(--border, currentColor); border-radius: var(--radius, 6px); }
+  .sync .draft p { flex: 1 1 14rem; margin: 0; }
+</style>
+<template id="sync">
+  <template if="space">
+    <section class="sync" aria-label="Sync with the space">
+      <p class="status" role="status">{{status}}</p>
+      <template if="drafts.length">
+        <ul class="drafts">
+          <template for="draft of drafts">
+            <li class="draft">
+              <p><strong>Your version of {{draft.text}}</strong> wasn't kept: {{draft.why}}. <small>{{draft.when}}</small></p>
+              <button type="button" data-action="keep" data-value="{{draft.ref}}">Use mine</button>
+              <button type="button" data-action="dismiss" data-value="{{draft.ref}}">Keep theirs</button>
+            </li>
+          </template>
+        </ul>
+      </template>
+      <template if="problem"><small role="alert">{{problem}}</small></template>
+    </section>
+  </template>
+</template>

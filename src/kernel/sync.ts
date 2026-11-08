@@ -76,13 +76,19 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     return undefined;
   }
 
+  /** The record a change names, as the space has it, with its version: none if the change doesn't name one properly. */
+  async function current(change: Outgoing): Promise<{ version?: number; record?: SyncRecord | null }> {
+    if (!change || typeof change.collection !== "string" || !NAME.test(change.collection) || typeof change.id !== "string" || !ID.test(change.id)) return {};
+    return { version: head.versions[key(change.collection, change.id)] ?? 0, record: ((await records.record(change.collection, change.id).catch(() => null)) as SyncRecord | null) ?? null };
+  }
+
   /**
    * Checks and applies one change. The space's head moves on in memory; the push writes the log and
    * head once, when all its changes are in (`record`).
    */
   async function accept(change: Outgoing, by: string | undefined, dispatch: Dispatch): Promise<{ verdict: Verdict; accepted?: Accepted }> {
     const wrong = problem(change);
-    if (wrong) return { verdict: { ok: false, error: wrong } };
+    if (wrong) return { verdict: { ok: false, error: wrong, ...(await current(change)) } };
     const version = head.versions[key(change.collection, change.id)] ?? 0;
     const before = (await records.record(change.collection, change.id)) as SyncRecord | null;
     if (change.base !== version) return { verdict: { ok: false, stale: true, version, record: before } };
@@ -100,7 +106,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     const name = `data:beforeWrite:${change.collection}`;
     if (hooks.has(name)) {
       const verdict = await root.serial(dispatch, name, { collection: change.collection, id: change.id, before: before ?? undefined, after: after ?? undefined });
-      if (verdict && typeof verdict === "object" && "block" in verdict) return { verdict: { ok: false, error: String(verdict.block) } };
+      if (verdict && typeof verdict === "object" && "block" in verdict) return { verdict: { ok: false, error: String(verdict.block), version, record: before } };
     }
     await records.apply(change.collection, change.id, after as StoredRecord | null, dispatch);
     const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after, ...(by ? { by } : {}), at };
@@ -143,7 +149,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
               out.push(verdict);
               if (one) accepted.push(one);
             } catch (error) {
-              out.push({ ok: false, error: String(error instanceof Error ? error.message : error) });
+              out.push({ ok: false, error: String(error instanceof Error ? error.message : error), ...(await current(change)) });
             }
           }
           if (accepted.length) await record(accepted);
