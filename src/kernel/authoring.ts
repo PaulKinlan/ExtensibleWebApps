@@ -79,7 +79,7 @@ export function explain(permission: string): string {
   if (kind === "data" && verb === "write") return `Change the ${what} records. Unless it made them, you are asked first each time.`;
   if (kind === "hook" && verb === "listen") return `Hear ${what}.`;
   if (kind === "hook" && verb === "intercept") return `Change or stop ${what} before it happens.`;
-  if (permission === "plugins:read") return "See which plugins this page has, and which are on.";
+  if (permission === "plugins:read") return "See which plugins this page has, which are on, and their code.";
   if (permission === "plugins:manage") return "Turn this page's plugins on and off.";
   if (permission === "plugins:author") return "Read the code of this page's plugins, and save plugins you write. Each save is shown to you first.";
   if (permission === "debug:read") return "See everything every plugin does, as the debug console does.";
@@ -119,7 +119,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       source: {
         args: "(id)",
         returns: "{ id, name, code }",
-        needs: "plugins:author",
+        needs: "plugins:read",
         description: "The code of a plugin the caller's app links, or of one of the person's own for it, on or off.",
       },
       copy: {
@@ -155,11 +155,12 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       check: {
         args: "(code)",
         returns: "{ ok: true, manifest: { id, name, description, scope }, permissions: [{ name, about }] } or { ok: false, error }",
-        needs: "plugins:author",
+        needs: "plugins:read",
         description: "Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do.",
       },
     },
-    capability: () => "plugins:author",
+    // Reading code and checking a manifest only look, so a viewer such as std/view-source.js needs no more than plugins:read (plugins:author includes it).
+    capability: (method) => (method === "source" || method === "check" ? "plugins:read" : "plugins:author"),
     call: async (instance, method, args, dispatch) => {
       const tab = tabOf(instance);
       if (method === "source") {

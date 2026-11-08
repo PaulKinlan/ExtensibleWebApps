@@ -1,0 +1,20 @@
+<!--
+  Chapter 5's words. It takes no data. View source and the hook tracer draw
+  themselves in the same "inspect" slot, just below this chapter.
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter ol { padding-left: 1.25em; }
+  .chapter li { margin-bottom: var(--space-1); }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">5</ui-badge> Look inside</h2>
+    <p>Nothing on this page is hidden. Each plugin is one plain file, and the kernel keeps a trace of everything they do, so you can read the code and watch it run.</p>
+    <ol>
+      <li><strong>View source</strong> lists every plugin on the page. Pick one to read its code, and what its manifest lets it do, in plain words.</li>
+      <li><strong>The hook tracer</strong> follows each thing you do. Write a note and it shows the hooks that run, in order: Quiet please is asked first and can stop the note, then Note stats hears that it changed.</li>
+    </ol>
+    <p>Try writing a note in capitals: the tracer shows Quiet please stopping it. Then switch Quiet please off and write it again.</p>
+  </ui-card>
+</template>

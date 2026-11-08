@@ -22,10 +22,14 @@ defineHook("plugins:changed", {
 export function switches(root: any, remote: RemotePlugins, apps: Apps): { service: ServiceProvider; opened(tab: string): void } {
   // The plugins panel already listens for changes; this adds the hook alongside it.
   const before = remote.onChange;
+  /** The trace of the plugins.setEnabled call being answered, so the change belongs to the action that asked for it. */
+  let caller: string | undefined;
+  /** Counts changes, so each one without a caller gets a trace id of its own. */
+  let changes = 0;
   remote.onChange = (change, id) => {
     before?.(change, id);
     // The trace id names the change, so the trace tells one plugin's change from another's.
-    root.emit({ trace: `plugins:${change}:${id}` }, "plugins:changed", { change, id });
+    root.emit({ trace: caller ?? `plugins:${change}:${id}:${++changes}` }, "plugins:changed", { change, id });
   };
 
   /** The plugins the caller's app links, or an error if it isn't in an app. */
@@ -52,7 +56,7 @@ export function switches(root: any, remote: RemotePlugins, apps: Apps): { servic
       },
     },
     capability: (method) => (method === "setEnabled" ? "plugins:manage" : "plugins:read"),
-    call: (instance, method, args) => {
+    call: (instance, method, args, dispatch) => {
       const ids = appOf(instance);
       if (method === "app") {
         return ids.flatMap((id) => {
@@ -63,7 +67,13 @@ export function switches(root: any, remote: RemotePlugins, apps: Apps): { servic
       if (method === "setEnabled") {
         const [id, enabled] = args;
         if (typeof id !== "string" || !ids.includes(id)) throw new Error(`${String(id)} isn't a plugin in this app`);
-        return remote.setEnabled(id, enabled === true);
+        // remote.setEnabled reports the change before its first await, so the caller's trace is set while it does.
+        caller = dispatch?.trace;
+        try {
+          return remote.setEnabled(id, enabled === true);
+        } finally {
+          caller = undefined;
+        }
       }
       throw new Error(`plugins.${method} is not a method`);
     },
@@ -73,7 +83,7 @@ export function switches(root: any, remote: RemotePlugins, apps: Apps): { servic
     service,
     /** A tab finished opening its app. Its tab-scoped plugins can start before that, and get an empty list until then. */
     opened(tab: string) {
-      root.emit({ trace: `plugins:open:${tab}` }, "plugins:changed", { change: "open", id: tab });
+      root.emit({ trace: `plugins:open:${tab}:${++changes}` }, "plugins:changed", { change: "open", id: tab });
     },
   };
 }
