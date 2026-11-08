@@ -45,6 +45,8 @@ export function copyPlatform(target, { from = ROOT } = {}) {
   const folder = resolve(target);
   const id = basename(folder);
   if (!ID.test(id)) throw new Error(`The folder's name is your app's id, so it must be lowercase letters, digits and dashes, starting with a letter, at most 35 long: not "${id}"`);
+  // The copy keeps the demos, and `npm run new-app` won't make an app over one.
+  if (existsSync(join(from, "demos", id))) throw new Error(`"${id}" is already a demo in the platform (demos/${id}/): pick another name for the folder`);
   if (existsSync(folder) && readdirSync(folder).length) throw new Error(`${relative(process.cwd(), folder) || folder} already exists and isn't empty`);
   const source = (path) => relative(from, path).split(/[\\/]/)[0];
   cpSync(from, folder, { recursive: true, filter: (path) => !LEFT_OUT.includes(source(path)) });
@@ -63,6 +65,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const args = process.argv.slice(2);
   const nameAt = args.indexOf("--name");
   const name = nameAt >= 0 ? args.splice(nameAt, 2)[1] : undefined;
+  if (nameAt >= 0 && (!name || name.startsWith("--"))) {
+    console.error('--name needs a title after it: --name "Packing list"');
+    process.exit(2);
+  }
   const noInstall = args.includes("--no-install");
   const rest = args.filter((a) => a !== "--no-install");
   if (rest.length !== 1 || rest[0].startsWith("-")) {
@@ -81,17 +87,20 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   console.log(`Copied the platform to ${where}/`);
   const newApp = ["run", "new-app", "--", id, ...(name ? ["--name", name] : [])];
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const run = (cmdArgs) => spawnSync(npm, cmdArgs, { cwd: folder, stdio: "inherit", shell: process.platform === "win32" }).status === 0;
+  // npm.cmd needs a shell on Windows, so only the fixed `npm install` goes through one. The app is
+  // made by running new-app.mjs with Node directly, so a title is never read by a shell.
+  const install = () => spawnSync(npm, ["install"], { cwd: folder, stdio: "inherit", shell: process.platform === "win32" }).status === 0;
+  const makeApp = () => spawnSync(process.execPath, [join(folder, "scripts", "new-app.mjs"), id, ...(name ? ["--name", name] : [])], { cwd: folder, stdio: "inherit" }).status === 0;
   const quoted = newApp.map((a) => (/[\s"]/.test(a) ? JSON.stringify(a) : a)).join(" ");
   if (noInstall) {
     console.log(`\nNext:\n  cd ${where}\n  npm install\n  npm ${quoted}\n  npm run dev`);
     process.exit(0);
   }
-  if (!run(["install"])) {
+  if (!install()) {
     console.error(`\n\`npm install\` didn't finish. Run it in ${where}/, then \`npm ${quoted}\`.`);
     process.exit(1);
   }
-  if (!run(newApp)) process.exit(1);
+  if (!makeApp()) process.exit(1);
   console.log(`
 Your app is in ${where}/demos/${id}/: app.html lists its plugins, and main.js is the first one.
 

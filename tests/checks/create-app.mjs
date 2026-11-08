@@ -32,6 +32,11 @@ export default async function ({ check, context, URL, errors }) {
     check("create-app won't copy into a folder that has files in it", again.status === 1 && /isn't empty/.test(again.stderr), again.stderr);
     let refused = "";
     try { copyPlatform(join(scratch, "Packing_List")); } catch (error) { refused = error.message; }
+    let demo = "";
+    try { copyPlatform(join(scratch, "habits")); } catch (error) { demo = error.message; }
+    check("create-app refuses a name a demo already has, before copying anything", /already a demo/.test(demo) && !existsSync(join(scratch, "habits")), demo);
+    const noTitle = run(join(scratch, "titled"), "--name", "--no-install");
+    check("create-app refuses --name with no title, and copies nothing", noTitle.status === 2 && /--name needs a title/.test(noTitle.stderr) && !existsSync(join(scratch, "titled")), noTitle.stderr);
     check("create-app refuses a folder name that can't be an app's id", /lowercase letters/.test(refused) && !existsSync(join(scratch, "Packing_List")), refused);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
