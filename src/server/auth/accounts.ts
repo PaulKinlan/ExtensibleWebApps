@@ -31,6 +31,7 @@
 // A session is a random token in an HttpOnly cookie; the server keeps only its
 // hash, so its files can't be used to sign in.
 
+import { isAddress } from "../../kernel/address.ts";
 import type { Files } from "../../seams/index.ts";
 import { isFlow, type OAuthProvider, type Provider } from "./providers.ts";
 import { ALGORITHMS, b64url, unb64url, type CredentialJSON, type PublicKey, verifyAssertion, verifyRegistration } from "./webauthn.ts";
@@ -46,8 +47,6 @@ export interface User {
   email?: string;
 }
 
-/** An email address: a local part, then a domain of dot-separated labels. The same as the email service checks. */
-const ADDRESS = /^[^@\s\x00-\x1f\x7f<>,;"]+@[^@\s\x00-\x1f\x7f<>,;".]+(\.[^@\s\x00-\x1f\x7f<>,;".]+)+$/;
 
 interface Credential {
   id: string;
@@ -500,7 +499,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         const current = await session(request);
         if (!current) return json({ error: "Not signed in" }, 401);
         const email = typeof body.email === "string" ? body.email.trim() : null;
-        if (email === null || (email && (email.length > 254 || !ADDRESS.test(email)))) return json({ error: "That isn't an email address" }, 400);
+        if (email === null || (email && !isAddress(email))) return json({ error: "That isn't an email address" }, 400);
         const { email: _old, ...user } = current.user;
         const updated: User = email ? { ...user, email } : user;
         await write(`users/${user.id}.json`, updated);

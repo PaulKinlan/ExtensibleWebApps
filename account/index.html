@@ -187,7 +187,10 @@
         const answer = await call("/auth/signin", credential.toJSON());
         if (answer.status === 401) throw new Error(answer.error);
       }, "You're signed in."));
-      $("email").addEventListener("submit", run(() => call("/auth/me/email", { email: $("email-address").value.trim() }), "Your email is saved.", false));
+      $("email").addEventListener("submit", run(async () => {
+        const answer = await call("/auth/me/email", { email: $("email-address").value.trim() });
+        if (answer.status === 401) throw new Error("You're signed out: sign in again, then save it");
+      }, "Your email is saved.", false));
       $("new-space").addEventListener("submit", run(() => call("/auth/spaces", { name: $("space-name").value.trim() }), "Your space is made.", false));
       $("signout").addEventListener("click", run(() => call("/auth/signout", {}), "You're signed out.", false));
 

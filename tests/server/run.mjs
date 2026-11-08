@@ -286,14 +286,15 @@ async function serverPluginChecks(base, check, owner, restart) {
   // Mail goes only to the space's members, at the address they gave on their account.
   const stranger = await notify({ to: "sam@example.com", subject: "Before Sam is a member's address", text: "x" });
   const badEmail = await owner.call("/auth/me/email", { email: "not an address" });
+  const pathEmail = await owner.call("/auth/me/email", { email: "sam@example.com/path" });
   const setEmail = await owner.call("/auth/me/email", { email: "sam@example.com" });
   const shown = (await owner.call("/auth/me")).body?.user?.email;
   const mailed = await notify({ to: "Sam@Example.com", subject: "3 new answers", text: "See them in the space." });
   const mixed = await notify({ to: ["sam@example.com", "someone@elsewhere.example"], subject: "x", text: "x" });
   check(
     "server plugins: email goes only to the space's members, at the address they gave on their account (any case); anyone else is refused, and an account's address is checked",
-    /only to the space's members/.test(stranger?.error ?? "") && badEmail.status === 400 && setEmail.status === 200 && shown === "sam@example.com" && mailed?.ok === true && /someone@elsewhere\.example isn't one/.test(mixed?.error ?? ""),
-    JSON.stringify({ stranger, badEmail: badEmail.status, setEmail: setEmail.status, shown, mailed, mixed }),
+    /only to the space's members/.test(stranger?.error ?? "") && badEmail.status === 400 && pathEmail.status === 400 && setEmail.status === 200 && shown === "sam@example.com" && mailed?.ok === true && /someone@elsewhere\.example isn't one/.test(mixed?.error ?? ""),
+    JSON.stringify({ stranger, badEmail: badEmail.status, pathEmail: pathEmail.status, setEmail: setEmail.status, shown, mailed, mixed }),
   );
   const badTo = await notify({ to: ["not an address"], subject: "x", text: "x" });
   const badDomain = await notify({ to: ["sam@example..com"], subject: "x", text: "x" });
