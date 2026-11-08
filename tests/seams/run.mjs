@@ -1,0 +1,129 @@
+// Conformance checks for the seams (src/server/seams/): every provider must
+// pass the same ones, so a space can move from one host to another. Run with
+// `npm run test:seams`; the main test run calls it too (tests/checks/seams.mjs).
+//
+// Each provider below makes a fresh set of seams; `restart` makes the set a
+// host would have after starting again, to check what survives.
+
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { memoryEmail, memoryFiles, memoryRecords, memorySchedule, memorySecrets } from "../../src/server/seams/memory.ts";
+import { nodeFiles, nodeOutbox, nodeRecords, nodeSchedule, nodeSecrets } from "../../src/server/seams/node.ts";
+
+const providers = {
+  memory: async () => {
+    const files = memoryFiles();
+    const records = memoryRecords();
+    const schedule = memorySchedule();
+    return {
+      seams: { files, records, schedule, secrets: memorySecrets({ OPENAI_KEY: "sk-test", QUOTED: "a b" }), email: memoryEmail() },
+      // In memory, a restart keeps what a host's storage would keep.
+      restart: async () => ({ files, records, schedule: schedule.restart() }),
+      done: async () => schedule.stop(),
+    };
+  },
+  node: async () => {
+    const dir = await mkdtemp(join(tmpdir(), "seams-"));
+    await writeFile(join(dir, ".env"), '# keys\nOPENAI_KEY=sk-test\nQUOTED="a b"\n');
+    let schedule = await nodeSchedule(join(dir, "schedule.json"));
+    const open = () => ({ files: nodeFiles(join(dir, "files")), records: nodeRecords(join(dir, "records.sqlite")) });
+    return {
+      seams: { ...open(), schedule, secrets: await nodeSecrets(join(dir, ".env")), email: nodeOutbox(join(dir, "outbox")) },
+      restart: async () => {
+        schedule.stop();
+        schedule = await nodeSchedule(join(dir, "schedule.json"));
+        return { ...open(), schedule };
+      },
+      done: async () => {
+        schedule.stop();
+        await rm(dir, { recursive: true, force: true });
+      },
+    };
+  },
+};
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const results = [];
+
+async function suite(name, make) {
+  const { seams, restart, done } = await make();
+  const { files, records, schedule, secrets, email } = seams;
+  const check = (what, ok, detail = "") => results.push({ provider: name, what, ok: !!ok, detail });
+  const refuses = async (fn) => fn().then(() => false, () => true);
+  try {
+    // Files
+    await files.write("plugins/notes.js", "export const manifest = {};");
+    await files.write("plugins/img/tram.svg", new Uint8Array([60, 115, 118, 103]));
+    await files.write("settings.json", "{}");
+    check("files: what is written reads back, as text and bytes", (await files.readText("plugins/notes.js")) === "export const manifest = {};" && (await files.read("plugins/img/tram.svg"))?.length === 4);
+    check("files: list gives every path under a folder, sorted", JSON.stringify(await files.list("plugins/")) === JSON.stringify(["plugins/img/tram.svg", "plugins/notes.js"]), JSON.stringify(await files.list("plugins/")));
+    await files.remove("settings.json");
+    await files.remove("never-was.json");
+    check("files: a removed or missing file reads as null", (await files.readText("settings.json")) === null && (await files.read("nope/x")) === null);
+    check("files: paths can't leave the folder", (await refuses(() => files.write("../escape.txt", "x"))) && (await refuses(() => files.read("/etc/passwd"))) && (await refuses(() => files.readText("a//b"))));
+
+    // Records
+    const first = await records.put("books", "b1", { title: "Dune" }, 0);
+    const again = await records.put("books", "b1", { title: "Dune (again)" }, 0);
+    check("records: a put based on version 0 creates, and a second one is stale", first.ok && again.ok === false && again.stale && again.current?.value.title === "Dune", JSON.stringify({ first, again }));
+    const edit = await records.put("books", "b1", { title: "Dune Messiah" }, first.seq);
+    const late = await records.put("books", "b1", { title: "Children of Dune" }, first.seq);
+    check("records: a put based on the current version wins; one based on an older version is refused", edit.ok && late.ok === false && late.stale && late.current?.version === edit.seq);
+    await records.put("books", "b2", { title: "Emma" });
+    const got = await records.get("books", "b1");
+    const listed = await records.list("books");
+    check("records: get and list return the record, its version and its fields", got?.version === edit.seq && got.value.title === "Dune Messiah" && listed.length === 2, JSON.stringify(listed));
+    got.value.title = "changed by the caller";
+    check("records: what comes back is a copy", (await records.get("books", "b1")).value.title === "Dune Messiah");
+    const removedStale = await records.remove("books", "b2", 1);
+    const removed = await records.remove("books", "b2");
+    const missing = await records.remove("books", "b2");
+    check("records: remove checks the version, removes, and says when there was nothing", removedStale.ok === false && removedStale.stale && removed.ok && missing.ok === false && missing.missing, JSON.stringify({ removedStale, removed, missing }));
+    const all = await records.changes(0);
+    const after = await records.changes(edit.seq);
+    check(
+      "records: the change log holds every accepted change in order, and catches up from any point",
+      all.length === 4 && all.every((c, i) => i === 0 || c.seq > all[i - 1].seq) && all[1].before?.title === "Dune" && all[3].after === undefined && after.length === 2 && after[0].id === "b2",
+      JSON.stringify(all),
+    );
+    check("records: collections are separate", (await records.get("films", "b1")) === null && (await records.list("films")).length === 0);
+
+    // Schedule
+    const heard = [];
+    schedule.onDue((name) => void heard.push(name));
+    await schedule.set({ name: "soon", at: Date.now() + 50 });
+    await schedule.set({ name: "later", at: Date.now() + 60_000, every: 3_600_000 });
+    await schedule.set({ name: "gone", at: Date.now() + 50 });
+    await schedule.cancel("gone");
+    await wait(200);
+    check("schedule: a job runs when it comes due, once; a cancelled one doesn't", JSON.stringify(heard) === JSON.stringify(["soon"]), JSON.stringify(heard));
+    check("schedule: a job that ran once is gone; a repeating one stays", JSON.stringify((await schedule.list()).map((j) => j.name)) === JSON.stringify(["later"]));
+    check("schedule: a job repeats at most once a second", await refuses(() => schedule.set({ name: "busy", at: Date.now(), every: 10 })));
+
+    // What survives a restart
+    await schedule.set({ name: "missed", at: Date.now() + 100 });
+    const back = await restart();
+    const heardAfter = [];
+    back.schedule.onDue((name) => void heardAfter.push(name));
+    await wait(300);
+    check("restart: files, records and jobs survive, and a job due while down still runs", (await back.files.readText("plugins/notes.js")) !== null && (await back.records.get("books", "b1"))?.value.title === "Dune Messiah" && (await back.records.changes(0)).length === 4 && heardAfter.includes("missed") && (await back.schedule.list()).some((j) => j.name === "later"), JSON.stringify(heardAfter));
+    back.schedule.stop();
+
+    // Secrets and email
+    check("secrets: reads values, quoted or not, and lists their names", (await secrets.get("OPENAI_KEY")) === "sk-test" && (await secrets.get("QUOTED")) === "a b" && (await secrets.get("NOPE")) === undefined && (await secrets.names()).includes("OPENAI_KEY"));
+    const sent = await email.send({ to: ["paul@example.com"], subject: "Weekly digest", text: "3 new answers" });
+    const bad = await email.send({ to: ["not an address"], subject: "x", text: "x" });
+    check("email: sends to addresses, and refuses what isn't one", sent.ok && typeof sent.id === "string" && bad.ok === false, JSON.stringify({ sent, bad }));
+  } catch (error) {
+    check("the checks ran to the end", false, error?.stack ?? String(error));
+  } finally {
+    await done();
+  }
+}
+
+for (const [name, make] of Object.entries(providers)) await suite(name, make);
+for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.provider}: ${r.what}${r.detail && !r.ok ? `  (${r.detail})` : ""}`);
+const failed = results.filter((r) => !r.ok).length;
+console.log(`\n${results.length - failed}/${results.length} seam checks passed`);
+process.exit(failed ? 1 : 0);
