@@ -8,13 +8,18 @@
 // Worker of its own, as a facet with its own SQLite database for the space's
 // folder.
 //
-// Until sign-in (step 5 of docs/server.md), anyone who can reach a space can
-// write to it, so spaces are closed unless the SPACES variable is "open":
-// `wrangler dev --var SPACES:open` on this machine, never in production.
+// Accounts and sign-in (/auth/, src/server/auth/accounts.ts) are one more
+// Durable Object, `Accounts`, whose SQLite database holds every account.
+//
+// Only a space's members may join it, which `Accounts` decides from the
+// request's session cookie.
 
 import { DurableObject } from "cloudflare:workers";
 // The space kernel's built source, as text (npm run build:cloudflare writes it).
 import kernelSource from "../../../.build/cloudflare/kernel-source.js";
+import { durableFiles, type Sql } from "../../seams/durable.ts";
+import { accounts } from "../auth/accounts.ts";
+import { providersFrom } from "../auth/providers.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 /** A new kernel build gets a new isolate; spaces on the old one move over as they restart. */
@@ -23,9 +28,8 @@ const KERNEL_VERSION = kernelSource.version;
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> };
   SPACE: DurableObjectNamespace<Space>;
+  ACCOUNTS: DurableObjectNamespace<Accounts>;
   LOADER: WorkerLoader;
-  /** "open" lets clients join spaces; anything else (the default) refuses them. */
-  SPACES?: string;
 }
 
 interface KernelStub {
@@ -34,7 +38,18 @@ interface KernelStub {
   leave(client: string): Promise<void>;
 }
 
+/** The header the Worker names a space's client's member with, for the space to know them by. */
+const MEMBER = "x-ewa-member";
+
 export class Space extends DurableObject<Env> {
+  /** The open clients, by the member each one is. */
+  private clients = new Map<WebSocket, string>();
+
+  /** Someone left the space, or was removed: their connections close at once. */
+  async revoke(user: string): Promise<void> {
+    for (const [socket, who] of this.clients) if (who === user) socket.close(4403, "You're no longer in this space");
+  }
+
   /** The space's kernel, a facet running the kernel's class from its own isolate. */
   private kernel(space: string): KernelStub {
     const worker = this.env.LOADER.get(`space:${space}:${KERNEL_VERSION}`, async () => ({
@@ -53,6 +68,7 @@ export class Space extends DurableObject<Env> {
     const kernel = this.kernel(space);
     const { 0: client, 1: server } = new WebSocketPair();
     server.accept();
+    this.clients.set(server, request.headers.get(MEMBER) ?? "");
     const id = crypto.randomUUID();
     // The client's messages wait for the kernel to be ready for them, in order.
     let ready = kernel.join(id, url.origin, (text) => server.send(text));
@@ -60,21 +76,45 @@ export class Space extends DurableObject<Env> {
     server.addEventListener("message", (e) => {
       ready = ready.then(() => kernel.deliver(id, String(e.data))).catch(() => server.close(1011, "The kernel stopped"));
     });
-    server.addEventListener("close", () => void ready.then(() => kernel.leave(id)).catch(() => {}));
+    server.addEventListener("close", () => {
+      this.clients.delete(server);
+      void ready.then(() => kernel.leave(id)).catch(() => {});
+    });
     return new Response(null, { status: 101, webSocket: client });
+  }
+}
+
+/** Every account, their passkeys and sessions: one object, so a passkey is only ever registered once. */
+export class Accounts extends DurableObject<Env> {
+  // Other sites to sign in with come from the Worker's vars (AUTH_PROVIDERS) and secrets (<ID>_CLIENT_SECRET).
+  private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql), providersFrom(this.env as unknown as Record<string, unknown>), {
+    left: (space, user) => this.env.SPACE.getByName(space).revoke(user),
+  });
+
+  async fetch(request: Request): Promise<Response> {
+    return (await this.auth.handle(request)) ?? new Response("Not found", { status: 404 });
+  }
+
+  /** Which member of a space the session in a cookie header is, if it's one. */
+  async member(cookie: string, space: string): Promise<string | null> {
+    return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.user.id ?? null;
   }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    if (new URL(request.url).pathname.startsWith("/auth/")) return env.ACCOUNTS.getByName("accounts").fetch(request);
     const space = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url).pathname)?.[1];
     if (space === undefined) return env.ASSETS.fetch(request);
-    if (env.SPACES !== "open") return new Response("Spaces open once sign-in is here", { status: 403 });
     if (!SPACE.test(space)) return new Response("Not a space", { status: 404 });
     // A page on another site may open a WebSocket here (they aren't bound by CORS), so a browser's
     // client must come from this site's own pages. A client that isn't a browser sends no Origin.
     const origin = request.headers.get("origin");
     if (origin !== null && origin !== new URL(request.url).origin) return new Response("Not from this site", { status: 403 });
-    return env.SPACE.getByName(space).fetch(request);
+    const member = await env.ACCOUNTS.getByName("accounts").member(request.headers.get("cookie") ?? "", space);
+    if (!member) return new Response("Only the space's members may join it", { status: 403 });
+    const forward = new Request(request);
+    forward.headers.set(MEMBER, member);
+    return env.SPACE.getByName(space).fetch(forward);
   },
 } satisfies ExportedHandler<Env>;

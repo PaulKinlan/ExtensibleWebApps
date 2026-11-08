@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Your account · Extensible Web Apps</title>
+    <link rel="stylesheet" href="/platform/host.css" />
+    <style>
+      main.account { max-width: 32rem; margin: 2rem auto; padding: 0 1rem; display: grid; gap: 1rem; }
+      main.account form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+      main.account input { flex: 1 1 12rem; }
+      main.account [hidden] { display: none; }
+      #status:empty { display: none; }
+      .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <!-- Your account on this server: sign in with a passkey, the key your phone or computer keeps for this site.
+         There's no password to remember or leak. The server's side is src/server/auth/ (docs/server.md, step 5). -->
+    <header>
+      <strong><a href="/">Extensible Web Apps</a></strong>
+      <nav class="site" aria-label="Site">
+        <a href="/">Home</a>
+        <a href="/demos/">All demos</a>
+        <a href="/docs/">Docs</a>
+        <a href="/workbench/">Workbench</a>
+      </nav>
+    </header>
+    <main class="account">
+      <h1>Your account</h1>
+      <p id="status" role="status"></p>
+
+      <section id="out" hidden>
+        <p>Sign in with a passkey: your phone or computer keeps it for this site, and unlocks it with your face, fingerprint or screen lock.</p>
+        <button id="signin" type="button">Sign in with a passkey</button>
+        <p class="providers"></p>
+        <h2>New here?</h2>
+        <form id="register">
+          <label for="name" class="visually-hidden">Your name</label>
+          <input id="name" name="name" autocomplete="name" placeholder="Your name" required maxlength="64" />
+          <button type="submit">Make an account</button>
+        </form>
+      </section>
+
+      <section id="in" hidden>
+        <p>Signed in as <strong id="who"></strong>.</p>
+        <p>
+          <button id="add" type="button">Add a passkey on another device</button>
+          <button id="signout" type="button">Sign out</button>
+        </p>
+        <p class="providers" data-link></p>
+
+        <h2>Your spaces</h2>
+        <p>A space holds people and their data, and any app can open in it. One with just you in it is your own.</p>
+        <ul id="spaces"></ul>
+        <form id="new-space">
+          <label for="space-name" class="visually-hidden">The new space's name</label>
+          <input id="space-name" name="name" placeholder="family" required pattern="[a-z0-9][a-z0-9\-]{0,62}" title="Lowercase letters, numbers and dashes" />
+          <button type="submit">Make a space</button>
+        </form>
+        <p id="invite-link" hidden>Send this link to the person you're inviting. It works once, for a week: <input id="invite-url" readonly /></p>
+      </section>
+
+      <p id="unavailable" hidden>Sign-in needs this site's server (<code>npm run serve</code>, or the site on Cloudflare); this page is being served without one.</p>
+    </main>
+
+    <script type="module">
+      const $ = (id) => document.getElementById(id);
+      const say = (text) => ($("status").textContent = text);
+
+      async function call(path, body) {
+        const res = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok && res.status !== 401) throw new Error(data.error ?? `The server answered ${res.status}`);
+        return { status: res.status, ...data };
+      }
+
+      // An invite in the address, kept for signing in with another site, which comes back to /account/.
+      const pendingInvite = new URLSearchParams(location.search).get("invite");
+
+      /** Other sites this server lets people sign in with: a link each, which signs in (or, signed in, links that account to yours). */
+      async function providers() {
+        const { providers = [] } = await fetch("/auth/providers").then((r) => (r.ok ? r.json() : {}), () => ({}));
+        for (const holder of document.querySelectorAll(".providers")) {
+          holder.replaceChildren(
+            ...providers.map(({ id, name }) => Object.assign(document.createElement("a"), { href: `/auth/oauth/${id}/start${pendingInvite ? `?invite=${encodeURIComponent(pendingInvite)}` : ""}`, className: "button", textContent: holder.hasAttribute("data-link") ? `Link your ${name} account` : `Sign in with ${name}` })),
+          );
+        }
+      }
+
+      async function show() {
+        const res = await fetch("/auth/me");
+        if (res.status === 404 || !res.headers.get("content-type")?.includes("json")) return void ($("unavailable").hidden = false);
+        const { user } = await res.json();
+        $("in").hidden = !user;
+        $("out").hidden = !!user;
+        $("who").textContent = user?.name ?? "";
+        // An invite made before signing out isn't for whoever signs in next.
+        if (!user) {
+          $("invite-link").hidden = true;
+          $("invite-url").value = "";
+          return;
+        }
+        // Signed in with an invite in the address: join that space, once.
+        const invite = new URLSearchParams(location.search).get("invite");
+        if (invite) {
+          history.replaceState(null, "", location.pathname);
+          const joined = await call("/auth/invites/accept", { token: invite }).catch((error) => ({ error: error.message }));
+          say(joined.space ? `You've joined ${joined.space.name}.` : joined.error);
+        }
+        const { spaces = [] } = await call("/auth/spaces");
+        $("spaces").replaceChildren(
+          ...spaces.map(({ name, role }) => {
+            const li = document.createElement("li");
+            li.append(Object.assign(document.createElement("strong"), { textContent: name }), ` (${role === "owner" ? "yours" : "member"}) `);
+            if (role === "owner") {
+              const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Invite someone" });
+              button.addEventListener("click", run(async () => {
+                const { token } = await call(`/auth/spaces/${name}/invite`, {});
+                $("invite-url").value = new URL(`/account/?invite=${token}`, location.href).href;
+                $("invite-link").hidden = false;
+              }, `Here's an invite to ${name}.`, false));
+              li.append(button);
+            } else {
+              const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Leave" });
+              button.addEventListener("click", run(() => call(`/auth/spaces/${name}/leave`, {}), `You've left ${name}.`, false));
+              li.append(button);
+            }
+            return li;
+          }),
+        );
+        if (!spaces.length) $("spaces").append(Object.assign(document.createElement("li"), { textContent: "None yet." }));
+      }
+
+      /** Makes a passkey from the server's options, and gives it back to the server. */
+      async function register(name) {
+        const options = await call("/auth/register/options", { name });
+        const credential = await navigator.credentials.create({ publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(options) });
+        await call("/auth/register", credential.toJSON());
+      }
+
+      const run = (task, done, passkey = true) => async (event) => {
+        event?.preventDefault();
+        say("");
+        if (passkey && !window.PublicKeyCredential?.parseCreationOptionsFromJSON) return say("This browser can't use passkeys yet.");
+        try {
+          await task();
+          say(done);
+          if (event?.target instanceof HTMLFormElement) event.target.reset();
+        } catch (error) {
+          // Closing the passkey prompt isn't an error worth more than a line.
+          say(error.name === "NotAllowedError" ? "No passkey was used." : error.message);
+        }
+        await show();
+      };
+
+      $("register").addEventListener("submit", run(() => register($("name").value.trim()), "Your account is made, and you're signed in."));
+      $("add").addEventListener("click", run(() => register(), "Another passkey is added to your account."));
+      $("signin").addEventListener("click", run(async () => {
+        const options = await call("/auth/signin/options", {});
+        const credential = await navigator.credentials.get({ publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options) });
+        const answer = await call("/auth/signin", credential.toJSON());
+        if (answer.status === 401) throw new Error(answer.error);
+      }, "You're signed in."));
+      $("new-space").addEventListener("submit", run(() => call("/auth/spaces", { name: $("space-name").value.trim() }), "Your space is made.", false));
+      $("signout").addEventListener("click", run(() => call("/auth/signout", {}), "You're signed out.", false));
+
+      // Back from another site with a problem: say what it was, once.
+      const error = new URLSearchParams(location.search).get("error");
+      if (error) {
+        say(error);
+        history.replaceState(null, "", location.pathname);
+      }
+      providers();
+      show();
+    </script>
+  </body>
+</html>
