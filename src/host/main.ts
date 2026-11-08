@@ -692,8 +692,29 @@ const panel = isWorkbench ? undefined : customize({ app, command, running: () =>
 // The workbench is an app too: it links the demo plugins in plugins/, which no other page runs.
 await openApp();
 sendUrl();
-addEventListener("popstate", sendUrl);
+addEventListener("popstate", () => {
+  resetInPlace();
+  sendUrl();
+});
 followLinks();
+
+/**
+ * ?reset arriving without a page load: a link to it on the app's own page (the homepage's "turn everything
+ * back on") is a screen change, which the router follows with the History API. The app's plugins come back
+ * on here, in place, as they would on a load, and the address loses ?reset as it does then.
+ */
+function resetInPlace() {
+  if (!new URLSearchParams(location.search).has("reset")) return;
+  const url = new URL(location.href);
+  url.searchParams.delete("reset");
+  history.replaceState(history.state, "", url);
+  void Promise.all(
+    links.map(async (href) => {
+      const response = await fetch(href).catch(() => undefined);
+      return { href, source: response?.ok ? await response.text() : "" };
+    }),
+  ).then((plugins) => send({ t: "open", plugins: plugins.filter((p) => p.source), reset: true, app }));
+}
 
 // For tests and poking around in the console.
 // Tests reach the template filler and the CSS cleaner here, to check them without a plugin.
