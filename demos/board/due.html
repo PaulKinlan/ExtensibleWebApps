@@ -1,0 +1,15 @@
+<!--
+  The due badge. due.js sends { text, tone, date }: tone is late, soon, near
+  or calm, and the CSS picks the colour from data-tone.
+-->
+<style>
+  .due { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; color: var(--fg-2); background: var(--bg-2); }
+  .due::before { content: "◷"; font-size: 0.85em; }
+  .due[data-tone="near"] { color: light-dark(#1d4ed8, #93c5fd); background: color-mix(in srgb, #3b82f6 14%, transparent); }
+  .due[data-tone="soon"] { color: light-dark(#b45309, #fcd34d); background: color-mix(in srgb, var(--warn) 18%, transparent); }
+  .due[data-tone="late"] { color: #fff; background: var(--danger); }
+  .due[data-tone="late"]::before { content: "!"; font-weight: 800; }
+</style>
+<template id="due">
+  <time class="due" datetime="{{date}}" data-tone="{{tone}}">{{text}}</time>
+</template>
