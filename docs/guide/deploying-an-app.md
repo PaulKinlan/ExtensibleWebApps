@@ -49,3 +49,7 @@ Each Worker is its own origin, and the browser and the platform keep origins apa
 - **Server plugins.** A space starts only the plugins of apps its own Worker serves, so only this app's.
 - **Sign in with GitHub, or another provider.** The callback URL is on the app's host, so each Worker needs its own OAuth app and its own `AUTH_PROVIDERS` var and secret ([Servers](../server.md)).
 - **A person's own plugins** can only be added from the app's own origin. The standard plugins are copied into every Worker, so they're there.
+
+## Later: apps on different origins talking in the browser
+
+Servers on different origins don't share spaces, and that's deliberate. If apps on different addresses need to share data, the route is in the browser: one page embeds the other in an iframe and hands it a `MessagePort` with `postMessage`, and each side checks the other's origin. Nothing here closes that door. No page sends `frame-ancestors`, `X-Frame-Options` or cross-origin isolation headers, and each origin's kernel already talks to its pages over ports. Whoever adds such headers later should keep an app able to be framed by the origins it trusts.
