@@ -1,10 +1,10 @@
 // Work-in-progress limits: a transform. The board never planned for limits,
 // but each column's header says which column it is and how many cards it
 // holds (data-column, data-count). This plugin names that header as a
-// place inside the board's view, `in: "board"`, and adds a small gauge to
+// place inside the board's view, `in: "studio"`, and adds a small gauge to
 // each one: "2 of 3", or a warning once a column is over its limit.
 //
-// Changing another plugin's view takes the permission ui:transform:board,
+// Changing another plugin's view takes the permission ui:transform:studio,
 // which the person sees in the plugins panel. The limit and the columns it
 // applies to are settings, so the panel draws a form for them.
 
@@ -13,11 +13,11 @@ export const manifest = {
   name: "Work-in-progress limits",
   description: "A limit on how many cards each busy column holds, shown in its header.",
   version: "1.0.0",
-  permissions: ["ui", "ui:transform:board"],
+  permissions: ["ui", "ui:transform:studio"],
   scope: "tab",
   order: 40,
   places: {
-    gauge: { in: "board", at: ".column-head", put: "append", each: true },
+    gauge: { in: "studio", at: ".column-head", put: "append", each: true },
   },
   settings: {
     limit: { type: "number", title: "Cards per column", default: 3 },

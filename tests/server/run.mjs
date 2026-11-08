@@ -283,19 +283,21 @@ async function serverPluginChecks(base, check, owner, restart) {
   const notify = (body) => fetch(`${base}/s/guarded/server-app/notify`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json(), () => null);
   const mailed = await notify({ to: "Sam@Example.com", subject: "3 new answers", text: "See them in the space." });
   const badTo = await notify({ to: ["not an address"], subject: "x", text: "x" });
+  const badDomain = await notify({ to: ["sam@example..com"], subject: "x", text: "x" });
+  const badControl = await notify({ to: ["sam\u0000@example.com"], subject: "x", text: "x" });
   const badSubject = await notify({ to: ["sam@example.com"], subject: "Two\nlines", text: "x" });
   const tooMany = await notify({ to: Array.from({ length: 11 }, (_, i) => `p${i}@example.com`), subject: "x", text: "x" });
   check(
     "server plugins: a plugin with `email` sends a message; a bad address, a subject of two lines or more than 10 people is refused",
-    mailed?.ok === true && typeof mailed.id === "string" && /address/.test(badTo?.error) && /one line/.test(badSubject?.error) && /at most 10/.test(tooMany?.error),
-    JSON.stringify({ mailed, badTo, badSubject, tooMany }),
+    mailed?.ok === true && typeof mailed.id === "string" && /address/.test(badTo?.error) && /address/.test(badDomain?.error) && /address/.test(badControl?.error) && /one line/.test(badSubject?.error) && /at most 10/.test(tooMany?.error),
+    JSON.stringify({ mailed, badTo, badDomain, badControl, badSubject, tooMany }),
   );
   let day = 1;
   let limited;
-  while (day < 60 && !limited) {
+  for (let tries = 0; tries < 60 && !limited; tries++) {
     const answer = await notify({ to: "sam@example.com", subject: `Message ${day + 1}`, text: "x" });
     if (answer?.ok) day++;
-    else limited = answer;
+    else limited = answer ?? { error: "no answer" };
   }
   check("server plugins: a plugin sends at most 50 messages a day", day === 50 && /50 messages a day/.test(limited?.error ?? ""), JSON.stringify({ day, limited }));
   const form = new FormData();
@@ -337,8 +339,8 @@ async function serverPluginChecks(base, check, owner, restart) {
   c.close();
 
   // The space starts its apps' server plugins again when it restarts, with no device asking.
-  const stoppedAt = Date.now();
   const url = await restart();
+  const stoppedAt = Date.now();
   // The ticker's job starts the space again by itself, with no device or request: a device that connects
   // later finds ticks made after the restart.
   await new Promise((r) => setTimeout(r, 4000));
@@ -352,10 +354,13 @@ async function serverPluginChecks(base, check, owner, restart) {
     JSON.stringify({ firstTick, ticked, stoppedAt }),
   );
   watcher.close();
-  // A request to a public route wakes the space, with no device connected.
-  const woken = await fetch(`${url}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
-  check("server plugins: a public route wakes a space that isn't running, and its plugin answers", woken?.count === 2, JSON.stringify(woken));
-  const later = await device(url, "guarded", owner.cookie);
+  // With the ticker's job stopped, a restart leaves the space cold: a request to a public route wakes it,
+  // with no device connected.
+  const stopped = await fetch(`${url}/s/guarded/server-app/stop`, { method: "POST" }).then((r) => r.json(), () => null);
+  const coldUrl = await restart();
+  const woken = await fetch(`${coldUrl}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
+  check("server plugins: a public route wakes a space that isn't running, and its plugin answers", stopped?.stopped && woken?.count === 2, JSON.stringify({ stopped, woken }));
+  const later = await device(coldUrl, "guarded", owner.cookie);
   await later.hello(0);
   let again;
   for (let i = 0; i < 40 && !again; i++) {

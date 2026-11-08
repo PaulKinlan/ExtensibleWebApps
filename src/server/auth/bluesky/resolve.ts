@@ -62,8 +62,9 @@ export function safeUrl(url: string, settings: Settings): URL {
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error(`Not a web address: ${parsed.href}`);
     return parsed;
   }
-  const host = parsed.hostname;
-  const local = host.startsWith("[") || /^[0-9.]+$/.test(host) || !host.includes(".") || /\.(localhost|local|internal|arpa|home|lan)$/.test(host);
+  // "localhost." is localhost: names are checked without a trailing dot.
+  const host = parsed.hostname.toLowerCase().replace(/\.+$/, "");
+  const local = host.startsWith("[") || /^[0-9.]+$/.test(host) || !host.includes(".") || /\.(localhost|local|internal|arpa|home|lan|corp|intranet)$/.test(host);
   if (parsed.protocol !== "https:" || local || parsed.username || parsed.password) throw new Error(`Won't ask ${parsed.origin}: only public HTTPS servers`);
   return parsed;
 }
@@ -113,8 +114,9 @@ export async function resolveHandle(handle: string, settings: Settings): Promise
     if (typeof did !== "string" || !DID.test(did)) throw new Error(`No account has the handle ${handle}`);
     return did;
   }
-  const [dns, https] = await Promise.allSettled([viaDns(handle, settings), viaHttps(handle, settings)]);
-  const did = (dns.status === "fulfilled" && dns.value) || (https.status === "fulfilled" && https.value);
+  // Both start at once; DNS's answer wins, and doesn't wait for HTTPS.
+  const https = viaHttps(handle, settings).catch(() => null);
+  const did = (await viaDns(handle, settings).catch(() => null)) || (await https);
   if (!did) throw new Error(`No account has the handle ${handle}`);
   return did;
 }
