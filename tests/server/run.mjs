@@ -281,6 +281,14 @@ async function serverPluginChecks(base, check, owner, restart) {
     multipart.status === 303 && head.status === 200 && head.headers.get("content-type")?.startsWith("application/json") && twice?.count === 2,
     JSON.stringify({ multipart: multipart.status, head: head.status, twice }),
   );
+  // A scheduled job runs on the server, and what it writes reaches devices.
+  let tick;
+  for (let i = 0; i < 40 && !(tick?.after?.n >= 2); i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    await phone.settle();
+    tick = phone.changes().filter((c) => c.collection === "ticks").at(-1);
+  }
+  check("server plugins: a job a server plugin schedules with ctx.schedule.every runs on the server, again and again", tick?.after?.n >= 2 && tick.by === "plugin:ticker", JSON.stringify(tick));
   check("server plugins: a plugin linked only inside an HTML comment doesn't start on the server", !phone.changes().some((c) => c.collection === "ghosts"), JSON.stringify(phone.changes().filter((c) => c.collection === "ghosts")));
   phone.close();
 
@@ -299,7 +307,21 @@ async function serverPluginChecks(base, check, owner, restart) {
   c.close();
 
   // The space starts its apps' server plugins again when it restarts, with no device asking.
+  const stoppedAt = Date.now();
   const url = await restart();
+  // The ticker's job starts the space again by itself, with no device or request: a device that connects
+  // later finds ticks made after the restart.
+  await new Promise((r) => setTimeout(r, 4000));
+  const watcher = await device(url, "guarded", owner.cookie);
+  await watcher.hello(0);
+  const ticked = watcher.changes().filter((c) => c.collection === "ticks").at(-1);
+  const firstTick = watcher.changes().find((c) => c.collection === "ticks" && c.after?.at > stoppedAt);
+  check(
+    "server plugins: after a restart, a scheduled job starts the space by itself and keeps running, with no one connected",
+    !!firstTick && firstTick.after.at < Date.now() - 1000 && ticked?.after?.at > stoppedAt,
+    JSON.stringify({ firstTick, ticked, stoppedAt }),
+  );
+  watcher.close();
   // A request to a public route wakes the space, with no device connected.
   const woken = await fetch(`${url}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
   check("server plugins: a public route wakes a space that isn't running, and its plugin answers", woken?.count === 2, JSON.stringify(woken));

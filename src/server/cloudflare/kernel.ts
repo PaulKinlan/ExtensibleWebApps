@@ -27,6 +27,8 @@ type Kept<T> = T & { dup?: () => T };
 /** What the supervisor gives the kernel: where plugins run, and the site's files. */
 export interface SpaceHost extends IsolateHost {
   site(url: string): Promise<Response>;
+  /** Sets the space's alarm for the earliest scheduled job, or clears it. */
+  wake(at: number | undefined): Promise<void>;
 }
 
 /**
@@ -64,6 +66,8 @@ async function whileLoading<T>(load: () => Promise<T>): Promise<T> {
 }
 
 /** The kernel's answer for a public route, once it has started. */
+/** Starts the kernel's plugins and jobs with no client (for an alarm), once it has loaded. */
+let boot: (() => void) | undefined;
 let answerRoute: ((request: RouteRequest) => Promise<RouteResponse | null>) | undefined;
 
 export class SpaceKernel extends DurableObject {
@@ -82,6 +86,8 @@ export class SpaceKernel extends DurableObject {
         folder: durableFiles(this.ctx.storage.sql as unknown as Sql),
         connect: (a) => void (accept = a),
         serve: (answer) => void (answerRoute = answer),
+        boot: (start) => void (boot = start),
+        ...(host && { wake: (at: number | undefined) => void host.wake(at).catch((error) => console.error("Couldn't set the space's alarm:", error)) }),
         ...(host && {
           isolates: remoteIsolates(host, (name, error) => console.error(`Plugin ${name}:`, error)),
           site: (url: string) => host.site(url),
@@ -120,6 +126,12 @@ export class SpaceKernel extends DurableObject {
   async route(origin: string, request: RouteRequest, host?: SpaceHost): Promise<RouteResponse | null> {
     await this.start(origin, host);
     return (await answerRoute?.(request)) ?? null;
+  }
+
+  /** The space's alarm went off: start the kernel (and so its jobs, which run whatever came due). */
+  async tick(origin: string, host?: SpaceHost): Promise<void> {
+    await this.start(origin, host);
+    boot?.();
   }
 
   async deliver(client: string, text: string): Promise<void> {

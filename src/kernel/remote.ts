@@ -445,6 +445,8 @@ export class Remote {
   private listen(listener: number, name: string): void {
     const command = /^command:([a-z][a-z0-9-]{0,63})$/.exec(name);
     if (command) return this.command(listener, command[1]);
+    const job = /^schedule:([a-z][a-z0-9-]{0,63})$/.exec(name);
+    if (job) return this.job(listener, job[1]);
     const route = /^route:(GET|HEAD|POST|PUT|PATCH|DELETE) (\S+)$/.exec(name);
     if (route) return this.route(listener, route[1], route[2]);
     // A collection's change hook is made when its owner first runs. A reader may listen
@@ -537,6 +539,14 @@ export class Remote {
     this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
   }
 
+  /** A job the plugin set with ctx.schedule (services/schedule.ts): named after the plugin, so no other can answer it. */
+  private job(listener: number, id: string): void {
+    if (!check(this.instance, this.caps, "schedule")) return void this.post({ t: "event", action: "kernel:denied", value: "schedule" });
+    const name = scheduleHook(this.plugin.id, id);
+    const spec: HookSpec = { mode: "bail", timeoutMs: 60_000, onFailure: "open" };
+    this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
+  }
+
   private forwarder(listener: number, name: string, spec: HookSpec) {
     const remote = this;
     if (spec.mode === "emit" || spec.mode === "parallel") {
@@ -612,6 +622,8 @@ export class Remote {
 
 /** The hook a plugin instance answers its command `id` on. Only that instance can listen to it. */
 export const commandHook = (instance: string, id: string) => `command:${instance} ${id}`;
+/** The hook a plugin's scheduled job runs on: its plugin's id (not instance) and the job's name. */
+export const scheduleHook = (plugin: string, name: string) => `schedule:${plugin} ${name}`;
 
 /**
  * Calls a service method for a plugin instance, through the gate: the method

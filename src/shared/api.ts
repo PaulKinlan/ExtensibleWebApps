@@ -94,6 +94,18 @@ export interface Api {
     add(method: RouteMethod, path: string, handler: (request: RouteRequest) => RouteResponse | undefined | Promise<RouteResponse | undefined>): () => void;
   };
   /**
+   * Work done later, with the `schedule` permission: `every("digest", 3_600_000, handler)` runs the
+   * handler once an hour, and `at("reminder", Date.parse("2026-12-01T09:00Z"), handler)` once. On a
+   * space's server a job wakes the space when it comes due, even after a restart. In a browser it runs
+   * only while the kernel is running. Names are the plugin's own; setting one again replaces it.
+   */
+  schedule: {
+    every(name: string, ms: number, handler: () => unknown): () => void;
+    at(name: string, when: number, handler: () => unknown): () => void;
+    /** Stops a job, and forgets it. */
+    cancel(name: string): Promise<void>;
+  };
+  /**
    * Things the person, or an agent, can do: a command palette lists them, their keys run them, and
    * `commands.run` runs them. `add({ id: "finish", title: "Mark what I'm reading as done", keys: ["Alt+D"] }, (args, { by }) => …)`.
    */
