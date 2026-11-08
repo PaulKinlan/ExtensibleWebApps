@@ -29,6 +29,10 @@ flowchart LR
 | --- | --- |
 | Build your first app | [How an app works](guide/how-an-app-works.md), then [Writing a plugin](guide/writing-a-plugin.md) |
 | Read the whole guide, in order | [The developer guide](guide/README.md) |
+| See how the pieces fit | [Architecture](architecture.md) |
+| Know what a plugin can and can't do | [The security model](security.md), and [every permission](permissions.md) in plain words |
+| Add a ready-made feature to an app | [Standard plugins](plugins.md) |
+| Look up a word | [The glossary](glossary.md) |
 | Look up a service, hook or permission | [The API reference](api.md), which the kernel prints about itself |
 | See how the kernel works inside | [The kernel](kernel.md) |
 | Know why it is built this way | [What the first spike found](spike.md) |

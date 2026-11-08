@@ -1,4 +1,6 @@
 - [Start here](README.md)
+- [Architecture](architecture.md)
+- [The security model](security.md)
 - [The developer guide](guide/README.md)
   1. [How an app works](guide/how-an-app-works.md)
   1. [Writing a plugin](guide/writing-a-plugin.md)
@@ -14,5 +16,8 @@
   1. [API keys and web requests](guide/keys-and-requests.md)
 - Reference
   - [API reference](api.md)
+  - [Permissions](permissions.md)
+  - [Standard plugins](plugins.md)
+  - [Glossary](glossary.md)
   - [The kernel](kernel.md)
   - [What the first spike found](spike.md)

@@ -35,6 +35,18 @@ export default async function ({ check, context, URL, errors }) {
   await page.goto(`${URL}docs/no-such-page`);
   check("an address with no page says so", await drawn(shown) && (await inside(shown, (e) => !!e.shadowRoot.querySelector(".missing"))));
 
+  // Every diagram on the pages that have them draws, rather than showing Mermaid's error.
+  const failed = [];
+  for (const path of ["architecture", "security", "permissions"]) {
+    await page.goto(`${URL}docs/${path}`);
+    await drawn(shown);
+    const ok = await page
+      .waitForFunction((s) => { const r = document.querySelector(s).shadowRoot; const all = r.querySelectorAll("figure.diagram"); return all.length && [...all].every((f) => f.querySelector("svg, .diagram-error")); }, shown, { timeout: 15000 })
+      .then(() => inside(shown, (e) => !e.shadowRoot.querySelector(".diagram-error")), () => false);
+    if (!ok) failed.push(path);
+  }
+  check("the diagrams in the architecture, security and permissions pages draw", !failed.length, failed.join(", "));
+
   // Raw HTML in a Markdown file is shown as text, never run.
   const raw = await page.evaluate(async () => {
     const { parse } = await import("/elements/markdown.js");
