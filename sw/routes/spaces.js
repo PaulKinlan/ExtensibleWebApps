@@ -12,6 +12,18 @@ import user from "./user.js";
 
 const SPACE = /^\/s\/([a-z0-9][a-z0-9-]{0,62})(\/.*)$/;
 
+/**
+ * The space's server's answer to a page, if one of its plugins gave it (src/server/routes.ts marks it with
+ * X-Space-Route); undefined when the server only has the site's files there, or can't be reached.
+ * @param {Request} request
+ */
+async function fromServer(request) {
+  const response = await fetch(request).catch(() => undefined);
+  // A route's redirect, once it has run (after a form is sent): a navigation's redirect can't be read, only followed.
+  if (response?.type === "opaqueredirect" || response?.headers.has("X-Space-Route")) return response;
+  return undefined;
+}
+
 export default {
   name: "spaces",
   prefix: "/s/",
@@ -27,6 +39,11 @@ export default {
     // The plugins a person added to an app in the space are kept in the space's folder on this device.
     if (path.startsWith("/user/")) return user.handle(request, inner, env, ["spaces", space]);
     if (request.mode === "navigate") {
+      // A plugin on the space's server may answer this address, for anyone: a survey's form at
+      // …/demos/survey/answer?survey=…. The server says so, and its answer is the page. A folder
+      // (the app itself) is never asked, so opening an app costs no extra trip.
+      const routed = path.endsWith("/") ? undefined : await fromServer(request);
+      if (routed) return routed;
       // The app's page, as apps.js serves it outside the space, with its <base> moved inside.
       const page = await apps.handle({ mode: "navigate", method: "GET" }, inner, env);
       if (page) {
