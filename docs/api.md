@@ -268,6 +268,46 @@ Needs: nothing.
 
 This API reference, as the kernel describes itself.
 
+### secrets
+
+API keys and tokens. A plugin never reads one: it asks the person for it by name, then uses it in requests it makes with net.fetch, which the kernel sends only to the hosts the secret was given for.
+
+#### secrets.forget
+
+`secrets.forget(name)` → true
+
+Needs: `secret:<name>`.
+
+Removes the secret.
+
+#### secrets.has
+
+`secrets.has(name)` → { set, hosts }
+
+Needs: `secret:<name>`.
+
+Whether the person has given this secret, and the hosts it may be sent to.
+
+#### secrets.request
+
+`secrets.request(name, { hosts, label? })` → { set }
+
+Needs: `secret:<name>`.
+
+Asks the person to paste the secret, in a card the kernel draws; resolves when they save it or say not now (or after ten minutes). `hosts` are the only hosts it will ever be sent to.
+
+### net
+
+Web requests the kernel makes for a plugin, to the hosts its manifest names. A header can hold a secret the plugin never sees.
+
+#### net.fetch
+
+`net.fetch({ url, method?, headers?, body? })` → { ok, status, headers, text }
+
+Needs: `network:<host>`.
+
+Fetches `url` (https:, or http: on localhost) and returns the answer as text, up to 4 MB, within two minutes. A header given as `{ secret: name }` is filled with that secret, if the plugin has `secret:<name>` and the host is one the secret is for.
+
 ### settings
 
 The plugin's own settings, from the form the plugins panel builds out of its manifest.
@@ -445,6 +485,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `files:<folder>` | Call files.read, files.write. |
 | `debug:read` | Call debug.recent, debug.app. |
 | `ui` | Call page.matches. |
+| `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
+| `network:<host>` | Call net.fetch. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `plugins:read` | Call plugins.app. |
@@ -476,9 +518,9 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin's view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
-Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`.
+Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`, `net`, `secrets`.
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`.
 
 ## Collections
 

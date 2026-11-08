@@ -7,6 +7,7 @@
 // they run unchanged.
 
 import type { Api, Live, RouteRequest } from "../shared/api";
+import { lockdown } from "./lockdown";
 import type { KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
 
 let port: MessagePort;
@@ -246,6 +247,7 @@ const isEditorExtension = (manifest: Manifest) => manifest.permissions.some((p) 
 
 async function load(source: string) {
   const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  lockdown();
   try {
     const module = await import(/* @vite-ignore */ url);
     const manifest = module.manifest as Manifest;

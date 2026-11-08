@@ -5,7 +5,18 @@
 // plugins by writing files.
 
 /** Top-level folders and files that belong to the platform. */
-export const PLATFORM = new Set(["plugins", "plugin-data", "plugins.json", "grants.json", "changes.json", "notes.json", "collections", "user", "user-plugins.json"]);
+export const PLATFORM = new Set([
+  "plugins",
+  "plugin-data",
+  "plugins.json",
+  "grants.json",
+  "changes.json",
+  "notes.json",
+  "collections",
+  "user",
+  "user-plugins.json",
+  "secrets.json",
+]);
 
 export class PathError extends Error {}
 

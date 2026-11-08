@@ -163,7 +163,8 @@ function element(view: View, owner: string): HTMLElement {
         input.type = view.kind;
         if (view.kind === "checkbox") {
           if (view.value) input.setAttribute("checked", "");
-        } else input.setAttribute("value", String(view.value));
+        } else if (view.kind === "password") input.autocomplete = "off";
+        else input.setAttribute("value", String(view.value));
       }
       input.name = view.name;
       // Sent when the change is committed (blur, Enter, or a click), not on every key.
@@ -289,7 +290,7 @@ const app = location.pathname.replace(/\/[^/]*$/, "").replace(/^\/+/, "") || "ro
 /** Whose views this page shows: its app's plugins, or (on the workbench) everyone's. */
 let shown: Set<string> | "all" = isWorkbench ? "all" : new Set();
 /** Review cards always show: the person must see what a plugin wants to change. */
-const ALWAYS = new Set(["review"]);
+const ALWAYS = new Set(["review", "secrets"]);
 /** A tab-scoped plugin's views come from an instance such as `drawing@tab1`; the app linked `drawing`. */
 const showing = (owner: string) => shown === "all" || shown.has(owner.split("@")[0]) || ALWAYS.has(owner);
 /** Views for owners this page doesn't show (yet): kept, in case the app's plugins are still starting. */
