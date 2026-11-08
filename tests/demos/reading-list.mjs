@@ -18,7 +18,10 @@ export default async function (page, { check, openTab, URL, context }) {
   const fresh = await openTab(`${URL}demos/reading-list/book/${dune.id}`);
   const deep = await fresh.waitForSelector(`${card} >> text=Frank Herbert`, { timeout: 8000 }).then(() => true, () => false);
   check("a book's address, /demos/reading-list/book/<id>, opens the app at that book's screen", deep);
-  const drawn = await fresh.$$eval('[data-key^="library:"], [data-key^="due-soon:"]', (els) => els.length);
+  // A view waits for its elements before it is drawn (src/host/main.ts), so the library's may come a moment after the card.
+  const views = '[data-key^="library:"], [data-key^="due-soon:"]';
+  await fresh.waitForFunction((s) => document.querySelectorAll(s).length >= 2, views, { timeout: 8000 }).catch(() => {});
+  const drawn = await fresh.$$eval(views, (els) => els.length);
   check("the app's relative links still load its plugins when it opens at a screen", drawn >= 2, `${drawn} views`);
   await fresh.evaluate(() => (window.__stayed = true));
   const link = await fresh.$(`${card} a[href="./"]`);

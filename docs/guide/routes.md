@@ -67,6 +67,6 @@ Each job is a file in [`sw/routes/`](../../sw/routes/), listed in [`sw/routes/in
 - [`apps.js`](../../sw/routes/apps.js): an app's folder address (`/demos/habits/`) serves its `app.html`.
 - [`headers.js`](../../sw/routes/headers.js): plugin workers get their security policy (no network without `network`) on any host, not only where the server sends it.
 - [`plugins.js`](../../sw/routes/plugins.js): plugin routes, above.
-- Everything it serves is kept, so an app opened once still opens offline.
+- Everything it serves is kept, so an app opened once still opens offline. On a repeat visit a kept file is answered at once and fetched again behind it, so a deploy shows on the visit after; on `localhost` it always asks the network first.
 
 The first visit to a site isn't controlled by the service worker, and nothing depends on it to start: an app works without it, and gains these once it's running.

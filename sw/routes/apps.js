@@ -27,7 +27,8 @@ export default {
   async handle(request, url, env) {
     if (request.mode !== "navigate" || request.method !== "GET" || url.pathname === "/") return undefined;
     if (url.pathname.split("/").pop().includes(".")) return undefined;
-    let front;
+    // The site's front page, to tell an app.html from a server's fallback page: asked for alongside the first folder, not after it.
+    const front = env.fetch(new Request(new URL("/index.html", url))).then((r) => (r.ok ? r.text() : ""), () => "");
     for (const folder of folders(url.pathname)) {
       const page = await env.fetch(new Request(new URL(`${folder}app.html`, url))).catch(() => undefined);
       if (!page?.ok || !(page.headers.get("Content-Type") ?? "").includes("text/html")) continue;
@@ -36,8 +37,7 @@ export default {
       // An app.html only has to load the platform; it needn't link any plugins.
       const html = await page.text();
       if (!/<script\b[^>]*\bsrc=["']?\/platform\/host\.js/i.test(html) || html.includes("/@vite/client")) continue;
-      front ??= await env.fetch(new Request(new URL("/index.html", url))).then((r) => (r.ok ? r.text() : ""), () => "");
-      if (html === front) continue;
+      if (html === (await front)) continue;
       // The server's headers (its security policies, caching) stay; only those about the encoded body go, as it's decoded here.
       const headers = new Headers(page.headers);
       headers.delete("Content-Encoding");
