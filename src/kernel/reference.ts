@@ -40,6 +40,21 @@ const CTX: Record<ApiMember<Api>, Doc> = {
     needs: "",
     description: "Adds a command the plugin answers: a palette lists it, its `keys` run it, and plugins with `commands` (an agent, through its tools) run it with `commands.run(\"<plugin>/<id>\")`. The handler runs with this plugin's own rights; `by` says which plugin ran it, and what it returns goes back to the caller. Throwing fails the run. See the commands service.",
   },
+  "schedule.every": {
+    signature: "ctx.schedule.every(name, ms, handler) → off()",
+    needs: "schedule",
+    description: "Runs `handler` every `ms` milliseconds (at least 1000), first one interval from now. On a space's server the job wakes the space when it comes due, even after a restart, and a run missed while it was stopped happens once when it starts. Setting it again with the same interval keeps its timing. `off()` stops listening; the job stays until `cancel`.",
+  },
+  "schedule.at": {
+    signature: "ctx.schedule.at(name, when, handler) → off()",
+    needs: "schedule",
+    description: "Runs `handler` once, at `when` (ms since 1970). Kept across restarts on a space's server.",
+  },
+  "schedule.cancel": {
+    signature: "ctx.schedule.cancel(name) → Promise",
+    needs: "schedule",
+    description: "Stops one of this plugin's jobs and forgets it.",
+  },
   "routes.add": {
     signature: "ctx.routes.add(method, path, (request) => response) → off()",
     needs: "`routes`",
@@ -197,6 +212,7 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
   for (const s of serviceList) for (const m of s.methods) if (m.needs) needs.set(m.needs, [...(needs.get(m.needs) ?? []), `${s.name}.${m.name}`]);
   const capabilities = [
     { name: "ui", about: "Draw views with ctx.ui.render." },
+    { name: "schedule", about: "Run work later, once or every so often, with ctx.schedule. On a space's server a job wakes the space." },
     { name: "routes", about: "Answer requests for paths in the plugin's own folder with ctx.routes.add." },
     { name: "network", about: "Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere." },
     { name: "ui:theme", about: "Set design tokens for the whole app with the manifest's `theme`." },
@@ -332,7 +348,7 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     "",
     "## HTML views",
     "",
-    `Plugins describe UI as plain HTML, up to ${ref.html.maxLength.toLocaleString("en")} characters. The host parses it inertly and keeps only what is listed here: no script, no style attributes, no frames, no event attributes. Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app; \`class\` is for a template file's own \`<style>\`, which reaches only that plugin's views. Images load from https: only for plugins with the \`network\` capability; others can use data: images.`,
+    `Plugins describe UI as plain HTML, up to ${ref.html.maxLength.toLocaleString("en")} characters. The host parses it inertly and keeps only what is listed here: no script, no frames, no event attributes, and a \`style\` attribute keeps only custom properties set to numbers (\`style="--pct: 40"\`, for sizes from data). Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app; \`class\` is for a template file's own \`<style>\`, which reaches only that plugin's views. Images load from https: only for plugins with the \`network\` capability; others can use data: images.`,
     "",
     "### Components",
     "",

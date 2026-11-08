@@ -44,6 +44,30 @@ Needs: `routes`.
 
 Answers requests for a path inside the plugin's own folder (only for plugins an app links), so a link or a form can reach the plugin. The platform's service worker sends a matching request to the kernel through an open tab. `request` is `{ method, path, query, form }`; the handler returns `{ redirect }` (a 303 to a page on this site), `{ html }` (a page in which no script runs), `{ json }` or `{ text }`, each with an optional `status`. Returning nothing lets another plugin answer, and then 404.
 
+### ctx.schedule.at
+
+`ctx.schedule.at(name, when, handler) → off()`
+
+Needs: schedule.
+
+Runs `handler` once, at `when` (ms since 1970). Kept across restarts on a space's server.
+
+### ctx.schedule.cancel
+
+`ctx.schedule.cancel(name) → Promise`
+
+Needs: schedule.
+
+Stops one of this plugin's jobs and forgets it.
+
+### ctx.schedule.every
+
+`ctx.schedule.every(name, ms, handler) → off()`
+
+Needs: schedule.
+
+Runs `handler` every `ms` milliseconds (at least 1000), first one interval from now. On a space's server the job wakes the space when it comes due, even after a restart, and a run missed while it was stopped happens once when it starts. Setting it again with the same interval keeps its timing. `off()` stops listening; the job stays until `cancel`.
+
 ### ctx.settings.get
 
 `ctx.settings.get() → Promise<values>`
@@ -444,6 +468,18 @@ Needs: `debug:read`.
 
 The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.
 
+### email
+
+Email: messages a plugin on a space's server sends. Until the deployment delivers mail, each is written down in the space's outbox.
+
+#### email.send
+
+`email.send({ to, subject, text, html? })` → { ok, id }
+
+Needs: `email`.
+
+Sends a message to `to` (an address or a list, at most 10), with a one-line `subject`, plain `text` and, if given, `html`. Only on a space's server; at most 50 a day for each plugin.
+
 ### files
 
 Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.
@@ -620,6 +656,42 @@ Needs: `router`.
 
 Moves the plugin's tab to another screen without loading the page, as a link to it would. With `replace`, back skips the screen it leaves.
 
+### schedule
+
+Schedule: work a plugin wants done later, once or every so often. On a space's server a job wakes the space, even after a restart.
+
+#### schedule.at
+
+`schedule.at(name, when)` → true
+
+Needs: nothing.
+
+Runs the caller's job `name` once, at `when` (ms since 1970). Use `ctx.schedule.at(name, when, handler)`.
+
+#### schedule.cancel
+
+`schedule.cancel(name)` → true
+
+Needs: nothing.
+
+Stops one of the caller's jobs and forgets it.
+
+#### schedule.every
+
+`schedule.every(name, ms)` → true
+
+Needs: nothing.
+
+Runs the caller's job `name` every `ms` milliseconds (at least 1000), first one interval from now. Use `ctx.schedule.every(name, ms, handler)`, which also listens for it.
+
+#### schedule.list
+
+`schedule.list()` → [{ name, at, every? }]
+
+Needs: nothing.
+
+The caller's jobs, soonest first.
+
 ### secrets
 
 API keys and tokens. A plugin never reads one: it asks the person for it by name, then uses it in requests it makes with net.fetch, which the kernel sends only to the hosts the secret was given for.
@@ -742,11 +814,11 @@ Makes a draft the record again, with no review, as a new change sent to the spac
 
 #### sync.state
 
-`sync.state()` → { space: null } or { space, connected, pending, drafts }
+`sync.state()` → { space: null } or { space, member?, connected, pending, drafts }
 
 Needs: `sync`.
 
-Whether this page keeps a copy of a space, whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
+Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
 
 ### tools
 
@@ -1055,6 +1127,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | Capability | Lets a plugin |
 | --- | --- |
 | `ui` | Draw views with ctx.ui.render. |
+| `schedule` | Run work later, once or every so often, with ctx.schedule. On a space's server a job wakes the space. |
 | `routes` | Answer requests for paths in the plugin's own folder with ctx.routes.add. |
 | `network` | Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere. |
 | `ui:theme` | Set design tokens for the whole app with the manifest's `theme`. |
@@ -1075,6 +1148,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `data:write:notes` | Call store.put. |
 | `debug:read` | Call debug.recent, debug.app. |
+| `email` | Call email.send. |
 | `files:<folder>` | Call files.read, files.write. |
 | `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
@@ -1114,7 +1188,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin's view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
-| `theme` | Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only --bg, --bg-2, --surface, --fg, --fg-2, --border, --accent, --accent-fg, --ok, --warn, --danger, --radius-sm, --radius, --radius-lg, --shadow-1, --font, --mono, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md. |
+| `theme` | Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only --bg, --bg-2, --surface, --fg, --fg-2, --border, --accent, --accent-fg, --ok, --warn, --danger, --radius-sm, --radius, --radius-lg, --shadow-1, --font, --mono, color-scheme, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
 Reserved ids, which no plugin can take:
@@ -1126,6 +1200,7 @@ Reserved ids, which no plugin can take:
 - `commands`
 - `data`
 - `debug`
+- `email`
 - `files`
 - `history`
 - `host`
@@ -1137,6 +1212,7 @@ Reserved ids, which no plugin can take:
 - `plugins`
 - `review`
 - `router`
+- `schedule`
 - `secrets`
 - `settings`
 - `share`
@@ -1146,7 +1222,7 @@ Reserved ids, which no plugin can take:
 - `tools`
 - `transfer`
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`.
 
 ## Collections
 
@@ -1175,7 +1251,7 @@ Views bind to a collection with `<ui-table collection="…">` and `<ui-form coll
 
 ## HTML views
 
-Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it inertly and keeps only what is listed here: no script, no style attributes, no frames, no event attributes. Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app; `class` is for a template file's own `<style>`, which reaches only that plugin's views. Images load from https: only for plugins with the `network` capability; others can use data: images.
+Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it inertly and keeps only what is listed here: no script, no frames, no event attributes, and a `style` attribute keeps only custom properties set to numbers (`style="--pct: 40"`, for sizes from data). Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app; `class` is for a template file's own `<style>`, which reaches only that plugin's views. Images load from https: only for plugins with the `network` capability; others can use data: images.
 
 ### Components
 
@@ -1203,6 +1279,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 - An `input`, `select` or `textarea` with `data-action` sends it when the change is committed, with the new value (a boolean for a checkbox, a number for a number). Add `data-live` to send it as the person types, after a 300 ms pause.
 - A `form` with `data-action` sends it on submit, with `{ name: value }` for every named field.
 - A submit button with `data-action` of its own, in such a form, sends its action instead, with the same fields.
+- An element with `data-drag="<item>"` can be picked up, and dropping it on an element with `data-drop="<action>"` sends that action with `{ item, value, before? }`: `value` is the drop place's `data-value`, and `before` the `data-drag` of the item it landed on. Drags stay inside the view; `data-dragging` and `data-over` mark them for CSS. Offer the same move with a button too.
 - Give repeated elements a `key` attribute so an update moves them instead of redrawing them; focus, typing and scroll survive updates either way.
 
 ### Plain elements
