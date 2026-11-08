@@ -158,7 +158,7 @@ For agents: llm.complete, counted against the agent's tokens a day.
 
 #### agents.end
 
-`agents.end(run, { stopReason, text, steps })` → true
+`agents.end(run, { stopReason, text, steps, verdict? })` → true
 
 Needs: nothing.
 
@@ -166,7 +166,7 @@ For agents: ends a run, told to the app as agent:done.
 
 #### agents.list
 
-`agents.list()` → [{ id, name, hooks, commands, inbox, topics, limits, used: { runs, tokens } }]
+`agents.list()` → [{ id, name, hooks, checks, commands, inbox, topics, limits, used: { runs, tokens } }]
 
 Needs: nothing.
 
@@ -762,6 +762,14 @@ Asks the person for a CSV or JSON file and adds its rows to the collection, afte
 
 ## Hooks
 
+### `agent:beforeTool`
+
+An agent is about to call one of its tools, with these arguments. Return { block: reason } to stop the call; the agent hears the reason.
+
+Mode: `serial`, 1000 ms per listener, fails open; an agent that checks it has 15 s. Listening needs `hook:intercept:agent:beforeTool`.
+
+Listeners get `{ agent, run, tool, args }`.
+
 ### `agent:budget`
 
 An agent reached one of its limits, so a run didn't start or was stopped.
@@ -772,11 +780,11 @@ Listeners get `{ agent, limit: "runs-per-hour" | "tokens-per-day", used, max }`.
 
 ### `agent:done`
 
-An agent's run ended. stopReason is completed, steps (it reached its step limit), budget or error.
+An agent's run ended. stopReason is completed, steps (it reached its step limit), budget or error. A check's run says its verdict: allow or block.
 
 Mode: `emit`. Listening needs `hook:listen:agent:done`.
 
-Listeners get `{ agent, run, stopReason, steps, tools, usage: { input, output } }`.
+Listeners get `{ agent, run, stopReason, steps, tools, usage: { input, output }, verdict? }`.
 
 ### `agent:run`
 
@@ -796,7 +804,7 @@ Listeners get `{ agent, run, tool, ok }`.
 
 ### `agent:wake`
 
-An agent began a run, woken by a hook or a command.
+An agent began a run. kind is hook, check (it was asked whether something may happen), command, message or topic.
 
 Mode: `emit`. Listening needs `hook:listen:agent:wake`.
 

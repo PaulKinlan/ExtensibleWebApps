@@ -111,16 +111,20 @@ export default function (ctx) {
 
   /**
    * A model plugin that has just started, or been switched on, may not be listening yet when this
-   * asks which models there are: draw now, and look again a little later.
+   * asks which models there are: draw now, and look again a little later. Several start at once,
+   * so it stops only once it has found some and no more came since it last looked.
    */
-  const refresh = async (waits, untilFound) => {
+  const refresh = async (waits) => {
+    let last = -1;
     for (const wait of waits) {
       await new Promise((resolve) => setTimeout(resolve, wait));
-      if ((await draw()) && untilFound) return;
+      const found = await draw();
+      if (found && found === last) return;
+      last = found;
     }
   };
-  refresh([0, 500, 1000, 2000, 4000], true);
-  ctx.on("plugins:changed", () => refresh([0, 500, 1500], false));
+  refresh([0, 500, 1000, 2000, 4000]);
+  ctx.on("plugins:changed", () => refresh([0, 500, 1500]));
   ctx.ui.onEvent(async (action, value) => {
     if (asking) return;
     if (action === "provider") {

@@ -1,7 +1,9 @@
 <!--
-  The board. board.js sends { open, waiting, questions, lately }: whether the
-  panel is open, how many questions wait, each question ({ id, name,
-  question, choices? }) and the last things the agents did. A choice is its
+  The board. board.js sends { open, waiting, questions, checking, lately }:
+  whether the panel is open, how many questions wait, each question ({ id,
+  name, question, choices? }), what agents are checking now ({ run, agent,
+  name }), and the last things the agents did. Checks show even while the
+  panel is folded, since something waits for each. A choice is its
   own little form, so the answer goes with the question's id.
 -->
 <style>
@@ -17,6 +19,9 @@
       <button type="button" data-action="toggle">Board</button>
       <template if="waiting"><ui-badge tone="warn">{{waiting}} waiting</ui-badge></template>
     </ui-toolbar>
+    <template for="c of checking">
+      <ui-card key="{{c.run}}" tone="accent" role="status"><p>Being checked by <strong>{{c.agent}}</strong>: {{c.name}}</p></ui-card>
+    </template>
     <template if="open">
       <template for="q of questions">
         <ui-card key="{{q.id}}" tone="warn" class="question">

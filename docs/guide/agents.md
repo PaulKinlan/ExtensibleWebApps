@@ -36,13 +36,14 @@ fill in what's missing ...
 | `description`, `version` | Optional, as in a plugin's manifest. Without a description, the instructions' first line is used. |
 | `model` | Optional: a model's id, or a tier (`best`, `balanced`, `fast`). `default`, or none, uses the provider's setting. |
 | `permissions` | What the agent may do, as in a plugin's manifest. Its tools are exactly what these let it call. |
-| `on` | What wakes it: `- hook: <name>` for any hook it may listen to, `- command: <name>` for a command a plugin can start, `- message: true` for an inbox others can send to, and `- topic: <name>` for posts to a topic on the [bus](#messages-topics-and-the-board). |
+| `on` | What wakes it: `- hook: <name>` for any hook it may listen to, `- check: <name>` for a hook it is [asked before the action happens](#checks-stopping-something-before-it-happens), `- command: <name>` for a command a plugin can start, `- message: true` for an inbox others can send to, and `- topic: <name>` for posts to a topic on the [bus](#messages-topics-and-the-board). A `hook` or `check` may add `when: '<pattern>'` on the next line: it wakes the agent only if the value, as JSON, matches. |
+| `if-unsure` | Optional, for checks: `allow` (the default) or `block`, what happens to an action the agent couldn't check in time, within its limits, or with an answer. |
 | `limits` | Optional: `runs-per-hour` (30), `tokens-per-day` (200000) and `steps`, the model turns in one run (12). |
 | `acts-as` | Optional, and only `self` for now: the agent acts under its own name. Acting for the person comes later. |
 
 The frontmatter is a small part of YAML: `key: value`, lists as `[a, b]` or `- item` lines, maps as `{ a: 1 }` or indented lines, and `#` comments. The file's name ends in `.agent.md`. An agent can't own a collection, so waking on `data:changed:<collection>` needs `data:read:<collection>` in `permissions`. `npm run check` reads the file the way the kernel does and says what is wrong.
 
-The manifest the kernel makes adds three permissions to the ones the file lists: `llm`, to ask the model; `agent`, to hear its commands; and `hook:listen:<name>` for each hook in `on` (a `data:changed:<collection>` hook comes with `data:read:<collection>`).
+The manifest the kernel makes adds to the permissions the file lists: `llm`, to ask the model; `agent`, to hear its commands; `hook:listen:<name>` for each hook in `on` (a `data:changed:<collection>` hook comes with `data:read:<collection>`); and `hook:intercept:<name>` for each check.
 
 ## A run
 
@@ -62,10 +63,34 @@ Any plugin can listen to these with `hook:listen:agent:<name>`, or `hook:listen:
 
 | Event | Value |
 | --- | --- |
-| `agent:wake` | `{ agent, run, trigger: { kind, name } }`: a run began. |
+| `agent:wake` | `{ agent, run, trigger: { kind, name } }`: a run began. `kind` is `hook`, `check`, `command`, `message` or `topic`. |
 | `agent:toolResult` | `{ agent, run, tool, ok }`: the agent called a tool; `ok` is false if the call failed. |
-| `agent:done` | `{ agent, run, stopReason, steps, tools, usage: { input, output } }`: a run ended. `stopReason` is `completed`, `steps` (it reached its step limit), `budget` or `error`. |
+| `agent:done` | `{ agent, run, stopReason, steps, tools, usage: { input, output }, verdict? }`: a run ended. `stopReason` is `completed`, `steps` (it reached its step limit), `budget` or `error`. A check's run says its `verdict`, `allow` or `block`. |
 | `agent:budget` | `{ agent, limit, used, max }`: the agent reached `runs-per-hour` or `tokens-per-day`, so a run didn't start or was stopped. |
+
+One more hook isn't an event: `agent:beforeTool`, `{ agent, run, tool, args }`, comes before each tool call an agent makes, and a listener may return `{ block: reason }` to stop it; the agent is told the reason. It carries the call's arguments, so listening needs `hook:intercept:agent:beforeTool`, which `hook:listen:agent:*` doesn't give.
+
+## Checks: stopping something before it happens
+
+An agent can be asked before something happens, and stop it. The [security demo](../../demos/security/) has one, [`security.agent.md`](../../demos/security/security.agent.md):
+
+```yaml
+permissions: [data:read:library]
+on:
+  - check: data:beforeWrite:library
+    when: '\d(?:[ -]?\d){12,18}'
+  - check: agent:beforeTool
+if-unsure: block
+```
+
+Before a book is saved, if it holds a long run of digits, the agent is asked whether it looks like a card number. Before another agent calls a tool, it is asked whether the call is all right.
+
+1. A check runs at once, beside any other run of the agent, since something waits for it. The model gets two more tools, `allow` and `block`, and the run ends when it calls one. A block's reason goes back to whoever tried: a form shows it, an agent hears it as its tool's error.
+2. A model takes seconds, so an agent gets the hook's `agentTimeoutMs`, not its `timeoutMs`: 15 seconds for each collection's `data:beforeWrite:<collection>` and for `agent:beforeTool`, where a plugin gets one. A hook without an `agentTimeoutMs` can't be checked by an agent, which keeps fast paths fast. The API reference says which hooks have one.
+3. Something the agent couldn't decide (it ran out of time, reached a limit, failed, or ended without `allow` or `block`) goes ahead, unless the file says `if-unsure: block`. A hook that already blocks on failure stays that way.
+4. While it waits, the [board](../../std/board.js) shows it as being checked by the agent, and `agent:done` says how it ended.
+
+A check costs a model call, so use `when` to wake the agent only for what might matter: most of the library's writes don't wake the security agent at all. Checking `data:beforeWrite:<collection>` needs `data:read:<collection>`, as hearing it change does. An agent's own tool calls never come to its own `agent:beforeTool` check.
 
 ## Starting a command
 
@@ -100,4 +125,4 @@ A plugin with an inbox hears `bus:message` with `{ to }`, then takes its message
 
 ## Coming next
 
-The [design](https://claude.ai/artifact/LaqdvStAKyAoEifqNpq2Ba) has more to come, each its own change: agents that check another plugin's action before it happens, such as a security agent; and the assistant and builder agents, which can act for the person and write plugins.
+The [design](https://claude.ai/artifact/LaqdvStAKyAoEifqNpq2Ba) has one more change to come: the assistant and builder agents, which can act for the person and write plugins.

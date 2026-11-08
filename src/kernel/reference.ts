@@ -160,7 +160,7 @@ export const COMMANDS: Record<Command, string> = {
 
 export interface Reference {
   modes: { mode: string; about: string }[];
-  hooks: { name: string; mode: Mode; listen: string; args?: string; timeoutMs?: number; onFailure?: string; description?: string }[];
+  hooks: { name: string; mode: Mode; listen: string; args?: string; timeoutMs?: number; agentTimeoutMs?: number; onFailure?: string; description?: string }[];
   ctx: ({ member: string } & Doc)[];
   services: { name: string; description: string; methods: { name: string; args: string; returns: string; needs?: string; reviewed?: boolean; description: string }[] }[];
   capabilities: { name: string; about: string }[];
@@ -286,7 +286,7 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     ...spaced([...ref.hooks].sort(byName((h) => h.name)).map((h) =>
       entry("###", code(h.name), [
         h.description ?? "",
-        `Mode: ${code(h.mode)}${h.timeoutMs ? `, ${h.timeoutMs} ms per listener, fails ${h.onFailure ?? "open"}` : ""}. Listening needs ${code(h.listen)}.`,
+        `Mode: ${code(h.mode)}${h.timeoutMs ? `, ${h.timeoutMs} ms per listener, fails ${h.onFailure ?? "open"}` : ""}${h.agentTimeoutMs ? `; an agent that checks it has ${h.agentTimeoutMs / 1000} s` : ""}. Listening needs ${code(h.listen)}.`,
         h.args ? `Listeners get ${code(h.args)}.` : "",
       ]),
     )),

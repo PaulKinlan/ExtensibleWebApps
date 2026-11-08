@@ -18,6 +18,9 @@
 //     - command: tag-untagged-books
 //     - message: true          (an inbox: others may send it messages)
 //     - topic: new-books       (a bus topic it wakes on)
+//     - check: data:beforeWrite:library    (asked before a write, which it may block)
+//       when: '\d{13,19}'                 (only if the value, as JSON, matches)
+//   if-unsure: block                      (block what it couldn't check)
 //   limits: { runs-per-hour: 30, tokens-per-day: 200000 }
 //   ---
 //   You keep the reading list tidy. When a book has no genre, ...
@@ -41,13 +44,19 @@ export interface AgentConfig {
   /** Whether it has an inbox on the bus (`- message: true`), and the bus topics it wakes on. */
   inbox: boolean;
   topics: string[];
+  /** Hooks it is asked about before the action happens, and may block (`- check: <hook>`). */
+  checks: string[];
+  /** For a hook or check with `when`: a regular expression its value, as JSON, must match to wake the agent. */
+  when: Record<string, string>;
+  /** What happens to an action it couldn't check: in time, within its limits, or with an answer. */
+  ifUnsure: "allow" | "block";
   limits: { runsPerHour: number; tokensPerDay: number; steps: number };
 }
 
 /** Paul's defaults (2026-11-07): 30 runs an hour and 200,000 tokens a day; 12 model turns a run. */
 export const DEFAULT_LIMITS = { runsPerHour: 30, tokensPerDay: 200_000, steps: 12 };
 
-const KEYS = new Set(["id", "name", "description", "version", "model", "acts-as", "permissions", "on", "limits"]);
+const KEYS = new Set(["id", "name", "description", "version", "model", "acts-as", "permissions", "on", "limits", "if-unsure"]);
 const LIMITS: Record<string, keyof AgentConfig["limits"]> = { "runs-per-hour": "runsPerHour", "tokens-per-day": "tokensPerDay", steps: "steps" };
 const LATER: Record<string, string> = {
   emits: "Agents emit only the agent:* events for now",
@@ -91,17 +100,36 @@ export function fromAgentFile(text: string): string {
   const hooks: string[] = [];
   const commands: string[] = [];
   const topics: string[] = [];
+  const checks: string[] = [];
+  const when: Record<string, string> = Object.create(null);
   let inbox = false;
   const on = meta.on ?? [];
   if (!Array.isArray(on)) throw new AgentFileError("`on` must be a list of what wakes the agent");
   for (const trigger of on) {
-    const [kind, value] = trigger && typeof trigger === "object" && !Array.isArray(trigger) ? (Object.entries(trigger)[0] ?? []) : [];
+    const entry = trigger && typeof trigger === "object" && !Array.isArray(trigger) ? (trigger as Record<string, unknown>) : {};
+    const [kind, value] = Object.entries(entry)[0] ?? [];
+    const extra = Object.keys(entry).slice(1);
+    if (extra.length && !(extra.length === 1 && extra[0] === "when" && (kind === "hook" || kind === "check"))) throw new AgentFileError("Only a `hook` or `check` entry in `on` may say more, and only `when: <pattern>`");
     if (kind === "hook" && typeof value === "string" && value) hooks.push(value);
+    else if (kind === "check" && typeof value === "string" && value) checks.push(value);
     else if (kind === "command" && typeof value === "string" && COMMAND.test(value)) commands.push(value);
     else if (kind === "message" && value === true) inbox = true;
     else if (kind === "topic" && typeof value === "string" && COMMAND.test(value)) topics.push(value);
-    else throw new AgentFileError("Each entry in `on` is `- hook: <name>`, `- command: <name>`, `- message: true` or `- topic: <name>` (names are lowercase letters, digits and dashes)");
+    else throw new AgentFileError("Each entry in `on` is `- hook: <name>`, `- check: <name>`, `- command: <name>`, `- message: true` or `- topic: <name>` (names are lowercase letters, digits and dashes)");
+    if (extra.length) {
+      const pattern = entry.when;
+      if (typeof pattern !== "string" || !pattern) throw new AgentFileError("`when` must be a pattern, in quotes");
+      try {
+        new RegExp(pattern);
+      } catch {
+        throw new AgentFileError(`\`when: ${pattern}\` isn't a pattern JavaScript can read`);
+      }
+      when[value as string] = pattern;
+    }
   }
+  if (hooks.some((h) => checks.includes(h))) throw new AgentFileError("A hook can wake an agent as a `hook` or a `check`, not both");
+  const unsure = meta["if-unsure"] ?? "allow";
+  if (unsure !== "allow" && unsure !== "block") throw new AgentFileError("`if-unsure` is allow or block");
 
   // An agent can't own a collection, so hearing that one changed needs reading it.
   // Checked against every permission, as the gate would: data:* or * grants data:read:x too.
@@ -109,6 +137,11 @@ export function fromAgentFile(text: string): string {
   for (const hook of hooks) {
     const collection = /^data:changed:(.+)$/.exec(hook)?.[1];
     if (collection && !grants(granted, `data:read:${collection}`)) throw new AgentFileError(`Waking on ${hook} needs data:read:${collection} in \`permissions\``);
+  }
+  // Checking a write is reading what would be written.
+  for (const hook of checks) {
+    const collection = /^data:beforeWrite:(.+)$/.exec(hook)?.[1];
+    if (collection && !grants(granted, `data:read:${collection}`)) throw new AgentFileError(`Checking ${hook} needs data:read:${collection} in \`permissions\``);
   }
 
   // Waking on a topic needs reading it, as a reader would.
@@ -127,10 +160,11 @@ export function fromAgentFile(text: string): string {
   const instructions = body.trim();
   if (!instructions) throw new AgentFileError("An agent needs instructions: write them after the frontmatter");
   const model = string("model");
-  const config: AgentConfig = { id, name, model: model && model !== "default" ? model : undefined, instructions, hooks, commands, inbox, topics, limits };
+  const config: AgentConfig = { id, name, model: model && model !== "default" ? model : undefined, instructions, hooks, commands, inbox, topics, checks, when, ifUnsure: unsure, limits };
 
   // An agent asks the model (llm), is an agent (agent: it hears requests to run), listens to the hooks that wake it,
   // and, with `- message: true`, has an inbox; waking on a topic means hearing that something was posted.
+  // A check intercepts its hook: it may stop the action.
   const caps = [
     ...permissions,
     "llm",
@@ -138,6 +172,7 @@ export function fromAgentFile(text: string): string {
     ...hooks.filter((h) => !h.startsWith("data:changed:")).map((h) => `hook:listen:${h}`),
     ...(inbox ? ["bus:inbox"] : []),
     ...(topics.length ? ["hook:listen:bus:posted"] : []),
+    ...checks.map((h) => `hook:intercept:${h}`),
   ];
   const manifest = {
     id,

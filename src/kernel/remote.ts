@@ -17,8 +17,9 @@
 
 import type { Dispatch, KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
 import { HTML_MAX } from "../shared/html";
+import { made } from "./agents/file";
 import { capabilities, check } from "./gate";
-import { capabilityFor, hooks, type HookSpec } from "./hooks";
+import { BEFORE_WRITE, capabilityFor, hooks, type HookSpec } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import { ManifestError, readManifest } from "./manifest";
 import type { Schema } from "./schema";
@@ -415,7 +416,7 @@ export class Remote {
     if (route) return this.route(listener, route[1], route[2]);
     // A collection's change hook is made when its owner first runs. A reader may listen
     // before that (the contacts app hasn't been opened yet), and hears changes once it exists.
-    const spec = hooks.get(name) ?? (name.startsWith("data:changed:") ? ({ mode: "emit" } as HookSpec) : undefined);
+    const spec = hooks.get(name) ?? (name.startsWith("data:changed:") ? ({ mode: "emit" } as HookSpec) : name.startsWith("data:beforeWrite:") ? BEFORE_WRITE : undefined);
     if (!spec) {
       record({ kind: "error", name: "hook:unknown", plugin: this.instance, detail: name });
       this.post({ t: "event", action: "kernel:error", value: `No hook named ${name}` });
@@ -430,12 +431,32 @@ export class Remote {
       return;
     }
     // A hook that names its own capability (debug:trace needs debug:read) keeps it; a change hook not made yet needs hook:listen.
-    const needs = hooks.has(name) ? capabilityFor(name) : `hook:listen:${name}`;
+    const needs = hooks.has(name) ? capabilityFor(name) : `hook:${spec.mode === "emit" ? "listen" : "intercept"}:${name}`;
     if (!owns && !check(this.instance, this.caps, needs)) {
       this.post({ t: "event", action: "kernel:denied", value: needs });
       return;
     }
-    this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
+    const held = this.agentSpec(name, spec);
+    if (!held) return;
+    this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, held)) });
+  }
+
+  /**
+   * An agent that checks a hook gets the hook's agentTimeoutMs rather than its
+   * timeoutMs, since a model takes seconds, and may ask for what it couldn't
+   * check in time to be blocked (`if-unsure: block`). It can't make a closed
+   * hook open. A plugin, or a hook that only tells, keeps the hook's spec;
+   * undefined if an agent may not check this hook.
+   */
+  private agentSpec(name: string, spec: HookSpec): HookSpec | undefined {
+    const agent = made.get(this.plugin.source);
+    if (!agent || spec.mode === "emit" || spec.mode === "parallel") return spec;
+    if (!spec.agentTimeoutMs) {
+      record({ kind: "error", name: "hook:agent-refused", plugin: this.instance, detail: `${name} gives agents no time to answer, so an agent can't check it` });
+      this.post({ t: "event", action: "kernel:error", value: `${name} can't be checked by an agent` });
+      return undefined;
+    }
+    return { ...spec, timeoutMs: spec.agentTimeoutMs, onFailure: spec.onFailure === "closed" || agent.ifUnsure === "block" ? "closed" : "open" };
   }
 
   /**
