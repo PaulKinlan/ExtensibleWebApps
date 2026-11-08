@@ -3,17 +3,23 @@
 // enough like a browser's worker for the plugin runtime (src/sandbox/runtime.ts),
 // then takes away what a plugin mustn't have: Node's own modules (files,
 // sockets, processes), `process` itself, and, unless the plugin has
-// `network`, fetch and WebSocket. Messages to and from the kernel cross the
-// process's IPC channel.
+// `network`, fetch and WebSocket. With `network`, it can reach the internet but
+// not the server's own network (network-guard.ts). Messages to and from the
+// kernel cross the process's IPC channel.
 
 import { builtinModules, registerHooks } from "node:module";
+import { guardNetwork } from "./network-guard";
 
-const builtins = new Set(builtinModules.flatMap((m) => [m, `node:${m}`]));
 // A plugin's module is a data: URL, and it may import only other data: URLs: not Node's modules
-// (files, sockets, processes), and not files.
+// (files, sockets, processes), and not files. The check is made with copies of the built-ins it needs,
+// taken now: a plugin can replace String.prototype.startsWith for everyone, but not these.
+const builtins: Record<string, true> = Object.create(null);
+for (const m of builtinModules) builtins[m] = builtins[`node:${m}`] = true;
+const startsWith = Function.prototype.call.bind(String.prototype.startsWith) as (s: string, prefix: string) => boolean;
+const isData = (url: unknown) => typeof url === "string" && startsWith(url, "data:");
 registerHooks({
   resolve(specifier, context, next) {
-    if (context.parentURL?.startsWith("data:") && (builtins.has(specifier) || !specifier.startsWith("data:"))) throw new Error(`A plugin can't import ${specifier}`);
+    if (isData(context.parentURL) && (builtins[specifier] === true || !isData(specifier))) throw new Error(`A plugin can't import ${specifier}`);
     return next(specifier, context);
   },
 });
@@ -45,10 +51,11 @@ self.addEventListener = (type: string, listener: Listener) => listeners.set(type
 self.__moduleUrl = (source: string) => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 
 let started = false;
-function handle(message: any) {
+async function handle(message: any) {
   if (!started && message?.t === "init") {
     started = true;
     if (!message.network) for (const name of ["fetch", "WebSocket", "EventSource"]) delete self[name];
+    else await guardNetwork(Array.isArray(message.allow) ? message.allow : []);
     // Gone before the plugin's code runs: process.binding, process.env, process.kill and the rest.
     delete self.process;
     self.onmessage?.({ data: { t: "init", source: String(message.source) }, ports: [port] });
@@ -57,10 +64,13 @@ function handle(message: any) {
   port.onmessage?.({ data: message });
 }
 
+// One at a time, in order: init may wait for the network guard, and what follows must wait for init.
+let queue = Promise.resolve();
+const inTurn = (message: unknown) => (queue = queue.then(() => handle(message)).catch((error) => fire("error", { message: String(error?.message ?? error) })));
 // The kernel may send before the runtime has loaded (and set self.onmessage): those wait until it has.
 const early: unknown[] = [];
 let loaded = false;
-node.on("message", (message: unknown) => (loaded ? handle(message) : early.push(message)));
+node.on("message", (message: unknown) => (loaded ? inTurn(message) : early.push(message)));
 await import("../sandbox/runtime");
 loaded = true;
-for (const message of early.splice(0)) handle(message);
+for (const message of early.splice(0)) inTurn(message);
