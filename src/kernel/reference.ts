@@ -35,6 +35,11 @@ const CTX: Record<ApiMember<Api>, Doc> = {
     needs: "What the method needs (see Services)",
     description: "Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses.",
   },
+  "commands.add": {
+    signature: "ctx.commands.add({ id, title, description?, keys?, group?, args? }, (args, { by }) => result) → off()",
+    needs: "",
+    description: "Adds a command the plugin answers: a palette lists it, its `keys` run it, and plugins with `commands` (an agent, through its tools) run it with `commands.run(\"<plugin>/<id>\")`. The handler runs with this plugin's own rights; `by` says which plugin ran it, and what it returns goes back to the caller. Throwing fails the run. See the commands service.",
+  },
   "routes.add": {
     signature: "ctx.routes.add(method, path, (request) => response) → off()",
     needs: "`routes`",

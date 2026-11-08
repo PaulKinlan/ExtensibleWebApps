@@ -62,6 +62,18 @@ function api(trace: () => string | undefined): Api {
         return self.on(`route:${String(method).toUpperCase()} ${path}`, (request: RouteRequest) => handler(request));
       },
     },
+    commands: {
+      add(command, handler) {
+        const id = command?.id;
+        // Listen first: the kernel lists a command only once its plugin is listening for it.
+        const off = self.on(`command:${id}`, (args: Record<string, unknown>, about: { by: string }) => handler(args, about));
+        call("commands", "add", command).catch((error) => log(`Couldn't add the command ${id}: ${error instanceof Error ? error.message : error}`, "error"));
+        return () => {
+          off();
+          void call("commands", "remove", id).catch(() => {});
+        };
+      },
+    },
     ui: {
       render(slot: Slot, key: string, view: View | string | null, order?: number) {
         send({ t: "render", slot, key, view: typeof view === "string" ? { type: "html", html: view } : view, order, trace: trace() });

@@ -409,6 +409,8 @@ export class Remote {
   }
 
   private listen(listener: number, name: string): void {
+    const command = /^command:([a-z][a-z0-9-]{0,63})$/.exec(name);
+    if (command) return this.command(listener, command[1]);
     const route = /^route:(GET|HEAD|POST|PUT|PATCH|DELETE) (\S+)$/.exec(name);
     if (route) return this.route(listener, route[1], route[2]);
     // A collection's change hook is made when its owner first runs. A reader may listen
@@ -459,6 +461,19 @@ export class Remote {
     const spec: HookSpec = { mode: "bail", timeoutMs: 10_000, onFailure: "open" };
     this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
     this.manager.onRoutes?.();
+  }
+
+  /**
+   * A command the plugin answers, from ctx.commands.add (services/commands.ts
+   * keeps its title and keys). The hook is named after this instance, so no
+   * other plugin can answer for it, and a tab's own instance answers a run
+   * from that tab.
+   */
+  private command(listener: number, id: string): void {
+    const name = commandHook(this.instance, id);
+    // Closed: a command that throws or doesn't answer in time is an error for whoever ran it, not a silent pass.
+    const spec: HookSpec = { mode: "bail", timeoutMs: 120_000, onFailure: "closed" };
+    this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
   }
 
   private forwarder(listener: number, name: string, spec: HookSpec) {
@@ -533,6 +548,9 @@ export class Remote {
     this.port.close();
   }
 }
+
+/** The hook a plugin instance answers its command `id` on. Only that instance can listen to it. */
+export const commandHook = (instance: string, id: string) => `command:${instance} ${id}`;
 
 /**
  * Calls a service method for a plugin instance, through the gate: the method
