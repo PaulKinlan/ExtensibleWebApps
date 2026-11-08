@@ -13,13 +13,19 @@
 // (/s/<space>/demos/survey/) and each survey gets a public address anyone can
 // answer at, signed in or not. Outside a space the builder still works, and
 // says where to go.
+//
+// Share link hands a survey's public address to the system's share sheet (the
+// share service), or copies it where there is none, as the reading list does.
+// The share sheet opens only in the tab that was clicked, and what's being
+// edited is that tab's own, so this plugin is `scope: "tab"`: a copy per tab.
 
 export const manifest = {
   id: "surveys",
   name: "Surveys",
   description: "Build surveys, share a link anyone can answer, and see the answers come in.",
   version: "1.0.0",
-  permissions: ["ui", "data:read:answers", "sync"],
+  permissions: ["ui", "data:read:answers", "sync", "share"],
+  scope: "tab",
   order: 10,
   collections: {
     surveys: {
@@ -49,6 +55,8 @@ const SAMPLE = {
 export default async function (ctx) {
   const views = ctx.ui.views("surveys.html");
   let editing = null;
+  /** What the last Share link did, for the survey it was pressed on. */
+  let shared = { id: null, text: "" };
   if (!(await ctx.storage.get("seeded"))) {
     if (!(await ctx.call("data", "list", "surveys")).length) await ctx.call("data", "put", "surveys", SAMPLE);
     await ctx.storage.set("seeded", true);
@@ -70,6 +78,7 @@ export default async function (ctx) {
             closed: s.open === false,
             notify: s.notify ?? "",
             count: mine.length,
+            shared: shared.id === s.id ? shared.text : "",
             // Relative to the app's page, so in a space it is the space's public address.
             link: `answer?survey=${encodeURIComponent(s.id)}`,
             questions: parse(s.questions).map((q) => summarise(q, mine)),
@@ -81,6 +90,13 @@ export default async function (ctx) {
   ctx.ui.onEvent(async (action, value) => {
     if (action === "edit") editing = value;
     if (action === "done" || action === "saved") editing = null;
+    if (action === "share") {
+      const survey = await ctx.call("data", "get", "surveys", value);
+      if (!survey) return;
+      // Relative, like the card's link: the share service makes it whole against the app's folder, in the space.
+      const result = await ctx.call("share", "send", { title: survey.title, text: `Answer “${survey.title}”`, url: `answer?survey=${encodeURIComponent(survey.id)}` }).catch((error) => ({ ok: false, error: error.message }));
+      shared = { id: survey.id, text: result.ok ? (result.via === "clipboard" ? "Link copied." : "Shared.") : result.cancelled ? "" : result.error };
+    }
     if (action === "toggle") {
       const survey = await ctx.call("data", "get", "surveys", value);
       if (survey) await ctx.call("data", "put", "surveys", { ...survey, open: survey.open === false });
