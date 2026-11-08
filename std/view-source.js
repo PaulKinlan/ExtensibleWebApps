@@ -35,11 +35,16 @@ export default function (ctx) {
     views.render("inspect", "source", { plugins, shown }, { order: 10 });
   };
 
+  /** Counts picks and closes: a read that finishes after a newer one began is dropped. */
+  let generation = 0;
+
   const show = async (id) => {
     picked = id;
+    const mine = ++generation;
     const source = await ctx.call("authoring", "source", id);
     const check = await ctx.call("authoring", "check", source.code);
     const plugin = (await ctx.call("plugins", "app")).find((p) => p.id === id);
+    if (mine !== generation) return;
     shown = {
       id,
       name: source.name,
@@ -63,6 +68,7 @@ export default function (ctx) {
     if (action === "hide") {
       picked = "";
       shown = null;
+      generation++;
       await draw();
     }
   });

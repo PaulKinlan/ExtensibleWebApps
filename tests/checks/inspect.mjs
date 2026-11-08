@@ -42,6 +42,12 @@ export default async function ({ check, context, URL, errors }) {
   await page.click(`${notes} button[type="submit"]`);
   check("the hook tracer shows a plugin stopping a write", await seen(`${inspect} ${tracer} .stopped >> text=Quiet please stopped it`));
 
+  // A switch belongs to the action that asked for it, so the tracer names who switched.
+  const toggle = 'slot[name="switchboard"] input[data-action="switch:note-stats"]';
+  await page.click(toggle);
+  check("the hook tracer says which plugin switched another off", await seen(`${inspect} ${tracer} .action >> text=Switchboard called plugins.setEnabled`));
+  await page.click(toggle);
+
   await page.click(`${inspect} ${tracer} button[data-action="clear"]`);
   check("Clear empties the hook tracer", await page.waitForSelector(`${inspect} ${tracer} .action`, { state: "detached", timeout: 3000 }).then(() => true, () => false));
   await own.close();

@@ -159,7 +159,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         description: "Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do.",
       },
     },
-    // Reading code and checking a manifest only look, so a viewer such as std/view-source.js needs no more than plugins:read.
+    // Reading code and checking a manifest only look, so a viewer such as std/view-source.js needs no more than plugins:read (plugins:author includes it).
     capability: (method) => (method === "source" || method === "check" ? "plugins:read" : "plugins:author"),
     call: async (instance, method, args, dispatch) => {
       const tab = tabOf(instance);
