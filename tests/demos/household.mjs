@@ -31,4 +31,36 @@ export default async function (page, { check }) {
   await page.click(`${who} button:has-text("Sam")`);
   const back = await page.waitForSelector(`${who} >> text=You're Sam`, { timeout: 5000 }).then(() => true, () => false);
   check("household: Not you? stops signing with that name until someone picks who they are", unsigned && back);
+
+  // A refused add keeps what was typed, and adds nothing; the next add that's saved empties the form.
+  // A guard plugin refuses anything named "Blocked …", as a person's own data:beforeWrite plugin might.
+  const guard = `export const manifest = { id: "household-guard", name: "Guard", permissions: ["data:read:groceries", "data:read:chores", "hook:intercept:data:beforeWrite:groceries", "hook:intercept:data:beforeWrite:chores"] };
+export default (ctx) => {
+  const no = (change) => (/^Blocked/.test(change.after?.item ?? change.after?.name ?? "") ? { block: "Not that" } : undefined);
+  ctx.on("data:beforeWrite:groceries", no);
+  ctx.on("data:beforeWrite:chores", no);
+};`;
+  const installed = await page.evaluate((source) => window.__host.command("install", source), guard);
+  try {
+    await page.fill(`${list} input[name=item]`, "Blocked item");
+    await page.click(`${list} button[type=submit]`);
+    await page.waitForTimeout(800);
+    const keptItem = (await page.inputValue(`${list} input[name=item]`)) === "Blocked item" && !(await page.locator(`${list} li`, { hasText: "Blocked item" }).count());
+    await page.fill(`${list} input[name=item]`, "Pears");
+    await page.click(`${list} button[type=submit]`);
+    const retried = (await page.waitForSelector(`${list} li:has-text("Pears")`, { timeout: 5000 }).then(() => true, () => false)) && (await page.inputValue(`${list} input[name=item]`)) === "";
+    check("household: a refused shopping list add keeps what was typed and adds nothing; the next saved add empties the form", installed?.ok !== false && keptItem && retried, JSON.stringify({ installed, keptItem, retried }));
+
+    await page.fill(`${chores} input[name=name]`, "Blocked chore");
+    await page.selectOption(`${chores} select[name=every]`, "14");
+    await page.click(`${chores} button[type=submit]`);
+    await page.waitForTimeout(800);
+    const keptChore = (await page.inputValue(`${chores} input[name=name]`)) === "Blocked chore" && (await page.inputValue(`${chores} select[name=every]`)) === "14" && !(await page.locator(`${chores} li`, { hasText: "Blocked chore" }).count());
+    await page.fill(`${chores} input[name=name]`, "Mop the floor");
+    await page.click(`${chores} button[type=submit]`);
+    const choreRetried = (await page.waitForSelector(`${chores} li:has-text("Mop the floor")`, { timeout: 5000 }).then(() => true, () => false)) && (await page.inputValue(`${chores} input[name=name]`)) === "" && (await page.inputValue(`${chores} select[name=every]`)) === "7";
+    check("household: a refused chore add keeps its name and how often, and adds nothing; the next saved add resets the form", keptChore && choreRetried, JSON.stringify({ keptChore, choreRetried }));
+  } finally {
+    await page.evaluate(() => window.__host.command("uninstall", "household-guard")).catch(() => {});
+  }
 }

@@ -85,7 +85,9 @@ export default async function (ctx) {
   ctx.ui.onEvent(async (action, value) => {
     const me = await myName(ctx);
     if (action === "add" && value.item?.trim()) {
-      await ctx.call("data", "put", "groceries", { item: value.item.trim(), ...(me ? { addedBy: me } : {}) });
+      const saved = await ctx.call("data", "put", "groceries", { item: value.item.trim(), ...(me ? { addedBy: me } : {}) });
+      // A refused add (a data:beforeWrite listener blocked it, say) keeps what was typed.
+      if (!saved.ok) return;
       added++;
       view.refresh();
     }
