@@ -27,7 +27,7 @@
       <template if="everything"><p><strong>Looking at everything</strong> in this kernel. Pick a tab to focus on its app.</p></template>
       <template if="!everything"><p>Looking at <code>{{focus}}</code>.</p></template>
       <ui-toolbar>
-        <button type="button" data-action="focus" data-value="" aria-pressed="{{everything}}">Everything</button>
+        <button type="button" data-action="focus" data-value="" aria-pressed="{{pressed}}">Everything</button>
         <button type="button" data-action="refresh">Refresh</button>
       </ui-toolbar>
     </div>

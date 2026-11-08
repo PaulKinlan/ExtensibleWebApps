@@ -37,7 +37,8 @@ export default async function (ctx) {
     const [snapshot, focus] = await Promise.all([ctx.call("reflect", "snapshot"), focusOf()]);
     const names = new Map(snapshot.plugins.map((p) => [p.id, p.name]));
     const linked = focus ? new Set(snapshot.tabs.find((t) => t.tab === focus)?.app ?? []) : undefined;
-    const workers = snapshot.workers.filter((w) => !linked || linked.has(w.plugin) || w.tab === focus);
+    // A shared worker serves every tab; a tab-scoped one serves only its own, so only the focused tab's count.
+    const workers = snapshot.workers.filter((w) => !linked || (w.tab ? w.tab === focus : linked.has(w.plugin)));
     const tabs = snapshot.tabs
       .map((t) => ({
         tab: t.tab,

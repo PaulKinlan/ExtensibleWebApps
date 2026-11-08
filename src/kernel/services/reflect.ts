@@ -31,6 +31,16 @@ function ownerOf(name: string, remote: RemotePlugins): { kind: Kind; owner?: str
   return { kind: "kernel" };
 }
 
+/**
+ * What listening to a hook that isn't defined yet needs. A collection's hooks are known before their owner
+ * arrives (data:changed:<c> only tells); a plugin's own hook's mode is in a manifest that isn't installed.
+ */
+function pendingCapability(name: string): string {
+  if (name.startsWith("data:changed:")) return `hook:listen:${name}`;
+  if (name.startsWith("data:beforeWrite:")) return `hook:intercept:${name}`;
+  return `hook:listen:${name} or hook:intercept:${name}, by its mode`;
+}
+
 export default ({ root, store, hosts, remote, apps }: Kernel): ServiceProvider => {
   const tabOf = (instance: string) => instance.split("@")[1];
 
@@ -41,8 +51,9 @@ export default ({ root, store, hosts, remote, apps }: Kernel): ServiceProvider =
     const cordis = (root.events?._hooks ?? {}) as Record<string, unknown[]>;
     const names = new Set([...hooks.keys(), ...heard.keys()]);
     return [...names]
-      // Commands and routes ride on hooks of their own per plugin (`command:…`, `route:…`): plugins() lists them.
-      .filter((name) => !name.startsWith("internal/") && !(!hooks.has(name) && /^(command|route):/.test(name)))
+      // Commands, routes and scheduled jobs ride on hooks of their own per plugin (`command:…`, `route:…`,
+      // `schedule:…`), which aren't public hooks: plugins() lists commands and routes.
+      .filter((name) => !name.startsWith("internal/") && !(!hooks.has(name) && /^(command|route|schedule):/.test(name)))
       .sort((a, b) => a.localeCompare(b, "en"))
       .map((name) => {
         const spec = hooks.get(name);
@@ -53,7 +64,7 @@ export default ({ root, store, hosts, remote, apps }: Kernel): ServiceProvider =
           defined: !!spec,
           ...ownerOf(name, remote),
           ...(spec ?? {}),
-          listen: capabilityFor(name),
+          listen: spec ? capabilityFor(name) : pendingCapability(name),
           listeners,
           // Listeners in the kernel itself (the kernel's own modules), beside the plugins' ones.
           inKernel: Math.max(0, (cordis[name]?.length ?? 0) - listeners.length),

@@ -52,7 +52,7 @@ export default async function (ctx) {
       workers: t.workers,
     }));
     const kernel = { mode: snapshot.kernel.mode, plugins: snapshot.plugins.length, workers: snapshot.workers.length, hooks: snapshot.hooks.length, tabs: tabs.length };
-    return { tabs, kernel, everything: !focus, focus: tabs.find((t) => t.picked)?.path ?? "" };
+    return { tabs, kernel, everything: !focus, pressed: String(!focus), focus: tabs.find((t) => t.picked)?.path ?? "" };
   });
 
   let timer;

@@ -82,6 +82,7 @@ export default async function (ctx) {
       count: list.length,
       left: Math.max(0, list.length - DRAWN),
       paused,
+      pressed: String(paused),
       search,
       follow,
       kinds: KINDS.map((k) => ({ kind: k, label: LABELS[k], on: kinds.has(k), n: events.filter((e) => e.kind === k && ours(e)).length })),

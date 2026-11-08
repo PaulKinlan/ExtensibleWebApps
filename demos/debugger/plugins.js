@@ -32,6 +32,8 @@ export default async function (ctx) {
   const open = new Set();
   let code = null;
   let rev = 0;
+  /** The newest event counted: the snapshot and the next batch can overlap. */
+  let lastSeq = 0;
 
   const focusOf = async () => {
     const posts = await ctx.call("bus", "read", "debugger-focus");
@@ -47,6 +49,8 @@ export default async function (ctx) {
   const hear = (events) => {
     let changed = false;
     for (const e of events) {
+      if (e.seq <= lastSeq) continue;
+      lastSeq = e.seq;
       if (e.kind !== "denied" || !e.plugin) continue;
       const id = e.plugin.split("@")[0];
       const counts = refused.get(id) ?? {};
@@ -102,6 +106,7 @@ export default async function (ctx) {
           stopped: !p.instances.length,
           manifest: json(m),
           code: code?.id === p.id ? code.text : "",
+          pressed: String(code?.id === p.id),
           showing: code?.id === p.id,
           rev,
         };
@@ -110,15 +115,19 @@ export default async function (ctx) {
   });
 
   let timer;
+  /** Redraws once things settle, but at least every 250 ms while refusals keep coming. */
   const soon = () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => view.refresh(), 250);
+    timer ??= setTimeout(() => {
+      timer = undefined;
+      view.refresh();
+    }, 250);
   };
 
   const recent = await ctx.call("debug", "recent");
   hear(recent.events);
   ctx.on("debug:trace", (events) => {
-    if (hear(events) || events.some((e) => e.kind === "lifecycle" && CHANGES.test(e.name))) soon();
+    // A secret saved or forgotten, or a review answered ("always allow"), changes what the person allowed.
+    if (hear(events) || events.some((e) => (e.kind === "lifecycle" && CHANGES.test(e.name)) || /^(secret|review):/.test(e.name))) soon();
   });
   ctx.on("bus:posted", ({ topic }) => topic === "debugger-focus" && view.refresh());
 

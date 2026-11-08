@@ -26,7 +26,7 @@
     <h2>Events <ui-badge>{{count}}</ui-badge> <template if="paused"><ui-badge tone="warn">paused</ui-badge></template></h2>
     <div class="bar">
       <input type="search" placeholder="Filter by hook, plugin or text" aria-label="Filter events" value="{{search}}" data-action="search" data-live>
-      <button type="button" data-action="pause" aria-pressed="{{paused}}">Pause</button>
+      <button type="button" data-action="pause" aria-pressed="{{pressed}}">Pause</button>
       <button type="button" data-action="clear">Clear</button>
     </div>
     <div class="filters">

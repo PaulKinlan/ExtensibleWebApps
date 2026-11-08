@@ -125,7 +125,7 @@
                 <pre>{{p.manifest}}</pre>
               </details>
               <div>
-                <button type="button" data-action="code:{{p.id}}" aria-pressed="{{p.showing}}">Code</button>
+                <button type="button" data-action="code:{{p.id}}" aria-pressed="{{p.pressed}}">Code</button>
                 <template if="p.showing"><div class="code"><ui-code readonly label="Code of {{p.name}}" rows="18" revision="{{p.rev}}">{{p.code}}</ui-code></div></template>
               </div>
             </div>
