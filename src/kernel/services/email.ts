@@ -8,10 +8,16 @@
 // (Cloudflare Email, SMTP), each message is written down in the space's folder
 // as server/outbox/<time>-<id>.json, which no plugin can read.
 //
+// Mail goes only to the space's members: to the address each gave on their
+// account page (/account/), which the host reads from the accounts
+// (env().addresses). A plugin with a public route can't be made to mail
+// anyone else, and a host that can't say who the members are sends nothing.
+//
 // A plugin sends at most MAX_PER_DAY messages a day, each to at most MAX_TO
 // people, so a plugin with a public route can't be made into a way to send
 // anyone mail without end. The count is kept in server/email.json.
 
+import { isAddress } from "../address";
 import { env } from "../env";
 import type { ServiceProvider } from "../remote";
 import { record } from "../trace";
@@ -23,8 +29,6 @@ const MAX_TO = 10;
 const MAX_PER_DAY = 50;
 const MAX_SUBJECT = 200;
 const MAX_BODY = 100_000;
-// A local part, then a domain of dot-separated labels with none empty. No spaces, controls or separators anywhere.
-const ADDRESS = /^[^@\s\x00-\x1f\x7f<>,;"]+@[^@\s\x00-\x1f\x7f<>,;".]+(\.[^@\s\x00-\x1f\x7f<>,;".]+)+$/;
 
 const base = (instance: string) => instance.split("@")[0];
 const today = () => new Date().toISOString().slice(0, 10);
@@ -48,7 +52,7 @@ export function checkMail(value: unknown): Mail {
   const to = typeof m.to === "string" ? [m.to] : m.to;
   if (!Array.isArray(to) || !to.length) throw new Error("A message needs `to`: an address, or a list of them");
   if (to.length > MAX_TO) throw new Error(`A message goes to at most ${MAX_TO} people`);
-  for (const address of to) if (typeof address !== "string" || address.length > 254 || !ADDRESS.test(address)) throw new Error(`Not an email address: ${JSON.stringify(address)}`);
+  for (const address of to) if (!isAddress(address)) throw new Error(`Not an email address: ${JSON.stringify(address)}`);
   if (typeof m.subject !== "string" || !m.subject.trim()) throw new Error("A message needs a `subject`");
   // A line break in a subject would start a header of its own.
   if (m.subject.length > MAX_SUBJECT || /[\r\n]/.test(m.subject)) throw new Error(`A subject is one line, at most ${MAX_SUBJECT} characters`);
@@ -79,14 +83,23 @@ export default ({ store }: Kernel): ServiceProvider => {
     return { ok: true, id };
   }
 
+  /** Throws unless every recipient is one of the space's members' addresses: compared without case, the same person whatever case they or a plugin typed it in. */
+  async function membersOnly(plugin: string, mail: Mail, trace?: string) {
+    const members = new Set(((await env().addresses?.()) ?? []).map((a) => a.toLowerCase()));
+    const outside = mail.to.filter((address) => !members.has(address.toLowerCase()));
+    if (!outside.length) return;
+    record({ kind: "denied", name: "email:not-a-member", plugin, trace, detail: `${outside.length} address${outside.length === 1 ? "" : "es"}` });
+    throw new Error(`Email goes only to the space's members, at the address they gave on their account page: ${outside.join(", ")} isn't one`);
+  }
+
   return {
-    description: "Email: messages a plugin on a space's server sends. Until the deployment delivers mail, each is written down in the space's outbox.",
+    description: "Email: messages a plugin on a space's server sends to the space's members. Until the deployment delivers mail, each is written down in the space's outbox.",
     methods: {
       send: {
         args: "({ to, subject, text, html? })",
         returns: "{ ok, id }",
         needs: "email",
-        description: `Sends a message to \`to\` (an address or a list, at most ${MAX_TO}), with a one-line \`subject\`, plain \`text\` and, if given, \`html\`. Only on a space's server; at most ${MAX_PER_DAY} a day for each plugin.`,
+        description: `Sends a message to \`to\` (a member's address or a list of them, at most ${MAX_TO}: only addresses the space's members gave on their accounts), with a one-line \`subject\`, plain \`text\` and, if given, \`html\`. Only on a space's server; at most ${MAX_PER_DAY} a day for each plugin.`,
       },
     },
     capability: () => "email",
@@ -94,7 +107,12 @@ export default ({ store }: Kernel): ServiceProvider => {
       if (method !== "send") throw new Error(`email has no method ${method}`);
       if (env().kind !== "server") throw new Error('Email is sent from a space\'s server: a plugin that sends it has runs: "server"');
       const mail = checkMail(args[0]);
-      const run = queue.then(() => send(base(instance), mail, dispatch?.trace));
+      // Checked in its turn, just before it's written, so a member who left or took their address away while
+      // it waited isn't mailed.
+      const run = queue.then(async () => {
+        await membersOnly(base(instance), mail, dispatch?.trace);
+        return send(base(instance), mail, dispatch?.trace);
+      });
       queue = run.catch(() => {});
       return run;
     },

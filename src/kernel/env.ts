@@ -28,6 +28,11 @@ export interface KernelEnv {
   /** On a server, how it reads the site's own files (an app's app.html and plugins), when not with fetch. */
   site?: (url: string) => Promise<Response>;
   /**
+   * On a server, the email addresses the space's members gave on their accounts: the only ones its server
+   * plugins may email (services/email.ts). Without it, no plugin sends email.
+   */
+  addresses?(): Promise<string[]>;
+  /**
    * On a host that can put a space to sleep (Cloudflare), asks to be woken at `at` (ms since 1970), or
    * not at all when undefined, for the earliest job plugins scheduled (services/schedule.ts).
    */
