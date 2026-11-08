@@ -53,6 +53,8 @@ interface State {
 /** Connects to `url` (the space's kernel) and keeps this kernel's collections in step with it. */
 export function syncDevice(url: string, store: Store, records: Collections, hosts: Hosts, { WebSocketImpl = globalThis.WebSocket } = {}) {
   let state: State = { seq: 0, versions: {}, pending: {}, drafts: [] };
+  /** Who this device is signed in as, once the space has said (its answer to hello). */
+  let member: string | undefined;
   const loaded = store.readJson<unknown>(STATE, null).then((saved) => {
     const s = saved as State | null;
     if (s && typeof s.seq === "number") state = { seq: s.seq, versions: { ...s.versions }, pending: { ...s.pending }, drafts: Array.isArray(s.drafts) ? s.drafts.map((d, i) => ({ ...d, ref: d.ref ?? `d${i}-${d.at}` })) : [] };
@@ -119,12 +121,16 @@ export function syncDevice(url: string, store: Store, records: Collections, host
         // Ours, accepted. A newer edit made here since is now based on this version.
         if (pending && JSON.stringify(pending.after) === JSON.stringify(c.after)) delete state.pending[k];
         else if (pending) pending.base = c.seq;
-      } else if (!pending) {
+      } else if (pending) {
+        // Someone else's, passed over while this device's own edit waits: who made it is kept, for when the
+        // space refuses that edit and its record is put back here.
+        passedOver.set(k, { seq: c.seq, by: c.by });
+      } else {
         // Someone else's. (If this device has an unsent change to the same record, it keeps it: the space
         // will refuse it as stale when it's sent, and then the space's record comes here and this one
         // becomes a draft.)
         try {
-          await records.apply(c.collection, c.id, c.after as StoredRecord | null, { trace: `sync-${c.seq}` });
+          await records.apply(c.collection, c.id, c.after as StoredRecord | null, { trace: `sync-${c.seq}` }, c.by);
         } catch (error) {
           trace({ kind: "error", name: "sync:apply", detail: `${k} (${c.seq}): ${error instanceof Error ? error.message : error}` });
           save();
@@ -139,10 +145,15 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     return true;
   }
 
-  /** Puts the space's record here, as the space answered a push. */
-  async function take(collection: string, id: string, record: SyncRecord | null, why: string) {
+  /** Others' changes heard while this device had its own edit to the same record waiting, by record. */
+  const passedOver = new Map<string, { seq: number; by?: string }>();
+
+  /** Puts the space's record here, as the space answered a push, saying who made it when this device heard. */
+  async function take(collection: string, id: string, record: SyncRecord | null, version: number, why: string) {
+    const heard = passedOver.get(key(collection, id));
+    passedOver.delete(key(collection, id));
     try {
-      await records.apply(collection, id, record as StoredRecord | null, { trace: `sync-${why}` });
+      await records.apply(collection, id, record as StoredRecord | null, { trace: `sync-${why}` }, heard?.seq === version ? heard.by : undefined);
     } catch (error) {
       trace({ kind: "error", name: "sync:apply", detail: `${key(collection, id)}: ${error instanceof Error ? error.message : error}` });
     }
@@ -171,7 +182,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
         if (newer) newer.base = verdict.version;
         else {
           delete state.pending[k];
-          await take(change.collection, change.id, verdict.record, `same-${id}`);
+          await take(change.collection, change.id, verdict.record, verdict.version, `same-${id}`);
         }
         continue;
       }
@@ -181,7 +192,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       delete state.pending[k];
       if ("record" in verdict && verdict.record !== undefined && typeof verdict.version === "number") {
         state.versions[k] = verdict.version;
-        await take(change.collection, change.id, verdict.record, `refused-${id}`);
+        await take(change.collection, change.id, verdict.record, verdict.version, `refused-${id}`);
       }
       trace({ kind: "note", name: "sync:draft", detail: `${change.collection}/${change.id}: ${why}` });
       hosts.broadcast({ t: "notice", text: `${why === "Someone changed it first" ? "Someone else changed this record first" : `The space didn't take a change: ${why}`}. Your version is kept as a draft.`, tone: "error" });
@@ -204,6 +215,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     }
     if (m?.t !== "sync") return;
     if (m.op === "changes") {
+      if (typeof m.member === "string") member = m.member;
       const applied = await changes(m.changes, m.seq);
       first();
       if (!applied) return void ws.close();
@@ -266,7 +278,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     /** What this device has, for the page and for checks. */
     async state() {
       await loaded;
-      return { space, seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
+      return { space, ...(member ? { member } : {}), seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
     },
     /**
      * Makes a draft the record again, as a change made here: it replaces what the space has now (only

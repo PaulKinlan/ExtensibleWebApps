@@ -42,7 +42,7 @@ export default ({ root, collections }: Kernel): ServiceProvider => {
       const title = collections.registry.get(d.collection)?.title ?? d.collection;
       return { ref: d.ref, collection: d.collection, title, id: d.id, ...(label ? { label } : {}), mine: d.mine, why: d.why, at: d.at };
     });
-    return { space: s.space, connected: s.connected, pending: s.pending, drafts };
+    return { space: s.space, ...(s.member ? { member: s.member } : {}), connected: s.connected, pending: s.pending, drafts };
   }
 
   return {
@@ -50,10 +50,10 @@ export default ({ root, collections }: Kernel): ServiceProvider => {
     methods: {
       state: {
         args: "()",
-        returns: "{ space: null } or { space, connected, pending, drafts }",
+        returns: "{ space: null } or { space, member?, connected, pending, drafts }",
         needs: "sync",
         params: [],
-        description: "Whether this page keeps a copy of a space, whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).",
+        description: "Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).",
       },
       keep: {
         args: "(ref)",

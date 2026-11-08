@@ -46,6 +46,7 @@ interface KernelStub {
   deliver(client: string, text: string): Promise<void>;
   leave(client: string): Promise<void>;
   route(origin: string, request: RouteRequest, host?: PluginHost): Promise<RouteResponse | null>;
+  tick(origin: string, host?: PluginHost): Promise<void>;
 }
 
 type Send = ((message: unknown) => void) & { dup?: () => Send };
@@ -125,6 +126,12 @@ class PluginHost extends RpcTarget {
     } catch {}
   }
 
+  /** The kernel asks to be woken for its earliest scheduled job (src/kernel/services/schedule.ts). */
+  async wake(at: number | undefined): Promise<void> {
+    if (at === undefined) await this.ctx.storage.deleteAlarm();
+    else await this.ctx.storage.setAlarm(Math.max(at, Date.now()));
+  }
+
   site(url: string): Promise<Response> {
     const { pathname, search } = new URL(url);
     return this.env.ASSETS.fetch(new Request(`https://assets${pathname}${search}`));
@@ -158,7 +165,22 @@ export class Space extends DurableObject<Env> {
   /** A public route's request for this space (src/server/routes.ts), which its kernel answers, or null. */
   async route(space: string, origin: string, request: RouteRequest): Promise<RouteResponse | null> {
     this.plugins ??= new PluginHost(this.ctx, this.env, space);
+    await this.remember(space, origin);
     return this.kernel(space).route(origin, request, this.plugins);
+  }
+
+  /** Which space this is and where it's served, for an alarm, which comes with neither. */
+  private async remember(space: string, origin: string): Promise<void> {
+    const known = await this.ctx.storage.get<{ space: string; origin: string }>("where");
+    if (known?.space !== space || known.origin !== origin) await this.ctx.storage.put("where", { space, origin });
+  }
+
+  /** A plugin's scheduled job came due (PluginHost.wake set the alarm): the kernel runs it, with no client. */
+  async alarm(): Promise<void> {
+    const where = await this.ctx.storage.get<{ space: string; origin: string }>("where");
+    if (!where) return;
+    this.plugins ??= new PluginHost(this.ctx, this.env, where.space);
+    await this.kernel(where.space).tick(where.origin, this.plugins);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -172,6 +194,7 @@ export class Space extends DurableObject<Env> {
     const id = crypto.randomUUID();
     // The client's messages wait for the kernel to be ready for them, in order.
     this.plugins ??= new PluginHost(this.ctx, this.env, space);
+    await this.remember(space, url.origin);
     let ready = kernel.join(id, url.origin, (text) => server.send(text), this.clients.get(server) ?? "", this.plugins);
     ready.catch((e) => console.error(`Space ${space}: the kernel didn't start`, e?.stack ?? e));
     server.addEventListener("message", (e) => {

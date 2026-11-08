@@ -44,6 +44,30 @@ Needs: `routes`.
 
 Answers requests for a path inside the plugin's own folder (only for plugins an app links), so a link or a form can reach the plugin. The platform's service worker sends a matching request to the kernel through an open tab. `request` is `{ method, path, query, form }`; the handler returns `{ redirect }` (a 303 to a page on this site), `{ html }` (a page in which no script runs), `{ json }` or `{ text }`, each with an optional `status`. Returning nothing lets another plugin answer, and then 404.
 
+### ctx.schedule.at
+
+`ctx.schedule.at(name, when, handler) → off()`
+
+Needs: schedule.
+
+Runs `handler` once, at `when` (ms since 1970). Kept across restarts on a space's server.
+
+### ctx.schedule.cancel
+
+`ctx.schedule.cancel(name) → Promise`
+
+Needs: schedule.
+
+Stops one of this plugin's jobs and forgets it.
+
+### ctx.schedule.every
+
+`ctx.schedule.every(name, ms, handler) → off()`
+
+Needs: schedule.
+
+Runs `handler` every `ms` milliseconds (at least 1000), first one interval from now. On a space's server the job wakes the space when it comes due, even after a restart, and a run missed while it was stopped happens once when it starts. Setting it again with the same interval keeps its timing. `off()` stops listening; the job stays until `cancel`.
+
 ### ctx.settings.get
 
 `ctx.settings.get() → Promise<values>`
@@ -444,6 +468,18 @@ Needs: `debug:read`.
 
 The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.
 
+### email
+
+Email: messages a plugin on a space's server sends. Until the deployment delivers mail, each is written down in the space's outbox.
+
+#### email.send
+
+`email.send({ to, subject, text, html? })` → { ok, id }
+
+Needs: `email`.
+
+Sends a message to `to` (an address or a list, at most 10), with a one-line `subject`, plain `text` and, if given, `html`. Only on a space's server; at most 50 a day for each plugin.
+
 ### files
 
 Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.
@@ -620,6 +656,42 @@ Needs: `router`.
 
 Moves the plugin's tab to another screen without loading the page, as a link to it would. With `replace`, back skips the screen it leaves.
 
+### schedule
+
+Schedule: work a plugin wants done later, once or every so often. On a space's server a job wakes the space, even after a restart.
+
+#### schedule.at
+
+`schedule.at(name, when)` → true
+
+Needs: nothing.
+
+Runs the caller's job `name` once, at `when` (ms since 1970). Use `ctx.schedule.at(name, when, handler)`.
+
+#### schedule.cancel
+
+`schedule.cancel(name)` → true
+
+Needs: nothing.
+
+Stops one of the caller's jobs and forgets it.
+
+#### schedule.every
+
+`schedule.every(name, ms)` → true
+
+Needs: nothing.
+
+Runs the caller's job `name` every `ms` milliseconds (at least 1000), first one interval from now. Use `ctx.schedule.every(name, ms, handler)`, which also listens for it.
+
+#### schedule.list
+
+`schedule.list()` → [{ name, at, every? }]
+
+Needs: nothing.
+
+The caller's jobs, soonest first.
+
 ### secrets
 
 API keys and tokens. A plugin never reads one: it asks the person for it by name, then uses it in requests it makes with net.fetch, which the kernel sends only to the hosts the secret was given for.
@@ -742,11 +814,11 @@ Makes a draft the record again, with no review, as a new change sent to the spac
 
 #### sync.state
 
-`sync.state()` → { space: null } or { space, connected, pending, drafts }
+`sync.state()` → { space: null } or { space, member?, connected, pending, drafts }
 
 Needs: `sync`.
 
-Whether this page keeps a copy of a space, whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
+Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
 
 ### tools
 
@@ -1055,6 +1127,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | Capability | Lets a plugin |
 | --- | --- |
 | `ui` | Draw views with ctx.ui.render. |
+| `schedule` | Run work later, once or every so often, with ctx.schedule. On a space's server a job wakes the space. |
 | `routes` | Answer requests for paths in the plugin's own folder with ctx.routes.add. |
 | `network` | Run in a worker whose policy allows fetch and WebSockets to https: hosts. Without it, a plugin can't connect anywhere. |
 | `ui:theme` | Set design tokens for the whole app with the manifest's `theme`. |
@@ -1075,6 +1148,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `data:write:notes` | Call store.put. |
 | `debug:read` | Call debug.recent, debug.app. |
+| `email` | Call email.send. |
 | `files:<folder>` | Call files.read, files.write. |
 | `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
@@ -1126,6 +1200,7 @@ Reserved ids, which no plugin can take:
 - `commands`
 - `data`
 - `debug`
+- `email`
 - `files`
 - `history`
 - `host`
@@ -1137,6 +1212,7 @@ Reserved ids, which no plugin can take:
 - `plugins`
 - `review`
 - `router`
+- `schedule`
 - `secrets`
 - `settings`
 - `share`
@@ -1146,7 +1222,7 @@ Reserved ids, which no plugin can take:
 - `tools`
 - `transfer`
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`.
 
 ## Collections
 
