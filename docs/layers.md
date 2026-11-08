@@ -132,7 +132,13 @@ export const manifest = {
     mail: {
       description: "Sends mail.",
       methods: {
-        send: { args: "({ to, subject, text })", returns: "{ id }", description: "Sends one message." },
+        send: {
+          args: "({ to, subject, text })",
+          returns: "{ id }",
+          description: "Sends one message.",
+          // Optional: the arguments, in the collections' schema subset, so the tools service offers the method to agents.
+          params: [{ name: "message", schema: { type: "object", required: ["to"], properties: { to: { type: "string" }, subject: { type: "string" }, text: { type: "string" } } } }],
+        },
       },
     },
   },
@@ -146,8 +152,8 @@ export default (ctx) =>
 
 - A plugin with the permission `mail` calls it: `await ctx.call("mail", "send", { to, subject, text })`. A method's `needs` can ask for a different permission.
 - Each call goes to the provider through a hook named after it, so no other plugin can answer in its place. The provider hears which plugin called, and what it throws fails the call ([`provided.ts`](../src/kernel/provided.ts)).
-- Its methods go into the [API reference](api.md), so the `tools` service offers them to models, and an agent sees what it can call.
-- A name the kernel, a kernel module or another plugin already has is refused, never shadowed. Plugins that list the service in `services` and open in the same app as its provider wait for it to start.
+- Its methods go into the [API reference](api.md). A method whose manifest entry has `params` is also offered by the `tools` service, so an agent can call it.
+- A name the kernel, a kernel module or another plugin already has is refused, never shadowed. Plugins that list the service in `services` and open in the same app as its provider (or start from the same data folder, or on the same space server) wait for it to start. If the provider is then refused, they are stopped too, saying which service is missing.
 - It runs in its own worker like any plugin, so providing a service gives it no rights beyond its own manifest.
 
 ## std plugins

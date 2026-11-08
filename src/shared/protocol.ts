@@ -206,7 +206,8 @@ export interface Manifest {
 /** A service a plugin provides: what it is, and each method other plugins may call. */
 export interface ProvidedService {
   description: string;
-  methods: Record<string, { args?: string; returns?: string; description: string; needs?: string }>;
+  /** Each method; `params` describes its arguments, so tools offers it to agents (MethodDoc.params). */
+  methods: Record<string, { args?: string; returns?: string; description: string; needs?: string; params?: { name: string; schema: Record<string, unknown>; optional?: boolean }[] }>;
 }
 
 /** A hook a plugin defines in its manifest. The limits are the kernel's (PLUGIN_HOOKS in src/kernel/hooks.ts). */

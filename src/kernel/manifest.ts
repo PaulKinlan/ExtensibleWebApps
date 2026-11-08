@@ -123,6 +123,24 @@ function validateProvides(provides: unknown, permissions: string[], scope: unkno
       if (!METHOD.test(method)) throw new ManifestError(`Service ${name}: ${method} isn't a method name`);
       if (!d || typeof d !== "object" || !text(d.description, 500) || !d.description) throw new ManifestError(`${name}.${method} needs a description of up to 500 characters`);
       for (const key of ["args", "returns", "needs"] as const) if (d[key] !== undefined && !text(d[key], 200)) throw new ManifestError(`${name}.${method}: \`${key}\` must be text of up to 200 characters`);
+      if (d.params !== undefined) validateParams(d.params, `${name}.${method}`);
+    }
+  }
+}
+
+/** A provided method's arguments, for tools: a list of { name, schema, optional }, in order, optional ones last. */
+function validateParams(params: unknown, where: string) {
+  if (!Array.isArray(params) || params.length > 10) throw new ManifestError(`${where}: \`params\` is a list of up to 10 arguments`);
+  let optional = false;
+  for (const p of params as Record<string, unknown>[]) {
+    if (!p || typeof p !== "object" || typeof p.name !== "string" || !/^[a-zA-Z][a-zA-Z0-9_]{0,40}$/.test(p.name)) throw new ManifestError(`${where}: each param needs a name`);
+    if (p.optional !== undefined && typeof p.optional !== "boolean") throw new ManifestError(`${where}: ${p.name}.optional is true or false`);
+    if (optional && !p.optional) throw new ManifestError(`${where}: ${p.name} comes after an optional argument, so it must be optional too`);
+    optional ||= !!p.optional;
+    try {
+      checkSchema(p.schema);
+    } catch (error) {
+      throw new ManifestError(`${where}: ${p.name}: ${error instanceof Error ? error.message : error}`);
     }
   }
 }

@@ -347,7 +347,23 @@ export class RemotePlugins {
         if (left > 0) this.expected.set(name, left);
         else this.expected.delete(name);
       }
+      this.recheck(names);
     };
+  }
+
+  /**
+   * A plugin started because a service was expected, and the plugin that would provide it didn't (it was refused,
+   * say): it is stopped and uninstalled, saying which service is missing, rather than left running without it.
+   */
+  private recheck(names: string[]): void {
+    const gone = names.filter((name) => !Object.hasOwn(this.services, name) && !this.expected.has(name));
+    if (!gone.length) return;
+    for (const [id, plugin] of [...this.installed]) {
+      const missing = (plugin.manifest.services ?? []).filter((name) => gone.includes(name));
+      if (!missing.length) continue;
+      record({ kind: "error", name: "plugin:refused", plugin: id, detail: `“${plugin.manifest.name}” needs the ${missing.join(", ")} service${missing.length > 1 ? "s" : ""}, and the plugin that would provide ${missing.length > 1 ? "them" : "it"} didn't start` });
+      this.uninstall(id);
+    }
   }
 
   /** Puts the services a plugin's manifest provides into the kernel's table, in place of any it provided before. */

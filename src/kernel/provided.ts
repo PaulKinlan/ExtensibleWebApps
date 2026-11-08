@@ -46,7 +46,7 @@ export function providedService(
 ): ServiceProvider {
   const hook = serviceHook(manifest.id, name);
   const methods: Record<string, MethodDoc> = Object.fromEntries(
-    Object.entries(spec.methods).map(([method, doc]) => [method, { args: doc.args ?? "()", returns: doc.returns ?? "", needs: doc.needs ?? name, description: doc.description }]),
+    Object.entries(spec.methods).map(([method, doc]) => [method, { args: doc.args ?? "()", returns: doc.returns ?? "", needs: doc.needs ?? name, description: doc.description, ...(doc.params ? { params: doc.params as MethodDoc["params"] } : {}) }]),
   );
   return {
     description: `${spec.description} Provided by the plugin “${manifest.name}” (${manifest.id}).`,

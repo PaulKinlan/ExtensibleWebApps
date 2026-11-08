@@ -107,9 +107,11 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     async open(host: Host, links: Link[], describe: (opened: Opened) => Opened = (o) => o): Promise<void> {
       const before = new Set(linked.get(host.tab));
       linked.set(host.tab, new Set());
+      // The plugins this open will start: a server-only one isn't started here (openOne), so it provides nothing here.
       const sources = links.flatMap((link) => {
         try {
-          return [asPlugin(link.href, link.source)];
+          const source = asPlugin(link.href, link.source);
+          return readManifest(source).runs === "server" ? [] : [source];
         } catch {
           return [];
         }
