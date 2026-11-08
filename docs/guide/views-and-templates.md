@@ -106,6 +106,7 @@ The person's actions come back to the plugin that drew the view, and to no other
 | `<button data-action="save">` | `"save"`, with `data-value` if the button has one |
 | `<input data-action="rename">` (or `select`, `textarea`) | `"rename"` and the new value when the change is committed: a boolean for a checkbox, a number for a number input. Add `data-live` to send it as the person types, after a 300 ms pause. |
 | `<form data-action="add">` | `"add"` and `{ name: value }` for every named field |
+| `<li data-drag="card-7">` dropped on `<ul data-drop="move" data-value="doing">` | `"move"` and `{ item: "card-7", value: "doing", before }`: `before` is the `data-drag` of the item it was dropped on, if any, so a list can be put in order |
 
 ```js
 ctx.ui.onEvent((action, value) => {
@@ -113,6 +114,8 @@ ctx.ui.onEvent((action, value) => {
   if (action.startsWith("tick:")) …; // put an id in the action when there are many of one control
 });
 ```
+
+A drag stays inside the view that drew it: nothing from another plugin's view, another tab or another app is dropped there. While something is dragged it has `data-dragging`, and the drop place under it has `data-over`, for the plugin's CSS (`[data-drop][data-over] { outline: 2px dashed var(--accent) }`). A drag needs a pointer, so offer the same move with a button or a command too.
 
 ## Components
 
@@ -132,9 +135,9 @@ Attributes for each are in the [API reference](../api.md#components).
 The host keeps only listed elements and attributes ([`src/shared/html.ts`](../../src/shared/html.ts)), and drops the rest:
 
 - No `<script>`, `<style>` (inside a view), `<iframe>`, `<object>`, `<svg>`, or event attributes (`onclick`).
-- No `style` attribute. Use `class` with the plugin's stylesheet, or `data-*` and `aria-*` attributes the page's CSS can target.
+- A `style` attribute keeps only custom properties set to numbers, such as `style="--pct: {{pct}}"` or `--w: 12.5rem`, up to 8. That's how data sizes things: the plugin's stylesheet uses them (`width: calc(var(--pct) * 1%)`). Anything else in it is dropped. For everything else use `class` with the plugin's stylesheet, or `data-*` and `aria-*` attributes the page's CSS can target.
 - Links open in a new tab and must be `https:`, `http:`, `mailto:` or `#`. Images must be `data:` images, or `https:` for plugins with the `network` permission.
 - Unknown elements are unwrapped, so their text stays.
-- `id` and `for` are prefixed per plugin, so a plugin's `<label for>` can't point at another's input.
+- `id` and `for` are prefixed per plugin, so a plugin's `<label for>` can't point at another's input. The page's `id` isn't the one you wrote (`board_<tab>--cover-x`, not `cover-x`), so CSS and tests should find things by class or a `data-*` attribute instead.
 
 Next: [Data and permissions](data-and-permissions.md).
