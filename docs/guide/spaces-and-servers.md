@@ -79,9 +79,9 @@ What a server plugin can do that a browser plugin can't:
 | With | It can | Notes |
 | --- | --- | --- |
 | `routes` | Answer public requests at `/s/<space>/<its folder>/<path>` | Anyone may call one, from any site, and the plugin isn't told who. A request wakes the space if it was asleep. The answers are the same as in a browser ([Routes](routes.md)). |
-| `schedule` | Run a job every so often (at most once a second), or once at a time | Jobs outlive a restart, and one that came due while the space was stopped runs once when it starts. In a browser a job runs only while the kernel does. |
+| `schedule` | Run a job every so often (repeating at most once a second), or once at a given time | Jobs outlive a restart, and one that came due while the space was stopped runs once when it starts. In a browser a job runs only while the kernel does. |
 | `email` | Send a message to up to 10 addresses | At most 50 a day per plugin. Until the site sets up delivery, each message is written to the space's outbox, not sent. |
-| `hook:intercept:data:beforeWrite:<collection>` | Check every change any member's device sends, and stop it | It hears which member sent it. |
+| `hook:intercept:data:beforeWrite:<collection>` | Check every change any member's device sends, and stop it | It hears which member sent it. For a collection it doesn't own, it also needs `data:read:<collection>`. |
 | `network` | Fetch from the internet | Never the server's own network: loopback, private and metadata addresses are refused where the connection is made. |
 
 What it writes reaches every member's device as a change by `plugin:<id>`.

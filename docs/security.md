@@ -75,7 +75,7 @@ A space's server runs the same kernel and the same gate, so everything above hol
 - **Only the author's plugins run there.** The space starts the server plugins of the apps the site serves, read from the site's own files. It never runs code a member's device sent, and a member can't replace a server plugin with their own copy.
 - **Each server plugin is in an isolate of its own:** on Node a process under Node's permission model, with no files, no child processes and none of the server's environment; on Cloudflare a Dynamic Worker with no bindings. Without `network` it can't connect anywhere, and with it, it still can't reach the server's own network (loopback, private and metadata addresses are refused where each connection is made).
 - **Public routes are public.** Anyone may call a server plugin's route, from any site, and the plugin isn't told who. What it answers is shown with no script.
-- **Limits on what costs others.** A plugin sends at most 50 emails a day, to at most 10 addresses each, and runs a scheduled job at most once a second.
+- **Limits on what costs others.** A plugin sends at most 50 emails a day, to at most 10 addresses each, and a repeating job runs at most once a second.
 - **Sign-in keeps nothing that can leak.** Passkeys are checked with WebCrypto, sessions are `HttpOnly` cookies whose hash is all the server keeps, and a provider's token is thrown away once it has said who the person is.
 
 ## What it doesn't do yet

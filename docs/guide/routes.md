@@ -69,6 +69,6 @@ Each job is a file in [`sw/routes/`](../../sw/routes/), listed in [`sw/routes/in
 - [`plugins.js`](../../sw/routes/plugins.js): plugin routes, above.
 - [`spaces.js`](../../sw/routes/spaces.js): an app inside a space (`/s/<space>/demos/habits/`) serves the app's own page, with a `<base>` that keeps its links in the space. A server plugin's public route there goes to the network, to the space's server.
 - [`user.js`](../../sw/routes/user.js): a person's own plugins, from their data folder, at `/user/<app folder>/`.
-- Everything it serves is kept, so an app opened once still opens offline. On a repeat visit a kept file is answered at once and fetched again behind it, so a deploy shows on the visit after; spaces (`/s/`) and sign-in (`/auth/`) always ask the network, and on `localhost` everything asks the network first.
+- Everything it serves is kept, so an app opened once still opens offline. On a repeat visit a kept file is answered at once and fetched again behind it, so a deploy shows on the visit after; a request the space's server answers (its kernel, a server plugin's route) and sign-in (`/auth/`) always ask the network, while an app's own files inside a space come from the cache like the same files outside it; on `localhost` everything asks the network first.
 
 The first visit to a site isn't controlled by the service worker, and nothing depends on it to start: an app works without it, and gains these once it's running.

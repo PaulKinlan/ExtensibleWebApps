@@ -62,7 +62,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `data:write:<collection>` | Put and delete another plugin's records. | **Each change waits for the person** to accept a review card, unless they chose to always allow it. |
 | `files:<folder>` | Read and write text files in one folder of the app's data. | Writes are reviewed. Paths are checked, and the platform's own files are off limits whatever the folder. |
 | `history` | Undo and redo the app's most recent data changes. | |
-| `schedule` | Run work later, once or every so often (`ctx.schedule.at`, `ctx.schedule.every`). | At most once a second. On a space's server a job wakes the space, even after a restart; in a browser it runs only while the kernel does. |
+| `schedule` | Run work later, once or every so often (`ctx.schedule.at`, `ctx.schedule.every`). | A repeating job runs at most once a second. On a space's server a job wakes the space, even after a restart; in a browser it runs only while the kernel does. |
 | `transfer` | Export the app's collections, and import into them. | An import is reviewed as a whole. |
 | `plugins:manage` | Switch the app's plugins on and off. | What the switchboard and reset use. Switching is saved and applies in every tab. |
 | `plugins:author` | Write and remove the person's own plugins for the app. Includes `plugins:read`. | **Every save and removal waits for the person**, on a card showing the code. |
