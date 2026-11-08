@@ -15,6 +15,7 @@
 // to let the next route try. When none answers, the request goes to the network.
 
 import routes from "./sw/routes/index.js";
+import { renderBlocking } from "./sw/render-blocking.js";
 
 const CACHE = "platform-v1";
 
@@ -33,7 +34,8 @@ self.addEventListener("message", (event) => {
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;
-  event.respondWith(answer(event, url));
+  // A page it serves waits for the host before its first paint (sw/render-blocking.js).
+  event.respondWith(event.request.mode === "navigate" ? answer(event, url).then(renderBlocking) : answer(event, url));
 });
 
 /** @param {FetchEvent} event @param {URL} url */
@@ -52,25 +54,49 @@ async function answer(event, url) {
 }
 
 /**
- * The network first, so a change shows at once; what came back is kept, and
- * used when the network can't be reached. Keeping it is held open with
- * waitUntil, so the browser doesn't stop the worker before it is stored.
+ * A file this worker has kept is answered from what it kept, at once, and
+ * fetched again behind it, so the next visit has the newer copy: a repeat
+ * visit doesn't wait on a round trip per file. A deploy shows on the visit
+ * after the one that fetched it. Files it hasn't kept, and everything while
+ * developing on this machine (localhost), come from the network first, so a
+ * change shows at once there; what came back is kept, and used when the
+ * network can't be reached. Keeping it is held open with waitUntil, so the
+ * browser doesn't stop the worker before it is stored.
  * @param {Request} request @param {ExtendableEvent} event
  */
 async function cached(request, event) {
-  let response;
+  const cache = await caches.open(CACHE);
+  const fresh = fetch(request).then((response) => {
+    if (request.method === "GET" && response.ok && response.type === "basic" && !/no-store/.test(response.headers.get("Cache-Control") ?? "")) {
+      const copy = response.clone();
+      event.waitUntil(cache.put(request, copy).catch(() => {}));
+    }
+    return response;
+  });
+  if (cacheFirst(request)) {
+    const kept = await cache.match(request);
+    // A navigation can't be answered with a redirected response.
+    if (kept && !(request.mode === "navigate" && kept.redirected)) {
+      event.waitUntil(fresh.catch(() => {}));
+      return kept;
+    }
+  }
   try {
-    response = await fetch(request);
+    return await fresh;
   } catch (error) {
-    const kept = await (await caches.open(CACHE)).match(request);
+    const kept = await cache.match(request);
     if (kept) return kept;
     throw error;
   }
-  if (request.method === "GET" && response.ok && response.type === "basic" && !/no-store/.test(response.headers.get("Cache-Control") ?? "")) {
-    const copy = response.clone();
-    event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, copy)).catch(() => {}));
-  }
-  return response;
+}
+
+/** Kept files answer first except on this machine, and except where answers change: spaces and sign-in. */
+const LOCAL = ["localhost", "127.0.0.1", "[::1]"].includes(location.hostname);
+/** @param {Request} request */
+function cacheFirst(request) {
+  if (LOCAL || request.method !== "GET") return false;
+  const path = new URL(request.url).pathname;
+  return !path.startsWith("/s/") && !path.startsWith("/auth/");
 }
 
 /**

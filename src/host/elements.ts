@@ -48,6 +48,8 @@ async function define(name: string): Promise<void> {
   const file = new DOMParser().parseFromString(await response.text(), "text/html");
   const template = file.querySelector("template") ?? undefined;
   const script = file.querySelector<HTMLScriptElement>('script[type="module"]');
+  // The elements its own template uses load alongside it, not after it is first drawn.
+  for (const inner of template?.content.querySelectorAll("*") ?? []) if (inner.localName.startsWith("ui-") && inner.localName !== name && !customElements.get(inner.localName)) void loadElement(inner.localName);
 
   let element: ElementClass;
   if (script?.hasAttribute("src")) {
