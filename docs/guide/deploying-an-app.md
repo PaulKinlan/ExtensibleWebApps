@@ -23,6 +23,8 @@ To try it on this machine first, with no account, add `--dev`: it runs `wrangler
 - `site/`, what the Worker serves: the built site without the site's own pages (`demos/`, `docs/`, `home/`, `workbench/`, `starter/`, the front page), the app's folder at the same path it has here, any folder its `app.html` links with `../` (the security demo uses the reading list's `library.js`), and an `index.html` that sends `/` to the app.
 - `wrangler.jsonc`, the root [`wrangler.jsonc`](../../wrangler.jsonc) with the app's name and `site/` as its assets. It runs the same Worker code, with the same Durable Objects and Dynamic Workers, so an app's spaces and server plugins work as they do on the main site.
 
+The deployed copy of `app.html` leaves out the main site's navigation (`<nav class="site">`, with Home, All demos, Docs and Workbench), since those pages aren't on the app's Worker. The file in the repo is unchanged.
+
 Then it runs `npx wrangler deploy -c .build/apps/<name>/wrangler.jsonc`.
 
 The app keeps its path, so the packing list lives at `/demos/packing-list/`, and nothing in it is rewritten. It warns when `app.html` links to a page the Worker won't have, such as a demo's header links to `/docs/`.
