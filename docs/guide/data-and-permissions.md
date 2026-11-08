@@ -103,6 +103,27 @@ await ctx.call("data", "put", "library", { title, author }, "Imported from your 
 
 The person accepts it once, allows that plugin to make such changes from then on, or declines. The call resolves when they answer (`{ ok: true, outcome }`), or fails if they decline or don't answer within five minutes. Review cards always show, even in an app with no slot for them. Writes to a plugin's own collections are never reviewed.
 
+```mermaid
+sequenceDiagram
+    participant P as Book import (a plugin)
+    participant K as The kernel
+    participant Person as The person
+    participant O as Library (the owner)
+
+    P->>K: ctx.call("data", "put", "library", record, reason)
+    K->>K: the gate (data:write:library?), then the schema check
+    K->>Person: a review card: the plugin, its reason, and a diff
+    alt Accept, or Always allow
+        Person->>K: yes
+        K->>K: data:beforeWrite, then save
+        K-->>O: data:changed:library
+        K-->>P: { ok: true, outcome }
+    else Decline, or five minutes pass
+        Person->>K: no
+        K-->>P: the call fails
+    end
+```
+
 ## Hooks
 
 Every write runs two hooks:
