@@ -1,5 +1,5 @@
 <!--
-  The due-soon list. due-soon.js sends { books: [{ title, when, tone }] },
+  The due-soon list. due-soon.js sends { books: [{ href, title, when, tone }] },
   already sorted and worded; the template only lays it out.
 -->
 <template id="list">
@@ -7,7 +7,7 @@
   <template if="books.length">
     <ul>
       <template for="book of books">
-        <li><strong>{{book.title}}</strong> <ui-badge tone="{{book.tone}}">{{book.when}}</ui-badge></li>
+        <li><a href="{{book.href}}"><strong>{{book.title}}</strong></a> <ui-badge tone="{{book.tone}}">{{book.when}}</ui-badge></li>
       </template>
     </ul>
   </template>

@@ -1,0 +1,39 @@
+<!doctype html>
+<!--
+  What the server sends for an address it has no file for (Cloudflare's
+  404-page, or any host that serves a 404.html; vite.config.ts does the same
+  locally). Such an address is often a screen of an app, like
+  /demos/reading-list/book/42, which the platform's service worker answers
+  with the app's page (sw/routes/apps.js). On a first visit the service worker
+  isn't running yet, so a shared link would stop here: this page starts it and
+  loads the address again, through it.
+
+  When the service worker is already running and the address still ends up
+  here, nothing is there.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Opening…</title>
+  <link rel="stylesheet" href="/platform/host.css">
+</head>
+<body>
+  <main>
+    <p id="status">Opening…</p>
+  </main>
+  <script type="module">
+    const status = document.getElementById("status");
+    const notFound = () => {
+      document.title = "Not found";
+      status.innerHTML = 'There\'s nothing at this address. <a href="/">Go to the front page</a>.';
+    };
+    if (!("serviceWorker" in navigator) || navigator.serviceWorker.controller) notFound();
+    else {
+      // The service worker claims this page as soon as it starts (sw.js): then load the address through it.
+      navigator.serviceWorker.addEventListener("controllerchange", () => location.reload(), { once: true });
+      navigator.serviceWorker.register("/sw.js", { type: "module", scope: "/" }).catch(notFound);
+    }
+  </script>
+</body>
+</html>

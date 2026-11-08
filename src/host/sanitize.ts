@@ -10,6 +10,9 @@ const SAFE_HREF = /^(https?:|mailto:|#)/i;
 const SAFE_SRC = /^(https:|data:image\/(png|jpeg|gif|webp|avif);)/i;
 const DATA_SRC = /^data:image\/(png|jpeg|gif|webp|avif);/i;
 
+/** A link on this site, such as another screen of the app (`book/42`, `./`): it opens in the same tab. */
+const isLocal = (href: string) => !/^([a-z][\w+.-]*:|\/\/|\\|#)/i.test(href.trim());
+
 /** Ids are prefixed with the owner, so one plugin's `for` can't point at another's control. */
 const scoped = (owner: string, id: string) => `${owner.replace(/[^\w-]/g, "_")}--${id}`;
 
@@ -60,7 +63,7 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
     const out = document.createElement(tag);
     for (const { name, value } of [...el.attributes]) {
       if (!allowedAttribute(tag, name)) continue;
-      if (name === "href" && !SAFE_HREF.test(value.trim())) continue;
+      if (name === "href" && !SAFE_HREF.test(value.trim()) && !isLocal(value)) continue;
       // An https image is a request: only plugins allowed on the network may make one. A file next to the template is the plugin's own.
       if (name === "src" && !(remote ? SAFE_SRC : DATA_SRC).test(value.trim())) {
         const own = tag === "img" ? ownFile(value, base) : undefined;
@@ -70,7 +73,7 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       if (tag === "input" && name === "type" && !INPUT_TYPES.includes(value.toLowerCase())) continue;
       out.setAttribute(name, scopedValue(owner, name, value));
     }
-    if (tag === "a") {
+    if (tag === "a" && !isLocal(el.getAttribute("href") ?? "")) {
       out.setAttribute("target", "_blank");
       out.setAttribute("rel", "noopener noreferrer");
     }

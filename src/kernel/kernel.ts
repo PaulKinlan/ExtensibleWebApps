@@ -21,6 +21,7 @@ import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { loadServices } from "./services";
+import { routed } from "./services/router";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
@@ -119,6 +120,8 @@ const userAdded = userPlugins(store, self.location.origin);
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
+/** Tabs whose app is still opening: their address waits for it (see the `url` message). */
+const opening = new Map<string, Promise<void>>();
 services.authoring = authoring(remote, apps, {
   store,
   userAdded,
@@ -259,24 +262,36 @@ hosts.onMessage = async (host, message) => {
       return records.unbind(host, message.id);
     case "record":
       return records.fromView(host, message.id, message.owner, message.collection, message.recordId, message.fields, message.trace);
-    case "open":
-      // An app's plugins may read collections whose owners aren't running: know those first.
-      // Opened with ?reset: the app's plugins the person turned off come back on first.
-      // Only plugins this app may load: not one whose id belongs to a different running plugin.
-      if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ source }) => {
-        try {
-          const id = readManifest(source).id;
-          const running = remote.installed.get(id);
-          return !running || running.source === source ? [id] : [];
-        } catch {
-          return [];
-        }
-      }));
-      await records.ready;
-      // openApp checks the tab is still open: it may have closed while waiting.
-      await openApp(host, message.plugins, message.app);
-      // Its tab-scoped plugins may have started before the app said what it links: tell them it has.
-      return pluginSwitches.opened(host.tab);
+    case "open": {
+      // The tab's first screen waits for this, so router:changed knows the app and its plugins.
+      let opened!: () => void;
+      opening.set(host.tab, new Promise<void>((resolve) => (opened = resolve)));
+      try {
+        // An app's plugins may read collections whose owners aren't running: know those first.
+        // Opened with ?reset: the app's plugins the person turned off come back on first.
+        // Only plugins this app may load: not one whose id belongs to a different running plugin.
+        if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ source }) => {
+          try {
+            const id = readManifest(source).id;
+            const running = remote.installed.get(id);
+            return !running || running.source === source ? [id] : [];
+          } catch {
+            return [];
+          }
+        }));
+        await records.ready;
+        // openApp checks the tab is still open: it may have closed while waiting.
+        await openApp(host, message.plugins, message.app);
+        // Its tab-scoped plugins may have started before the app said what it links: tell them it has.
+        return pluginSwitches.opened(host.tab);
+      } finally {
+        opened();
+        opening.delete(host.tab);
+      }
+    }
+    case "url":
+      await opening.get(host.tab);
+      return routed(host, message.path, message.query, openApps.get(host.tab)?.app);
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
     case "command": {
