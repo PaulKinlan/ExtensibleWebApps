@@ -66,6 +66,9 @@ const asWrittenEntries = (root: string): { url: string; disk: string }[] => {
 const HOST_CSS = "src/host/styles.css";
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".md": "text/markdown", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };
 
+/** A kernel module's source, std/<name>/module.ts: built into the kernel, never served as a file. */
+const KERNEL_MODULE = /^\/std\/[a-z][a-z0-9-]*\/module\.ts$/;
+
 function asWritten(): Plugin {
   const root = process.cwd();
   const files = (path: string): string[] =>
@@ -102,6 +105,8 @@ function asWritten(): Plugin {
           res.setHeader("Location", `/${folder.url}/${new URL(req.url ?? "/", "http://host").search}`);
           return res.end();
         }
+        // A kernel module is TypeScript the kernel imports (vite.kernel-modules.ts): Vite compiles it, it isn't served as written.
+        if (KERNEL_MODULE.test(path)) return next();
         const top = entries.find((e) => statSync(join(root, e.disk)).isDirectory() && path.startsWith(`/${e.url}/`));
         if (!top) return next();
         // A folder's address serves its index.html, as Vite (and Cloudflare) do for the folders at the top.
@@ -112,7 +117,7 @@ function asWritten(): Plugin {
     },
     generateBundle() {
       for (const { url, disk } of asWrittenEntries(root))
-        for (const file of files(disk)) this.emitFile({ type: "asset", fileName: url + file.slice(disk.length).split(sep).join("/"), source: readFileSync(join(root, file)) });
+        for (const file of files(disk)) if (!KERNEL_MODULE.test(`/${file.split(sep).join("/")}`)) this.emitFile({ type: "asset", fileName: url + file.slice(disk.length).split(sep).join("/"), source: readFileSync(join(root, file)) });
       this.emitFile({ type: "asset", fileName: "platform/host.css", source: readFileSync(join(root, HOST_CSS)) });
     },
   };
@@ -144,7 +149,8 @@ function notFoundPage(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [workerPolicy(), asWritten(), notFoundPage()],
+  // The kernel's modules: in the worker build, and in development, where Vite serves the kernel through this pipeline.
+  plugins: [kernelModules(), workerPolicy(), asWritten(), notFoundPage()],
   // The kernel is a worker: its modules are the ones kernel.json lists.
   worker: { format: "es", plugins: () => [kernelModules()] },
   build: {

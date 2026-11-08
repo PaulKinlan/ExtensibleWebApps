@@ -53,7 +53,14 @@ export function service(name: string, make: (kernel: ModuleKernel) => ServicePro
  * Runs each module as a Cordis plugin on the kernel's root context, in the order kernel.json lists them.
  * Services and commands they add go into the kernel's tables, and come out again if a module is disposed.
  */
-export function loadModules(modules: KernelModule[], kernel: Kernel, services: Record<string, ServiceProvider>, commands: Map<string, (arg: unknown) => unknown>) {
+export function loadModules(
+  modules: KernelModule[],
+  kernel: Kernel,
+  services: Record<string, ServiceProvider>,
+  commands: Map<string, (arg: unknown) => unknown>,
+  /** The kernel's own page commands, which a module may not take. */
+  coreCommand: (name: string) => boolean,
+) {
   const names = new Set(modules.map((m) => m.name));
   for (const module of modules) {
     const missing = (module.uses ?? []).filter((name) => !names.has(name));
@@ -73,6 +80,7 @@ export function loadModules(modules: KernelModule[], kernel: Kernel, services: R
               ctx.on("dispose", () => void delete services[name]);
             },
             command(name, run) {
+              if (coreCommand(name)) throw new Error(`The ${module.name} module can't add the command ${name}: it is the kernel's`);
               if (commands.has(name)) throw new Error(`The ${module.name} module can't add the command ${name}: it is taken`);
               commands.set(name, run);
               ctx.on("dispose", () => void commands.delete(name));

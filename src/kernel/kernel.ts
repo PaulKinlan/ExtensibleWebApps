@@ -225,8 +225,11 @@ const describe = () => reference(services, remote);
 const parts = { root, store, hosts, remote, apps, reviewed, describe, collections: records };
 Object.assign(services, loadServices(parts));
 // Then the kernel modules the site lists in kernel.json (docs/layers.md): each may add services and page commands.
+/** The page commands the kernel answers itself; a module's commands (loadModules) can't take these names. */
+const CORE_COMMANDS = new Set(["changes", "install", "reference", "reload", "route", "sync", "trace", "uninstall"]);
+
 const commands = new Map<string, (arg: unknown) => unknown>();
-loadModules(modules, parts, services, commands);
+loadModules(modules, parts, services, commands, (name) => CORE_COMMANDS.has(name) || /^(user|place):/.test(name));
 // A plugin can't take a service's name as its id, whichever way the service was added.
 for (const name of Object.keys(services)) RESERVED.add(name);
 
