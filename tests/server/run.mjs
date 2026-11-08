@@ -110,7 +110,10 @@ async function device(base, space, cookie, { claim } = {}) {
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.t !== "sync") return;
-    if (m.op === "pushed") waiting.get(m.id)?.(m.results);
+    if (m.op === "pushed") {
+      waiting.get(m.id)?.(m.results);
+      waiting.delete(m.id);
+    }
     else heard.push(m);
   };
   await new Promise((open, fail) => {
@@ -130,8 +133,14 @@ async function device(base, space, cookie, { claim } = {}) {
     push: (changes) =>
       new Promise((answer, fail) => {
         const n = ++id;
-        waiting.set(n, answer);
-        setTimeout(() => fail(new Error("No answer to a push")), 5000);
+        const timer = setTimeout(() => {
+          waiting.delete(n);
+          fail(new Error("No answer to a push"));
+        }, 5000);
+        waiting.set(n, (results) => {
+          clearTimeout(timer);
+          answer(results);
+        });
         ws.send(JSON.stringify({ t: "sync", op: "push", id: n, changes }));
       }),
     settle,
@@ -169,6 +178,8 @@ async function syncChecks(base, check, owner, restart) {
     JSON.stringify({ stale, newer }),
   );
   check("sync: a device can't say it is another member: the server says who it is", byBea?.by === ids.bea, JSON.stringify(byBea));
+  const stamped = laptop.changes().find((c) => c.seq === 1)?.after;
+  check("sync: a record sent without timestamps is stored with them, as every record has", typeof stamped?.createdAt === "string" && typeof stamped?.updatedAt === "string", JSON.stringify(stamped));
 
   const bad = await phone.push([{ collection: "Not A Name", id: "x", base: 0, after: { id: "x" } }, { collection: "books", id: "gone", base: 0, after: null }, { collection: "books", id: "dune", base: 2, after: null }]);
   check("sync: a change that isn't well formed is refused, and a delete is a change like any other", bad?.[0]?.error && bad[1]?.ok && bad[2]?.ok && bad[2].seq === 4, JSON.stringify(bad));

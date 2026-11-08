@@ -76,26 +76,45 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     return undefined;
   }
 
+  /**
+   * Checks and applies one change. The space's head moves on in memory; the push writes the log and
+   * head once, when all its changes are in (`record`).
+   */
   async function accept(change: Outgoing, by: string | undefined, dispatch: Dispatch): Promise<{ verdict: Verdict; accepted?: Accepted }> {
     const wrong = problem(change);
     if (wrong) return { verdict: { ok: false, error: wrong } };
     const version = head.versions[key(change.collection, change.id)] ?? 0;
-    if (change.base !== version) return { verdict: { ok: false, stale: true, version, record: (await records.record(change.collection, change.id)) as SyncRecord | null } };
+    const before = (await records.record(change.collection, change.id)) as SyncRecord | null;
+    if (change.base !== version) return { verdict: { ok: false, stale: true, version, record: before } };
+    const at = new Date().toISOString();
+    // Every stored record has string timestamps (collections sort by updatedAt): a device's are kept, missing ones filled in.
+    const after: SyncRecord | null =
+      change.after === null
+        ? null
+        : {
+            ...change.after,
+            createdAt: typeof change.after.createdAt === "string" ? change.after.createdAt : typeof before?.createdAt === "string" ? before.createdAt : at,
+            updatedAt: typeof change.after.updatedAt === "string" ? change.after.updatedAt : at,
+          };
     // The space's own plugins (step 7) can stop a change, as a browser's can stop a write.
     const name = `data:beforeWrite:${change.collection}`;
     if (hooks.has(name)) {
-      const before = await records.record(change.collection, change.id);
-      const verdict = await root.serial(dispatch, name, { collection: change.collection, id: change.id, before: before ?? undefined, after: change.after ?? undefined });
+      const verdict = await root.serial(dispatch, name, { collection: change.collection, id: change.id, before: before ?? undefined, after: after ?? undefined });
       if (verdict && typeof verdict === "object" && "block" in verdict) return { verdict: { ok: false, error: String(verdict.block) } };
     }
-    await records.apply(change.collection, change.id, change.after as StoredRecord | null, dispatch);
-    const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after: change.after, ...(by ? { by } : {}), at: new Date().toISOString() };
-    const chunk = chunkOf(accepted.seq);
-    await store.writeJson(chunkFile(chunk), [...(await readChunk(chunk)), accepted]);
+    await records.apply(change.collection, change.id, after as StoredRecord | null, dispatch);
+    const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after, ...(by ? { by } : {}), at };
     head.seq = accepted.seq;
     head.versions[key(change.collection, change.id)] = accepted.seq;
-    await store.writeJson(HEAD, head);
     return { verdict: { ok: true, seq: accepted.seq }, accepted };
+  }
+
+  /** Adds a push's accepted changes to the log, one write per chunk they fall in, then saves the head. */
+  async function record(accepted: Accepted[]) {
+    const byChunk = new Map<number, Accepted[]>();
+    for (const a of accepted) byChunk.set(chunkOf(a.seq), [...(byChunk.get(chunkOf(a.seq)) ?? []), a]);
+    for (const [chunk, list] of byChunk) await store.writeJson(chunkFile(chunk), [...(await readChunk(chunk)).filter((c) => c.seq < list[0].seq), ...list]);
+    await store.writeJson(HEAD, head);
   }
 
   return {
@@ -127,6 +146,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
               out.push({ ok: false, error: String(error instanceof Error ? error.message : error) });
             }
           }
+          if (accepted.length) await record(accepted);
           if (accepted.length) for (const other of listening) hosts.send(other, { t: "sync", op: "changes", changes: accepted, seq: head.seq });
           return out;
         });
