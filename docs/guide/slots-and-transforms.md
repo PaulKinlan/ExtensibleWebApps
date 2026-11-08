@@ -32,6 +32,8 @@ slots.forEach(({ data }, i) => {
 });
 ```
 
+`page.slots` asks one tab. A plugin that runs once for every tab (the default) asks whichever tab answers, so when the plugin whose view holds the slots is `scope: "tab"` (each tab draws its own screen), make yours `scope: "tab"` too: each copy then fills its own tab's slots. The board's `due` and `checklist` plugins do this.
+
 When the slots of that name come, go or change (a recipe opens, the list grows), your plugin hears the event `slot:changed` with `{ slot }`, so it can ask again and draw again:
 
 ```js
