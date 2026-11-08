@@ -438,6 +438,7 @@ async function networkGuardChecks(base, check) {
     dispatcher: await probe(`http://[::ffff:7f00:1]:${port}/`, "dispatcher"),
     agent: await probe(`http://[::ffff:7f00:1]:${port}/`, "agent"),
     metadata: await probe("http://169.254.169.254/latest/meta-data/", "agent"),
+    tampered: await probe(`http://[::1]:${port}/`, "tampered"),
   };
   local.close();
   const refused = (r) => r?.ok === false && /server's own network/.test(r.error);
@@ -447,8 +448,8 @@ async function networkGuardChecks(base, check) {
     JSON.stringify(seen),
   );
   check(
-    "network guard: going around fetch, through its dispatcher or an Agent of the plugin's own, is refused too",
-    Object.values(around).every((r) => r?.ok === false && r.code === "EACCES"),
+    "network guard: going around fetch, through its dispatcher or an Agent of the plugin's own, or after replacing Set.prototype.has and other built-ins, is refused too",
+    Object.values(around).every((r) => r?.ok === false && (r.code === "EACCES" || r.code === "EPRIVATE")),
     JSON.stringify(around),
   );
   check("network guard: a private host the deployment allows is reached", seen.allowed?.ok && seen.allowed.text === "hello from inside", JSON.stringify(seen.allowed));
@@ -459,6 +460,7 @@ async function networkGuardChecks(base, check) {
  * certificate trusted through NODE_EXTRA_CA_CERTS, which the server passes to its plugins), and feeds a device adds.
  */
 async function feedChecks(base, check, owner) {
+  const LONG = `atom-${"x".repeat(59)}`;
   const folder = await mkdtemp(join(tmpdir(), "feeds-tls-"));
   try {
     execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", join(folder, "key.pem"), "-out", join(folder, "cert.pem"), "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"], { stdio: "ignore" });
@@ -470,8 +472,14 @@ async function feedChecks(base, check, owner) {
 <item><title>First story</title><link>https://example.com/1</link><guid>one</guid><pubDate>Sat, 07 Nov 2026 09:00:00 GMT</pubDate><description><![CDATA[<p>Hello <b>there</b><script>alert(1)</script></p>]]></description></item>
 <item><title>Second &lt;story&gt;</title><link>javascript:alert(1)</link><guid>two</guid><pubDate>Sun, 08 Nov 2026 09:00:00 GMT</pubDate><description>Plain words</description></item>
 </channel></rss>`;
+  // Atom with a prefix on every element, and relative links: one against the entry's xml:base, one against the feed's address.
+  const atom = `<?xml version="1.0"?><atom:feed xmlns:atom="http://www.w3.org/2005/Atom"><atom:title>Prefixed</atom:title>
+<atom:entry xml:base="https://example.org/blog/"><atom:title>Based</atom:title><atom:id>b</atom:id><atom:link href="posts/1"/><atom:updated>2026-11-06T09:00:00Z</atom:updated></atom:entry>
+<atom:entry><atom:title>Relative</atom:title><atom:id>r</atom:id><atom:link rel="alternate" href="/top"/><atom:updated>2026-11-05T09:00:00Z</atom:updated></atom:entry>
+</atom:feed>`;
   const feeds = createHttpsServer({ key: readFileSync(join(folder, "key.pem")), cert: readFileSync(join(folder, "cert.pem")) }, (req, res) => {
     if (req.url === "/to-http") return res.writeHead(302, { location: `http://127.0.0.1:${feeds.address().port}/rss.xml` }).end();
+    if (req.url === "/atom.xml") return res.writeHead(200, { "content-type": "application/atom+xml" }).end(atom);
     res.writeHead(200, { "content-type": "application/rss+xml" }).end(rss);
   });
   await new Promise((r) => feeds.listen(0, "127.0.0.1", r));
@@ -484,13 +492,17 @@ async function feedChecks(base, check, owner) {
     { collection: "feeds", id: "local", base: 0, after: { id: "local", url: `${at}/rss.xml` } },
     { collection: "feeds", id: "plain", base: 0, after: { id: "plain", url: `http://127.0.0.1:${feeds.address().port}/rss.xml` } },
     { collection: "feeds", id: "away", base: 0, after: { id: "away", url: `${at}/to-http` } },
+    // As long as an id may be: a story's id must still fit.
+    { collection: "feeds", id: LONG, base: 0, after: { id: LONG, url: `${at}/atom.xml` } },
   ]);
   const latest = (collection, id) => phone.changes().filter((c) => c.collection === collection && c.id === id).at(-1)?.after;
   let items = [];
-  for (let i = 0; i < 60 && !(items.length >= 2 && latest("fetched", "plain") && latest("fetched", "away")); i++) {
+  let atomItems = [];
+  for (let i = 0; i < 60 && !(items.length >= 2 && atomItems.length >= 2 && latest("fetched", "plain") && latest("fetched", "away")); i++) {
     await new Promise((r) => setTimeout(r, 250));
     await phone.settle();
     items = phone.changes().filter((c) => c.collection === "items" && c.after?.feed === "local");
+    atomItems = phone.changes().filter((c) => c.collection === "items" && c.after?.feed === LONG);
   }
   feeds.close();
   const first = items.find((c) => c.after.title === "First story")?.after;
@@ -505,6 +517,13 @@ async function feedChecks(base, check, owner) {
     "feed reader: a feed at http://, or one that redirects there, isn't read",
     /Only https/.test(latest("fetched", "plain")?.error ?? "") && /redirected away from https/.test(latest("fetched", "away")?.error ?? ""),
     JSON.stringify({ plain: latest("fetched", "plain"), away: latest("fetched", "away") }),
+  );
+  const based = atomItems.find((c) => c.after.title === "Based")?.after;
+  const relative = atomItems.find((c) => c.after.title === "Relative")?.after;
+  check(
+    "feed reader: an Atom feed with prefixed elements is read, its relative links made whole, and a feed with a 64-character id still keeps its stories",
+    latest("fetched", LONG)?.title === "Prefixed" && based?.link === "https://example.org/blog/posts/1" && relative?.link === `${at}/top` && atomItems.every((c) => c.id.length <= 64),
+    JSON.stringify({ fetched: latest("fetched", LONG), based, relative }),
   );
   phone.close();
   delete process.env.NODE_EXTRA_CA_CERTS;

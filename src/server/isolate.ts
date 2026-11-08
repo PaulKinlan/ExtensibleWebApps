@@ -10,12 +10,16 @@
 import { builtinModules, registerHooks } from "node:module";
 import { guardNetwork } from "./network-guard";
 
-const builtins = new Set(builtinModules.flatMap((m) => [m, `node:${m}`]));
 // A plugin's module is a data: URL, and it may import only other data: URLs: not Node's modules
-// (files, sockets, processes), and not files.
+// (files, sockets, processes), and not files. The check is made with copies of the built-ins it needs,
+// taken now: a plugin can replace String.prototype.startsWith for everyone, but not these.
+const builtins: Record<string, true> = Object.create(null);
+for (const m of builtinModules) builtins[m] = builtins[`node:${m}`] = true;
+const startsWith = Function.prototype.call.bind(String.prototype.startsWith) as (s: string, prefix: string) => boolean;
+const isData = (url: unknown) => typeof url === "string" && startsWith(url, "data:");
 registerHooks({
   resolve(specifier, context, next) {
-    if (context.parentURL?.startsWith("data:") && (builtins.has(specifier) || !specifier.startsWith("data:"))) throw new Error(`A plugin can't import ${specifier}`);
+    if (isData(context.parentURL) && (builtins[specifier] === true || !isData(specifier))) throw new Error(`A plugin can't import ${specifier}`);
     return next(specifier, context);
   },
 });

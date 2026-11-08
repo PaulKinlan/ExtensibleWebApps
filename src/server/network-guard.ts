@@ -21,10 +21,140 @@
 // addresses are open whatever name leads there.
 
 import { lookup, type LookupAddress, type LookupOptions } from "node:dns";
-import { BlockList, connect, createServer, isIP } from "node:net";
+import { connect, createServer } from "node:net";
 import { constants } from "node:os";
 
-const blocked = new BlockList();
+// The guard runs in the same process as the plugin, after it has started. A
+// plugin can replace built-ins for everyone (Set.prototype.has, a string or
+// RegExp method, Function.prototype.call), so the checks below use none it
+// can reach: copies taken when this module loads, before any plugin code,
+// plain property reads, and typed arrays.
+const call = Function.prototype.call;
+const codeAt = call.bind(String.prototype.charCodeAt) as (s: string, i: number) => number;
+const lower = call.bind(String.prototype.toLowerCase) as (s: string) => string;
+const sliceOf = call.bind(String.prototype.slice) as (s: string, from: number, to: number) => string;
+const reflectApply = Reflect.apply;
+const defineProperty = Object.defineProperty;
+const nullObject = Object.create.bind(Object, null) as () => Record<string, true>;
+const Hextets = Uint16Array;
+
+/** A hex digit's value, or -1. */
+function hex(c: number): number {
+  if (c >= 48 && c <= 57) return c - 48;
+  if (c >= 97 && c <= 102) return c - 87;
+  if (c >= 65 && c <= 70) return c - 55;
+  return -1;
+}
+
+/** A dotted IPv4 address in s[from, to) as a number, or -1. */
+function ipv4(s: string, from: number, to: number): number {
+  let value = 0;
+  let parts = 0;
+  let i = from;
+  while (parts < 4) {
+    let part = 0;
+    let digits = 0;
+    while (i < to && codeAt(s, i) >= 48 && codeAt(s, i) <= 57) {
+      if (digits === 1 && part === 0) return -1; // a leading zero
+      part = part * 10 + codeAt(s, i) - 48;
+      digits++;
+      i++;
+    }
+    if (digits === 0 || digits > 3 || part > 255) return -1;
+    value = value * 256 + part;
+    parts++;
+    if (parts < 4) {
+      if (i >= to || codeAt(s, i) !== 46) return -1;
+      i++;
+    }
+  }
+  return i === to ? value : -1;
+}
+
+/**
+ * An IP address as eight 16-bit groups (an IPv4 one as ::ffff:a.b.c.d), and
+ * whether it was written as IPv4; undefined if it isn't an IP address.
+ */
+function parse(written: string): { groups: Uint16Array; four: boolean } | undefined {
+  let from = 0;
+  let to = written.length;
+  if (to >= 2 && codeAt(written, 0) === 91 && codeAt(written, to - 1) === 93) {
+    from = 1;
+    to--;
+  }
+  for (let i = from; i < to; i++)
+    if (codeAt(written, i) === 37) {
+      to = i; // a zone, as in fe80::1%eth0
+      break;
+    }
+  const groups = new Hextets(8);
+  const v4 = ipv4(written, from, to);
+  if (v4 >= 0) {
+    groups[5] = 0xffff;
+    groups[6] = v4 >>> 16;
+    groups[7] = v4 & 0xffff;
+    return { groups, four: true };
+  }
+  // IPv6: the groups before a ::, and after it.
+  const head = new Hextets(8);
+  const tail = new Hextets(8);
+  let heads = 0;
+  let tails = 0;
+  let gap = false;
+  let i = from;
+  if (to - i >= 2 && codeAt(written, i) === 58 && codeAt(written, i + 1) === 58) {
+    gap = true;
+    i += 2;
+  } else if (i < to && codeAt(written, i) === 58) return undefined;
+  while (i < to) {
+    if ((gap ? tails : heads) >= 8) return undefined;
+    let j = i;
+    let value = 0;
+    while (j < to && hex(codeAt(written, j)) >= 0) value = value * 16 + hex(codeAt(written, j++));
+    if (j < to && codeAt(written, j) === 46) {
+      // A dotted IPv4 address as the last two groups.
+      const last = ipv4(written, i, to);
+      if (last < 0 || (gap ? tails : heads) > 6) return undefined;
+      if (gap) {
+        tail[tails++] = last >>> 16;
+        tail[tails++] = last & 0xffff;
+      } else {
+        head[heads++] = last >>> 16;
+        head[heads++] = last & 0xffff;
+      }
+      i = to;
+      break;
+    }
+    if (j === i || j - i > 4) return undefined;
+    if (gap) tail[tails++] = value;
+    else head[heads++] = value;
+    i = j;
+    if (i === to) break;
+    if (codeAt(written, i) !== 58) return undefined;
+    i++;
+    if (i < to && codeAt(written, i) === 58) {
+      if (gap) return undefined;
+      gap = true;
+      i++;
+    } else if (i === to) return undefined;
+  }
+  if (gap ? heads + tails > 7 : heads !== 8) return undefined;
+  for (let k = 0; k < heads; k++) groups[k] = head[k];
+  for (let k = 0; k < tails; k++) groups[8 - tails + k] = tail[k];
+  return { groups, four: false };
+}
+
+/** Whether the first `bits` bits of two addresses are the same. */
+function within(groups: Uint16Array, net: Uint16Array, bits: number): boolean {
+  for (let g = 0; g < 8 && bits > 0; g++, bits -= 16) {
+    const mask = bits >= 16 ? 0xffff : (0xffff << (16 - bits)) & 0xffff;
+    if ((groups[g] & mask) !== (net[g] & mask)) return false;
+  }
+  return true;
+}
+
+/** Private, local and reserved networks, as [groups, prefix length]; IPv4 ones as ::ffff:a.b.c.d/(96 + n). */
+const blocked: [Uint16Array, number][] = [];
 for (const [net, prefix] of [
   ["0.0.0.0", 8],
   ["10.0.0.0", 8],
@@ -36,37 +166,32 @@ for (const [net, prefix] of [
   ["192.168.0.0", 16],
   ["198.18.0.0", 15],
   ["224.0.0.0", 3],
-] as const)
-  blocked.addSubnet(net, prefix, "ipv4");
-for (const [net, prefix] of [
   ["::", 128],
   ["::1", 128],
   ["fc00::", 7],
   ["fe80::", 10],
   ["ff00::", 8],
   ["64:ff9b::", 96],
-] as const)
-  blocked.addSubnet(net, prefix, "ipv6");
+] as const) {
+  const ip = parse(net)!;
+  blocked[blocked.length] = [ip.groups, ip.four ? 96 + prefix : prefix];
+}
+const BLOCKED = blocked.length;
 
-/** An IPv6 address that holds an IPv4 one (::ffff:127.0.0.1, or ::ffff:7f00:1), as that IPv4 address. */
-function mapped(address: string): string | undefined {
-  const m = /^::ffff:(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/i.exec(address);
-  if (!m) return undefined;
-  if (m[1]) return m[1];
-  const hi = parseInt(m[2], 16);
-  const lo = parseInt(m[3], 16);
-  return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+/** Whether an IP address is on a private, local or reserved network (anything that isn't an IP address is). */
+export function isPrivate(address: string): boolean {
+  const ip = typeof address === "string" ? parse(address) : undefined;
+  if (!ip) return true;
+  for (let k = 0; k < BLOCKED; k++) if (within(ip.groups, blocked[k][0], blocked[k][1])) return true;
+  return false;
 }
 
-/** Whether an IP address is on a private, local or reserved network. */
-export function isPrivate(address: string): boolean {
-  const ip = address.replace(/^\[|\]$/g, "");
-  const v4 = mapped(ip);
-  if (v4) return blocked.check(v4, "ipv4");
-  const family = isIP(ip);
-  if (family === 4) return blocked.check(ip, "ipv4");
-  if (family === 6) return blocked.check(ip, "ipv6");
-  return true;
+/** An address as a key, the same however it is written in its family (::1 and 0:0::1). */
+function key(address: string): string | undefined {
+  const ip = parse(address);
+  if (!ip) return undefined;
+  const g = ip.groups;
+  return `${ip.four ? 4 : 6}:${g[0]}:${g[1]}:${g[2]}:${g[3]}:${g[4]}:${g[5]}:${g[6]}:${g[7]}`;
 }
 
 class PrivateAddress extends Error {
@@ -76,23 +201,37 @@ class PrivateAddress extends Error {
   }
 }
 
-const bare = (host: string) => host.toLowerCase().replace(/^\[|\]$/g, "");
+/** A host as written in a URL, lower case and without brackets. */
+const bare = (host: string) => {
+  const h = lower(host);
+  return h.length >= 2 && codeAt(h, 0) === 91 && codeAt(h, h.length - 1) === 93 ? sliceOf(h, 1, h.length - 1) : h;
+};
 const all = (host: string) => new Promise<LookupAddress[]>((done) => lookup(host, { all: true }, (error, list) => done(error ? [] : list)));
 
 /** Locks a handle's connect method to `guarded`, so nothing in this process can connect without it. */
 function lock(proto: any, name: string, guarded: (original: Function) => Function) {
   const original = proto[name];
   if (typeof original !== "function") return;
-  Object.defineProperty(proto, name, { value: guarded(original), writable: false, configurable: false });
+  defineProperty(proto, name, { value: guarded(original), writable: false, configurable: false });
 }
 
 /** Puts the guard on this process's connections. Called once, before the plugin's code runs. */
 export async function guardNetwork(allow: string[] = []): Promise<void> {
-  const names = new Set(allow.map(bare));
+  // Plain objects with no prototype, read and written as properties, not Sets a plugin can change.
+  const names = nullObject();
   // The private addresses a connection may go to: the allowed hosts', as written or looked up.
-  const addresses = new Set<string>();
-  for (const name of names) for (const ip of isIP(name) ? [name] : (await all(name)).map((a) => a.address)) addresses.add(ip);
-  const refused = (ip: string) => isPrivate(ip) && !addresses.has(bare(ip));
+  const addresses = nullObject();
+  const open = (address: string) => {
+    const k = key(address);
+    if (k) addresses[k] = true;
+  };
+  for (const host of allow) {
+    const name = bare(host);
+    names[name] = true;
+    if (key(name)) open(name);
+    else for (const a of await all(name)) open(a.address);
+  }
+  const refused = (ip: unknown) => typeof ip !== "string" || (isPrivate(ip) && addresses[key(ip) ?? ""] !== true);
 
   // The handles every TCP and Unix socket connects through. A refused connect fails as EACCES.
   const EACCES = -constants.errno.EACCES;
@@ -105,8 +244,9 @@ export async function guardNetwork(allow: string[] = []): Promise<void> {
   pipe.destroy();
   for (const name of ["connect", "connect6"])
     lock(TCP.prototype, name, (original) =>
-      function (this: unknown, request: unknown, address: string, ...rest: unknown[]) {
-        return refused(address) ? EACCES : original.call(this, request, address, ...rest);
+      function (this: unknown, _request: unknown, address: unknown) {
+        // arguments, not a spread: a spread uses an iterator a plugin can replace.
+        return refused(address) ? EACCES : reflectApply(original, this, arguments);
       },
     );
   if (Pipe) lock(Pipe.prototype, "connect", () => () => EACCES);
@@ -122,10 +262,12 @@ export async function guardNetwork(allow: string[] = []): Promise<void> {
     lookup(host, { ...options, all: true }, (error, found) => {
       if (error) return done(error);
       const list = found as LookupAddress[];
-      const named = names.has(bare(host));
-      if (named) for (const a of list) addresses.add(a.address);
+      const named = names[bare(host)] === true;
       // By name, only the allowed names may go inside (the handles' check is by address).
-      const inside = !named && list.find((a) => isPrivate(a.address));
+      let inside: LookupAddress | undefined;
+      for (let k = 0; k < list.length; k++)
+        if (named) open(list[k].address);
+        else if (!inside && isPrivate(list[k].address)) inside = list[k];
       if (inside) return done(new PrivateAddress(`${host} (${inside.address})`));
       if (options.all) return done(null, list);
       done(null, list[0].address, list[0].family);
@@ -135,7 +277,7 @@ export async function guardNetwork(allow: string[] = []): Promise<void> {
   /** Refuses a URL whose host is a literal private IP, before the request. */
   const check = (url: URL) => {
     const host = bare(url.hostname);
-    if (!names.has(host) && isIP(host) && refused(host)) throw new PrivateAddress(url.host);
+    if (names[host] !== true && key(host) && refused(host)) throw new PrivateAddress(url.host);
   };
 
   const fetchFrom = self.fetch.bind(self);

@@ -69,11 +69,17 @@ export default async function (ctx) {
   const read = (feed) =>
     inTurn(async () => {
       try {
-        const { title, items } = parse(await download(feed.url));
+        // A read waits its turn: by then the feed may have been taken away, or given a new address.
+        const now = (await ctx.call("data", "list", "feeds")).find((f) => f.id === feed.id);
+        if (!now || now.url !== feed.url) return;
+        const { title, items } = parse(...(await download(feed.url)));
         const had = new Set((await ctx.call("data", "list", "items")).filter((i) => i.feed === feed.id).map((i) => i.id));
         let added = 0;
-        for (const item of items.slice(0, KEEP)) {
-          const id = `${feed.id}-${hash(item.key)}`;
+        // Newest first, whatever order the feed lists them in; a story with no date goes last.
+        const newest = items.toSorted((a, b) => (b.published || "").localeCompare(a.published || ""));
+        for (const item of newest.slice(0, KEEP)) {
+          // Short whatever the feed's id: a record's id is at most 64 characters.
+          const id = `${hash(feed.id)}-${hash(item.key)}${hash(`\n${item.key}`)}`;
           if (had.has(id)) continue;
           await ctx.call("data", "put", "items", { id, feed: feed.id, title: item.title, link: item.link, published: item.published, summary: item.summary });
           added++;
@@ -112,7 +118,7 @@ export default async function (ctx) {
   await readAll();
 }
 
-/** The feed's text, over https only, at most MAX_BYTES of it. */
+/** The feed's text, over https only, at most MAX_BYTES of it, and the address it came from after any redirects. */
 async function download(url) {
   if (!/^https:\/\//i.test(String(url))) throw new Error("Only https:// feeds are read");
   // Redirects are followed here, a hop at a time, so one to http:// is refused before it is fetched.
@@ -140,7 +146,7 @@ async function download(url) {
     }
     chunks.push(value);
   }
-  return new TextDecoder().decode(concat(chunks));
+  return [new TextDecoder().decode(concat(chunks)), url];
 }
 
 function concat(chunks) {
@@ -152,17 +158,22 @@ function concat(chunks) {
 
 /**
  * An RSS or Atom feed's title and stories, read with patterns: a server plugin has no DOMParser. Only text
- * comes out (titles, a plain summary, a link), so nothing in a feed is ever shown as HTML.
+ * comes out (titles, a plain summary, a link), so nothing in a feed is ever shown as HTML. `url` is where the
+ * feed came from, for the links in it that are relative.
  */
-function parse(xml) {
-  const text = String(xml);
-  if (!/<(rss|feed|rdf:RDF)\b/i.test(text)) throw new Error("That isn't an RSS or Atom feed");
-  const entries = [...text.matchAll(/<(item|entry)\b[^>]*>([\s\S]*?)<\/\1>/gi)].map((m) => m[2]);
+function parse(xml, url) {
+  let text = String(xml);
+  const root = /<(?:([\w-]+):)?(rss|feed|RDF)\b([^>]*)>/i.exec(text);
+  if (!root) throw new Error("That isn't an RSS or Atom feed");
+  // An Atom feed may name its elements with a prefix (<atom:feed>, <atom:entry>): read them without it.
+  if (root[1] && root[2].toLowerCase() === "feed") text = text.replace(new RegExp(`<(/?)${root[1]}:`, "g"), "<$1");
+  const feedBase = baseOf(root[3], url);
+  const entries = [...text.matchAll(/<(item|entry)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].map((m) => ({ body: m[3], base: baseOf(m[2], feedBase) }));
   const first = text.search(/<(item|entry)\b/i);
   const head = first < 0 ? text : text.slice(0, first);
-  const items = entries.map((entry) => {
+  const items = entries.map(({ body: entry, base }) => {
     const title = words(tag(entry, "title")).slice(0, 300) || "(untitled)";
-    const link = linkOf(entry);
+    const link = linkOf(entry, base);
     const published = date(tag(entry, "pubDate") || tag(entry, "published") || tag(entry, "updated") || tag(entry, "dc:date"));
     const summary = plain(tag(entry, "description") || tag(entry, "summary") || tag(entry, "content")).slice(0, 400);
     return { key: tag(entry, "guid") || tag(entry, "id") || link || title, title, link, published, summary };
@@ -176,10 +187,27 @@ function tag(xml, name) {
   return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim() : "";
 }
 
-/** A story's link: RSS's <link>text</link>, or Atom's <link href> (the alternate one, if it says). Only http(s). */
-function linkOf(entry) {
+/** The address an element's xml:base attribute (in `attributes`) gives, against `base`; `base` if it has none. */
+function baseOf(attributes, base) {
+  const given = /\bxml:base\s*=\s*["']([^"']*)["']/i.exec(attributes)?.[1];
+  try {
+    return given ? new URL(decode(given), base).href : base;
+  } catch {
+    return base;
+  }
+}
+
+/** A story's link: RSS's <link>text</link>, or Atom's <link href> (the alternate one, if it says), against `base`. Only http(s). */
+function linkOf(entry, base) {
   const atom = [...entry.matchAll(/<link\b([^>]*)\/?>/gi)].map((m) => ({ href: /\bhref\s*=\s*["']([^"']+)["']/i.exec(m[1])?.[1], rel: /\brel\s*=\s*["']([^"']+)["']/i.exec(m[1])?.[1] })).filter((l) => l.href);
-  const link = decode((atom.find((l) => !l.rel || l.rel === "alternate") ?? atom[0])?.href ?? tag(entry, "link")).trim();
+  const written = decode((atom.find((l) => !l.rel || l.rel === "alternate") ?? atom[0])?.href ?? tag(entry, "link")).trim();
+  if (!written) return "";
+  let link;
+  try {
+    link = new URL(written, base).href;
+  } catch {
+    return "";
+  }
   return /^https?:\/\//i.test(link) ? link.slice(0, 2000) : "";
 }
 
