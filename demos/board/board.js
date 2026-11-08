@@ -249,7 +249,7 @@ export default async function (ctx) {
 
   /** Moves a card up (-1) or down (+1) in its column: the ↑ ↓ buttons, for when there's no pointer to drag with. */
   const reorder = async (id, step) => {
-    const c = await ctx.call("data", "get", "cards", id);
+    const c = await ctx.call("data", "get", "studio-cards", id);
     if (!c) return;
     const column = (await all(ctx)).filter((x) => x.column === c.column);
     const at = column.findIndex((x) => x.id === id);
