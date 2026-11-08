@@ -547,6 +547,10 @@ export default async (ctx) => {
   await a.close({ runBeforeUnload: true });
   await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 11, null, { timeout: 10000 });
   check("closing the spawner tab moves the plugin workers to the other tab", true);
+  // A worker is there before its plugin has run: wait until word-count is ready in this tab, or the click
+  // below can open the note before it listens for post:open, and the status bar never fills.
+  const bTab = await b.evaluate(() => window.__host.tab);
+  await b.waitForFunction((t) => window.__host.traces.some((e) => e.name === "plugin:ready" && e.plugin === "word-count" && e.detail === `in tab ${t}`), bTab, { timeout: 10000 }).catch(() => {});
   await b.click("nav >> text=Hello there");
   await b.waitForFunction(() => /\d+ words/.test(document.querySelector("footer").textContent), null, { timeout: 5000 });
   check("plugins work again after the handover", true, await status(b));
