@@ -84,6 +84,8 @@ export default async function ({ a, check, openTab, URL, plugin, pluginLog }) {
     await page.waitForSelector('[data-key^="review:"] >> text=Librarian', { timeout: 10000 }).catch(() => {});
     await page.click('[data-key^="review:"] >> text=Accept').catch(() => {});
     check("a check allows another agent's tool call, which then lands", await tableHas("George Eliot"));
+    // The trace reaches a tab in batches, up to a tenth of a second after the call it records: wait for the ask.
+    await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked") && e.detail.includes("Middlemarch") && e.detail.includes("agent:beforeTool")), null, { timeout: 3000 }).catch(() => {});
     const security = (await asked()).filter((c) => c.system.startsWith("You keep a reading list safe") && c.first.includes("Middlemarch"));
     check(
       "a check with `when` isn't woken by a value that doesn't match",

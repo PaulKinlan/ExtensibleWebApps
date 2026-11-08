@@ -3,9 +3,11 @@
 // VOICES source below), which the audio service runs on the page's audio
 // thread; this plugin only says "play a kick now".
 //
-// The clock runs here, in the plugin's worker. Each step it asks the audio
-// service to play the hits on that step, and draws the grid again with the
-// playing column lit, eight times a second at 120 bpm. That redraw is the
+// The clock runs here, in the plugin's worker. A little before each step it
+// asks the audio service to play that step's hits `at` the step's time, so
+// they land on the audio clock's exact sample however long the message took.
+// On the step it draws the grid again with the playing column lit, eight
+// times a second at 120 bpm. That redraw is the
 // stress test: the host morphs only the cells whose attributes changed.
 //
 // It writes what is playing to a record of its own, `transport/now`
@@ -76,6 +78,8 @@ registerProcessor("beat-voice", class extends AudioWorkletProcessor {
     this.voice = o.voice || "kick";
     this.freq = o.freq || 220;
     this.gain = o.gain ?? 0.8;
+    // When to begin, on the audio clock (seconds): the audio service passes it, so the hit lands on its sample.
+    this.start = o.start || 0;
     this.t = 0;
     this.phase = 0;
     this.phase2 = 0;
@@ -125,6 +129,10 @@ registerProcessor("beat-voice", class extends AudioWorkletProcessor {
     const dt = 1 / sampleRate;
     const n = out[0].length;
     for (let i = 0; i < n; i++) {
+      if (currentTime + i * dt < this.start) {
+        for (const channel of out) channel[i] = 0;
+        continue;
+      }
       const s = this.t < this.length ? this.sample(dt) * this.gain : 0;
       for (const channel of out) channel[i] = s;
       this.t += dt;
@@ -176,7 +184,9 @@ export default async function (ctx) {
   let step = -1;
   let startedAt = 0;
   let timer = null;
-  let last = -1; // the count of the last step played since startedAt
+  let last = -1; // the count of the last step sent since startedAt (it sounds up to AHEAD ms later)
+  let lastDue = 0; // when that step sounds (ms since the epoch)
+  const lights = new Set(); // timers that light a sent step's column when it sounds
   let hits = 0;
 
   const load = async () => {
@@ -220,17 +230,25 @@ export default async function (ctx) {
   /** How long a sixteenth lasts at the pattern's tempo, in ms. */
   const sixteenth = () => 60_000 / (pattern()?.bpm ?? 120) / 4;
 
-  /** Plays step `i`'s hits, and lights its column. */
-  const tick = (i) => {
-    step = i;
+  /** How far ahead (ms) each step's hits are sent, so they reach the audio thread before they are due. */
+  const AHEAD = 100;
+
+  /** Sends step `i`'s hits to play at `due` on the audio clock, and lights its column when it comes. */
+  const tick = (i, due) => {
     const p = pattern();
     for (const t of TRACKS) {
       if (muted.has(t.id) || row(p, t.id)[i] !== "x") continue;
       const freq = t.id === "bell" ? BELL[i % 8] : t.id === "bass" ? BASS[i % 8] : undefined;
-      ctx.call("audio", "play", { processor: "beat-voice", ms: 1300, options: { voice: t.id, freq } }).catch(() => {});
+      // In the "transport" group, so Stop can take back hits that haven't sounded yet.
+      ctx.call("audio", "play", { processor: "beat-voice", ms: 1300, at: due, group: "transport", options: { voice: t.id, freq } }).catch(() => {});
       hits++;
     }
-    draw();
+    const light = setTimeout(() => {
+      lights.delete(light);
+      step = i;
+      draw();
+    }, Math.max(0, due - Date.now()));
+    lights.add(light);
   };
 
   /**
@@ -244,15 +262,16 @@ export default async function (ctx) {
     timer = setTimeout(() => {
       if (!playing) return;
       last = n;
-      tick(n % STEPS);
+      lastDue = due;
+      tick(n % STEPS, due);
       schedule(n + 1);
-    }, Math.max(0, due - Date.now()));
+    }, Math.max(0, due - AHEAD - Date.now()));
   };
 
   const play = async () => {
     if (playing) return;
     playing = true;
-    startedAt = Date.now() + 60;
+    startedAt = Date.now() + AHEAD;
     last = -1;
     schedule(0);
     await announce();
@@ -260,6 +279,10 @@ export default async function (ctx) {
   const stop = async () => {
     playing = false;
     clearTimeout(timer);
+    // Hits and columns already sent but not yet due are taken back; a sound already playing rings out.
+    for (const light of lights) clearTimeout(light);
+    lights.clear();
+    ctx.call("audio", "cancel", { group: "transport" }).catch(() => {});
     step = -1;
     draw();
     await announce();
@@ -267,15 +290,25 @@ export default async function (ctx) {
 
   /**
    * When the tempo changes while playing (the slider, a command, another
-   * pattern), keeps the arm where it is in the bar: the time already into
-   * this step carries over at the new length, and the next step is
-   * scheduled from there. Then tells other plugins the new clock.
+   * pattern), keeps the arm where it is in the bar, and the clock other
+   * plugins read in step with what is heard. Steps already sent keep their
+   * time. If the last one has sounded, the time already into it carries
+   * over at the new length; if it hasn't, the new tempo starts from it.
+   * The next step is scheduled from there. Then tells other plugins.
    */
   const retime = (before) => {
-    if (!playing || before === sixteenth()) return;
+    const len = sixteenth();
+    if (!playing || before === len) return;
     const now = Date.now();
-    const pos = Math.min(Math.max((now - startedAt) / before, last), last + 1);
-    startedAt = now - pos * sixteenth();
+    if (last < 0) startedAt = now + AHEAD; // nothing sent yet
+    else if (now < lastDue) {
+      // Sent but not yet heard: that step is where the new tempo starts.
+      const swing = ((pattern()?.swing ?? 0) / 100) * before * 0.5;
+      startedAt = lastDue - (last % 2 ? swing : 0) - last * len;
+    } else {
+      const pos = Math.min(Math.max((now - startedAt) / before, last), last + 0.999);
+      startedAt = now - pos * len;
+    }
     clearTimeout(timer);
     schedule(last + 1);
     return announce();

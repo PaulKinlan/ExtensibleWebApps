@@ -26,9 +26,14 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
   const installing = new Map<string, Promise<string | undefined>>();
 
   /** Stops an app plugin once no open tab needs it. */
+  // A tab-scoped plugin an app links runs only in the tabs that have that app open.
+  remote.tabsFor = (id) => (remote.installed.get(id)?.origin === "app" ? [...(users.get(id) ?? [])] : undefined);
+
   function release(id: string, tab: string): void {
     const tabs = users.get(id);
-    if (!tabs?.delete(tab) || tabs.size) return;
+    if (!tabs?.delete(tab)) return;
+    // Other tabs still need it: only this tab's instance (of a tab-scoped plugin) stops.
+    if (tabs.size) return remote.stopIn(id, tab);
     users.delete(id);
     if (remote.installed.get(id)?.origin === "app") remote.uninstall(id);
   }
@@ -71,7 +76,10 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     linked.get(host.tab)!.add(id);
     if (!users.has(id)) users.set(id, new Set());
     users.get(id)!.add(host.tab);
-    if (running && !installing.has(id)) return { href, id };
+    if (running && !installing.has(id)) {
+      remote.startIn(id, host);
+      return { href, id };
+    }
 
     let pending = installing.get(id);
     if (!pending) {
@@ -85,6 +93,8 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     }
     // Every tab using it closed while it started, before it was installed: stop it now.
     if (!users.has(id) && remote.installed.get(id)?.origin === "app") remote.uninstall(id);
+    // This tab may have joined while another tab's open was installing it.
+    else remote.startIn(id, host);
     return { href, id };
   }
 
