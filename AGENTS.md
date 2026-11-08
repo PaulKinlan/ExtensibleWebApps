@@ -7,6 +7,7 @@ Instructions for AI agents (and people) building apps and plugins on this platfo
 - An **app** is a folder in `demos/` (or anywhere served) with an `app.html`: a plain page that loads the platform with two lines, lays out `<slot name="…">` elements, and lists plugins with `<link rel="plugin" href="x.js">`.
 - A plugin for a page with **no slot** for it names a place in its manifest instead, `places: { name: { at: "<css selector>", put: "after" } }`, and renders to that name. Pick selectors the author chose (`#id`, `[data-part=…]`, landmarks), not positions, and respect `data-extend="review"` and `"locked"`: [places](docs/guide/places.md).
 - A **plugin** is one ES module, run in its own worker. It has a manifest and a default export that gets `ctx`. Its views are `<template id>` elements in an `.html` file next to it.
+- An **agent** is a Markdown file linked with `<link rel="agent" href="x.agent.md">`: frontmatter for its id, permissions and what wakes it, then its instructions. The kernel runs it as a plugin that asks a model and calls tools: [agents](docs/guide/agents.md).
 - **No build step.** Write plain JavaScript (JSDoc and `// @ts-check` are welcome), HTML and CSS. The browser runs the files as written. Don't add bundlers, frameworks or npm dependencies to apps or plugins.
 
 Start with `npm run new-app -- my-app`: it copies [`starter/`](starter/), a list you can add to and tick off, to `demos/my-app/`. [`demos/habits/`](demos/habits/) is the smallest complete demo, and [the guide](docs/guide/writing-a-plugin.md) walks through it.

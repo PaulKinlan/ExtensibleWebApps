@@ -14,6 +14,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [Styling](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/styling.md): design tokens, plugin stylesheets, page overrides
 - [Sharing data between apps](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/sharing-data-between-apps.md): one app reading another's collection
 - [Routes and the service worker](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/routes.md): plugins answering links, forms and fetches
+- [Agents](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/agents.md): a Markdown file linked with <link rel="agent">, run as a plugin that asks a model and calls tools through the gate
 - [Places](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/places.md): plugins adding to, replacing or hiding parts of a page with no slot for them; open, review and locked areas; a person's own plugins
 
 ## Reference

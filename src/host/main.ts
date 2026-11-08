@@ -161,8 +161,8 @@ function listen(entry: Entry) {
 
 // ---- The app ----
 
-/** The plugins this page's app links; the kernel answers with their ids. */
-const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"]')].map((link) => link.href);
+/** The plugins this page's app links, and its agents (Markdown files the kernel runs as plugins); the kernel answers with their ids. */
+const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"], link[rel~="agent"]')].map((link) => link.href);
 /** The platform's own page, with the trace. Every other page is an app, even one that links no plugins. */
 const isWorkbench = !!document.getElementById("devtools");
 /** The app's folder, which names where the person's own plugins for it are kept: `demos/trip` for /demos/trip/app.html, and for its screens, /demos/trip/day/2. */

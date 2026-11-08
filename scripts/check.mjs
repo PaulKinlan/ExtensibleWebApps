@@ -14,6 +14,8 @@
 //              `permissions` (read from the same tables as docs/api.md)
 //   views      each ctx.ui.views("x.html") file exists, has the templates the
 //              code draws, and uses only HTML the sanitiser keeps
+//   agents     each <link rel="agent"> file's frontmatter reads as the manifest
+//              the kernel makes from it, with an id no plugin uses
 //
 // It reads the source, so it can only follow names written as plain strings:
 // ctx.call("data", "put", "library", …) is checked, ctx.call(service, …) isn't.
@@ -33,8 +35,14 @@ async function loadKernelRules() {
     'export { readManifest, RESERVED } from "./src/kernel/manifest.ts";',
     'export { capabilities, grants } from "./src/kernel/gate.ts";',
     'export * from "./src/shared/html.ts";',
+    'export { fromAgentFile } from "./src/kernel/agents/file.ts";',
   ].join("\n");
-  const out = await build({ stdin: { contents: entry, resolveDir: ROOT, loader: "ts" }, bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent" });
+  // `?raw` imports (the agent loop's source) as text, as Vite does.
+  const raw = { name: "raw", setup(b) {
+    b.onResolve({ filter: /\?raw$/ }, (a) => ({ path: resolve(a.resolveDir, a.path.slice(0, -4)), namespace: "raw" }));
+    b.onLoad({ filter: /.*/, namespace: "raw" }, (a) => ({ contents: readFileSync(a.path, "utf8"), loader: "text" }));
+  } };
+  const out = await build({ stdin: { contents: entry, resolveDir: ROOT, loader: "ts" }, bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent", plugins: [raw] });
   const rules = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
   // The kernel reserves each service's name when it loads src/kernel/services/,
   // so reserve the same names here, read from the same folder.
@@ -184,6 +192,26 @@ function checkApp(file, rules, reference) {
     for (const { slot, line } of plugin.slots) {
       if (!slots.has(slot)) report("warning", pluginFile, line, `Draws into the slot "${slot}", which app.html doesn't have, so it won't show: add <slot name="${slot}"></slot>`);
     }
+  }
+  // Agents: Markdown files the kernel turns into plugins, read the same way.
+  for (const link of links.filter((t) => rels(t).includes("agent"))) {
+    const href = link.attributes.href;
+    const agentFile = href && !/^[a-z]+:/i.test(href) ? local(href, file) : undefined;
+    if (!agentFile || !existsSync(agentFile)) {
+      report("error", file, link.line, href ? `${href} doesn't exist` : '<link rel="agent"> has no href');
+      continue;
+    }
+    if (!/\.agent\.md$/i.test(agentFile)) report("error", file, link.line, `${href}: an agent file's name ends in .agent.md, or the kernel reads it as a plugin`);
+    let id;
+    try {
+      id = rules.readManifest(rules.fromAgentFile(readFileSync(agentFile, "utf8"))).id;
+    } catch (error) {
+      report("error", agentFile, Number(/Line (\d+)/.exec(error.message)?.[1]) || 1, error.message);
+      continue;
+    }
+    app.plugins.push(id);
+    if (ids.has(id)) report("error", agentFile, 1, `The id "${id}" is also used by ${ids.get(id)}; the second replaces the first`);
+    ids.set(id, rel(agentFile));
   }
   problems.sort((x, y) => x.file.localeCompare(y.file) || (x.line ?? 0) - (y.line ?? 0));
   return app;
