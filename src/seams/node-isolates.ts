@@ -34,8 +34,9 @@ export function nodeIsolates(runtime: string, { allowPrivate = [] }: { allowPriv
       const child = fork(file, [], {
         // It may read its own runtime (beside it, in the build folder), and nothing else.
         execArgv: ["--permission", `--allow-fs-read=${dirname(file)}/*`, "--no-warnings"],
-        // Nothing of the server's: no environment (keys live there), no input.
-        env: {},
+        // Nothing of the server's: no environment (keys live there), no input. Only the certificate authorities the
+        // server trusts beyond Node's own (a company's, or a test's), so a plugin's https trusts the same sites.
+        env: process.env.NODE_EXTRA_CA_CERTS ? { NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS } : {},
         serialization: "advanced",
         stdio: ["ignore", "inherit", "inherit", "ipc"],
       });
