@@ -27,7 +27,8 @@ const attr = (tag: string, name: string) => new RegExp(`\\b${name}\\s*=\\s*(?:"(
 export function pluginLinks(html: string, base: string): string[] {
   const site = new URL(base).origin;
   const out: string[] = [];
-  for (const [tag] of html.matchAll(LINK)) {
+  // A commented-out link is off, in the browser and here.
+  for (const [tag] of html.replace(/<!--[\s\S]*?(?:-->|$)/g, "").matchAll(LINK)) {
     if ((attr(tag, "rel") ?? "").toLowerCase() !== "plugin") continue;
     const href = attr(tag, "href");
     if (!href) continue;
@@ -41,6 +42,8 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
   let apps: string[] = [];
   /** The apps whose plugins were started since the kernel started. */
   const started = new Set<string>();
+  /** The plugin files read and installed since the kernel started, so a retry doesn't start them twice. */
+  const loadedPlugins = new Set<string>();
   /** Starts under way, and when the last one finished. */
   const starting = new Set<Promise<void>>();
   let finished = 0;
@@ -49,45 +52,62 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
     for (const app of apps) void start(app);
   });
 
-  function start(app: string): Promise<void> {
-    if (started.has(app)) return Promise.resolve();
+  /**
+   * Starts an app's server plugins. Resolves to whether the app is there (its app.html was read). A plugin
+   * that couldn't be read is tried again the next time a device opens the app; one that started isn't.
+   */
+  function start(app: string): Promise<boolean> {
+    if (started.has(app)) return Promise.resolve(true);
     started.add(app);
-    const run = startApp(app).finally(() => {
-      starting.delete(run);
+    const run = startApp(app).then(
+      (complete) => {
+        if (!complete) started.delete(app);
+        return true;
+      },
+      (error) => {
+        // Not this time: the next device that opens it tries again.
+        started.delete(app);
+        record({ kind: "error", name: "server:app", detail: `${app}: ${error instanceof Error ? error.message : error}` });
+        return false;
+      },
+    );
+    const settled = run.then(() => {});
+    starting.add(settled);
+    void settled.finally(() => {
+      starting.delete(settled);
       finished = Date.now();
     });
-    starting.add(run);
     return run;
   }
 
-  async function startApp(app: string): Promise<void> {
+  /** Resolves to whether every plugin the app links could be read; throws if its app.html can't be. */
+  async function startApp(app: string): Promise<boolean> {
     const base = `${origin.replace(/\/$/, "")}/${app}/`;
-    try {
-      const page = await fetcher(`${base}app.html`);
-      if (!page.ok) throw new Error(`${app}/app.html: ${page.status}`);
-      for (const href of pluginLinks(await page.text(), base)) {
-        const answer = await fetcher(href);
-        if (!answer.ok) {
-          record({ kind: "error", name: "server:plugin", detail: `${href}: ${answer.status}` });
-          continue;
-        }
-        const source = await answer.text();
-        let runs: string | undefined;
-        try {
-          runs = readManifest(source).runs;
-        } catch (error) {
-          record({ kind: "error", name: "server:plugin", detail: `${href}: ${error instanceof Error ? error.message : error}` });
-          continue;
-        }
-        if (runs !== "server" && runs !== "both") continue;
-        const result = await remote.install(source, { origin: "server", href });
-        record({ kind: "lifecycle", name: "server:plugin", detail: `${app}: ${href}${result.ok ? "" : ` · ${result.error}`}` });
+    const page = await fetcher(`${base}app.html`);
+    if (!page.ok) throw new Error(`${app}/app.html: ${page.status}`);
+    let complete = true;
+    for (const href of pluginLinks(await page.text(), base)) {
+      if (loadedPlugins.has(href)) continue;
+      const answer = await fetcher(href).catch((error) => new Response(String(error), { status: 599 }));
+      if (!answer.ok) {
+        complete = false;
+        record({ kind: "error", name: "server:plugin", detail: `${href}: ${answer.status}` });
+        continue;
       }
-    } catch (error) {
-      // Not this time: the next device that opens it tries again.
-      started.delete(app);
-      record({ kind: "error", name: "server:app", detail: `${app}: ${error instanceof Error ? error.message : error}` });
+      const source = await answer.text();
+      let runs: string | undefined;
+      try {
+        runs = readManifest(source).runs;
+      } catch (error) {
+        record({ kind: "error", name: "server:plugin", detail: `${href}: ${error instanceof Error ? error.message : error}` });
+        continue;
+      }
+      loadedPlugins.add(href);
+      if (runs !== "server" && runs !== "both") continue;
+      const result = await remote.install(source, { origin: "server", href });
+      record({ kind: "lifecycle", name: "server:plugin", detail: `${app}: ${href}${result.ok ? "" : ` · ${result.error}`}` });
     }
+    return complete;
   }
 
   return {
@@ -100,12 +120,11 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
       } catch {
         return;
       }
-      if (!apps.includes(folder)) {
-        if (apps.length >= MAX_APPS) return;
-        apps.push(folder);
-        await store.writeJson(FILE, apps);
-      }
-      await start(folder);
+      if (!apps.includes(folder) && apps.length >= MAX_APPS) return;
+      // Kept only once its app.html is there, so names of apps that don't exist can't fill the list.
+      if (!(await start(folder)) || apps.includes(folder) || apps.length >= MAX_APPS) return;
+      apps.push(folder);
+      await store.writeJson(FILE, apps);
     },
     /** The apps opened in the space. */
     list: async () => (await loaded, [...apps]),

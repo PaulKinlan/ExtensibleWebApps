@@ -270,6 +270,7 @@ async function serverPluginChecks(base, check, owner, restart) {
     counted?.count === 1 && unrouted.status === 404 && nowhere.status === 404 && big.status === 413,
     JSON.stringify({ counted, unrouted: unrouted.status, nowhere: nowhere.status, big: big.status }),
   );
+  check("server plugins: a plugin linked only inside an HTML comment doesn't start on the server", !phone.changes().some((c) => c.collection === "ghosts"), JSON.stringify(phone.changes().filter((c) => c.collection === "ghosts")));
   phone.close();
 
   // A member's client can't run its own code on the server, or replace the app's plugin.

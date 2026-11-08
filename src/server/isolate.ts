@@ -45,7 +45,7 @@ self.addEventListener = (type: string, listener: Listener) => listeners.set(type
 self.__moduleUrl = (source: string) => `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`;
 
 let started = false;
-node.on("message", (message: any) => {
+function handle(message: any) {
   if (!started && message?.t === "init") {
     started = true;
     if (!message.network) for (const name of ["fetch", "WebSocket", "EventSource"]) delete self[name];
@@ -55,6 +55,12 @@ node.on("message", (message: any) => {
     return;
   }
   port.onmessage?.({ data: message });
-});
+}
 
+// The kernel may send before the runtime has loaded (and set self.onmessage): those wait until it has.
+const early: unknown[] = [];
+let loaded = false;
+node.on("message", (message: unknown) => (loaded ? handle(message) : early.push(message)));
 await import("../sandbox/runtime");
+loaded = true;
+for (const message of early.splice(0)) handle(message);
