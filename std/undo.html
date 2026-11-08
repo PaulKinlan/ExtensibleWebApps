@@ -1,0 +1,15 @@
+<!--
+  The Undo and Redo buttons. undo.js sends { noUndo, noRedo, undoTitle,
+  redoTitle, problem }: a button is disabled when there is nothing for it to
+  do, and its title says what it would do.
+-->
+<style>
+  .undo { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+</style>
+<template id="buttons">
+  <div class="undo">
+    <button type="button" data-action="undo" disabled="{{noUndo}}" title="{{undoTitle}}" aria-label="{{undoTitle}}">↶ Undo</button>
+    <button type="button" data-action="redo" disabled="{{noRedo}}" title="{{redoTitle}}" aria-label="{{redoTitle}}">↷ Redo</button>
+    <template if="problem"><small role="status">{{problem}}</small></template>
+  </div>
+</template>

@@ -12,6 +12,7 @@ How to build apps on this platform, from the first page to sharing data between 
 8. [Places](places.md): adding to, replacing or hiding part of an app that left no slot; the author's open, review and locked marks; and a person's own plugins.
 9. [Tools for language models](tools.md): each service method a plugin may call, offered to a model as a tool and called through the gate.
 10. [Agents](agents.md): a Markdown file an app links with `rel="agent"`, run as a plugin that wakes on hooks or commands, asks a model and calls its tools.
+11. [Commands and the command palette](commands.md): something a plugin can do, named once, and run from a palette, a shortcut or an agent.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 

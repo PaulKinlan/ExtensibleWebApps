@@ -19,4 +19,23 @@ export default async function (page, { check }) {
   check("a plugin that reads another's collection hears its changes and redraws", spentItems);
   check("a view template from an .html file repeats rows and fills holes as text", templateText.shown && !templateText.bold && templateText.rows === 5, JSON.stringify(templateText));
   check("an element with an inline script runs it: ui-grid takes its min width", /--min: 10rem/.test(gridMin ?? ""), gridMin);
+
+  // std/undo.js: Undo takes back the delete, whichever plugin made it, and Redo makes it again.
+  const tea = '[data-key="expenses:list"] tbody td >> text=<b>Tea</b>';
+  await page.click('[data-key="expenses:list"] button[aria-label="Remove <b>Tea</b>"]');
+  await page.waitForSelector(tea, { state: "detached", timeout: 8000 }).catch(() => {});
+  const undo = '[data-plugin="undo"] button[data-action="undo"]';
+  await page.waitForSelector(`${undo}[title*="delete"]`, { timeout: 8000 }).catch(() => {});
+  const title = await page.getAttribute(undo, "title").catch(() => "");
+  check("Undo says what it would take back: the delete, in the app's words", title === "Undo: delete “<b>Tea</b>” in Expenses", title);
+  await page.click(undo);
+  const back = await page.waitForSelector(tea, { timeout: 8000 }).then(() => true, () => false);
+  check("Undo puts a deleted expense back, though the undo plugin doesn't own the expenses, with no review", back && !(await page.$('[data-key^="review:"]')));
+  const redo = '[data-plugin="undo"] button[data-action="redo"]';
+  await page.waitForSelector(`${redo}:not([disabled])`, { timeout: 8000 }).catch(() => {});
+  await page.click(redo);
+  const gone = await page.waitForSelector(tea, { state: "detached", timeout: 8000 }).then(() => true, () => false);
+  check("Redo deletes it again", gone);
+  await page.click(undo);
+  await page.waitForSelector(tea, { timeout: 8000 }).catch(() => {});
 }

@@ -12,6 +12,14 @@ Needs: What the method needs (see Services).
 
 Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses.
 
+### ctx.commands.add
+
+`ctx.commands.add({ id, title, description?, keys?, group?, args? }, (args, { by }) => result) → off()`
+
+Needs: nothing.
+
+Adds a command the plugin answers: a palette lists it, its `keys` run it, and plugins with `commands` (an agent, through its tools) run it with `commands.run("<plugin>/<id>")`. The handler runs with this plugin's own rights; `by` says which plugin ran it, and what it returns goes back to the caller. Throwing fails the run. See the commands service.
+
 ### ctx.log
 
 `ctx.log(text, level?)`
@@ -268,6 +276,42 @@ Needs: `plugins:read`.
 
 The code of a plugin the caller's app links, or of one of the person's own for it, on or off.
 
+### commands
+
+Commands: things to do in an app, added by the plugin that does them, and run from a palette, a shortcut or an agent's tool call.
+
+#### commands.add
+
+`commands.add({ id, title, description?, keys?, group?, args? })` → true
+
+Needs: nothing.
+
+Adds (or replaces) one of the caller's commands. Use `ctx.commands.add(command, handler)`, which also listens for it. `keys` are up to 3 shortcuts such as "Mod+K" (Cmd on a Mac, Ctrl elsewhere); `args` is an object schema for what the handler takes.
+
+#### commands.list
+
+`commands.list()` → [{ name, plugin, id, title, description?, keys?, group?, args? }]
+
+Needs: `commands`.
+
+The commands of the caller's app, sorted by group and title. Run one with `commands.run(name)`; `name` is `<plugin>/<id>`.
+
+#### commands.remove
+
+`commands.remove(id)` → true
+
+Needs: nothing.
+
+Removes one of the caller's commands. The `off()` that `ctx.commands.add` returns does this.
+
+#### commands.run
+
+`commands.run(name, args?)` → what the command's handler returns
+
+Needs: `commands`.
+
+Runs a command of the caller's app, with its own plugin's rights. `commands:before` can stop it first. Fails if the handler throws or takes longer than two minutes.
+
 ### data
 
 Collections: typed records plugins share. A plugin declares its own in its manifest; reading or writing another's needs a capability, and writes to another's are reviewed.
@@ -351,6 +395,34 @@ Reads a file. `<folder>` is the path's first folder.
 Needs: `files:<folder>`, and the person's review.
 
 Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open.
+
+### history
+
+Undo and redo for the person, across every write to the app's collections, whichever plugin made it.
+
+#### history.redo
+
+`history.redo()` → { ok, step } or { ok: false, step?, error }
+
+Needs: `history`.
+
+Makes the most recent undone write again. A new write to that record ends its redo.
+
+#### history.state
+
+`history.state()` → { undo: step or null, redo: step or null }
+
+Needs: `history`.
+
+What Undo and Redo would do now in the caller's app. A step is `{ kind, collection, title, id, label?, by, at, text }`, with kind add, edit or delete and text such as `delete “Coffee” in Expenses`.
+
+#### history.undo
+
+`history.undo()` → { ok, step } or { ok: false, step?, error }
+
+Needs: `history`.
+
+Takes back the app's most recent write: the record goes back to how it was, with no review. If the record changed since, that step is dropped and the answer says so; the next undo takes the one before.
 
 ### kernel
 
@@ -622,6 +694,30 @@ Mode: `serial`, 1000 ms per listener, fails open. Listening needs `hook:intercep
 
 Listeners get `n`.
 
+### `commands:before`
+
+Before a command runs; `by` is the plugin that ran it (the palette, an agent). Return { block: reason } to stop it.
+
+Mode: `serial`, 15000 ms per listener, fails open. Listening needs `hook:intercept:commands:before`.
+
+Listeners get `{ name, plugin, id, args, by }`.
+
+### `commands:changed`
+
+A command was added or removed, or the plugin that added it stopped. Call commands.list() again.
+
+Mode: `emit`. Listening needs `commands`.
+
+Listeners get `{}`.
+
+### `commands:ran`
+
+A command ran, or failed (ok false, with the error). Its arguments aren't included: listen to commands:before for those.
+
+Mode: `emit`. Listening needs `commands`.
+
+Listeners get `{ name, plugin, id, by, ok, error? }`.
+
 ### `data:beforeWrite`
 
 Before a record is written. Return { block: reason } to stop the write.
@@ -645,6 +741,14 @@ New trace events, in batches at most ten times a second. They name every plugin 
 Mode: `emit`. Listening needs `debug:read`.
 
 Listeners get `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]`.
+
+### `history:changed`
+
+Something was written, undone or redone, so what Undo and Redo would do may have changed: read history.state().
+
+Mode: `emit`. Listening needs `history`.
+
+Listeners get `{}`.
 
 ### `llm:complete`
 
@@ -741,12 +845,14 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `agents:run:<agent>` | Call agents.run. |
 | `audio` | Call audio.registerProcessor, audio.play. |
+| `commands` | Call commands.list, commands.run. |
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:read:notes` | Call store.list. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `data:write:notes` | Call store.put. |
 | `debug:read` | Call debug.recent, debug.app. |
 | `files:<folder>` | Call files.read, files.write. |
+| `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `network:<host>` | Call net.fetch. |
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file. |
@@ -787,9 +893,11 @@ Reserved ids, which no plugin can take:
 - `agents`
 - `audio`
 - `authoring`
+- `commands`
 - `data`
 - `debug`
 - `files`
+- `history`
 - `host`
 - `kernel`
 - `llm`
@@ -851,6 +959,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
 | `<ui-spacer>` |  | Takes up the free space in a row. |
 | `<ui-code>` | name, label, rows="20", readonly, revision | A plain code editor: a textarea with line numbers, where Tab indents (Escape, then Tab, leaves it). Its text content is the starting code; edits survive redraws until `revision` changes. In a `form` it is sent under its `name`. |
+| `<ui-commands>` | label, open-keys="Mod+K", run, no-button, message, message-at | A command palette: a button (and the `open-keys` shortcut) opens a searchable list of the commands inside it, each a `<button data-command="name" data-keys='["Mod+B","Shift+N"]' data-group data-description>Title</button>`. Picking one, or pressing one of its keys anywhere on the page, sends `run` with its name. `message` is announced briefly whenever `message-at` changes. |
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
 
 ### Actions
