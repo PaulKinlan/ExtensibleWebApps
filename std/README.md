@@ -7,12 +7,26 @@ written, and asks only for the permissions in its manifest.
 | --- | --- | --- |
 | [`llm/`](llm/) | Language models behind the `llm` service: [`anthropic.js`](llm/anthropic.js) (Claude), [`openai.js`](llm/openai.js), [`gemini.js`](llm/gemini.js), and [`openai-compatible.js`](llm/openai-compatible.js) for Ollama on this computer or any OpenAI-style API. Each picks the vendor's newest model by tier. Any plugin with the `llm` permission can then ask a model, without holding a key. | `<link rel="plugin" href="/std/llm/anthropic.js">` in the head |
 | [`board.js`](board.js) | Where the app's agents reach the person: one panel, folded to a button with a badge until something waits, with the questions agents asked (`bus.ask`), each with its choices or a box to answer in, and what the agents did lately. See [agents](../docs/guide/agents.md#messages-topics-and-the-board). | `<link rel="plugin" href="/std/board.js">` in the head, and `<slot name="board"></slot>` in the body |
+| [`commands/palette.js`](commands/palette.js) | A command palette: Cmd K (Ctrl K) or its button opens a search of everything the app's plugins can do, and each command's own shortcut runs it from anywhere on the page. Plugins add commands with `ctx.commands.add`. | `<link rel="plugin" href="/std/commands/palette.js">` in the head, and `<slot name="commands"></slot>` in the body |
 | [`debug-console.js`](debug-console.js) | A bug button in a corner of the page. It counts problems (errors, refused permissions, failed calls) and opens a log of them, or of everything the kernel traced, with a Copy button that puts the log on the clipboard, headed with the page's address, browser and time, ready for a bug report. | `<link rel="plugin" href="/std/debug-console.js">` in the head, and `<slot name="debug"></slot>` anywhere in the body |
 | [`hook-tracer.js`](hook-tracer.js) | Follows each thing a person does: who started it, each hook it ran in order, and what every plugin listening said (let it through, stopped it, or only heard it). Pause and Clear sit beside it. | `<link rel="plugin" href="/std/hook-tracer.js">` in the head, and `<slot name="inspect"></slot>` in the body |
 | [`plugin-editor.js`](plugin-editor.js) | An editor for the person's own plugins: start from a template in [`plugin-editor/templates/`](plugin-editor/templates/) or a copy of a plugin on the page, see what it asks for in plain words, then save and run it after a review card that shows its code. Its logs and errors show beside it. | `<link rel="plugin" href="/std/plugin-editor.js">` in the head, and `<slot name="editor"></slot>` in the body |
 | [`reset.js`](reset.js) | When any of the app's plugins is off, a card that names them and turns them all back on. If it is switched off itself, opening the page with `?reset` does the same. | `<link rel="plugin" href="/std/reset.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
 | [`switchboard.js`](switchboard.js) | A switch for each plugin the app links, with its name and description, so people can see what the page is made of and turn parts of it off. | `<link rel="plugin" href="/std/switchboard.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
 | [`view-source.js`](view-source.js) | Every plugin the app links, and for the one picked, its code and what its manifest lets it do, in plain words. It can't change anything. | `<link rel="plugin" href="/std/view-source.js">` in the head, and `<slot name="inspect"></slot>` in the body |
+
+## The command palette
+
+- **What it uses.** The `commands` service: `commands.list()` and
+  `commands.run(name)`, both needing `commands`. It hears `commands:changed`
+  to stay current. Each command runs with its own plugin's rights.
+- **What it shows.** Every command of the app that needs no arguments,
+  grouped, with its shortcuts. Commands that take arguments are for agents.
+- **Settings.** `openKeys` (the shortcut that opens it, `Mod+K`) and
+  `button` (show a button to open it, on by default; phones need it).
+- **The element.** The list, the search and the keys are
+  [`<ui-commands>`](../elements/ui-commands.html); the plugin only decides
+  which commands go in it. See [the guide](../docs/guide/commands.md).
 
 ## The debug console
 
