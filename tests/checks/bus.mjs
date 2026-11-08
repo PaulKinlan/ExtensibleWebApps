@@ -31,8 +31,8 @@ export default async (ctx) => {
     if (e.to !== "inbox-a") return;
     for (const m of await ctx.call("bus", "receive")) {
       ctx.log("a-got " + m.from + ": " + m.text);
-      // Asking back along the chain would wait forever: the bus refuses it.
-      ctx.log("a-loop " + await attempt(ctx.call("bus", "send", "inbox-b", "and you?", { reply: true })));
+      // Asking the sender back, while it waits for this answer, would wait forever: the bus refuses it.
+      if (m.reply) ctx.log("a-loop " + await attempt(ctx.call("bus", "send", "inbox-b", "and you?", { reply: true })));
       if (m.reply) await ctx.call("bus", "reply", m.id, { text: "pong", value: { n: 1 } });
     }
   });
@@ -53,7 +53,7 @@ export default async (ctx) => {
 };`);
     check("a message lands in a plugin's inbox", /a-got inbox-b: hello/.test(await pluginLog("inbox-a", "a-got inbox-b: hello").catch(() => "")) && /b-plain \{"ok":true,"id":/.test(await pluginLog("inbox-b", "b-plain").catch(() => "")));
     check("a sender waiting for a reply gets the answer", (await pluginLog("inbox-b", "b-reply").catch(() => "")) === 'b-reply {"stopReason":"completed","text":"pong","value":{"n":1}}');
-    check("a message can't go back to someone already waiting in its chain", /a-loop error: inbox-b is already waiting in this chain/.test(await pluginLog("inbox-a", "a-loop").catch(() => "")));
+    check("a message can't go back to someone already waiting in its chain", /a-loop error: inbox-b is waiting for inbox-a's answer/.test(await pluginLog("inbox-a", "a-loop").catch(() => "")));
     check("only a plugin with an inbox can be sent a message", /b-noinbox error: nobody has no inbox/.test(await pluginLog("inbox-b", "b-noinbox").catch(() => "")));
     check("a topic keeps its posts for its readers", (await pluginLog("inbox-b", "b-read").catch(() => "")) === 'b-read ["inbox-b:first","inbox-b:second"]');
 

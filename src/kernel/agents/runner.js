@@ -31,7 +31,12 @@ export default async function (ctx) {
 
   function wake(trigger) {
     queue.push(trigger);
-    if (queue.length > QUEUE) ctx.log(`${AGENT.name}: too much to do; skipped ${queue.shift().name}`, "error");
+    if (queue.length > QUEUE) {
+      const skipped = queue.shift();
+      ctx.log(`${AGENT.name}: too much to do; skipped ${skipped.name}`, "error");
+      // Someone waiting on a skipped message hears so now, not when their wait runs out.
+      if (skipped.message?.reply) void ctx.call("bus", "reply", skipped.message.id, { stopReason: "cancelled", text: `${AGENT.name} had too much to do` }).catch(() => {});
+    }
     if (!running) void drain();
   }
 

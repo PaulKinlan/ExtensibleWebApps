@@ -35,7 +35,7 @@
           <template if="q.open">
             <form data-action="answer">
               <input type="hidden" name="id" value="{{q.id}}">
-              <input type="text" name="answer" placeholder="Your answer" required>
+              <label>Your answer to {{q.name}}: <input type="text" name="answer" required></label>
               <button type="submit">Answer</button>
             </form>
           </template>

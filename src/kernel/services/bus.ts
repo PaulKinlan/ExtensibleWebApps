@@ -38,14 +38,15 @@ const POSTS = 50;
 /** How long a sender waits for a reply, and an agent for the person's answer. */
 const REPLY_MS = 30 * 60_000;
 const ASK_MS = 24 * 60 * 60_000;
-/** How long a chain of messages may grow: A asks B, who asks C, who asks D. */
+/** How many may take part in a chain of messages: A asks B, who asks C, who asks D. */
 const DEPTH = 4;
 const NAME = /^[a-z][a-z0-9-]{0,63}$/;
 
-type Message = { id: string; from: string; to: string; text: string; data?: unknown; reply: boolean; chain: string[]; at: number };
+/** depth: how many take part in the chain this message belongs to, its recipient included. */
+type Message = { id: string; from: string; to: string; text: string; data?: unknown; reply: boolean; depth: number; at: number };
 type Post = { id: string; topic: string; from: string; text: string; at: number };
 type Answer = { stopReason: string; text: string; value?: unknown };
-type Question = { id: string; from: string; question: string; choices?: string[]; at: number; answer: (value: string | null) => void };
+type Question = { id: string; from: string; instance: string; question: string; choices?: string[]; at: number; answer: (value: string | null) => void };
 
 export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
   defineHook("bus:message", { mode: "emit", needs: "bus:inbox", args: "{ to }", description: "A message is waiting in to's inbox. Only plugins with an inbox hear it; the one named fetches it with bus.receive." });
@@ -69,8 +70,8 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
   let next = 0;
   const newId = (kind: string) => `${kind}-${Date.now().toString(36)}-${++next}`;
 
-  /** Senders waiting for a reply, by message id. */
-  const waiting = new Map<string, { resolve: (answer: Answer) => void; message: Message }>();
+  /** Senders waiting for a reply, by message id, and the instance that waits. */
+  const waiting = new Map<string, { resolve: (answer: Answer) => void; message: Message; sender: string }>();
   /** Questions waiting for the person. */
   const questions = new Map<string, Question>();
 
@@ -78,14 +79,49 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
     const plugin = remote.installed.get(id);
     return !!plugin?.enabled && grants(plugin.caps, "bus:inbox");
   };
-  /** What a sender is answering now: the chains of the messages it took and hasn't answered. */
-  const chainOf = (id: string) => {
-    const out = new Set<string>();
-    for (const { message } of waiting.values()) if (message.to === id && taken.has(message.id)) for (const c of message.chain) out.add(c);
-    return out;
+  /** Messages a recipient has taken from its inbox and not yet answered, and the instance that took them. */
+  const taken = new Map<string, string>();
+  /** How deep a chain the plugin is working in: the deepest message it took and hasn't answered, or 1 when it started the chain. */
+  const depthOf = (id: string) => {
+    let depth = 1;
+    for (const { message } of waiting.values()) if (message.to === id && taken.has(message.id)) depth = Math.max(depth, message.depth);
+    return depth;
   };
-  /** Messages a recipient has taken from its inbox and not yet answered. */
-  const taken = new Set<string>();
+  /** Whether `from` waits on `to`, directly or through others: every reply still owed, taken or not, is an edge. */
+  function waitsOn(from: string, to: string): boolean {
+    const seen = new Set<string>();
+    const stack = [from];
+    while (stack.length) {
+      const at = stack.pop()!;
+      if (at === to) return true;
+      if (seen.has(at)) continue;
+      seen.add(at);
+      for (const { message } of waiting.values()) if (message.from === at) stack.push(message.to);
+    }
+    return false;
+  }
+  /** Ends what a plugin instance had under way when its worker goes: replies it owed, waits it had, questions it asked. */
+  function forget(instance: string) {
+    for (const [id, w] of [...waiting]) {
+      if (taken.get(id) === instance) w.resolve({ stopReason: "cancelled", text: `${w.message.to} stopped before it answered` });
+      else if (w.sender === instance) {
+        waiting.delete(id);
+        taken.delete(id);
+      }
+    }
+    for (const q of [...questions.values()]) if (q.instance === instance) q.answer(null);
+  }
+  const before = remote.onDispose;
+  remote.onDispose = (instance) => {
+    before?.(instance);
+    forget(instance);
+  };
+  /** The plugins in the board's app: those its tab's app links, or (with no tab) those beside it. */
+  const appOf = (instance: string): Set<string> | undefined => {
+    const tab = instance.split("@")[1];
+    const linked = tab ? apps.linkedBy(tab) : undefined;
+    return linked ? new Set(linked) : apps.alongside(instance);
+  };
 
   function textOf(message: unknown): { text: string; data?: unknown } {
     if (typeof message === "string") return { text: message.slice(0, TEXT) };
@@ -108,7 +144,7 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
         args: "(to, message, { reply? }?)",
         returns: "{ ok: true, id }, or with reply, the answer: { stopReason, text, value? }",
         needs: "bus:send:<to>",
-        description: "Puts a message (text, or { text, data }) in an agent's or plugin's inbox. With reply: true it waits, up to 30 minutes, for the answer; an agent answers with what it says at the end of the run the message woke. A chain of messages may be four long, and never come back to an agent already in it.",
+        description: "Puts a message (text, or { text, data }) in an agent's or plugin's inbox. With reply: true it waits, up to 30 minutes, for the answer; an agent answers with what it says at the end of the run the message woke. Four may take part in a chain of messages, and a reply that would wait on itself (A waits on B, who would wait on A) is refused.",
         params: [
           { name: "to", schema: { type: "string", description: "Whose inbox" }, names: "bus:send:" },
           { name: "message", schema: { type: "string", description: "What to say" } },
@@ -116,7 +152,7 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
         ],
       },
       receive: { args: "()", returns: "[{ id, from, text, data?, reply }]", needs: "bus:inbox", description: "Takes the messages waiting in the caller's inbox, oldest first. Answer each one that wants a reply with bus.reply." },
-      reply: { args: "(id, { stopReason?, text, value? })", returns: "true", needs: "bus:inbox", description: "Answers a message the caller received. stopReason is completed (the default), blocked, error, budget or cancelled." },
+      reply: { args: "(id, { stopReason?, text, value? })", returns: "true", needs: "bus:inbox", description: "Answers a message the caller received. stopReason is completed (the default), steps (an agent ran out of steps), blocked, error, budget or cancelled." },
       post: {
         args: "(topic, message)",
         returns: "{ ok: true, id }",
@@ -147,7 +183,7 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
           { name: "choices", schema: { type: "array", items: { type: "string" }, description: "Up to six answers to pick from" }, optional: true },
         ],
       },
-      questions: { args: "()", returns: "[{ id, from, name, question, choices?, at }]", needs: "bus:board", description: "The questions waiting for the person from the caller's app (from anyone, for a plugin no app links)." },
+      questions: { args: "()", returns: "[{ id, from, name, question, choices?, at }]", needs: "bus:board", description: "The questions waiting for the person from the plugins of the caller's app: its tab's app, for a tab-scoped board (from anyone, for a plugin no app links)." },
       answer: { args: "(id, answer)", returns: "true", needs: "bus:board", description: "Gives the person's answer to a question. Only a board should call it, with what the person chose or wrote." },
     },
     capability: (method, args) => {
@@ -168,12 +204,12 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
         if (typeof to !== "string" || !hasInbox(to)) throw new Error(`${String(to)} has no inbox`);
         const { text, data } = textOf(message);
         const reply = isObject(options) && options.reply === true;
-        const chain = [...chainOf(me), me];
-        if (chain.includes(to)) throw new Error(`${to} is already waiting in this chain of messages (${chain.join(" → ")}), so it can't answer`);
-        if (chain.length > DEPTH) throw new Error(`A chain of messages may be ${DEPTH} long: ${chain.join(" → ")} → ${to}`);
+        const depth = depthOf(me) + 1;
+        if (depth > DEPTH) throw new Error(`At most ${DEPTH} may take part in a chain of messages, and ${to} would be number ${depth}`);
+        if (reply && (to === me || waitsOn(to, me))) throw new Error(`${to} is waiting for ${me}'s answer, directly or through others, so it can't answer`);
         const box = (s.inboxes[to] ??= []);
         if (box.length >= WAITING) throw new Error(`${to}'s inbox is full`);
-        const m: Message = { id: newId("m"), from: me, to, text, ...(data !== undefined ? { data } : {}), reply, chain, at: Date.now() };
+        const m: Message = { id: newId("m"), from: me, to, text, ...(data !== undefined ? { data } : {}), reply, depth, at: Date.now() };
         box.push(m);
         void save();
         const answered = reply
@@ -183,7 +219,16 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
                 taken.delete(m.id);
                 resolve({ stopReason: "cancelled", text: `${to} didn't answer in time` });
               }, REPLY_MS);
-              waiting.set(m.id, { resolve: (a) => (clearTimeout(timer), resolve(a)), message: m });
+              waiting.set(m.id, {
+                resolve: (a) => {
+                  clearTimeout(timer);
+                  waiting.delete(m.id);
+                  taken.delete(m.id);
+                  resolve(a);
+                },
+                message: m,
+                sender: instance,
+              });
             })
           : undefined;
         root.emit(dispatch, "bus:message", { to });
@@ -195,7 +240,7 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
         delete s.inboxes[me];
         if (box.length) void save();
         // A reply nobody waits for any more (the sender's tab closed, or the kernel restarted) isn't asked for.
-        for (const m of box) if (m.reply && waiting.has(m.id)) taken.add(m.id);
+        for (const m of box) if (m.reply && waiting.has(m.id)) taken.set(m.id, instance);
         return box.map((m) => ({ id: m.id, from: m.from, text: m.text, ...(m.data !== undefined ? { data: m.data } : {}), reply: m.reply && waiting.has(m.id) }));
       }
 
@@ -204,11 +249,9 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
         const w = typeof id === "string" ? waiting.get(id) : undefined;
         if (!w || w.message.to !== me) throw new Error("Not a message waiting for this plugin's reply");
         const a = isObject(answer) ? answer : { text: answer };
-        const stopReason = ["completed", "blocked", "error", "budget", "cancelled"].includes(a.stopReason as string) ? (a.stopReason as string) : "completed";
+        const stopReason = ["completed", "steps", "blocked", "error", "budget", "cancelled"].includes(a.stopReason as string) ? (a.stopReason as string) : "completed";
         const out: Answer = { stopReason, text: String(a.text ?? "").slice(0, TEXT) };
         if (a.value !== undefined) out.value = textOf({ text: "", data: a.value }).data;
-        waiting.delete(id as string);
-        taken.delete(id as string);
         w.resolve(out);
         return true;
       }
@@ -236,7 +279,7 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
       if (method === "ask") {
         const [question, choices] = args;
         if (typeof question !== "string" || !question.trim()) throw new Error("A question is text");
-        if (choices !== undefined && (!Array.isArray(choices) || choices.length > 6 || choices.some((c) => typeof c !== "string" || !c || c.length > 200))) throw new Error("choices are up to six short answers");
+        if (choices !== undefined && (!Array.isArray(choices) || !choices.length || choices.length > 6 || choices.some((c) => typeof c !== "string" || !c.trim() || c.length > 200))) throw new Error("choices are one to six short answers");
         const id = newId("q");
         const answer = await new Promise<string | null>((resolve) => {
           const timer = setTimeout(() => done(null), ASK_MS);
@@ -246,14 +289,14 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
             root.emit(dispatch, "bus:answered", { id, from: me, answered: value !== null });
             resolve(value);
           };
-          questions.set(id, { id, from: me, question: question.slice(0, 2000), ...(choices ? { choices: choices as string[] } : {}), at: Date.now(), answer: done });
+          questions.set(id, { id, from: me, instance, question: question.slice(0, 2000), ...(choices ? { choices: choices as string[] } : {}), at: Date.now(), answer: done });
           root.emit(dispatch, "bus:asked", { id, from: me });
         });
         return answer === null ? { answered: false } : { answered: true, answer };
       }
 
       if (method === "questions") {
-        const mine = apps.alongside(instance);
+        const mine = appOf(instance);
         return [...questions.values()]
           .filter((q) => !mine || mine.has(q.from))
           .map(({ id, from, question, choices, at }) => ({ id, from, name: remote.installed.get(from)?.manifest.name ?? from, question, ...(choices ? { choices } : {}), at }));
@@ -262,7 +305,7 @@ export default ({ root, remote, store, apps }: Kernel): ServiceProvider => {
       if (method === "answer") {
         const [id, answer] = args;
         const q = typeof id === "string" ? questions.get(id) : undefined;
-        const mine = apps.alongside(instance);
+        const mine = appOf(instance);
         if (!q || (mine && !mine.has(q.from))) throw new Error("No question waiting with that id");
         if (typeof answer !== "string" || !answer.trim()) throw new Error("An answer is text");
         if (q.choices && !q.choices.includes(answer)) throw new Error(`The answer is one of: ${q.choices.join(", ")}`);

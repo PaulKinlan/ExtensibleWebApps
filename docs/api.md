@@ -302,7 +302,7 @@ Posts to a topic. Agents that wake on the topic run, and readers hear bus:posted
 
 Needs: `bus:board`.
 
-The questions waiting for the person from the caller's app (from anyone, for a plugin no app links).
+The questions waiting for the person from the plugins of the caller's app: its tab's app, for a tab-scoped board (from anyone, for a plugin no app links).
 
 #### bus.read
 
@@ -326,7 +326,7 @@ Takes the messages waiting in the caller's inbox, oldest first. Answer each one 
 
 Needs: `bus:inbox`.
 
-Answers a message the caller received. stopReason is completed (the default), blocked, error, budget or cancelled.
+Answers a message the caller received. stopReason is completed (the default), steps (an agent ran out of steps), blocked, error, budget or cancelled.
 
 #### bus.send
 
@@ -334,7 +334,7 @@ Answers a message the caller received. stopReason is completed (the default), bl
 
 Needs: `bus:send:<to>`.
 
-Puts a message (text, or { text, data }) in an agent's or plugin's inbox. With reply: true it waits, up to 30 minutes, for the answer; an agent answers with what it says at the end of the run the message woke. A chain of messages may be four long, and never come back to an agent already in it.
+Puts a message (text, or { text, data }) in an agent's or plugin's inbox. With reply: true it waits, up to 30 minutes, for the answer; an agent answers with what it says at the end of the run the message woke. Four may take part in a chain of messages, and a reply that would wait on itself (A waits on B, who would wait on A) is refused.
 
 ### data
 

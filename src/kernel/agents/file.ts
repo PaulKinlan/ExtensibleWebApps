@@ -104,15 +104,15 @@ export function fromAgentFile(text: string): string {
   }
 
   // An agent can't own a collection, so hearing that one changed needs reading it.
-  const reads = new Set((permissions as string[]).filter((p) => p.startsWith("data:read:")));
+  // Checked against every permission, as the gate would: data:* or * grants data:read:x too.
+  const granted = new Set(permissions as string[]);
   for (const hook of hooks) {
     const collection = /^data:changed:(.+)$/.exec(hook)?.[1];
-    if (collection && !grants(reads, `data:read:${collection}`)) throw new AgentFileError(`Waking on ${hook} needs data:read:${collection} in \`permissions\``);
+    if (collection && !grants(granted, `data:read:${collection}`)) throw new AgentFileError(`Waking on ${hook} needs data:read:${collection} in \`permissions\``);
   }
 
   // Waking on a topic needs reading it, as a reader would.
-  const busReads = new Set((permissions as string[]).filter((p) => p.startsWith("bus:read:")));
-  for (const topic of topics) if (!grants(busReads, `bus:read:${topic}`)) throw new AgentFileError(`Waking on the topic ${topic} needs bus:read:${topic} in \`permissions\``);
+  for (const topic of topics) if (!grants(granted, `bus:read:${topic}`)) throw new AgentFileError(`Waking on the topic ${topic} needs bus:read:${topic} in \`permissions\``);
 
   const limits = { ...DEFAULT_LIMITS };
   const given = meta.limits ?? {};
