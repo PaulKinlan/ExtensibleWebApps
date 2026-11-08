@@ -1,0 +1,60 @@
+<!--
+  ui-markdown: a Markdown file, drawn as a page. It fetches `src` from this
+  site and draws headings, lists, tables, code, images and links, and each
+  ```mermaid block as a diagram. Raw HTML in the file shows as text: nothing
+  in a Markdown file can run.
+
+    <ui-markdown src="guide/agents.md" pages="/docs/" repo="https://github.com/PaulKinlan/ExtensibleWebApps"></ui-markdown>
+
+  Attributes:
+    src         the Markdown file, relative to the page
+    pages       a folder whose .md files are this app's screens: a link to
+                /docs/guide/agents.md becomes /docs/guide/agents, and a
+                README.md becomes its folder
+    repo        where the source lives: links to code, folders and Markdown
+                outside `pages` go there, since the site serves those raw.
+                A link written from the site's root (/workbench/) stays on
+                the site
+    sets-title  the page's title becomes the file's first heading
+    compact     smaller type and spacing, for a list of contents
+
+  Links to pages and screens on this site are followed without loading the
+  page (src/host/router.ts). The behaviour is in ui-markdown.js; the
+  Markdown itself is read by markdown.js.
+-->
+<template>
+  <style>
+    :host { display: block; color: var(--fg); line-height: 1.65; overflow-wrap: break-word; }
+    article > :first-child { margin-top: 0; }
+    h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.6em 0 0.5em; scroll-margin-top: 16px; }
+    h1 { font-size: var(--text-2xl, 1.75rem); margin-top: 0; }
+    h2 { font-size: var(--text-xl, 1.35rem); padding-bottom: 0.25em; border-bottom: 1px solid var(--border); }
+    h3 { font-size: var(--text-lg, 1.1rem); }
+    h4, h5, h6 { font-size: 1rem; }
+    p, ul, ol, blockquote, pre, .table { margin: 0 0 1em; }
+    ul, ol { padding-left: 1.5em; }
+    li { margin: 0.25em 0; }
+    li > ul, li > ol { margin: 0.25em 0 0; }
+    li.task { list-style: none; margin-left: -1.25em; }
+    a { color: var(--accent); }
+    code { font: 0.9em var(--mono); background: var(--bg-2); padding: 0.1em 0.35em; border-radius: 4px; }
+    pre { background: var(--bg-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; overflow-x: auto; line-height: 1.5; }
+    pre code { background: none; padding: 0; font-size: var(--text-sm, 0.875rem); white-space: pre; }
+    blockquote { margin-left: 0; padding: 0.25em 1em; border-left: 4px solid var(--border); color: var(--fg-2); }
+    hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
+    img { max-width: 100%; height: auto; border-radius: var(--radius); }
+    .table { overflow-x: auto; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.95em; }
+    th, td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; vertical-align: top; }
+    th { background: var(--bg-2); }
+    figure.diagram { margin: 0 0 1em; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface, var(--bg)); overflow-x: auto; text-align: center; }
+    .diagram-error { color: var(--danger); text-align: left; }
+    .waiting, .missing { color: var(--fg-2); }
+    :host([compact]) { font-size: var(--text-sm, 0.9rem); line-height: 1.5; }
+    :host([compact]) h1, :host([compact]) h2 { font-size: 1rem; border: 0; margin: 1em 0 0.25em; padding: 0; }
+    :host([compact]) ul, :host([compact]) ol { padding-left: 1.1em; margin-bottom: 0.5em; }
+    :host([compact]) a[aria-current="page"] { font-weight: 600; color: var(--fg); text-decoration: none; }
+  </style>
+  <article><p class="waiting">Loading…</p></article>
+</template>
+<script type="module" src="ui-markdown.js"></script>

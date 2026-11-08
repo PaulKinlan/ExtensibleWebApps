@@ -1,0 +1,94 @@
+# Architecture
+
+An app built on Extensible Web Apps is a page, a kernel and plugins. Each runs in its own place, and they talk only by sending messages. This page shows how the pieces fit, what happens when a page opens, and the path every message takes. The [developer guide](guide/README.md) builds on it, one feature at a time.
+
+## The pieces
+
+```mermaid
+flowchart TB
+    Tab1["A tab: the page (app.html) and the host<br/>draws views, sends the person's actions"]
+    Tab2["Another tab of the same site<br/>and its host"]
+    SW["The service worker<br/>serves app folders and screens, works offline"]
+    Kernel["The kernel, in a shared worker<br/>the gate, services, hooks, review and trace"]
+    Data[("The data<br/>origin-private file system")]
+    P1["habits.js<br/>its own worker"]
+    P2["streaks.js<br/>its own worker"]
+    P3["A person's own plugin<br/>its own worker"]
+    Tab1 -.->|loads through| SW
+    Tab1 <-->|views and actions| Kernel
+    Tab2 <--> Kernel
+    Kernel <-->|messages, checked by the gate| P1
+    Kernel <--> P2
+    Kernel <--> P3
+    Kernel --> Data
+```
+
+| Piece | Where it runs | What it is |
+| --- | --- | --- |
+| **The page** | The tab | Your `app.html`: plain HTML with named `<slot>` elements for plugins to draw in, and a `<link rel="plugin">` for each plugin. |
+| **The host** | The tab's main thread | The platform's only code on the page ([`src/host/`](../src/host/)). It draws the views plugins send, sanitised to an allowlist, and sends back what the person clicks and types. It runs no plugin code. |
+| **The kernel** | A shared worker, one for every tab of the site | [Cordis](https://github.com/cordiverse/cordis) plus the platform's own pieces ([`src/kernel/`](../src/kernel/)): the gate, the services, the hooks, the change review and the trace. It keeps the data. Where shared workers are missing, each tab gets a dedicated one. |
+| **Plugins** | A dedicated worker each | One JavaScript file each, with a manifest saying what it may do. A plugin can't touch the page, the network (unless it asks) or another plugin. |
+| **The service worker** | Between the pages and the network | Serves an app's folder at its address, and any screen inside it ([`sw/routes/`](../sw/routes/)), keeps what it served for offline use, and sends requests for plugin routes to the kernel. |
+
+## Opening a page
+
+```mermaid
+sequenceDiagram
+    participant Page as The page
+    participant Host as The host
+    participant Kernel as The kernel
+    participant Spawner as The spawner tab
+    participant Plugin as A plugin's worker
+
+    Page->>Host: loads /platform/host.js
+    Host->>Kernel: connects (one shared worker for every tab)
+    Host->>Host: reads each link rel="plugin", and fetches it
+    Host->>Kernel: open this app, with these plugins, and the person's own
+    Kernel->>Kernel: reads each manifest from the source, before any code runs
+    Kernel->>Spawner: start a worker for each plugin
+    Spawner->>Plugin: new Worker, with a port to the kernel
+    Plugin->>Kernel: ready, with the manifest it reports (it must match)
+    Kernel->>Plugin: run your default export with its ctx
+    Plugin->>Kernel: views.render("main", …)
+    Kernel->>Host: the view, for the slot named main
+```
+
+- **One kernel for every tab.** Two tabs of the same app share the plugins' data and see each other's changes as they happen.
+- **The spawner.** A shared worker can't create workers, so one tab, the spawner, creates them and hands the kernel a port to each. If that tab closes, the next one takes over and the plugins start again there. See [What the first spike found](spike.md).
+- **Scope.** A plugin with `scope: "shared"` (the default) runs once for every tab. One with `scope: "tab"` runs once in each open tab, and its views go only there. That suits a plugin that keeps view state, or follows the tab's address.
+
+## A message's path
+
+Everything a plugin does is a message to the kernel. The gate checks each one against the plugin's manifest first, and the trace records it, refused or not.
+
+```mermaid
+flowchart TB
+    Call["ctx.call('data', 'put', 'library', record)"] --> Gate{"The gate:<br/>does the manifest allow it?"}
+    Gate -->|no| Refused["Refused<br/>the call fails, and the trace says why"]
+    Gate -->|yes| Own{"The plugin's own collection?"}
+    Own -->|yes| Hook
+    Own -->|no| Review["A review card<br/>the person accepts or declines"]
+    Review -->|accepted| Hook["data:beforeWrite<br/>any listener may stop it"]
+    Review -->|declined| Declined["The call fails"]
+    Hook -->|let through| Schema{"Fits the schema?"}
+    Hook -->|stopped| Blocked["The call fails, with the reason"]
+    Schema -->|yes| Save[("Saved")]
+    Schema -->|no| Invalid["The call fails, naming the field"]
+    Save --> Changed["data:changed<br/>told to every plugin that may read it"]
+```
+
+The same shape holds for every service: the gate, then the service's own rules, then hooks that let other plugins take part. The [security model](security.md) explains why each step is there.
+
+## Where things are kept
+
+- **Data** lives in the browser's [origin-private file system](https://developer.mozilla.org/docs/Web/API/File_System_API/Origin_private_file_system), kept by the kernel: collections, each plugin's own storage and settings, the person's grants, their own plugins and the change log. Every app on the same site shares it, which is how one app can read another's collection (see [Sharing data between apps](guide/sharing-data-between-apps.md)).
+- **Plugins** are fetched from the app's folder each time it opens. A person's own plugins are kept with the data, under `user/<app folder>/`.
+- **Keys** are kept in a file no plugin can read. A plugin only names a key in a request; the kernel fills it in (see [API keys and web requests](guide/keys-and-requests.md)).
+
+## Reading further
+
+- [The kernel](kernel.md): manifests, views, collections, change review and hooks, in more depth.
+- [The security model](security.md): what a plugin can and can't do, and why.
+- [Permissions](permissions.md): every permission, in plain words.
+- [The API reference](api.md): every call, hook and manifest field, printed by the kernel.

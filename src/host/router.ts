@@ -42,6 +42,7 @@ export function followLinks(): void {
     if (url.hash && url.pathname === location.pathname && url.search === location.search) return;
     if (!isScreen(url)) return;
     event.preventDefault();
-    go(url.pathname.slice(folder.length) + url.search);
+    // The hash goes along, so a link to a heading on another screen (guide/agents#hooks) can scroll to it.
+    go(url.pathname.slice(folder.length) + url.search + url.hash);
   });
 }
