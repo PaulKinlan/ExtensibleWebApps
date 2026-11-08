@@ -1,0 +1,137 @@
+<!--
+  The plugins panel. plugins.js sends { plugins, count, none }. Each plugin
+  is { id, name, description, open, off, origin, href, scope, runs, version,
+  requested: [{ name, cls }], implied, refused: [{ name, n }], refusals, problem,
+  always, secrets: [{ name, state, cls }], defines, heard, routes, commands,
+  collections, places, settings, instances: [{ instance, where, runsIn,
+  hooks }], stopped, manifest (JSON text), code, showing, rev }.
+
+  A plugin's summary sends "toggle:<id>"; "code:<id>" shows or hides its
+  code; "forget:<id>" clears the refusals counted for it.
+-->
+<style>
+  .plugins { display: grid; gap: var(--space-2); }
+  .plugin { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .plugin[data-problem] { border-color: var(--danger); }
+  .plugin > summary { cursor: pointer; padding: var(--space-2) var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .plugin > summary strong { margin-right: auto; }
+  .plugin .body { padding: 0 var(--space-3) var(--space-3); display: grid; gap: var(--space-3); }
+  .plugin h4 { margin: 0 0 var(--space-1); font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.05em; color: var(--fg-2); }
+  .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .chips code { display: inline-block; padding: 1px 6px; border-radius: 6px; background: var(--bg-2); overflow-wrap: anywhere; }
+  .chips .mapped code, .chips .implied code { border: 1px dashed var(--border); }
+  .chips .bad code { background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); }
+  .grid { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); }
+  .facts { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px var(--space-3); font-size: var(--text-sm); }
+  .facts dt { color: var(--fg-2); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .muted { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
+  .plugin .code { max-height: 28rem; overflow: auto; margin-top: var(--space-2); }
+  .plugin pre { max-height: 22rem; overflow: auto; margin: 0; font-size: var(--text-sm); }
+</style>
+<template id="plugins">
+  <section aria-label="Plugins">
+    <h2>Plugins <ui-badge>{{count}}</ui-badge></h2>
+    <p class="muted">Dashed: granted through a mapping or implied, not asked for by that name. Red: refused at run time because the manifest doesn't ask for it.</p>
+    <template if="none"><ui-empty heading="No plugins here"><p>The tab in focus links none. Pick another, or Everything.</p></ui-empty></template>
+    <div class="plugins">
+      <template for="p of plugins">
+        <details class="plugin" key="{{p.id}}" open="{{p.open}}" data-problem="{{p.problem}}">
+          <summary data-action="toggle:{{p.id}}">
+            <strong>{{p.name}}</strong>
+            <code>{{p.id}}</code>
+            <template if="p.off"><ui-badge tone="warn">off</ui-badge></template>
+            <template if="p.stopped"><ui-badge>not running</ui-badge></template>
+            <ui-badge>{{p.scope}}</ui-badge>
+            <template if="p.problem"><ui-badge tone="danger">{{p.refusals}} refused</ui-badge></template>
+          </summary>
+          <template if="p.open">
+            <div class="body">
+              <p class="muted">{{p.description}}</p>
+              <dl class="facts">
+                <dt>From</dt><dd>{{p.origin}} <code>{{p.href}}</code></dd>
+                <dt>Version</dt><dd>{{p.version}}</dd>
+                <dt>Runs</dt><dd>in the {{p.runs}}, {{p.scope}}</dd>
+              </dl>
+              <div class="grid">
+                <div>
+                  <h4>Asks for</h4>
+                  <ul class="chips">
+                    <template for="r of p.requested"><li key="{{r.name}}" class="{{r.cls}}"><code>{{r.name}}</code></li></template>
+                  </ul>
+                  <template if="!p.requested.length"><p class="muted">Nothing: it can only run.</p></template>
+                </div>
+                <div>
+                  <h4>Also granted</h4>
+                  <ul class="chips">
+                    <template for="c of p.implied"><li key="{{c}}" class="implied"><code>{{c}}</code></li></template>
+                  </ul>
+                  <template if="!p.implied.length"><p class="muted">Nothing beyond what it asks for.</p></template>
+                </div>
+                <div>
+                  <h4>Refused</h4>
+                  <ul class="chips">
+                    <template for="r of p.refused"><li key="{{r.name}}" class="bad"><code>{{r.name}} ×{{r.n}}</code></li></template>
+                  </ul>
+                  <template if="!p.refused.length"><p class="muted">Nothing refused so far.</p></template>
+                  <template if="p.refused.length"><button type="button" data-action="forget:{{p.id}}">Clear</button></template>
+                </div>
+                <div>
+                  <h4>The person allowed</h4>
+                  <ul class="chips">
+                    <template for="a of p.always"><li key="{{a}}"><code>{{a}}</code></li></template>
+                    <template for="s of p.secrets"><li key="{{s.name}}" class="{{s.cls}}"><code>secret {{s.name}}: {{s.state}}</code></li></template>
+                  </ul>
+                  <template if="!p.always.length"><p class="muted">No “always allow” answers.</p></template>
+                </div>
+              </div>
+              <div class="grid">
+                <div>
+                  <h4>Defines hooks</h4>
+                  <ul class="chips"><template for="h of p.defines"><li key="{{h}}"><code>{{h}}</code></li></template></ul>
+                  <template if="!p.defines.length"><p class="muted">None.</p></template>
+                </div>
+                <div>
+                  <h4>Listens to</h4>
+                  <ul class="chips"><template for="h of p.heard"><li key="{{h}}"><code>{{h}}</code></li></template></ul>
+                  <template if="!p.heard.length"><p class="muted">No hooks.</p></template>
+                </div>
+                <div>
+                  <h4>Routes and commands</h4>
+                  <ul class="chips">
+                    <template for="r of p.routes"><li key="{{r}}"><code>{{r}}</code></li></template>
+                    <template for="c of p.commands"><li key="{{c}}"><code>command {{c}}</code></li></template>
+                  </ul>
+                  <template if="!p.routes.length"><template if="!p.commands.length"><p class="muted">None.</p></template></template>
+                </div>
+                <div>
+                  <h4>Owns</h4>
+                  <ul class="chips">
+                    <template for="c of p.collections"><li key="{{c}}"><code>collection {{c}}</code></li></template>
+                    <template for="c of p.places"><li key="{{c}}"><code>place {{c}}</code></li></template>
+                    <template for="c of p.settings"><li key="{{c}}"><code>setting {{c}}</code></li></template>
+                  </ul>
+                </div>
+              </div>
+              <div>
+                <h4>Workers</h4>
+                <ul class="chips">
+                  <template for="i of p.instances"><li key="{{i.instance}}"><code>{{i.instance}}</code> {{i.where}}, started by tab {{i.runsIn}}, {{i.hooks}} hooks</li></template>
+                </ul>
+                <template if="p.stopped"><p class="muted">No worker running.</p></template>
+              </div>
+              <details>
+                <summary>Manifest</summary>
+                <pre>{{p.manifest}}</pre>
+              </details>
+              <div>
+                <button type="button" data-action="code:{{p.id}}" aria-pressed="{{p.pressed}}">Code</button>
+                <template if="p.showing"><div class="code"><ui-code readonly label="Code of {{p.name}}" rows="18" revision="{{p.rev}}">{{p.code}}</ui-code></div></template>
+              </div>
+            </div>
+          </template>
+        </details>
+      </template>
+    </div>
+  </section>
+</template>

@@ -1,0 +1,63 @@
+<!doctype html>
+<!--
+  Debugger: an app, built on the platform, for looking inside the apps built
+  on it. Open it beside any app on this site (every tab talks to the same
+  kernel), pick that app's tab, and see what it is made of and what it does.
+
+  Five plugins, one per panel, each a pair of files:
+
+  target.js   every open tab and its app; picks the one to look at, and
+              posts the choice on the bus topic `debugger-focus`
+  plugins.js  each plugin: manifest, permissions asked for, granted and
+              refused, what the person allowed, hooks, workers and code
+  hooks.js    every hook: the kernel's, plugins' own and collections',
+              who defines it, its mode and limits, and who listens
+  events.js   the trace as it happens: hooks fired, answers, calls,
+              refusals and errors, with filters and "follow one action"
+  workers.js  every plugin worker, by the tab that started it
+
+  They read the kernel through the `reflect` service (`reflect:read`, which
+  sees every app open in this kernel) and the trace (`debug:read`). None of
+  them can change anything. Add, remove or replace a panel like any plugin.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Debugger</title>
+  <meta name="description" content="Look inside any app on this site: its plugins, permissions, hooks, events and workers.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="target.js">
+  <link rel="plugin" href="plugins.js">
+  <link rel="plugin" href="hooks.js">
+  <link rel="plugin" href="events.js">
+  <link rel="plugin" href="workers.js">
+  <style>
+    .panels { display: grid; gap: var(--space-5, 24px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
+    .wide { grid-column: 1 / -1; }
+    .open-app { color: var(--fg-2); font-size: var(--text-sm); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Debugger</h1>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <p class="open-app">Open an app in another tab and it shows up here: try <a href="/demos/habits/app.html" target="_blank">Habits</a>, <a href="/demos/reading-list/app.html" target="_blank">Reading list</a> or <a href="/demos/household/app.html" target="_blank">Household</a>.</p>
+    <slot name="target"><p>Looking for open tabs…</p></slot>
+    <div class="panels">
+      <slot name="plugins"></slot>
+      <slot name="hooks"></slot>
+      <div class="wide"><slot name="events"></slot></div>
+      <div class="wide"><slot name="workers"></slot></div>
+    </div>
+  </main>
+</body>
+</html>

@@ -1,0 +1,51 @@
+<!--
+  The target picker. target.js sends { tabs, kernel, everything, focus }:
+  tabs is every open tab, each { tab, path, mine, picked, spawner, plugins,
+  count, workers }; kernel counts what runs: { mode, plugins, workers, hooks,
+  tabs }. A tab's button sends "focus" with its id; Everything sends "focus"
+  with "".
+-->
+<style>
+  .kernel { display: grid; grid-template-columns: repeat(auto-fit, minmax(6.5rem, 1fr)); gap: var(--space-2); margin: 0 0 var(--space-3); max-width: 40rem; }
+  .tabs { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .tabs li { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: var(--space-2) var(--space-3); display: grid; gap: var(--space-1); }
+  .tabs li[data-picked] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .tabs .head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .tabs .path { font-family: var(--font-mono, monospace); overflow-wrap: anywhere; flex: 1; min-width: 12ch; }
+  .tabs .plugins { color: var(--fg-2); font-size: var(--text-sm); overflow-wrap: anywhere; }
+  .pick { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; justify-content: space-between; margin: 0 0 var(--space-2); }
+</style>
+<template id="target">
+  <section aria-label="What to debug">
+    <div class="kernel">
+      <ui-stat label="Tabs" value="{{kernel.tabs}}"></ui-stat>
+      <ui-stat label="Plugins" value="{{kernel.plugins}}"></ui-stat>
+      <ui-stat label="Workers" value="{{kernel.workers}}"></ui-stat>
+      <ui-stat label="Hooks" value="{{kernel.hooks}}"></ui-stat>
+    </div>
+    <div class="pick">
+      <template if="everything"><p><strong>Looking at everything</strong> in this kernel. Pick a tab to focus on its app.</p></template>
+      <template if="!everything"><p>Looking at <code>{{focus}}</code>.</p></template>
+      <ui-toolbar>
+        <button type="button" data-action="focus" data-value="" aria-pressed="{{pressed}}">Everything</button>
+        <button type="button" data-action="refresh">Refresh</button>
+      </ui-toolbar>
+    </div>
+    <ul class="tabs">
+      <template for="t of tabs">
+        <li key="{{t.tab}}" data-picked="{{t.picked}}">
+          <div class="head">
+            <span class="path">{{t.path}}</span>
+            <template if="t.mine"><ui-badge>this debugger</ui-badge></template>
+            <template if="t.spawner"><ui-badge tone="ok" title="Starts the shared plugins' workers">spawner</ui-badge></template>
+            <ui-badge>{{t.count}} plugins</ui-badge>
+            <ui-badge>{{t.workers}} workers</ui-badge>
+            <template if="!t.picked"><button type="button" data-action="focus" data-value="{{t.tab}}">Focus</button></template>
+            <template if="t.picked"><button type="button" data-action="focus" data-value="" aria-pressed="true">Focused</button></template>
+          </div>
+          <div class="plugins">{{t.plugins}}</div>
+        </li>
+      </template>
+    </ul>
+  </section>
+</template>

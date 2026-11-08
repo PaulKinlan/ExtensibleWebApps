@@ -1,0 +1,51 @@
+<!--
+  The events panel. events.js sends { rows, none, count, left, paused,
+  search, follow, kinds }. rows are the newest events first, each { seq,
+  time, kind, problem, name, plugin, ms, detail, trace }; kinds is each kind
+  of event with its label, whether it's shown, and how many there are.
+
+  A kind's checkbox sends "kind:<kind>"; the search box "search"; a trace id
+  "follow" with that id, and Stop following "follow" with "".
+-->
+<style>
+  .filters { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: center; margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+  .bar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin: 0 0 var(--space-2); }
+  .bar input[type=search] { flex: 1; min-width: 12ch; }
+  .log { list-style: none; margin: 0; padding: 0; font-family: var(--font-mono, monospace); font-size: var(--text-sm); max-height: 34rem; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .log li { display: grid; grid-template-columns: 13ch 10ch 1fr; gap: 0 var(--space-2); padding: 3px var(--space-2); border-bottom: 1px solid var(--border); }
+  .log li[data-problem] { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  .log .kind { color: var(--fg-2); }
+  .log .what { overflow-wrap: anywhere; }
+  .log .detail { grid-column: 3; color: var(--fg-2); overflow-wrap: anywhere; }
+  .log button { font: inherit; padding: 0 4px; min-height: 0; }
+  .muted { color: var(--fg-2); font-size: var(--text-sm); }
+  @media (max-width: 40rem) { .log li { grid-template-columns: 1fr; } .log .detail { grid-column: 1; } }
+</style>
+<template id="events">
+  <section aria-label="Events">
+    <h2>Events <ui-badge>{{count}}</ui-badge> <template if="paused"><ui-badge tone="warn">paused</ui-badge></template></h2>
+    <div class="bar">
+      <input type="search" placeholder="Filter by hook, plugin or text" aria-label="Filter events" value="{{search}}" data-action="search" data-live>
+      <button type="button" data-action="pause" aria-pressed="{{pressed}}">Pause</button>
+      <button type="button" data-action="clear">Clear</button>
+    </div>
+    <div class="filters">
+      <template for="k of kinds">
+        <label key="{{k.kind}}"><input type="checkbox" checked="{{k.on}}" data-action="kind:{{k.kind}}"> {{k.label}} ({{k.n}})</label>
+      </template>
+    </div>
+    <template if="follow"><p>Following one action, <code>#{{follow}}</code>. <button type="button" data-action="follow" data-value="">Stop following</button></p></template>
+    <template if="none"><ui-empty heading="Nothing yet"><p>Use the app you're looking at, and what it does shows here.</p></ui-empty></template>
+    <ol class="log" reversed>
+      <template for="e of rows">
+        <li key="{{e.seq}}" data-problem="{{e.problem}}">
+          <span class="time">{{e.time}}</span>
+          <span class="kind">{{e.kind}}</span>
+          <span class="what"><strong>{{e.name}}</strong> <template if="e.plugin">[{{e.plugin}}]</template> {{e.ms}} <template if="e.trace"><button type="button" data-action="follow" data-value="{{e.trace}}" title="Show only this action">#{{e.trace}}</button></template></span>
+          <template if="e.detail"><span class="detail">{{e.detail}}</span></template>
+        </li>
+      </template>
+    </ol>
+    <template if="left"><p class="muted">{{left}} older events not drawn. Filter to see them.</p></template>
+  </section>
+</template>

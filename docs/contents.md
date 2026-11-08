@@ -6,6 +6,7 @@
   1. [Writing a plugin](guide/writing-a-plugin.md)
   1. [Views and templates](guide/views-and-templates.md)
   1. [Data and permissions](guide/data-and-permissions.md)
+  1. [Debugging an app](guide/debugging.md)
   1. [Styling](guide/styling.md)
   1. [Sharing data between apps](guide/sharing-data-between-apps.md)
   1. [Routes and the service worker](guide/routes.md)
