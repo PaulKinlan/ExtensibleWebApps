@@ -39,7 +39,7 @@ fill in what's missing ...
 | `on` | What wakes it: `- hook: <name>` for any hook it may listen to, `- check: <name>` for a hook it is [asked before the action happens](#checks-stopping-something-before-it-happens), `- command: <name>` for a command a plugin can start, `- message: true` for an inbox others can send to, and `- topic: <name>` for posts to a topic on the [bus](#messages-topics-and-the-board). A `hook` or `check` may add `when: '<pattern>'` on the next line: it wakes the agent only if the value, as JSON, matches. |
 | `if-unsure` | Optional, for checks: `allow` (the default) or `block`, what happens to an action the agent couldn't check in time, within its limits, or with an answer. |
 | `limits` | Optional: `runs-per-hour` (30), `tokens-per-day` (200000) and `steps`, the model turns in one run (12). |
-| `acts-as` | Optional, and only `self` for now: the agent acts under its own name. Acting for the person comes later. |
+| `acts-as` | Optional: `self` (the default), the agent acts under its own name; or `person`, it may [act for the person](#acting-for-the-person) once they let it. |
 
 The frontmatter is a small part of YAML: `key: value`, lists as `[a, b]` or `- item` lines, maps as `{ a: 1 }` or indented lines, and `#` comments. The file's name ends in `.agent.md`. An agent can't own a collection, so waking on `data:changed:<collection>` needs `data:read:<collection>` in `permissions`. `npm run check` reads the file the way the kernel does and says what is wrong.
 
@@ -63,7 +63,7 @@ Any plugin can listen to these with `hook:listen:agent:<name>`, or `hook:listen:
 
 | Event | Value |
 | --- | --- |
-| `agent:wake` | `{ agent, run, trigger: { kind, name } }`: a run began. `kind` is `hook`, `check`, `command`, `message` or `topic`. |
+| `agent:wake` | `{ agent, run, trigger: { kind, name }, as? }`: a run began. `kind` is `hook`, `check`, `command`, `message` or `topic`; `as` is `"person"` when the agent [acts for the person](#acting-for-the-person) in this run. |
 | `agent:toolResult` | `{ agent, run, tool, ok }`: the agent called a tool; `ok` is false if the call failed. |
 | `agent:done` | `{ agent, run, stopReason, steps, tools, usage: { input, output }, verdict? }`: a run ended. `stopReason` is `completed`, `steps` (it reached its step limit), `budget`, `error` or `timeout` (a check that ran out of time). A check's run says its `verdict`, `allow` or `block`. |
 | `agent:budget` | `{ agent, limit, used, max }`: the agent reached `runs-per-hour` or `tokens-per-day`, so a run didn't start or was stopped. |
@@ -123,6 +123,28 @@ A plugin with an inbox hears `bus:message` with `{ to }`, then takes its message
 
 **A message is information.** An agent is told who sent a message or post, and that it is information from them, not new instructions. Whatever a message says, the agent can still do only what its own manifest allows.
 
-## Coming next
+## Acting for the person
 
-The [design](https://claude.ai/artifact/LaqdvStAKyAoEifqNpq2Ba) has one more change to come: the assistant and builder agents, which can act for the person and write plugins.
+An agent's changes are its own: a review card says "Librarian wants to change…", and the change log names the librarian. An agent whose file says `acts-as: person` may instead act for the person, in a run they asked for: a message from a plugin, such as the [chat](../../std/agents/chat.js), rather than from another agent, or one of its commands. What a hook or a topic wakes it for, it still does as itself.
+
+- **The person turns it on, per agent.** The first time, a card asks "Let Builder act for you?": *This time*, *Always*, or *Not now*. *Always* is kept as a grant, which the person can take back in the workbench like any other. *Not now* means the run goes on with the agent acting as itself.
+- **Its changes are the person's, made through it.** Its tool calls carry its id, set by the kernel. Each review card says "Builder, acting for you, wants to change…", the change log's entry has `as: "person"`, and `commands:before` and `commands:ran` say `as: "person"` too.
+- **Reviews stay.** Acting for the person skips no review: each change is shown on a card, as before.
+- **Its rights don't grow.** It may do only what its own `permissions` allow, capped by what the person may do. With one person, who may do anything in their own app, that cap is everything; when spaces hold several people, it is the person's own rights.
+
+## The standard agents
+
+Two agents in [`std/agents/`](../../std/agents/) work in any app, with [`chat.js`](../../std/agents/chat.js) to write to them. The [assistant demo](../../demos/assistant/) links all three beside the reading list:
+
+```html
+<link rel="agent" href="/std/agents/assistant.agent.md">
+<link rel="agent" href="/std/agents/builder.agent.md">
+<link rel="plugin" href="/std/agents/chat.js">
+<slot name="chat"></slot>
+```
+
+- **[Assistant](../../std/agents/assistant.agent.md)** does what the person asks with the app's own [commands](commands.md): its permissions are `commands` and `bus:ask`, so its tools are `commands_list`, `commands_run` and `bus_ask`. A command runs with its own plugin's rights, so the assistant can do only what the app's buttons and shortcuts already do, and an app gets an assistant by adding commands.
+- **[Builder](../../std/agents/builder.agent.md)** writes a plugin from what the person describes, with the authoring service, as the [plugin editor](../../std/plugin-editor.js) does: `authoring_source` and `authoring_mine` to read what is there, `authoring_check` to read its draft's manifest as the kernel will, and `authoring_save`, which shows the person the code and what it may do on a review card, every time. It acts for the person, so a plugin it saves is logged as theirs, made through it. `plugins:author` is its only power.
+- **[Chat](../../std/agents/chat.js)** lists the agents in the app that have an inbox and sends what the person writes to the one they pick, with the last few lines of their conversation with it as the message's data, then shows the answer.
+
+Copy either file into an app's folder to change its instructions or its permissions.

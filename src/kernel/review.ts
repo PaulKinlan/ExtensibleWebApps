@@ -9,6 +9,11 @@
 // appended to the change log. Outcomes follow DeepSeek Harness's closed set:
 // allowed-once, allowed-always, granted (an earlier grant applied),
 // rejected and cancelled; anything but an allow means no write.
+//
+// An agent may act for the person (`acts-as: person` in its file). The person
+// lets it on a card here, for one run or always (a grant of the place
+// `acts-as:person`). Its changes are still reviewed, one card each, but the
+// card and the change log say they are the person's, made through the agent.
 
 import type { Dispatch, View } from "../shared/protocol";
 import type { ChangeLog } from "./changes";
@@ -43,8 +48,11 @@ export interface Request {
 
 type Pending = { request: Request; resolve: (o: Outcome) => void; timer: ReturnType<typeof setTimeout>; dispatch: Dispatch };
 
+/** The place an agent is granted to act for the person: `acts-as: person` in its file. */
+export const ACTS_AS = "acts-as:person";
+
 export const placeLabel = (place: string) =>
-  place.startsWith("files:") ? `${place.slice(6)}/` : place.startsWith("place:") || place.startsWith("unlock:") ? `${place.split("#")[1]}` : place;
+  place === ACTS_AS ? "acting for you" : place.startsWith("files:") ? `${place.slice(6)}/` : place.startsWith("place:") || place.startsWith("unlock:") ? `${place.split("#")[1]}` : place;
 
 export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
   // No prototype, so a plugin id such as `constructor` finds nothing it shouldn't.
@@ -80,13 +88,37 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     ],
   });
 
-  const card = (id: string, r: Request): View =>
-    r.kind === "place"
+  /** Asks whether an agent may act for the person: for this run, always, or not. */
+  const actsAsCard = (id: string, r: Request): View => ({
+    type: "stack",
+    children: [
+      { type: "heading", text: `Let ${r.name} act for you?` },
+      { type: "text", text: `${r.reason} Its changes will be logged as yours, made through ${r.name}. You still review each one, and it can do only what its own permissions allow.`, tone: "muted" },
+      {
+        type: "stack",
+        direction: "row",
+        children: [
+          { type: "button", label: "This time", action: `accept:${id}`, primary: true },
+          { type: "button", label: "Always", action: `always:${id}` },
+          { type: "button", label: "Not now", action: `decline:${id}` },
+        ],
+      },
+    ],
+  });
+
+  /** A write by an agent acting for the person: its call carries the agent's id as `via`. */
+  const forPerson = (r: Request, dispatch: Dispatch) => dispatch.via === r.plugin;
+
+  const card = (id: string, r: Request, dispatch: Dispatch): View =>
+    r.place === ACTS_AS
+      ? actsAsCard(id, r)
+      : r.kind === "place"
       ? placeCard(id, r)
       : {
           type: "stack",
           children: [
-            { type: "heading", text: `${r.name} wants to change ${r.target}` },
+            { type: "heading", text: forPerson(r, dispatch) ? `${r.name}, acting for you, wants to change ${r.target}` : `${r.name} wants to change ${r.target}` },
+            ...(forPerson(r, dispatch) ? [{ type: "text" as const, text: `If you accept, this is logged as your change, made through ${r.name}.` }] : []),
             { type: "text", text: r.reason ? `Reason: ${r.reason}` : "No reason given.", tone: "muted" },
             { type: "diff", lines: trim(diffLines(r.before, r.after)) },
             {
@@ -114,7 +146,8 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
       void log.append({ kind: "grant", plugin: p.request.plugin, detail: placeLabel(p.request.place), trace });
       api.onGrants?.(p.request.plugin);
     }
-    void log.append({ kind: "write", plugin: p.request.plugin, detail: p.request.target, outcome, trace: trace ?? p.dispatch.trace });
+    // Letting an agent act for the person is a grant, not a write: only "always" (above) is kept.
+    if (p.request.place !== ACTS_AS) void log.append({ kind: "write", plugin: p.request.plugin, detail: p.request.target, outcome, ...(forPerson(p.request, p.dispatch) ? { as: "person" as const } : {}), trace: trace ?? p.dispatch.trace });
     p.resolve(outcome);
   };
 
@@ -123,7 +156,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     async ask(request: Request, dispatch: Dispatch): Promise<Outcome> {
       await loaded;
       if (!request.once && grants[request.plugin]?.includes(request.place)) {
-        void log.append({ kind: "write", plugin: request.plugin, detail: request.target, outcome: "granted", trace: dispatch.trace });
+        if (request.place !== ACTS_AS) void log.append({ kind: "write", plugin: request.plugin, detail: request.target, outcome: "granted", ...(forPerson(request, dispatch) ? { as: "person" as const } : {}), trace: dispatch.trace });
         return "granted";
       }
       const id = String(++nextId);
@@ -131,7 +164,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
       return new Promise<Outcome>((resolve) => {
         const timer = setTimeout(() => settle(id, "cancelled"), TIMEOUT);
         pending.set(id, { request, resolve, timer, dispatch });
-        hosts.render("review", "main", `review:${id}`, card(id, request), 0);
+        hosts.render("review", "main", `review:${id}`, card(id, request, dispatch), 0);
       });
     },
 

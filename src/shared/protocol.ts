@@ -181,4 +181,9 @@ export interface Manifest {
 /** Carried as Cordis's `thisArg` on every kernel dispatch, so listeners in any worker know which action they serve. */
 export interface Dispatch {
   trace?: string;
+  /**
+   * Set by the kernel, never by a plugin: the id of an agent acting for the person (`acts-as: person`)
+   * that made this call. Reviews and the change log say the change is the person's, made through it.
+   */
+  via?: string;
 }

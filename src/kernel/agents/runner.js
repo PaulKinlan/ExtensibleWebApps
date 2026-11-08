@@ -84,7 +84,7 @@ export default async function (ctx) {
   }
 
   async function run(trigger) {
-    const begun = await ctx.call("agents", "begin", { kind: trigger.kind, name: trigger.name, ...(trigger.chain ? { chain: trigger.chain } : {}) });
+    const begun = await ctx.call("agents", "begin", { kind: trigger.kind, name: trigger.name, ...(trigger.from ? { from: trigger.from } : {}), ...(trigger.chain ? { chain: trigger.chain } : {}) });
     if (!begun.ok) {
       ctx.log(`${AGENT.name}: didn't run: ${begun.reason}`);
       return { stopReason: begun.reason, text: `${AGENT.name} didn't run: it reached its limit` };

@@ -16,7 +16,7 @@ import { allowed, type Outcome, type Request } from "./review";
 import type { Store } from "./store";
 import type { UserPlugins } from "./user-plugins";
 
-type Apps = { linkedBy(tab: string): string[] | undefined };
+type Apps = { linkedBy(tab: string): string[] | undefined; tabsWith?(id: string): string[] };
 
 /** What saving needs from the kernel: the person's plugins, the app open in each tab, and the review. */
 export interface Saving {
@@ -87,10 +87,13 @@ export function explain(permission: string): string {
 }
 
 export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): ServiceProvider {
-  /** The caller's tab, or an error: the editor works on the app open in one tab. */
+  /**
+   * The caller's tab, or an error: the editor works on the app open in one tab. A shared plugin, such as
+   * an agent (std/agents/builder.agent.md), works on the app that links it, through any tab that has it open.
+   */
   const tabOf = (instance: string): string => {
-    const tab = instance.split("@")[1];
-    if (!tab) throw new Error('The authoring service needs scope: "tab", so it knows which app it is in');
+    const tab = instance.split("@")[1] ?? apps.tabsWith?.(instance)[0];
+    if (!tab) throw new Error('The authoring service needs scope: "tab", or an app open that links the caller, so it knows which app it is in');
     return tab;
   };
   const appOf = (tab: string): string => {
@@ -121,6 +124,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         returns: "{ id, name, code }",
         needs: "plugins:read",
         description: "The code of a plugin the caller's app links, or of one of the person's own for it, on or off.",
+        params: [{ name: "id", schema: { type: "string", description: "The plugin's id" } }],
       },
       copy: {
         args: "(id)",
@@ -133,18 +137,21 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         returns: "[{ id, name, on, error? }]",
         needs: "plugins:author",
         description: "The person's own plugins for the caller's app.",
+        params: [],
       },
       save: {
         args: "(code)",
         returns: "{ ok: true, id } or { ok: false, error }",
         needs: "plugins:author",
         description: "Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins.",
+        params: [{ name: "code", schema: { type: "string", description: "The plugin's whole source: `export const manifest = { ... }` first, then `export default function (ctx) { ... }`" } }],
       },
       remove: {
         args: "(id)",
         returns: "{ ok: true } or { ok: false, error }",
         needs: "plugins:author",
         description: "Removes one of the person's own plugins for the caller's app, once they accept a review.",
+        params: [{ name: "id", schema: { type: "string", description: "The id of one of the person's own plugins" } }],
       },
       file: {
         args: "(path)",
@@ -157,6 +164,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         returns: "{ ok: true, manifest: { id, name, description, scope }, permissions: [{ name, about }] } or { ok: false, error }",
         needs: "plugins:read",
         description: "Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do.",
+        params: [{ name: "code", schema: { type: "string", description: "The draft plugin's whole source" } }],
       },
     },
     // Reading code and checking a manifest only look, so a viewer such as std/view-source.js needs no more than plugins:read (plugins:author includes it).

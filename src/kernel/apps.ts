@@ -118,6 +118,11 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
       return out;
     },
 
+    /** The tabs whose app links a plugin (an instance's id is enough), oldest first. */
+    tabsWith(instance: string): string[] {
+      return [...(users.get(instance.split("@")[0]) ?? [])];
+    },
+
     /** A tab closed: stop the app plugins no open tab needs any more. */
     hostLeft(host: Host): void {
       linked.delete(host.tab);
