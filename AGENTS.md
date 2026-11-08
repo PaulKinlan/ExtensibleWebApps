@@ -9,9 +9,11 @@ Instructions for AI agents (and people) building apps and plugins on this platfo
 - To add to **another plugin's view**, fill a slot it declares (`<slot name="cookbook.recipe.actions">`: render to that name, `page.slots` says what each is for), or transform it with a place that has `in: "<plugin>"` and the permission `ui:transform:<plugin>`: [slots and transforms](docs/guide/slots-and-transforms.md).
 - A **plugin** is one ES module, run in its own worker. It has a manifest and a default export that gets `ctx`. Its views are `<template id>` elements in an `.html` file next to it.
 - An **agent** is a Markdown file linked with `<link rel="agent" href="x.agent.md">`: frontmatter for its id, permissions and what wakes it, then its instructions. The kernel runs it as a plugin that asks a model and calls tools: [agents](docs/guide/agents.md).
+- A plugin that should keep working with no app open (a public form, a scheduled job, a check on every change people send) says `runs: "server"` in its manifest. It runs on the server of a space the app is opened in (`/s/<space>/…`), with `routes`, `schedule` and `email`: [spaces and server plugins](docs/guide/spaces-and-servers.md).
+- A plugin can define **hooks of its own** in its manifest (`hooks: { open: { mode: "emit" } }`, heard by others as `<id>:open`) and run them with `ctx.hooks.emit` or `ctx.hooks.call`: [hooks of your own](docs/guide/plugin-hooks.md).
 - **No build step.** Write plain JavaScript (JSDoc and `// @ts-check` are welcome), HTML and CSS. The browser runs the files as written. Don't add bundlers, frameworks or npm dependencies to apps or plugins.
 
-Start with `npm run new-app -- my-app`: it copies [`starter/`](starter/), a list you can add to and tick off, to `demos/my-app/`. [`demos/habits/`](demos/habits/) is the smallest complete demo, and [the guide](docs/guide/writing-a-plugin.md) walks through it.
+Start with `npm run new-app -- my-app` (with no checkout, `npx github:PaulKinlan/ExtensibleWebApps my-app` makes a project with the platform and runs it for you): it copies [`starter/`](starter/), a list you can add to and tick off, to `demos/my-app/`. [`demos/habits/`](demos/habits/) is the smallest complete demo, and [the guide](docs/guide/writing-a-plugin.md) walks through it.
 
 ## Rules the kernel enforces
 
@@ -41,6 +43,7 @@ npm install
 npm run check        # finds mistakes in the apps without a browser: permissions, manifests, templates, slots (--json for tools)
 npm run dev          # open http://localhost:5173/demos/<app>/app.html; the workbench at /workbench/ has the trace
 npm test             # builds, then opens every app in demos/ and checks each linked plugin draws
+npm run test:server  # after changing anything a space's server runs: the server checks on Node and wrangler dev
 npm run typecheck
 npm run reference    # after changing the kernel's API: rewrites docs/api.md (the tests check it)
 ```

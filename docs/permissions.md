@@ -14,10 +14,10 @@ Ask for exactly what you use. The person sees the list in Customize, view source
 
 ```mermaid
 flowchart LR
-    A["Shows things<br/>ui, router, commands"] --> B["Reads<br/>data:read, plugins:read, debug:read"]
+    A["Shows things<br/>ui, router, commands, ui:theme"] --> B["Reads<br/>data:read, plugins:read, debug:read, sync"]
     B --> C["Takes part<br/>hook:intercept, bus"]
-    C --> D["Changes things<br/>data:write, files, plugins:manage,<br/>plugins:author, history, transfer"]
-    D --> E["Leaves the browser<br/>network, network:host, secret, llm, share"]
+    C --> D["Changes things<br/>data:write, files, plugins:manage,<br/>plugins:author, history, transfer, schedule"]
+    D --> E["Leaves the browser<br/>network, network:host, secret, llm, share, email"]
 ```
 
 ## Showing things
@@ -28,7 +28,9 @@ flowchart LR
 | `router` | Know which screen of the app the tab shows, hear when it changes, and move to another. | Usually with `scope: "tab"`. See [Routes](guide/routes.md). |
 | `commands` | List the app's commands and run them. | Each command runs with its own plugin's rights, not the caller's. See [Commands](guide/commands.md). |
 | `audio` | Register an AudioWorklet processor and play it, in the tab that runs the plugins. | |
-| `routes` | Answer requests for paths in its own folder (`ctx.routes.add`). | See [Routes and the service worker](guide/routes.md). |
+| `routes` | Answer requests for paths in its own folder (`ctx.routes.add`). | See [Routes and the service worker](guide/routes.md). On a space's server the routes are public: see [Spaces, and plugins on a server](guide/spaces-and-servers.md). |
+| `ui:theme` | Set design tokens for the whole app, with the manifest's `theme`. | Colours, corners, shadows and typefaces only, as plain values. See [Styling](guide/styling.md#themes-a-plugin-that-sets-the-tokens). |
+| `ui:transform:<plugin>` | Change that plugin's views with a place whose `in` names it: add to them, replace or hide parts. | See [Slots in views, and view transforms](guide/slots-and-transforms.md). |
 
 No permission is needed for a plugin's own storage and settings (`ctx.storage`, `ctx.settings`), or for adding commands of its own.
 
@@ -41,6 +43,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `debug:read` | Read the kernel's trace for the app. | The trace names every plugin and what it did. |
 | `reflect:read` | Read what runs in the kernel: every plugin's manifest and permissions, every hook and its listeners, every worker and tab, and plugins' code. | It sees every app open on this site, not just the caller's: give it only to developer tools such as the [debugger](../demos/debugger/app.html). |
 | `bus:read:<topic>` | Read the messages posted to a topic. | See [Agents](guide/agents.md). |
+| `sync` | Know whether the tab's copy of a space is in step, and keep or let go of the drafts kept from a conflict. | What [`std/sync.js`](../std/sync.js) uses. Only means something in a space. |
 | `hook:listen:<hook>` | Hear an `emit` or `parallel` hook: something happened. | It can't change what happened. |
 
 ## Taking part
@@ -59,6 +62,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `data:write:<collection>` | Put and delete another plugin's records. | **Each change waits for the person** to accept a review card, unless they chose to always allow it. |
 | `files:<folder>` | Read and write text files in one folder of the app's data. | Writes are reviewed. Paths are checked, and the platform's own files are off limits whatever the folder. |
 | `history` | Undo and redo the app's most recent data changes. | |
+| `schedule` | Run work later, once or every so often (`ctx.schedule.at`, `ctx.schedule.every`). | At most once a second. On a space's server a job wakes the space, even after a restart; in a browser it runs only while the kernel does. |
 | `transfer` | Export the app's collections, and import into them. | An import is reviewed as a whole. |
 | `plugins:manage` | Switch the app's plugins on and off. | What the switchboard and reset use. Switching is saved and applies in every tab. |
 | `plugins:author` | Write and remove the person's own plugins for the app. Includes `plugins:read`. | **Every save and removal waits for the person**, on a card showing the code. |
@@ -73,6 +77,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `llm` | Ask the app's language models, and list them. | The plugin never sees a key or a vendor's address. |
 | `provide:llm` | Be a language model: answer the `llm` service's requests for one vendor. | What the plugins in [`/std/llm/`](../std/llm/README.md) ask for, beside their vendor's host and key. |
 | `share` | Hand something to the system's share sheet, or take what was shared to the app. | |
+| `email` | Send an email (`email.send`), to up to 10 addresses. | Only on a space's server; refused in a browser. At most 50 a day. Written to the space's outbox until the site sets up delivery. |
 
 ## Editor permissions
 

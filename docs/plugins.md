@@ -31,6 +31,7 @@ Plugins in [`/std/`](../std/README.md) that any app can link from its `app.html`
 | --- | --- | --- | --- |
 | [Undo](../std/undo.js) | Undo and Redo for the app's data, whichever plugin made the change. | `ui`, `history` | `history` |
 | [Import and export](../std/import-export.js) | Each collection to CSV or JSON, and back in, reviewed as a whole. | `ui`, `transfer` | `import-export` |
+| [Sync](../std/sync.js) | In a space, whether the page is in step with the space's server, and the drafts kept when two people changed the same record, with Use mine and Keep theirs. Shows nothing outside a space. | `ui`, `sync` | `sync` |
 
 ## Language models and agents
 
@@ -39,5 +40,7 @@ Plugins in [`/std/`](../std/README.md) that any app can link from its `app.html`
 | [Claude, OpenAI, Gemini, and any OpenAI-style API](../std/llm/README.md) | Language models behind the `llm` service, so other plugins can ask one without holding a key. The person gives their key the first time. | `provide:llm`, `network:<vendor host>`, `secret:<vendor>` | none |
 | [Ask the page](../std/ask-the-page.js) | A question box a model answers from what the page is made of, showing exactly what it sent. | `ui`, `llm`, `plugins:read` | `ask` |
 | [Board](../std/board.js) | Where the app's agents reach the person: their questions, and what they did lately. | `ui`, `bus:board`, and listening to questions, answers and agents | `board` |
+| [Assistant](../std/agents/assistant.agent.md) and [Builder](../std/agents/builder.agent.md) | Agents, linked with `<link rel="agent">`: the assistant does what you ask with the app's commands; the builder writes a plugin from what you describe, after a review card. | `commands`, `bus:ask`; `plugins:author`, `bus:ask` | none |
+| [Chat](../std/agents/chat.js) | A box to write to the app's agents, and their answers. | `ui`, `bus:send:*` | `chat` |
 
 The [std README](../std/README.md) says more about each, and the plugins' own files start with a comment saying how they work. The permissions above are a guide: each file's manifest is the truth, and view source, on the [homepage](/), shows it in plain words.

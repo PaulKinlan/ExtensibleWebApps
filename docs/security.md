@@ -67,8 +67,20 @@ A plugin that asks a language model through the `llm` service needs only the `ll
 - **Any plugin can be switched off**, which stops its workers at once. Opening any app with `?reset` turns its plugins back on, before any of them runs, so a page can always be recovered.
 - **An author's marks.** An app's author can mark parts of the page `review` or `locked`, and a person's plugin that wants to draw there waits for their approval or is refused ([Places](guide/places.md)).
 
+## 8. On a space's server, the same rules and a few more
+
+A space's server runs the same kernel and the same gate, so everything above holds there too ([Servers and spaces](server.md)). On top of it:
+
+- **Only members join a space.** A device joins its kernel only with the session cookie of someone in the space, and the server, not the device, says which member it is. Someone who leaves or is removed is disconnected at once.
+- **Only the author's plugins run there.** The space starts the server plugins of the apps the site serves, read from the site's own files. It never runs code a member's device sent, and a member can't replace a server plugin with their own copy.
+- **Each server plugin is in an isolate of its own:** on Node a process under Node's permission model, with no files, no child processes and none of the server's environment; on Cloudflare a Dynamic Worker with no bindings. Without `network` it can't connect anywhere, and with it, it still can't reach the server's own network (loopback, private and metadata addresses are refused where each connection is made).
+- **Public routes are public.** Anyone may call a server plugin's route, from any site, and the plugin isn't told who. What it answers is shown with no script.
+- **Limits on what costs others.** A plugin sends at most 50 emails a day, to at most 10 addresses each, and runs a scheduled job at most once a second.
+- **Sign-in keeps nothing that can leak.** Passkeys are checked with WebCrypto, sessions are `HttpOnly` cookies whose hash is all the server keeps, and a provider's token is thrown away once it has said who the person is.
+
 ## What it doesn't do yet
 
 - **Limits on a plugin's time or memory.** A plugin can't stall the kernel, because hooks that wait for an answer have time limits, but a busy plugin can slow its own worker. Switching it off stops it.
-- **Servers and many people.** Everything above runs in one browser. Accounts, sharing between people and keys provided by the deployment come with the servers in phase 2b.
+- **Keys the deployment provides.** A key is always one the person gave, in their browser. A server holding an app's key, behind the same calls, isn't there yet.
+- **Delivering email.** A server plugin's mail is written to the space's outbox, not sent. Who a plugin may mail (anyone, or only the space's members) is still open.
 - **Signed plugins.** A plugin is trusted for what its manifest says it may do, not for who wrote it.

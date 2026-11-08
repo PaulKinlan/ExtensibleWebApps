@@ -1,6 +1,6 @@
 # Extensible Web Apps
 
-> A platform for malleable web apps: a small kernel in a shared worker, and everything else is a plugin. An app is an app.html page that lists plugins with <link rel="plugin">; each plugin is one ES module with a literal manifest, runs in its own worker, can do only what its manifest asks for, and draws plain-HTML views from template files. No build step.
+> A platform for malleable web apps: a small kernel in a shared worker (and, optionally, on a server for each shared space), and everything else is a plugin. An app is an app.html page that lists plugins with <link rel="plugin">; each plugin is one ES module with a literal manifest, runs in its own worker, can do only what its manifest asks for, and draws plain-HTML views from template files. No build step.
 
 Start with AGENTS.md for the rules and conventions, then the developer guide. The API reference is generated from the running kernel.
 
@@ -20,17 +20,21 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [Agents](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/agents.md): a Markdown file linked with <link rel="agent">, run as a plugin that asks a model and calls tools through the gate
 - [Deploying one app on its own](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/deploying-an-app.md): npm run deploy:app puts one app on a Cloudflare Worker of its own, with the whole platform
 - [Places](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/places.md): plugins adding to, replacing or hiding parts of a page with no slot for them; open, review and locked areas; a person's own plugins
+- [Spaces, and plugins on a server](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/spaces-and-servers.md): spaces shared by a group of people with sync; plugins with `runs: "server"` that answer public routes, run on a schedule and send email
+- [Tools for language models](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/tools.md): service methods offered to a model as tools, called through the gate
+- [Loading fast, without jumping](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/loading-fast.md): what the host and service worker do so apps draw early without layout shift
 - [Slots in views, and view transforms](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/slots-and-transforms.md): a plugin declaring `<slot name="<id>.<name>">` in its view for others to fill (page.slots), and changing another plugin's view with a place `in` it (ui:transform:<plugin>)
 
 ## Reference
 
 - [API reference](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/api.md): every ctx call, service method, hook, capability, manifest field, component and allowed element
-- [The kernel](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/kernel.md): how plugins are run, checked and reviewed
+- [The kernel](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/kernel.md): where it runs, and how plugins are run, checked and reviewed
+- [Servers and spaces](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/server.md): the kernel on Node and Cloudflare, seams, sign-in, sync, server plugins
 - [API keys and web requests](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/keys-and-requests.md): network:<host>, net.fetch, and secrets a plugin uses without seeing
 
 ## Examples
 
 - [Starter](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/starter): the app `npm run new-app` copies; `npm run check` finds mistakes in it
 - [Habits](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos/habits): the smallest complete app, the one the guide builds
-- [All demo apps](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos): reading list, spending, recipes, contacts, calendar
-- [Live demos](https://extensible-web-apps.kinlan-test.workers.dev/)
+- [All demo apps](https://github.com/PaulKinlan/ExtensibleWebApps/tree/main/demos): reading list, spending, recipes, contacts, calendar, survey and feeds (server plugins), household (a space), debugger, and more
+- [Live demos](https://extensibleweb.app/)

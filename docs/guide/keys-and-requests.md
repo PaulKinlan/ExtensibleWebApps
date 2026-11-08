@@ -52,4 +52,4 @@ export default async function (ctx) {
 
 The key is kept with the app's data, in a file no plugin can read. The trace shows each request and which secret it used, never the secret. A plugin without `secret:<name>` can't use the key, and a plugin that has it can't send it anywhere else: a request to another host is refused.
 
-Keys the deployment provides, so the person needn't bring their own, come with the servers in phase 2b, behind the same calls.
+Keys the deployment provides, so the person needn't bring their own, aren't there yet; they will come behind the same calls. A key is always one the person gave, in their browser, so a [server plugin](spaces-and-servers.md) has none to use.

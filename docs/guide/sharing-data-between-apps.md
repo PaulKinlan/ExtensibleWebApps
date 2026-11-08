@@ -1,6 +1,6 @@
 # Sharing data between apps
 
-Every app on the same origin shares one kernel and one data folder. So a collection one app's plugin owns can be read by a plugin in another app, with the same permission it would need in the same app. Nothing else is needed: no API, no sync.
+Every app on the same origin shares one kernel and one data folder. So a collection one app's plugin owns can be read by a plugin in another app, with the same permission it would need in the same app. Nothing else is needed: no API, no sync. Inside a space it works the same way: apps opened in the same space share that space's data ([Spaces, and plugins on a server](spaces-and-servers.md)).
 
 ```mermaid
 flowchart LR

@@ -19,7 +19,7 @@ Use the tokens rather than fixed values, so a plugin fits any app that sets them
 | Colour | `--bg`, `--bg-2`, `--surface`, `--fg`, `--fg-2`, `--border`, `--accent`, `--accent-fg`, `--ok`, `--warn`, `--danger` |
 | Space | `--space-1` (4px) to `--space-6` (32px) |
 | Type | `--text-sm`, `--text-md`, `--text-lg`, `--text-xl`, `--text-2xl`, `--font`, `--mono` |
-| Shape | `--radius-sm`, `--radius`, `--radius-lg`, `--shadow-1` |
+| Shape | `--radius-sm`, `--radius`, `--radius-lg`, `--shadow-1`, `--shadow-2`, `--ring` (the focus outline) |
 | Motion | `--duration`, `--ease` |
 
 An app changes the look of every plugin at once by setting tokens in its own `<style>`: `:root { --accent: rebeccapurple; }`.

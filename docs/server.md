@@ -1,47 +1,49 @@
-# Servers (phase 2b)
+# Servers and spaces
 
-The browser kernel is the source of truth on each device, and an app works with no server at all. Phase 2b adds an optional peer: the same kernel, running on a server, one per **space** (an app shared by a group of people). It syncs with each device, runs server plugins, and answers public routes. The design, with the questions still open, is in the [phase 2b design doc](https://claude.ai/artifact/RSBXjYMixAyeLy8msz6yFg).
+The browser kernel is the source of truth on each device, and an app works with no server at all. A server adds an optional peer: the same kernel, running on a server, one per **space** (a group of people and the data they share). It syncs with each device, runs server plugins, and answers public routes. The design, with the questions still open, is in the [phase 2b design doc](https://claude.ai/artifact/RSBXjYMixAyeLy8msz6yFg). To use spaces and server plugins in an app, start with the guide's [Spaces, and plugins on a server](guide/spaces-and-servers.md); this page says how they are built.
 
-It is built in steps, each its own pull request:
+All of it is built, on two hosts:
 
-1. **Seams and conformance checks**: this step, described below.
-2. **Kernel core**: the host-independent parts of `src/kernel/kernel.ts` behind an environment object, shared by a browser entry and a server entry. The store keeps its folder through the `files` seam (`src/seams/opfs.ts` in the browser), and `kernel.ts` reads what differs between hosts (who connects, its origin, its folder, where its errors go) from `src/kernel/env.ts`, which `src/kernel/browser.ts` sets in the browser.
-3. **Node host**: `npm run serve`, a space kernel on the Node seams (described below).
-4. **Cloudflare host**: a Durable Object per space, with its kernel in a Dynamic Worker of its own (described below). R2 for large files and alarms for the schedule come with the features that need them.
-5. **Sign-in and spaces**: passkeys first (described below), then GitHub and other OAuth providers as configuration; sessions and members. A space holds people and data (collections and plugins), and any app can open in it.
-6. **Sync**: a tab joins a space, and still works offline.
-7. **Server plugins**: `runs`, `http.route`, `schedule`, `email`, and `data:beforeWrite` on the server.
-8. **Proof apps**: a survey builder and a feed reader.
+| Part | Where it is | Below |
+| --- | --- | --- |
+| **One kernel, everywhere.** The kernel's code is the same in a shared worker, a dedicated worker, a space's copy in a tab and a space's server ([where it runs](kernel.md#where-it-runs)). What differs is the environment an entry sets first ([`src/kernel/env.ts`](../src/kernel/env.ts)): [`browser.ts`](../src/kernel/browser.ts) in the browser, [`src/server/space.ts`](../src/server/space.ts) on Node, and [`src/server/cloudflare/kernel.ts`](../src/server/cloudflare/kernel.ts) on Cloudflare. The kernel keeps its folder through the `files` seam everywhere. | `src/kernel/` | [Seams](#seams) |
+| **The Node host**: `npm run serve` | `src/server/serve.ts` | [The Node host](#the-node-host) |
+| **The Cloudflare host**: a Durable Object per space, with its kernel in a Dynamic Worker of its own | `src/server/cloudflare/` | [The Cloudflare host](#the-cloudflare-host) |
+| **Sign-in and spaces**: passkeys, OAuth providers as configuration (GitHub, Bluesky), spaces with members and invites | `src/server/auth/` | [Sign-in and spaces](#sign-in-and-spaces) |
+| **Sync**: a tab in a space keeps a copy, and still works offline | `src/kernel/sync.ts`, `sync-device.ts` | [Sync](#sync) |
+| **Server plugins**: `runs`, public routes, `schedule`, `email`, and `data:beforeWrite` on the server | `src/kernel/server-apps.ts`, `isolate-host.ts` | [Server plugins](#server-plugins) |
+| **Proof apps**: a survey builder and a feed reader | `demos/survey/`, `demos/feeds/` | [Proof apps](#proof-apps) |
 
 ## Seams
 
-Everything a space kernel needs from the machine it runs on is a **seam**: one small interface in [`src/seams/index.ts`](../src/seams/index.ts). Each host provides every seam, and a space's config can mix providers. Plugins never see a seam. They call services through the gate, and the kernel calls the seams.
+Everything a space kernel needs from the machine it runs on is a **seam**: one small interface in [`src/seams/index.ts`](../src/seams/index.ts). Plugins never see a seam. They call services through the gate, and the kernel calls the seams.
 
-| Seam | What it does | Memory (tests) | Node | Cloudflare (step 4) |
-| --- | --- | --- | --- | --- |
-| `files` | The kernel's folder: plugins, their files, settings | a Map | a folder | DO SQLite, R2 for large files |
-| `records` | Collections, versions, and the ordered change log | Maps | a SQLite file (`node:sqlite`) | DO SQLite |
-| `schedule` | Wake the space later, even after a restart | timers | timers + `schedule.json` | DO alarms |
-| `secrets` | Keys only the kernel reads | an object | an env file | Worker secrets |
-| `email` | Send mail | written down | an outbox folder (SMTP later) | Cloudflare Email |
+Two seams are what the kernel runs on today:
 
-Two seams come with their hosts: `isolate` (where server plugins run) in step 3, and `auth` in step 5.
+| Seam | What it does | Browser | Node | Cloudflare | Memory (tests) |
+| --- | --- | --- | --- | --- | --- |
+| `files` | The kernel's folder: collections, the sync log, plugins, their files and settings, scheduled jobs, the outbox | the origin private file system ([`opfs.ts`](../src/seams/opfs.ts)) | a folder ([`node.ts`](../src/seams/node.ts)) | the facet's SQLite ([`durable.ts`](../src/seams/durable.ts)) | a Map |
+| `isolates` | Where server plugins run | (tabs start workers instead) | a process each ([`node-isolates.ts`](../src/seams/node-isolates.ts)) | a Dynamic Worker each ([`remote-isolates.ts`](../src/seams/remote-isolates.ts)) | none |
+
+Everything else is kept in that folder by the kernel itself: collections and the sync log as JSON files, jobs in `schedule/jobs.json` (with timers, and a Durable Object alarm on Cloudflare to wake the space), mail in `server/outbox/`, keys in `secrets.json`.
+
+The seams interface also defines `records`, `schedule`, `secrets` and `email`, with memory and Node providers that pass the conformance checks below (a SQLite file with `node:sqlite`, timers with `schedule.json`, an env file, an outbox folder). The kernel doesn't use them yet: they are ready for records in SQLite, mail that is delivered, and keys the deployment provides. Cloudflare has only `files` so far.
 
 ### Records and the change log
 
-A space orders every change. `put(collection, id, value, base)` takes `base`, the version the writer last saw (0 means "it shouldn't exist yet"):
+The `records` seam orders every change the way a space's sync does ([Sync](#sync), which keeps its log in files today). `put(collection, id, value, base)` takes `base`, the version the writer last saw (0 means "it shouldn't exist yet"):
 
 - If `base` is the current version, the write is accepted. It gets the next sequence number, which is also the record's new version.
 - If it isn't, the write is refused as `{ ok: false, stale: true, current }`. The writer shows the newer record and keeps its own as a draft.
 - `changes(since)` returns every accepted change after a sequence number, so a device that was offline catches up.
 
-This is how sync works until 2c brings CRDTs for live editing.
+Sync works this way until CRDTs come for live editing.
 
 ### Checks every provider passes
 
 [`tests/seams/run.mjs`](../tests/seams/run.mjs) runs the same checks against every provider: what is written reads back, paths (and links) can't leave the folder, stale writes are refused, the change log is complete and ordered, jobs run once, survive a restart and catch up once after one, a failing job doesn't stop the rest, and email refuses what isn't an address. Run them with `npm run test:seams`. `npm test` runs them too.
 
-The seams live in `src/seams/`, beside the browser code rather than under `src/server/`, because the browser kernel uses them too: its folder moves onto the `files` seam when the kernel core is shared (step 2). Server code is TypeScript that Node runs as it is (Node strips the types), so there is no build step on the server either. Imports name their `.ts` files, and `tsconfig.server.json` checks the server and the seams with Node's types: `npm run typecheck` checks both halves.
+The seams live in `src/seams/`, beside the browser code rather than under `src/server/`, because the browser kernel uses them too: its folder is the `files` seam over the origin private file system. The server's own code (`src/server/`) is TypeScript that Node runs as it is (Node strips the types); the kernel it runs is built by Vite (`npm run build:server`), as the browser's is. Imports name their `.ts` files, and `tsconfig.server.json` checks the server and the seams with Node's types: `npm run typecheck` checks both halves.
 
 ## The Node host
 
@@ -52,10 +54,7 @@ The seams live in `src/seams/`, beside the browser code rather than under `src/s
 
 Only a space's members may join it: the upgrade must carry the session cookie of someone in the space (see Sign-in and spaces, below). A client speaks the messages a tab speaks to its kernel (`hello`, `command`, `event`, `bye`), as JSON over the WebSocket ([`src/server/websocket.ts`](../src/server/websocket.ts) is the server's side, with no dependency). For example, after `hello`, `{ "t": "command", "id": 1, "name": "user:list", "arg": { "app": "demos/contacts" } }` answers with the plugins the space keeps for that app.
 
-What isn't there yet:
-
-- **Plugins don't run on the server.** On a server no client starts plugin workers. The `isolate` seam does that, with server plugins (step 7).
-- **A tab syncs with a space** when it opens an app at `/s/<space>/…` (see Sync, below).
+Each space's kernel runs its server plugins in isolates (see [Server plugins](#server-plugins)), and a tab syncs with it when it opens an app at `/s/<space>/…` (see [Sync](#sync)).
 
 Options: `node src/server/serve.ts --port 8787 --host 127.0.0.1 --spaces .spaces --site dist`. Behind a proxy that speaks HTTPS, add `--origin https://your.host` (or set `PUBLIC_ORIGIN`), so sign-in sees the address people use. [`tests/server/run.mjs`](../tests/server/run.mjs) checks it (`npm run test:server`, or `node tests/server/run.mjs node` for this host only), and `npm test` runs those checks too.
 
@@ -145,7 +144,7 @@ sequenceDiagram
   S->>D: handle → DID → DID document
   S->>P: /.well-known/oauth-protected-resource
   S->>A: /.well-known/oauth-authorization-server
-  S->>A: PAR (with a DPoP proof; asked again with its nonce)
+  S->>A: PAR (with a DPoP proof, asked again with its nonce)
   S-->>B: 302 to A's authorize page
   B->>A: signs in there
   A-->>B: 302 to /auth/oauth/bluesky/callback?code&state&iss
@@ -181,7 +180,7 @@ Another way to sign in was looked at, and waits:
 
 ## Sync
 
-Each device keeps its own copy of a space's data, and works on it offline. The space orders every change, so all the copies agree. This is how it works until 2c brings CRDTs for live editing. The messages are in [`src/shared/sync.ts`](../src/shared/sync.ts), and the space's side is [`src/kernel/sync.ts`](../src/kernel/sync.ts).
+Each device keeps its own copy of a space's data, and works on it offline. The space orders every change, so all the copies agree. This is how it works until CRDTs come for live editing. The messages are in [`src/shared/sync.ts`](../src/shared/sync.ts), and the space's side is [`src/kernel/sync.ts`](../src/kernel/sync.ts).
 
 1. A device says `{ t: "sync", op: "hello", since }` with the last sequence number it saw (0 the first time). The space answers with every change after it, and from then on sends each change it accepts.
 2. A device sends the records it changed: `{ t: "sync", op: "push", id, changes: [{ collection, id, base, after }] }`. `base` is the record's version when the device changed it (0 for a new one), and `after` is the record, or null for a delete.

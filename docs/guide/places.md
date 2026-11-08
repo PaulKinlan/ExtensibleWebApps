@@ -99,5 +99,5 @@ User plugins run with the same rules as any other: their own worker, only what t
 
 ## What places aren't for
 
-- **Changing another plugin's view.** Places reach the author's page only. Changing what another plugin draws is a separate feature, view transforms.
-- **Picking a place by pointing.** Writing a selector is a developer's job. Inspect mode, coming next, will let a person point at the page and get the most lasting selector for what they picked.
+- **Changing another plugin's view**, on its own. A place reaches the author's page unless it names a plugin with `in`, which needs `ui:transform:<plugin>`: see [Slots in views, and view transforms](slots-and-transforms.md).
+- **Picking a place by pointing.** Writing a selector is a developer's job. A person who isn't one uses **inspect mode**, from Customize: they point at a part of the page, see which plugin drew it, and hide it or add a note beside it. Inspect mode writes the place for them, as a plugin of their own that Customize lists.
