@@ -4,6 +4,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "types": ["vite/client", "node"] },
-  "include": ["src/server/space.ts", "src/server/space-env.ts", "src/server/isolate.ts", "src/server/cloudflare/kernel.ts", "src/server/cloudflare/durable-object.d.ts"],
+  "include": ["src/server/space.ts", "src/server/space-env.ts", "src/server/isolate.ts", "src/server/cloudflare/kernel.ts", "src/server/cloudflare/isolate.ts", "src/seams/remote-isolates.ts", "src/server/cloudflare/durable-object.d.ts"],
   "exclude": []
 }

@@ -7,7 +7,7 @@
 // (tests/checks/space-server.mjs).
 
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, symlinkSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { request } from "node:http";
 import { connect, createServer } from "node:net";
@@ -35,7 +35,7 @@ let site;
 
 /**
  * The built site, with tests/fixtures/server-app/ at /server-app/: an app with a plugin that runs on the
- * space's server. (Only on Node for now: Cloudflare's isolates come next.)
+ * space's server. (Wrangler serves dist/ itself, so on Cloudflare the fixture is copied in instead.)
  */
 async function siteWithFixtures() {
   const site = await mkdtemp(join(tmpdir(), "ewa-site-"));
@@ -55,6 +55,7 @@ const hosts = {
   }),
   cloudflare: (spaces) => ({
     async start() {
+      cpSync("tests/fixtures/server-app", "dist/server-app", { recursive: true });
       const port = await freePort();
       const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries(fake.env).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
       let log = "";
@@ -74,10 +75,14 @@ const hosts = {
       return {
         url: `http://127.0.0.1:${port}`,
         async stop() {
+          // Wait for it to go, so the next one doesn't open the spaces' databases while this one still has them.
+          const gone = new Promise((r) => (dev.exitCode !== null ? r() : dev.once("exit", r)));
           try {
             process.kill(-dev.pid, "SIGTERM");
           } catch {}
-          await new Promise((r) => setTimeout(r, 1000));
+          await Promise.race([gone, new Promise((r) => setTimeout(r, 10_000))]);
+          await new Promise((r) => setTimeout(r, 500));
+          rmSync("dist/server-app", { recursive: true, force: true });
         },
       };
     },
@@ -565,13 +570,12 @@ async function suite(name, make) {
       owner.base = server.url;
       return server.url;
     });
-    if (name === "node")
-      await serverPluginChecks(server.url, check, owner, async () => {
-        await server.stop();
-        server = await host.start();
-        owner.base = server.url;
-        return server.url;
-      });
+    await serverPluginChecks(server.url, check, owner, async () => {
+      await server.stop();
+      server = await host.start();
+      owner.base = server.url;
+      return server.url;
+    });
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {

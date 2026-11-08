@@ -24,6 +24,8 @@ export interface KernelEnv {
   space?: string;
   /** On a server, where the space's plugins run (src/seams/index.ts): without it, no plugin runs there. */
   isolates?: Isolates;
+  /** On a server, how it reads the site's own files (an app's app.html and plugins), when not with fetch. */
+  site?: (url: string) => Promise<Response>;
 }
 
 let current: KernelEnv | undefined;

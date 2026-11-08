@@ -77,9 +77,14 @@ setSink((events) => {
 where.onError((name, detail) => record({ kind: "error", name, detail }));
 
 // Wire up connections first, so no tab's connect event is missed.
-where.connect((port) => hosts.connect(port));
-// On a server, the kernel's own client that starts its plugins in isolates.
-if (where.isolates) isolateHost(where.isolates, (port) => hosts.connect(port, { isolates: true }));
+// On a server, the kernel's own client that starts its plugins in isolates. It connects with the first
+// client, not as the kernel loads: on Cloudflare, a module's top level can't read storage.
+let isolates = where.isolates;
+where.connect((port) => {
+  if (isolates) isolateHost(isolates, (own) => hosts.connect(own, { isolates: true }));
+  isolates = undefined;
+  hosts.connect(port);
+});
 
 // Constructing the store directly (rather than root.plugin) keeps it synchronous;
 // it is still a Cordis service on root.
@@ -117,7 +122,7 @@ services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
 /** On a server that runs plugins: the apps opened in the space, whose server plugins it runs. */
-const onServer = where.isolates ? serverApps(remote, store, where.origin) : undefined;
+const onServer = where.isolates ? serverApps(remote, store, where.origin, where.site) : undefined;
 const sync = syncHub(root, store, records, hosts, (app) => onServer?.use(app));
 /** In a browser kernel for a space (a page at /s/<space>/…): its sync with the space, once the folder is known. */
 let device: ReturnType<typeof syncDevice> | undefined;
