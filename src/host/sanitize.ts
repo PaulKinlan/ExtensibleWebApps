@@ -10,6 +10,9 @@ const SAFE_HREF = /^(https?:|mailto:|#)/i;
 const SAFE_SRC = /^(https:|data:image\/(png|jpeg|gif|webp|avif);)/i;
 const DATA_SRC = /^data:image\/(png|jpeg|gif|webp|avif);/i;
 
+/** A link to another screen of the same app, which opens in the same tab. */
+const isScreen = (href: string) => href.trim().startsWith("#/");
+
 /** Ids are prefixed with the owner, so one plugin's `for` can't point at another's control. */
 const scoped = (owner: string, id: string) => `${owner.replace(/[^\w-]/g, "_")}--${id}`;
 
@@ -19,6 +22,8 @@ const ID_REFERENCES = new Set(["aria-labelledby", "aria-describedby", "aria-cont
 function scopedValue(owner: string, name: string, value: string): string {
   if (name === "id" || name === "for") return scoped(owner, value);
   if (ID_REFERENCES.has(name)) return value.split(/\s+/).filter(Boolean).map((id) => scoped(owner, id)).join(" ");
+  // `#/book/42` is a screen of the app (see the router service), not an element on the page.
+  if (name === "href" && isScreen(value)) return value.trim();
   if (name === "href" && value.trim().startsWith("#") && value.trim().length > 1) return `#${scoped(owner, value.trim().slice(1))}`;
   return value;
 }
@@ -70,7 +75,7 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       if (tag === "input" && name === "type" && !INPUT_TYPES.includes(value.toLowerCase())) continue;
       out.setAttribute(name, scopedValue(owner, name, value));
     }
-    if (tag === "a") {
+    if (tag === "a" && !isScreen(el.getAttribute("href") ?? "")) {
       out.setAttribute("target", "_blank");
       out.setAttribute("rel", "noopener noreferrer");
     }

@@ -21,6 +21,7 @@ import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { loadServices } from "./services";
+import { routed } from "./services/router";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
@@ -277,6 +278,8 @@ hosts.onMessage = async (host, message) => {
       await openApp(host, message.plugins, message.app);
       // Its tab-scoped plugins may have started before the app said what it links: tell them it has.
       return pluginSwitches.opened(host.tab);
+    case "url":
+      return routed(host, message.path, message.query, openApps.get(host.tab)?.app);
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
     case "command": {

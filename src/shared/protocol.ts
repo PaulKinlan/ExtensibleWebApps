@@ -73,7 +73,9 @@ export type HostToKernel =
    */
   | { t: "open"; plugins: { href: string; source: string }[]; app?: string; reset?: boolean }
   /** Something went wrong in the page: a file that didn't load, an uncaught error. The kernel puts it in the trace. */
-  | { t: "report"; source: string; text: string };
+  | { t: "report"; source: string; text: string }
+  /** The tab's screen, from its address: `#/book/42?tab=notes` is path `/book/42`, query `{ tab: "notes" }`. Sent when the app opens and whenever it changes. */
+  | { t: "url"; path: string; query: Record<string, string> };
 
 export type Command =
   | "bench"

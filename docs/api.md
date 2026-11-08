@@ -392,6 +392,26 @@ Needs: `plugins:manage`.
 
 Turns one of the app's plugins on or off. Saved, and applies in every tab, as the plugins panel's switch does.
 
+### router
+
+The screen an app's tab shows, from its address (#/book/42), so screens can be bookmarked and shared, and back and forward work.
+
+#### router.current
+
+`router.current()` → { tab, path, query }
+
+Needs: `router`.
+
+The screen the plugin's tab shows: `#/book/42?tab=notes` is `{ path: "/book/42", query: { tab: "notes" } }`. With no hash, the path is `/`.
+
+#### router.go
+
+`router.go(path, { replace? }?)` → true
+
+Needs: `router`.
+
+Moves the plugin's tab to another screen, as a link to #/… would. With `replace`, back skips the screen it leaves.
+
 ### secrets
 
 API keys and tokens. A plugin never reads one: it asks the person for it by name, then uses it in requests it makes with net.fetch, which the kernel sends only to the hosts the secret was given for.
@@ -570,6 +590,14 @@ Mode: `emit`. Listening needs `plugins:read`.
 
 Listeners get `{ change, id }`.
 
+### `router:changed`
+
+A tab moved to another screen of its app: a link to #/…, back or forward, or router.go. Read router.current() for the screen your instance shows.
+
+Mode: `emit`. Listening needs `router`.
+
+Listeners get `{ app, tab, path, query }`.
+
 ### Dispatch modes
 
 | Mode | What happens |
@@ -603,6 +631,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `plugins:author` | Call authoring.source, authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file, authoring.check. |
 | `plugins:manage` | Call plugins.setEnabled. |
 | `plugins:read` | Call plugins.app. |
+| `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `ui` | Call page.matches. |
 
@@ -647,6 +676,7 @@ Reserved ids, which no plugin can take:
 - `page`
 - `plugins`
 - `review`
+- `router`
 - `secrets`
 - `settings`
 - `storage`
@@ -734,7 +764,7 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<br>` |  |  |
 | `<hr>` |  |  |
 | `<blockquote>` |  |  |
-| `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto: or # |
+| `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto: or #. One to #/a/path is a screen of the app (see the router service), and opens in the same tab |
 | `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: (with the network permission), a data: image, or a file next to the plugin's template file |
 | `<figure>` |  |  |
 | `<figcaption>` |  |  |

@@ -195,6 +195,12 @@ async function openApp() {
   send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })), reset, app });
 }
 
+/** The screen this tab shows, from the address's hash: `#/book/42?tab=notes`. The router service hands it to plugins. */
+function sendUrl() {
+  const [path, search = ""] = location.hash.replace(/^#/, "").split("?", 2);
+  send({ t: "url", path: path.startsWith("/") ? path : "/", query: Object.fromEntries(new URLSearchParams(search)) });
+}
+
 /** The plugins running for this app, as the kernel last said: the Customize panel lists them. */
 let running: Opened[] = [];
 
@@ -532,6 +538,8 @@ for (const message of unsent.splice(0)) send(message);
 /** Every app gets the Customize button, where the person adds their own plugins. */
 const panel = isWorkbench ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status() });
 if (!isWorkbench) await openApp();
+sendUrl();
+addEventListener("hashchange", sendUrl);
 
 // For tests and poking around in the console.
 // Tests reach the template filler and the CSS cleaner here, to check them without a plugin.

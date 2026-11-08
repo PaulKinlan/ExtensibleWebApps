@@ -1,0 +1,20 @@
+<!--
+  One book's screen. book-page.js sends { shown, book, missing }: shown is
+  false on every other screen, and then nothing is drawn.
+-->
+<template id="book">
+  <template if="shown">
+    <ui-card>
+      <p><a href="#/">← All books</a></p>
+      <template if="book">
+        <h2>{{book.title}}</h2>
+        <p>{{book.author}} <template if="book.year">({{book.year}})</template></p>
+        <p><ui-badge>{{book.shelf}}</ui-badge> <template if="book.due">Due back {{book.due}}</template></p>
+        <template if="book.notes"><p>{{book.notes}}</p></template>
+      </template>
+      <template if="missing">
+        <p>That book isn't in the library any more.</p>
+      </template>
+    </ui-card>
+  </template>
+</template>
