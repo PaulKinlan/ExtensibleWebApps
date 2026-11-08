@@ -93,6 +93,8 @@ The author lists their plugins in `app.html` with `<link rel="plugin">`. A perso
 3. A plugin that is added **starts off**. Customize shows what it asks for and where it draws, and the person turns it on.
 4. The service worker serves the folder at `/user/<app folder>/`, so the plugin's templates and images load like any other file. An image next to a template (`<img src="tram.svg">`) is the plugin's own, so it needs no network permission.
 
+Customize is on in every app. An author who doesn't want the button (a kiosk, say) adds `<meta name="customize" content="off">` to `app.html`, which also leaves out inspect mode. The person still has the last word: opening the app with `?customize` brings the button back.
+
 User plugins run with the same rules as any other: their own worker, only what their manifest asks for, and a review card before they change data they don't own. No plugin can add another by writing files: `user/` belongs to the platform.
 
 ## What places aren't for

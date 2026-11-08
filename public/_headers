@@ -5,3 +5,11 @@
 
 /assets/net-runtime-*
   Content-Security-Policy: default-src 'none'; script-src 'self' blob:; worker-src 'none'; connect-src 'self' https: wss:
+
+# The built platform scripts (the kernel, the plugin runtimes) have their content's hash in their
+# names, so a file at one of these addresses never changes: browsers keep it without asking again.
+# Without this every plugin worker asked the server about the same runtime file, and the browser
+# sends those questions about one address one after another, so a page with twenty plugins waited
+# for twenty round trips before its first view.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

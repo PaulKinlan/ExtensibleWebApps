@@ -1,0 +1,40 @@
+# Loading fast, without jumping
+
+An app's page is mostly empty when it arrives: its plugins draw it. This page says what the host and the service worker do so that drawing starts early and the page doesn't jump while it fills in, and the little an app author can do to help. None of it needs anything in a plugin.
+
+## What happens on a visit
+
+```mermaid
+sequenceDiagram
+  participant Page as app.html
+  participant Host as host (main thread)
+  participant Kernel as kernel (shared worker)
+  participant Workers as plugin workers
+  Page->>Host: /platform/host.js runs
+  par at once
+    Host->>Kernel: start the kernel
+    Host->>Host: fetch each linked plugin, then its template files, then their ui-* elements
+  end
+  Host->>Kernel: open the app with the plugins' code
+  Kernel->>Workers: start one worker per plugin
+  Workers->>Host: render
+  Host->>Page: draw each view once its template and elements are loaded
+```
+
+- **The platform's scripts are kept.** The kernel and the plugin runtime are built with their content's hash in their names (`/assets/runtime-…js`), and [`public/_headers`](../../public/_headers) tells browsers they never change. Every plugin worker loads the same runtime file, and a browser asks a server about one address one request at a time, so before this a page with twenty plugins waited twenty round trips before it drew anything.
+- **Files load while the kernel starts** ([`src/host/prefetch.ts`](../../src/host/prefetch.ts)). The host fetches the plugins an app links as soon as it runs, reads each one for the template files it names (`ctx.ui.views("board.html")`), and fetches those and the `ui-*` elements they use. By the time a plugin draws, its files are usually there. Write the file name as a plain string so the host can see it.
+- **A view is drawn once its elements are defined.** A `<ui-card>` drawn before its file has loaded shows its children unstyled, then jumps when the element takes over, so the host holds a view back until the elements it uses are defined, or for a second and a half at most.
+- **Each slot keeps its room** ([`src/host/reserve.ts`](../../src/host/reserve.ts)). The host remembers how tall each of the page's slots was once its views settled, in this browser, for this app and about this window width. On the next visit it holds that height open after the slot until the views reach it, so what is below doesn't move down as they arrive. On a visit the service worker serves, the host runs before the first paint ([`sw/render-blocking.js`](../../sw/render-blocking.js)), so the room is there from the first frame.
+- **Repeat visits come from the service worker's cache** ([`sw.js`](../../sw.js)). A file it has kept is answered at once and fetched again behind it, so the next visit has any newer copy. Spaces (`/s/`) and sign-in (`/auth/`) always ask the network, and so does everything on `localhost`, so a change you make while developing shows at once.
+- **Links are fetched before they're followed** ([`src/host/speculation.ts`](../../src/host/speculation.ts)). When the pointer rests on a link to this site, or a finger presses one, the browser fetches the page (speculation rules, prefetch only). Put `data-no-prefetch` on a link that shouldn't be, such as one whose address does something.
+
+## What an app author can do
+
+- Put fixed things in the page, not in a plugin: the header, the title and the layout are in the HTML, so they paint at once.
+- Give a slot a fallback that is about the size of what will be drawn there, like `<slot name="main"><p>Loading your books…</p></slot>`. It shows until a plugin draws, and on a first visit nothing is remembered yet.
+- Give images their size: `<img src="cover.png" width="120" height="180" alt="…">`. The views' styles keep the ratio, so the image's room is kept before it loads.
+- Don't put an `<aside>` straight in the body unless you want a second column: an app page's layout gives the body a side column when it has one.
+
+## Measuring
+
+The numbers in the pull request that added this came from loading pages in Chromium, a fresh profile and then a second visit, and timing when the first plugin view appeared, when the page stopped changing, and the layout shift score (`PerformanceObserver` with `layout-shift`). Chrome's DevTools Performance panel shows the same: look for requests to one address that wait for each other, and for shifts after the first paint.
