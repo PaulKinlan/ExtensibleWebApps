@@ -24,6 +24,27 @@ Use the tokens rather than fixed values, so a plugin fits any app that sets them
 
 An app changes the look of every plugin at once by setting tokens in its own `<style>`: `:root { --accent: rebeccapurple; }`.
 
+## Themes: a plugin that sets the tokens
+
+A plugin with the `ui:theme` permission can set tokens for the whole app from its manifest, so a person can restyle an app by adding one plugin, without touching its files:
+
+```js
+export const manifest = {
+  id: "plum",
+  name: "Plum theme",
+  permissions: ["ui:theme"],
+  theme: { "--accent": "light-dark(#7c3aed, #c4b5fd)", "--radius": "10px" },
+};
+export default function () {}
+```
+
+- **Which tokens:** the colours, the corners, the shadow and the two typefaces (`--bg` … `--danger`, `--radius-sm` … `--radius-lg`, `--shadow-1`, `--font`, `--mono`). Spacing and type sizes stay the platform's, so a theme can't break layouts.
+- **Plain values only.** `light-dark(light, dark)` gives each mode its own value. Nothing that loads a file (`url()`, `image-set()`) and nothing that ends the declaration is accepted. The kernel refuses such a manifest.
+- **Where it sits:** in the plugins layer, above the platform's defaults and below the page's own styles, so the author's choices still win. When several plugins set a token, the later one wins, and a person's own plugins come after the app's.
+- **Turning it off** takes it away.
+
+Try it with the trip demo's **Plum theme** sample, from Customize.
+
 ## A plugin's own stylesheet
 
 Put a `<style>` in the template file, outside the templates, and use classes in the templates:

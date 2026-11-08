@@ -17,6 +17,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [Routes and the service worker](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/routes.md): plugins answering links, forms and fetches
 - [Agents](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/agents.md): a Markdown file linked with <link rel="agent">, run as a plugin that asks a model and calls tools through the gate
 - [Places](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/places.md): plugins adding to, replacing or hiding parts of a page with no slot for them; open, review and locked areas; a person's own plugins
+- [Slots in views, and view transforms](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/slots-and-transforms.md): a plugin declaring `<slot name="<id>.<name>">` in its view for others to fill (page.slots), and changing another plugin's view with a place `in` it (ui:transform:<plugin>)
 
 ## Reference
 

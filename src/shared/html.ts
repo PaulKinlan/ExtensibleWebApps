@@ -69,6 +69,7 @@ export const ELEMENTS: Record<string, string> = {
   meter: "",
   time: "",
   abbr: "",
+  slot: "A room in this view that other plugins fill: `<slot name=\"<your plugin id>.<room>\" data-id=\"…\">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md",
 };
 
 /**
@@ -96,6 +97,7 @@ export const ELEMENT_ATTRIBUTES: Record<string, string[]> = {
   progress: ["value", "max"],
   meter: ["value", "min", "max", "low", "high", "optimum"],
   time: ["datetime"],
+  slot: ["name"],
 };
 
 /** Input types a plugin may use. */
@@ -120,7 +122,7 @@ export const COMPONENTS: Record<string, { attributes: string; about: string }> =
   "ui-debug": { attributes: "corner=\"bottom-left|bottom-right|top-left|top-right|inline\", problems, label, toggle", about: "A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy=\"name\"` copies the text of the element with `data-copy-source=\"name\"`, headed with the page's address, browser and time." },
 };
 
-export const DROPPED_WITH_CONTENT = new Set(["script", "style", "template", "iframe", "frame", "frameset", "object", "embed", "link", "meta", "base", "noscript", "svg", "math", "canvas", "video", "audio", "source", "track", "portal", "slot"]);
+export const DROPPED_WITH_CONTENT = new Set(["script", "style", "template", "iframe", "frame", "frameset", "object", "embed", "link", "meta", "base", "noscript", "svg", "math", "canvas", "video", "audio", "source", "track", "portal"]);
 
 /** How a plugin's view reports what the person did. */
 export const ACTIONS = [

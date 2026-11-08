@@ -13,6 +13,7 @@ How to build apps on this platform, from the first page to sharing data between 
 9. [Tools for language models](tools.md): each service method a plugin may call, offered to a model as a tool and called through the gate.
 10. [Agents](agents.md): a Markdown file an app links with `rel="agent"`, run as a plugin that wakes on hooks, commands, messages or topics, asks a model and calls its tools, or checks an action before it happens; and the bus, where agents, plugins and the person send each other messages.
 11. [Commands and the command palette](commands.md): something a plugin can do, named once, and run from a palette, a shortcut or an agent.
+12. [Slots in views, and view transforms](slots-and-transforms.md): a plugin leaving a room in its view for others, and a plugin changing another plugin's view.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 

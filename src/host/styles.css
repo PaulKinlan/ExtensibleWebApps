@@ -140,6 +140,17 @@ dialog.customize p { margin: var(--space-1) 0; }
 .customize-url input { flex: 1; min-width: 0; font: inherit; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
 .customize-close { margin-top: var(--space-4); }
 
+/* Inspect mode (inspect.ts): every plugin's view is outlined, the part under the pointer more so, and a panel says who drew it. */
+body.inspecting [data-plugin][data-key] { outline: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 2px; }
+body.inspecting .inspect-hover { outline: 2px solid var(--accent) !important; outline-offset: 2px; cursor: crosshair; }
+body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; outline-offset: 2px; }
+.inspect { position: fixed; right: 16px; bottom: 16px; z-index: 20; width: min(380px, calc(100vw - 32px)); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-1); font: var(--text-sm)/1.5 var(--font); }
+.inspect[hidden] { display: none; }
+.inspect p { margin: var(--space-1) 0; overflow-wrap: anywhere; }
+.inspect code { font: var(--text-sm) var(--mono); }
+.inspect-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-2) 0; }
+.inspect-actions input { flex: 1; min-width: 8rem; font: inherit; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+
 /* ---- HTML views: plain HTML, styled from the tokens ---- */
 /* hidden wins over every layout rule below, for elements and components alike. */
 .html-view [hidden] { display: none !important; }

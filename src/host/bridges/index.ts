@@ -13,6 +13,8 @@ export interface BridgeHost {
   workers: Map<string, Worker>;
   /** Where plugins' views can go on this page. */
   places: ReturnType<typeof places>;
+  /** The slots plugins declare in their views: each one's data, for the plugin asking, which then hears when they change. */
+  declared: (plugin: string, name: string) => { data: Record<string, string> }[];
 }
 
 type Methods = Record<string, (...args: any[]) => unknown>;
