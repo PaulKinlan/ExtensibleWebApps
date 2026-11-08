@@ -355,6 +355,11 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       return current && role ? { user: current.user, role } : null;
     },
 
+    /** Whether a space by this name exists: for a host to ask before waking it for a public route. */
+    async exists(name: string): Promise<boolean> {
+      return (await spaceOf(name)) !== null;
+    },
+
     /** Answers a request under /auth/, or gives undefined for one that isn't a route. */
     async handle(request: Request): Promise<Response | undefined> {
       const url = new URL(request.url);

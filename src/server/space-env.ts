@@ -23,6 +23,19 @@ setEnv({
       if (message?.t === "connect" && message.port) accept(message.port);
     });
   },
+  serve(answer) {
+    // A public route's request, which serve.ts passes on (src/server/routes.ts).
+    parentPort!.on("message", async (message: { t?: string; id?: number; request?: Parameters<typeof answer>[0] }) => {
+      if (message?.t !== "route" || !message.request) return;
+      let result: Awaited<ReturnType<typeof answer>> = null;
+      try {
+        result = await answer(message.request);
+      } catch (error) {
+        result = { status: 500, text: error instanceof Error ? error.message : String(error) };
+      }
+      parentPort!.postMessage({ t: "routed", id: message.id, result });
+    });
+  },
   onError(report) {
     process.on("uncaughtException", (error) => report("kernel:error", error.message));
     process.on("unhandledRejection", (reason) => report("kernel:unhandled", String(reason instanceof Error ? reason.message : reason)));

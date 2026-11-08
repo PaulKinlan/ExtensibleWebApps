@@ -42,7 +42,8 @@ function port(post: (message: unknown) => Promise<void>, onError: (error: unknow
     },
     postMessage(message: unknown) {
       if (closed) return;
-      chain = chain.then(() => post(message)).catch(onError);
+      // Checked again when its turn comes: a message queued before the plugin stopped isn't sent to the next one.
+      chain = chain.then(() => (closed ? undefined : post(message))).catch(onError);
     },
     close() {
       closed = true;

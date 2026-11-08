@@ -33,10 +33,31 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
   /** The devices that said hello, and so hear every change. */
   const listening = new Set<Host>();
   let head: { seq: number; versions: Record<string, number> } = { seq: 0, versions: {} };
+  let headLoaded = false;
   const loaded = store.readJson<unknown>(HEAD, null).then((saved) => {
     const s = saved as typeof head | null;
     if (s && typeof s.seq === "number" && s.versions && typeof s.versions === "object") head = { seq: s.seq, versions: { ...s.versions } };
+    headLoaded = true;
+    sent = head.seq;
   });
+
+  /**
+   * Changes go to devices in order of their numbers, with none missing: a device skips a number lower than
+   * one it has. A server plugin's write can take a number while a push is under way, and finish after it, so
+   * each change waits here for the ones before it. A number given to a change that then failed comes as null.
+   */
+  let sent = 0;
+  const finished = new Map<number, Accepted | null>();
+  function announce(seq: number, accepted: Accepted | null): void {
+    finished.set(seq, accepted);
+    const batch: Accepted[] = [];
+    while (finished.has(sent + 1)) {
+      const next = finished.get(sent + 1);
+      finished.delete(++sent);
+      if (next) batch.push(next);
+    }
+    if (batch.length) for (const other of listening) hosts.send(other, { t: "sync", op: "changes", changes: batch, seq: sent });
+  }
 
   /** One push at a time, so each change is checked against the versions the one before it left. */
   let queue: Promise<unknown> = Promise.resolve();
@@ -109,10 +130,19 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       const verdict = await root.serial(dispatch, name, { collection: change.collection, id: change.id, before: before ?? undefined, after: after ?? undefined });
       if (verdict && typeof verdict === "object" && "block" in verdict) return { verdict: { ok: false, error: String(verdict.block), version, record: before } };
     }
-    await records.apply(change.collection, change.id, after as StoredRecord | null, dispatch);
+    // A server plugin may have written the record while its hook ran: then this change is stale too.
+    const now = head.versions[key(change.collection, change.id)] ?? 0;
+    if (now !== version) return { verdict: { ok: false, stale: true, version: now, record: (await current(change)).record ?? null } };
+    // The number is taken before the write, so a plugin's write that lands while this one is applied comes after it, in the log as in the data.
     const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after, ...(by ? { by } : {}), at };
     head.seq = accepted.seq;
     head.versions[key(change.collection, change.id)] = accepted.seq;
+    try {
+      await records.apply(change.collection, change.id, after as StoredRecord | null, dispatch);
+    } catch (error) {
+      announce(accepted.seq, null);
+      throw error;
+    }
     return { verdict: { ok: true, seq: accepted.seq }, accepted };
   }
 
@@ -120,21 +150,32 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
   async function record(accepted: Accepted[]) {
     const byChunk = new Map<number, Accepted[]>();
     for (const a of accepted) byChunk.set(chunkOf(a.seq), [...(byChunk.get(chunkOf(a.seq)) ?? []), a]);
-    for (const [chunk, list] of byChunk) await store.writeJson(chunkFile(chunk), [...(await readChunk(chunk)).filter((c) => c.seq < list[0].seq), ...list]);
+    // Merged by number: a server plugin's write may be logged after a later-numbered push.
+    for (const [chunk, list] of byChunk) {
+      const mine = new Set(list.map((a) => a.seq));
+      await store.writeJson(chunkFile(chunk), [...(await readChunk(chunk)).filter((c) => !mine.has(c.seq)), ...list].sort((a, b) => a.seq - b.seq));
+    }
     await store.writeJson(HEAD, head);
   }
 
   // On the server, a write the space's own plugins make (server-apps.ts) is a change like a device's:
   // it takes the next number, goes in the log, and reaches every device.
   if (hosts.mode === "server") {
+    // Its number is taken as it is written (this is heard right after the write), not when the log is next
+    // free: a device's push waiting on a hook must see it, and come after it.
     records.written.add((change, instance) => {
-      void serially(async () => {
-        await loaded;
+      const number = () => {
         const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after: (change.after as SyncRecord | undefined) ?? null, by: `plugin:${instance}`, at: new Date().toISOString() };
         head.seq = accepted.seq;
         head.versions[key(change.collection, change.id)] = accepted.seq;
+        return accepted;
+      };
+      const now = headLoaded ? number() : undefined;
+      void serially(async () => {
+        await loaded;
+        const accepted = now ?? number();
         await record([accepted]);
-        for (const other of listening) hosts.send(other, { t: "sync", op: "changes", changes: [accepted], seq: head.seq });
+        announce(accepted.seq, accepted);
       }).catch((error) => trace({ kind: "error", name: "sync:server-write", detail: String(error) }));
     });
   }
@@ -148,7 +189,8 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
         const after = Number.isInteger(message.since) && message.since >= 0 ? message.since : 0;
         // Ordered with pushes, so a change accepted while this device catches up isn't missed or sent twice.
         await serially(async () => {
-          hosts.send(host, { t: "sync", op: "changes", changes: await since(after), seq: head.seq });
+          // Only what has gone to every device: anything later comes to this one as it does to them.
+          hosts.send(host, { t: "sync", op: "changes", changes: (await since(after)).filter((c) => c.seq <= sent), seq: sent });
           listening.add(host);
         });
         return;
@@ -170,7 +212,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
             }
           }
           if (accepted.length) await record(accepted);
-          if (accepted.length) for (const other of listening) hosts.send(other, { t: "sync", op: "changes", changes: accepted, seq: head.seq });
+          for (const one of accepted) announce(one.seq, one);
           return out;
         });
         trace({ kind: "note", name: "sync:push", detail: `${results.filter((r) => r.ok).length} of ${changes.length} accepted${host.member ? `, from ${host.member}` : ""}` });

@@ -78,11 +78,14 @@ where.onError((name, detail) => record({ kind: "error", name, detail }));
 
 // Wire up connections first, so no tab's connect event is missed.
 // On a server, the kernel's own client that starts its plugins in isolates. It connects with the first
-// client, not as the kernel loads: on Cloudflare, a module's top level can't read storage.
+// client (or request), not as the kernel loads: on Cloudflare, a module's top level can't read storage.
 let isolates = where.isolates;
-where.connect((port) => {
+const wake = () => {
   if (isolates) isolateHost(isolates, (own) => hosts.connect(own, { isolates: true }));
   isolates = undefined;
+};
+where.connect((port) => {
+  wake();
   hosts.connect(port);
 });
 
@@ -198,6 +201,27 @@ remote.onChange = (change, id) => {
 };
 
 const routes = makeRoutes(root, remote, shared, where.space);
+// On a server, the host passes on HTTP requests for the routes its plugins added: public, so a form or a
+// webhook can reach the space. A route that isn't there yet may be one a plugin of a space just woken is
+// about to add, so the request waits while the space's apps are starting (and a little after), up to 10 s.
+where.serve?.(async (request) => {
+  wake();
+  // A HEAD request is answered by a HEAD route if a plugin has one, else by its GET route.
+  const keys = request.method === "HEAD" ? [`HEAD ${request.path}`, `GET ${request.path}`] : [`${request.method} ${request.path}`];
+  const found = () => keys.find((key) => remote.routes.includes(key));
+  const deadline = Date.now() + 10_000;
+  let starting = !found() && onServer?.starting();
+  while (!found() && Date.now() < deadline) {
+    const finished = (await Promise.race([onServer?.settled(), new Promise<undefined>((r) => setTimeout(r, 250))])) ?? 0;
+    starting = onServer?.starting();
+    // Settled, and long enough since for a plugin's code to have added its routes: there's no such route.
+    if (!starting && Date.now() - (finished || onServer?.finishedAt() || 0) > 3000) break;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  const key = found();
+  if (!key) return starting ? { status: 503, text: "The space is still starting: try again in a moment" } : null;
+  return routes.answer({ ...request, method: key.slice(0, key.indexOf(" ")) });
+});
 remote.onManifest = records.register;
 remote.readable = (instance, name) => {
   const owner = records.registry.get(name)?.owner;
