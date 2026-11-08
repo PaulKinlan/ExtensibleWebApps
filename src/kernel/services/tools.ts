@@ -37,6 +37,9 @@ export interface Tool {
   reviewed: boolean;
 }
 
+/** A collection as the data service lists it. */
+type Collection = { name: string; owner: string; title?: string; schema: Schema };
+
 /** Services that are never offered as tools: this one, and the model itself. */
 const NOT_TOOLS = new Set(["tools", "llm"]);
 
@@ -58,25 +61,36 @@ function mayNeed(caps: Set<string>, needs: string): boolean {
 }
 
 export default ({ remote }: Kernel): ServiceProvider => {
-  /** The names a `names` argument may take for this caller; null when a wildcard allows any. */
-  function namesFor(instance: string, caps: Set<string>, prefix: string): string[] | null {
+  /**
+   * The names a `names` argument may take for this caller, by the gate's own
+   * prefix rules; null when a wildcard covers the whole prefix. For `data:`
+   * prefixes, the collections the caller owns in the registry count too, and a
+   * narrower wildcard (`data:read:public-*`) offers the collections it matches.
+   */
+  function namesFor(instance: string, caps: Set<string>, prefix: string, collections: Map<string, Collection>): string[] | null {
     const out = new Set<string>();
+    const data = prefix.startsWith("data:");
     for (const cap of caps) {
-      if (cap.endsWith("*") && (cap.slice(0, -1).startsWith(prefix) || prefix.startsWith(cap.slice(0, -1)))) return null;
-      if (cap.startsWith(prefix)) out.add(cap.slice(prefix.length));
+      if (cap.endsWith("*")) {
+        const stem = cap.slice(0, -1);
+        if (prefix.startsWith(stem)) return null;
+        if (stem.startsWith(prefix) && data) for (const name of collections.keys()) if ((prefix + name).startsWith(stem)) out.add(name);
+      } else if (cap.startsWith(prefix)) out.add(cap.slice(prefix.length));
     }
-    // A plugin reads and writes the collections it owns without a capability.
-    if (prefix.startsWith("data:")) for (const name of Object.keys(remote.installed.get(base(instance))?.manifest.collections ?? {})) out.add(name);
-    // `notes` belongs to the store service, not a collection, though data:read:notes looks like one.
-    if (prefix.startsWith("data:")) out.delete("notes");
+    if (data) {
+      // A plugin reads and writes the collections it owns, by the registry rather than its manifest's claim.
+      for (const c of collections.values()) if (c.owner === base(instance)) out.add(c.name);
+      // `notes` belongs to the store service, not a collection, though data:read:notes looks like one.
+      out.delete("notes");
+    }
     return [...out].sort();
   }
 
   /** A tool and how to call its method: the method's params, and any values the tool fixes. */
-  type Entry = { tool: Tool; params: Param[]; fixed: Record<string, unknown> };
+  type Entry = { tool: Tool; params: Param[]; fixed: Record<string, unknown>; records: Set<string> };
 
   /** A collection's schema as a record argument: its fields, plus the id that replaces a record. */
-  const recordSchema = (collection: { name: string; title?: string; schema: Schema }): Schema => ({
+  const recordSchema = (collection: Collection): Schema => ({
     ...collection.schema,
     type: "object",
     description: `A record of ${collection.title ?? collection.name}; include its id to replace an existing record`,
@@ -85,8 +99,8 @@ export default ({ remote }: Kernel): ServiceProvider => {
 
   async function toolsFor(instance: string, dispatch: { trace?: string }): Promise<Entry[]> {
     const caps = remote.installed.get(base(instance))?.caps ?? new Set<string>();
-    const collections = new Map<string, { name: string; title?: string; schema: Schema }>();
-    if (remote.services.data) for (const c of ((await remote.services.data.call(instance, "collections", [], dispatch)) ?? []) as { name: string; title?: string; schema: Schema }[]) collections.set(c.name, c);
+    const collections = new Map<string, Collection>();
+    if (remote.services.data) for (const c of ((await remote.services.data.call(instance, "collections", [], dispatch)) ?? []) as Collection[]) collections.set(c.name, c);
     const entries: Entry[] = [];
     for (const [service, provider] of Object.entries(remote.services)) {
       if (NOT_TOOLS.has(service)) continue;
@@ -95,14 +109,16 @@ export default ({ remote }: Kernel): ServiceProvider => {
         const review = doc.reviewed ? " The person may review the change first, so give a reason." : "";
         const make = (name: string, params: Param[], fixed: Record<string, unknown>, about = "") => {
           const properties: Record<string, Schema> = {};
+          const records = new Set<string>();
           for (const param of params) {
             if (Object.hasOwn(fixed, param.name)) continue;
             const of = param.recordOf && fixed[param.recordOf];
-            properties[param.name] = typeof of === "string" && collections.has(of) ? recordSchema(collections.get(of)!) : { ...param.schema };
+            if (typeof of === "string" && collections.has(of)) records.add(param.name);
+            properties[param.name] = records.has(param.name) ? recordSchema(collections.get(of as string)!) : { ...param.schema };
           }
           const required = params.filter((p) => !p.optional && !Object.hasOwn(fixed, p.name)).map((p) => p.name);
           const tool: Tool = { name, description: `${about}${doc.description} Returns ${doc.returns}.${review}`, parameters: { type: "object", properties, required, additionalProperties: false }, service, method, reviewed: !!doc.reviewed };
-          entries.push({ tool, params, fixed });
+          entries.push({ tool, params, fixed, records });
         };
         const named = doc.params.filter((p) => p.names);
         if (!named.length) {
@@ -110,7 +126,7 @@ export default ({ remote }: Kernel): ServiceProvider => {
           continue;
         }
         // A method that takes a name (a collection) is offered for the names the caller may use.
-        const lists = named.map((p) => namesFor(instance, caps, p.names!));
+        const lists = named.map((p) => namesFor(instance, caps, p.names!, collections));
         if (lists.some((l) => l !== null && !l.length)) continue;
         const [only] = named;
         const names = lists[0];
@@ -151,7 +167,13 @@ export default ({ remote }: Kernel): ServiceProvider => {
       if (!isObject(given)) throw new Error(`${tool.name} takes its arguments as an object`);
       const unknown = Object.keys(given).filter((key) => !Object.hasOwn(tool.parameters.properties, key));
       if (unknown.length) throw new Error(`${tool.name} has no argument ${unknown.join(", ")}`);
-      const errors = validate({ type: "object", properties: tool.parameters.properties, required: tool.parameters.required }, given);
+      // Present is enough for a required argument: "" and null are values a method may take (an empty file, a removed key).
+      const missing = tool.parameters.required.filter((key) => !Object.hasOwn(given, key) || given[key] === undefined);
+      if (missing.length) throw new Error(`${tool.name}: ${missing.join(", ")} ${missing.length > 1 ? "are" : "is"} required`);
+      // A record is checked as the collection checks it; any other argument only needs its required parts present.
+      // Like the data service, a record's cleared fields (null or "") are dropped before it is checked.
+      const cleared = (value: unknown) => (isObject(value) ? Object.fromEntries(Object.entries(value).filter(([, v]) => v !== null && v !== "")) : value);
+      const errors = Object.entries(given).flatMap(([key, value]) => (entry.records.has(key) ? validate(tool.parameters.properties[key], cleared(value), key) : validate(tool.parameters.properties[key], value, key, true)));
       if (errors.length) throw new Error(`${tool.name}: ${errors.map((e) => e.message).join("; ")}`);
       // Positional, in the order the method lists them, with the tool's fixed values, without trailing ones left out.
       const positional = entry.params.map((p) => (Object.hasOwn(entry.fixed, p.name) ? entry.fixed[p.name] : given[p.name]));

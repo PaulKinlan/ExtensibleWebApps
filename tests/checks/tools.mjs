@@ -57,10 +57,20 @@ export default async (ctx) => {
   ${tryCall}
   ctx.log('bare-names ' + (await ctx.call('tools', 'list')).map((t) => t.name).sort().join(','));
   ctx.log('bare-files ' + await tryCall('files_read', { path: 'exports/x.txt' }));
+  await tryCall('storage_set', { key: 'k', value: 1 });
+  ctx.log('bare-null ' + await tryCall('storage_set', { key: 'k', value: null }) + ' ' + await tryCall('storage_get', { key: 'k' }));
+  ctx.log('bare-empty ' + await tryCall('storage_set', { key: '', value: '' }) + ' ' + await tryCall('storage_get', { key: '' }));
 };`);
     check("a plugin that may do nothing is offered only what needs nothing", (await pluginLog("bare-tools", "bare-names").catch(() => "")) === "bare-names data_collections,kernel_hooks,settings_get,storage_get,storage_set");
     check("a plugin can't call a tool it wasn't offered", /No tool named files_read/.test(await pluginLog("bare-tools", "bare-files").catch(() => "")));
+    check("a required argument may be null, when the method takes null", (await pluginLog("bare-tools", "bare-null").catch(() => "")) === "bare-null true null");
+    check("a required argument may be an empty string", (await pluginLog("bare-tools", "bare-empty").catch(() => "")) === 'bare-empty true ""');
+
+    // A narrower wildcard offers the collections it matches, not every collection.
+    await plugin(`export const manifest = { id: 'wild-tools', name: 'Wild tools', permissions: ['data:read:gad*'] };
+export default async (ctx) => { ctx.log('wild-names ' + (await ctx.call('tools', 'list')).map((t) => t.name).filter((n) => n.startsWith('data_')).sort().join(',')); };`);
+    check("a narrower wildcard offers only the collections it matches", (await pluginLog("wild-tools", "wild-names").catch(() => "")) === "wild-names data_collections,data_get_gadgets,data_list_gadgets");
   } finally {
-    for (const id of ["toolbox", "shelves", "bare-tools"]) await a.evaluate((id) => window.__host.command("uninstall", id), id).catch(() => {});
+    for (const id of ["toolbox", "shelves", "bare-tools", "wild-tools"]) await a.evaluate((id) => window.__host.command("uninstall", id), id).catch(() => {});
   }
 }
