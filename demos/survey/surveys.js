@@ -105,10 +105,22 @@ function parse(text) {
 
 /** What a question's answers add up to: a count for each choice, or the latest few words people wrote. */
 function summarise(question, answers) {
-  const given = answers.map((a) => a.values?.[question.id]).filter((v) => typeof v === "string" && v.trim());
+  const given = answers.map((a) => answerTo(question, a)).filter((v) => typeof v === "string" && v.trim());
   if (question.choices) {
     const counts = question.choices.map((choice) => ({ choice, n: given.filter((v) => v === choice).length }));
     return { label: question.label, most: Math.max(1, ...counts.map((c) => c.n)), choices: counts };
   }
-  return { label: question.label, said: given.slice(-5).reverse() };
+  // Answers come most recent first: the newest five.
+  return { label: question.label, said: given.slice(0, 5) };
+}
+
+/**
+ * An answer's value for a question, found by the question's words (collect.js keeps them with each answer), so
+ * questions added, moved or reworded after people answered don't take someone else's answers. An answer kept
+ * without them is read by the question's place.
+ */
+function answerTo(question, answer) {
+  if (!answer.asked) return answer.values?.[question.id];
+  const id = Object.keys(answer.asked).find((k) => answer.asked[k] === question.label);
+  return id ? answer.values?.[id] : undefined;
 }

@@ -72,7 +72,7 @@
               <template if="q.choices">
                 <ul class="bars">
                   <template for="c of q.choices">
-                    <li class="bar"><span>{{c.choice}}</span><meter min="0" max="{{q.most}}" value="{{c.n}}">{{c.n}}</meter><span class="n">{{c.n}}</span></li>
+                    <li class="bar"><span>{{c.choice}}</span><meter min="0" max="{{q.most}}" value="{{c.n}}" aria-label="{{c.choice}}">{{c.n}}</meter><span class="n">{{c.n}}</span></li>
                   </template>
                 </ul>
               </template>

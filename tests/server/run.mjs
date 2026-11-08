@@ -401,7 +401,7 @@ async function surveyChecks(base, check, owner) {
   }
   check(
     "survey demo: anyone's answers are kept on the server and reach the members' devices; a choice the survey doesn't offer is refused",
-    sent.status === 200 && (await sent.text()).includes("are in") && answer?.by === "plugin:collect" && answer.after?.survey === "lunch" && answer.after.values?.q1 === "Park" && answer.after.values.q2 === "Bring cake" && odd.status === 400,
+    sent.status === 200 && (await sent.text()).includes("are in") && answer?.by === "plugin:collect" && answer.after?.survey === "lunch" && answer.after.values?.q1 === "Park" && answer.after.values.q2 === "Bring cake" && answer.after.asked?.q1 === "Where to" && answer.after.asked.q2 === "Anything else?" && odd.status === 400,
     JSON.stringify({ sent: sent.status, odd: odd.status, answer }),
   );
   const closed = await laptop.push([{ collection: "surveys", id: "lunch", base: made[0].seq, after: { id: "lunch", title: "Lunch <b>Friday</b>", questions: "Where to: Cafe | Park", open: false } }]);

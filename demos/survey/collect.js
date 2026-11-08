@@ -32,6 +32,7 @@ export const manifest = {
         properties: {
           survey: { type: "string", title: "Survey" },
           values: { type: "object", title: "Answers, by question" },
+          asked: { type: "object", title: "Each question's words, as it was answered" },
         },
       },
     },
@@ -43,6 +44,13 @@ const MAX_TEXT = 2000;
 const DAY = 24 * 60 * 60 * 1000;
 
 export default async function (ctx) {
+  /** Answers are counted and kept one at a time, so two at once can't both take a survey's last place. */
+  let keeping = Promise.resolve();
+  const inTurn = (work) => {
+    const turn = keeping.then(work);
+    keeping = turn.catch(() => {});
+    return turn;
+  };
   const survey = async (id) => (typeof id === "string" && id ? await ctx.call("data", "get", "surveys", id) : null);
 
   ctx.routes.add("GET", "answer", async ({ query }) => {
@@ -63,30 +71,47 @@ export default async function (ctx) {
     const s = await survey(query?.survey);
     if (!s || s.open === false) return { status: 404, html: page("Not taking answers", "<p>This survey isn't taking answers.</p>") };
     // Only the questions the survey asks, and for a choice only one of its choices.
+    // Each answer keeps the words of the question it answers, so a survey edited later still shows it under that question.
     const values = {};
+    const asked = {};
     for (const q of parse(s.questions)) {
       const given = typeof form?.[q.id] === "string" ? form[q.id].trim().slice(0, MAX_TEXT) : "";
-      if (given && (!q.choices || q.choices.includes(given))) values[q.id] = given;
+      if (given && (!q.choices || q.choices.includes(given))) {
+        values[q.id] = given;
+        asked[q.id] = q.label;
+      }
     }
     if (!Object.keys(values).length) return { status: 400, html: page(s.title, `<p>Nothing was answered. <a href="answer?survey=${encodeURIComponent(s.id)}">Try again</a>.</p>`) };
-    const count = (await ctx.call("data", "list", "answers")).filter((a) => a.survey === s.id).length;
-    if (count >= MAX_ANSWERS) return { status: 429, html: page(s.title, "<p>This survey has all the answers it can take.</p>") };
-    const saved = await ctx.call("data", "put", "answers", { survey: s.id, values });
+    const saved = await inTurn(async () => {
+      const count = (await ctx.call("data", "list", "answers")).filter((a) => a.survey === s.id).length;
+      if (count >= MAX_ANSWERS) return { full: true };
+      return ctx.call("data", "put", "answers", { survey: s.id, values, asked });
+    });
+    if (saved.full) return { status: 429, html: page(s.title, "<p>This survey has all the answers it can take.</p>") };
     if (!saved.ok) return { status: 500, html: page(s.title, "<p>Your answers couldn't be kept. Please try again.</p>") };
     return { html: page("Thank you", `<p>Your answers to “${esc(s.title)}” are in.</p>`) };
   });
 
-  // The digest: once a day, to each survey's notify address, if anything came in since the last one.
+  // The digest: once a day, to each survey's notify address, if anything came in since its last one. Each survey
+  // keeps its own place, which moves on only once its email is sent, so one that couldn't go is tried again.
   ctx.schedule.every("digest", DAY, async () => {
-    const since = (await ctx.storage.get("digested")) ?? 0;
+    const saved = (await ctx.storage.get("digested")) ?? {};
+    // Once a single time for every survey.
+    const digested = typeof saved === "number" ? {} : { ...saved };
+    const since = (id) => digested[id] ?? (typeof saved === "number" ? saved : 0);
     const now = Date.now();
-    const answers = (await ctx.call("data", "list", "answers")).filter((a) => Date.parse(a.createdAt) > since);
+    const answers = await ctx.call("data", "list", "answers");
     for (const s of await ctx.call("data", "list", "surveys")) {
-      const n = answers.filter((a) => a.survey === s.id).length;
+      const n = answers.filter((a) => a.survey === s.id && Date.parse(a.createdAt) > since(s.id)).length;
       if (!n || !s.notify) continue;
-      await ctx.call("email", "send", { to: s.notify, subject: `${n} new answer${n === 1 ? "" : "s"} to “${s.title.replace(/[\r\n]+/g, " ")}”`, text: `${n} people answered “${s.title}” since the last digest. Open the survey app in your space to see them.` }).catch((error) => ctx.log(`Digest for ${s.title}: ${error?.message ?? error}`, "error"));
+      try {
+        await ctx.call("email", "send", { to: s.notify, subject: `${n} new answer${n === 1 ? "" : "s"} to “${s.title.replace(/[\r\n]+/g, " ")}”`, text: `${n} people answered “${s.title}” since the last digest. Open the survey app in your space to see them.` });
+        digested[s.id] = now;
+      } catch (error) {
+        ctx.log(`Digest for ${s.title}: ${error?.message ?? error}`, "error");
+      }
     }
-    await ctx.storage.set("digested", now);
+    await ctx.storage.set("digested", digested);
   });
 }
 
