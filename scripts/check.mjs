@@ -50,9 +50,14 @@ async function loadKernelRules() {
   return rules;
 }
 
-/** The services that are a file each in src/kernel/services/: the file's name is the service's. */
+/**
+ * The services that are a file each in src/kernel/services/ (the file's name is the service's), and the
+ * kernel modules the site lists in kernel.json, each of which provides the service it is named after.
+ */
 function serviceFiles() {
-  return readdirSync(join(ROOT, "src/kernel/services")).filter((f) => f.endsWith(".ts") && f !== "index.ts").map((f) => f.slice(0, -3));
+  const files = readdirSync(join(ROOT, "src/kernel/services")).filter((f) => f.endsWith(".ts") && f !== "index.ts").map((f) => f.slice(0, -3));
+  const { modules } = JSON.parse(readFileSync(join(ROOT, "kernel.json"), "utf8"));
+  return [...files, ...modules];
 }
 
 // What each service method and hook needs, read from docs/api.md, which the

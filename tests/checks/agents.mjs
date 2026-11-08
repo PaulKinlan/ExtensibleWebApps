@@ -1,4 +1,4 @@
-// Agents (src/kernel/agents/, src/kernel/services/agents.ts): a Markdown file
+// Agents (src/kernel/agents/, std/agents/module.ts): a Markdown file
 // an app links with rel="agent", run by the kernel as a plugin that asks a
 // model and calls its tools. The librarian demo links one. A scripted model,
 // added as the person's own plugin for that app, stands in for a real one, so

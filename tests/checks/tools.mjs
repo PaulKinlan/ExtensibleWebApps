@@ -1,4 +1,4 @@
-// The tools service (src/kernel/services/tools.ts): the service methods a
+// The tools service (std/tools/module.ts): the service methods a
 // plugin may call, described as tools for a language model, and calling one
 // through the same gate as ctx.call. The first piece of the agent plugin.
 

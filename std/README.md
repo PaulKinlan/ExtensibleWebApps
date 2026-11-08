@@ -26,7 +26,10 @@ Some folders here also hold a `module.ts`: a **kernel module**, trusted code tha
 
 | Module | What it adds |
 | --- | --- |
+| [`agents/module.ts`](agents/module.ts) | The `agents` service: agents' runs and tokens counted by the kernel, and the `agent:*` hooks that say what they did. Needs `tools` |
+| [`bus/module.ts`](bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person |
 | [`debug/module.ts`](debug/module.ts) | The `debug` service, which the debug console and other developer tools read the trace from, and the `bench` and `reload-test` commands the tests run |
+| [`tools/module.ts`](tools/module.ts) | The `tools` service: the service methods a plugin may call, offered to a model as tools |
 
 ## The command palette
 
