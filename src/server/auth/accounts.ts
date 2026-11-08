@@ -192,6 +192,11 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     };
 
     if (step === "start") {
+      // Only this site's own pages start a sign-in. A link on another site would otherwise carry
+      // the signed-in person's cookie here, and link an account its author chose to theirs.
+      // (A client that isn't a browser sends no Sec-Fetch-Site.)
+      const from = request.headers.get("sec-fetch-site");
+      if (from !== null && from !== "same-origin" && from !== "none") return toAccount(new Headers(), "Start signing in from this site's own page");
       const state = random(24);
       const verifier = random(48);
       const invite = url.searchParams.get("invite") ?? "";
@@ -205,7 +210,12 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         } catch (error) {
           return toAccount(new Headers(), messageOf(error, `${provider.name} didn't start a sign-in`));
         }
-        if (!data) return new Response(null, { status: 302, headers: { location: to } });
+        if (!data) {
+          // Sent to another address of this site first (Bluesky's localhost to 127.0.0.1): the session
+          // doesn't go along, so linking would become a sign-in to some other account.
+          if ((await asker(request)).user) return toAccount(new Headers(), `To link ${provider.name}, sign in at ${new URL(to).host} first`);
+          return new Response(null, { status: 302, headers: { location: to } });
+        }
       } else {
         const at = new URL(provider.authorize);
         for (const [k, v] of Object.entries({ client_id: provider.clientId, redirect_uri: back, state, scope: provider.scope, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" })) if (v) at.searchParams.set(k, v);
