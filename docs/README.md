@@ -40,7 +40,7 @@ An app works with no server at all. A **space** lets a group of people share its
 | Know what a plugin can and can't do | [The security model](security.md), and [every permission](permissions.md) in plain words |
 | Add a ready-made feature to an app | [Standard plugins](plugins.md) |
 | Share an app's data with other people, or run a plugin on a server | [Spaces, and plugins on a server](guide/spaces-and-servers.md), then [Servers and spaces](server.md) for how it's built |
-| Start a project of your own | `npx github:PaulKinlan/ExtensibleWebApps my-app`, then [Deploying one app on its own](guide/deploying-an-app.md) |
+| Start a project of your own | `npm create extensible-app my-app`, then [Deploying one app on its own](guide/deploying-an-app.md) |
 | Look up a word | [The glossary](glossary.md) |
 | Look up a service, hook or permission | [The API reference](api.md), which the kernel prints about itself |
 | See how the kernel works inside, and where it runs | [The kernel](kernel.md) |
