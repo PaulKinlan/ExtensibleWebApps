@@ -36,9 +36,12 @@ export default async function (ctx) {
     };
   });
 
+  // Many writes at once (an import, a sample list) redraw the buttons once, just after the last.
+  let soon;
   ctx.on("history:changed", () => {
     problem = "";
-    buttons.refresh();
+    clearTimeout(soon);
+    soon = setTimeout(() => buttons.refresh(), 50);
   });
 
   ctx.ui.onEvent(async (action) => {
