@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  The librarian: the reading list's library, with an agent added.
+
+  ../reading-list/library.js  owns the `library` collection, as in the reading list
+  librarian.agent.md          an agent: a Markdown file, not code. When a book is
+                              added with only a title, it asks a model for the
+                              author and year and fills them in
+  activity.js                 listens to the agent:* events and lists what the
+                              agent did
+  /std/llm/anthropic.js       the model the agent asks; it asks for your key the
+                              first time
+
+  The agent isn't the library's owner, so the person reviews each change it
+  wants to make, as they would for any plugin.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Librarian</title>
+  <meta name="description" content="A reading list with an agent that fills in each book's author and year.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="../reading-list/library.js">
+  <link rel="plugin" href="activity.js">
+  <!-- An agent: the kernel reads its frontmatter as a manifest and runs it as a plugin. -->
+  <link rel="agent" href="librarian.agent.md">
+  <!-- Any provider will do: swap in /std/llm/openai.js, /std/llm/gemini.js or /std/llm/openai-compatible.js. -->
+  <link rel="plugin" href="/std/llm/anthropic.js">
+</head>
+<body>
+  <header>
+    <h1>Librarian</h1>
+    <a href="/workbench/">Workbench</a>
+  </header>
+  <main>
+    <slot name="main"><p>Loading your books…</p></slot>
+  </main>
+  <aside>
+    <slot name="side"></slot>
+  </aside>
+</body>
+</html>
