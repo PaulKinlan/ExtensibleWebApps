@@ -42,30 +42,36 @@ export function spaceRoute(url: URL): { space: string; path: string } | undefine
 /** The request as plain values for the kernel: a form's fields or a JSON body, within size. Null if too big. */
 export async function routeRequest(request: Request, path: string): Promise<RouteRequest | null> {
   const url = new URL(request.url);
-  const out: RouteRequest = { method: request.method === "HEAD" ? "GET" : request.method, path, query: Object.fromEntries(url.searchParams) };
+  // HEAD stays HEAD: the kernel answers it with a HEAD route if a plugin has one, else with its GET route.
+  const out: RouteRequest = { method: request.method, path, query: Object.fromEntries(url.searchParams) };
   if (request.method === "GET" || request.method === "HEAD") return out;
-  const text = await readText(request);
-  if (text === null) return null;
+  const body = await readBody(request);
+  if (body === null) return null;
   const type = request.headers.get("content-type") ?? "";
   if (type.includes("application/json")) {
     try {
-      out.form = JSON.parse(text);
+      out.form = JSON.parse(new TextDecoder().decode(body));
     } catch {}
-  } else if (type.includes("application/x-www-form-urlencoded")) {
-    const fields = new Map<string, string | string[]>();
-    for (const [name, value] of new URLSearchParams(text)) {
-      const had = fields.get(name);
-      fields.set(name, had === undefined ? value : ([] as string[]).concat(had, value));
+  } else if (type.includes("application/x-www-form-urlencoded") || type.includes("multipart/form-data")) {
+    // Read as a browser's form is (sw/routes/plugins.js): string fields, repeated ones as a list, files left out.
+    const data = await new Response(body, { headers: { "content-type": type } }).formData().catch(() => undefined);
+    if (data) {
+      const fields = new Map<string, string | string[]>();
+      for (const [name, value] of data) {
+        if (typeof value !== "string") continue;
+        const had = fields.get(name);
+        fields.set(name, had === undefined ? value : ([] as string[]).concat(had, value));
+      }
+      // fromEntries defines each field as the object's own, so one named __proto__ is just a field. (A plain
+      // object, not one without a prototype, which Cloudflare's RPC can't send.)
+      out.form = Object.fromEntries(fields);
     }
-    // fromEntries defines each field as the object's own, so one named __proto__ is just a field. (A plain
-    // object, not one without a prototype, which Cloudflare's RPC can't send.)
-    out.form = Object.fromEntries(fields);
   }
   return out;
 }
 
-async function readText(request: Request): Promise<string | null> {
-  if (!request.body) return "";
+async function readBody(request: Request): Promise<Uint8Array | null> {
+  if (!request.body) return new Uint8Array();
   const reader = request.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -82,7 +88,7 @@ async function readText(request: Request): Promise<string | null> {
   const all = new Uint8Array(size);
   let at = 0;
   for (const chunk of chunks) all.set(chunk, (at += chunk.length) - chunk.length);
-  return new TextDecoder().decode(all);
+  return all;
 }
 
 // A page a plugin returns may show forms and links, but runs no script and loads nothing from elsewhere (as sw/routes/plugins.js).

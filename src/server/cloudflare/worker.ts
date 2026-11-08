@@ -75,9 +75,22 @@ class PluginHost extends RpcTarget {
     super();
   }
 
-  async start(name: string, source: string, network: boolean, send: Send): Promise<void> {
-    await this.stop(name);
+  /** Each plugin's starts and stops, one at a time: a start that overlapped another would share its facet. */
+  private turns = new Map<string, Promise<unknown>>();
+  private inTurn<T>(name: string, work: () => Promise<T>): Promise<T> {
+    const run = (this.turns.get(name) ?? Promise.resolve()).then(work, work);
+    this.turns.set(name, run.catch(() => {}));
+    return run;
+  }
+
+  start(name: string, source: string, network: boolean, send: Send): Promise<void> {
+    // Kept now: a function passed over RPC lasts only as long as the call, and this one may wait its turn.
     const kept = send.dup?.() ?? send;
+    return this.inTurn(name, () => this.starting(name, source, network, kept));
+  }
+
+  private async starting(name: string, source: string, network: boolean, kept: Send): Promise<void> {
+    await this.stopping(name);
     const code = `plugin:${this.space}:${name}:${isolateSource.version}:${network ? "net" : "closed"}:${await hex(source)}`;
     const worker = this.env.LOADER.get(code, () => ({
       compatibilityDate: "2026-11-01",
@@ -98,7 +111,11 @@ class PluginHost extends RpcTarget {
     await this.running.get(name)?.stub.deliver(message);
   }
 
-  async stop(name: string): Promise<void> {
+  stop(name: string): Promise<void> {
+    return this.inTurn(name, () => this.stopping(name));
+  }
+
+  private async stopping(name: string): Promise<void> {
     const one = this.running.get(name);
     if (!one) return;
     this.running.delete(name);

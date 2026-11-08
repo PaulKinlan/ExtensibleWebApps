@@ -47,7 +47,9 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
   /** Starts under way, and when the last one finished. */
   const starting = new Set<Promise<void>>();
   let finished = 0;
+  let isLoaded = false;
   const loaded = store.readJson<unknown>(FILE, []).then((saved) => {
+    isLoaded = true;
     apps = Array.isArray(saved) ? saved.filter((a): a is string => typeof a === "string").slice(0, MAX_APPS) : [];
     for (const app of apps) void start(app);
   });
@@ -128,6 +130,10 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
     },
     /** The apps opened in the space. */
     list: async () => (await loaded, [...apps]),
+    /** Whether any app's plugins are being started now (or the saved apps haven't been read yet). */
+    starting: () => !isLoaded || starting.size > 0,
+    /** When the last start finished (0 if none has). */
+    finishedAt: () => finished,
     /** Resolves once the saved apps' plugins have been started; with the time the last start finished. */
     async settled(): Promise<number> {
       await loaded;

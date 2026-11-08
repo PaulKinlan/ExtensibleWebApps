@@ -270,6 +270,17 @@ async function serverPluginChecks(base, check, owner, restart) {
     counted?.count === 1 && unrouted.status === 404 && nowhere.status === 404 && big.status === 413,
     JSON.stringify({ counted, unrouted: unrouted.status, nowhere: nowhere.status, big: big.status }),
   );
+  const form = new FormData();
+  form.append("text", "Sent as multipart");
+  form.append("file", new Blob(["ignored"]), "note.txt");
+  const multipart = await fetch(`${base}/s/guarded/server-app/entry`, { method: "POST", redirect: "manual", body: form });
+  const head = await fetch(`${base}/s/guarded/server-app/count`, { method: "HEAD" });
+  const twice = await fetch(`${base}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
+  check(
+    "server plugins: a multipart form reaches a route as its string fields, and HEAD is answered by the GET route",
+    multipart.status === 303 && head.status === 200 && head.headers.get("content-type")?.startsWith("application/json") && twice?.count === 2,
+    JSON.stringify({ multipart: multipart.status, head: head.status, twice }),
+  );
   check("server plugins: a plugin linked only inside an HTML comment doesn't start on the server", !phone.changes().some((c) => c.collection === "ghosts"), JSON.stringify(phone.changes().filter((c) => c.collection === "ghosts")));
   phone.close();
 
@@ -291,7 +302,7 @@ async function serverPluginChecks(base, check, owner, restart) {
   const url = await restart();
   // A request to a public route wakes the space, with no device connected.
   const woken = await fetch(`${url}/s/guarded/server-app/count`).then((r) => r.json(), () => null);
-  check("server plugins: a public route wakes a space that isn't running, and its plugin answers", woken?.count === 1, JSON.stringify(woken));
+  check("server plugins: a public route wakes a space that isn't running, and its plugin answers", woken?.count === 2, JSON.stringify(woken));
   const later = await device(url, "guarded", owner.cookie);
   await later.hello(0);
   let again;
