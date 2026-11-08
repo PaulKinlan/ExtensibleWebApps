@@ -468,6 +468,18 @@ Needs: `debug:read`.
 
 The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.
 
+### email
+
+Email: messages a plugin on a space's server sends. Until the deployment delivers mail, each is written down in the space's outbox.
+
+#### email.send
+
+`email.send({ to, subject, text, html? })` → { ok, id }
+
+Needs: `email`.
+
+Sends a message to `to` (an address or a list, at most 10), with a one-line `subject`, plain `text` and, if given, `html`. Only on a space's server; at most 50 a day for each plugin.
+
 ### files
 
 Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.
@@ -1136,6 +1148,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `data:write:notes` | Call store.put. |
 | `debug:read` | Call debug.recent, debug.app. |
+| `email` | Call email.send. |
 | `files:<folder>` | Call files.read, files.write. |
 | `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
@@ -1187,6 +1200,7 @@ Reserved ids, which no plugin can take:
 - `commands`
 - `data`
 - `debug`
+- `email`
 - `files`
 - `history`
 - `host`
@@ -1208,7 +1222,7 @@ Reserved ids, which no plugin can take:
 - `tools`
 - `transfer`
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`.
 
 ## Collections
 
