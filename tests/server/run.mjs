@@ -399,6 +399,7 @@ async function networkGuardChecks(base, check) {
     dispatcher: await probe(`http://[::ffff:7f00:1]:${port}/`, "dispatcher"),
     agent: await probe(`http://[::ffff:7f00:1]:${port}/`, "agent"),
     metadata: await probe("http://169.254.169.254/latest/meta-data/", "agent"),
+    tampered: await probe(`http://[::1]:${port}/`, "tampered"),
   };
   local.close();
   const refused = (r) => r?.ok === false && /server's own network/.test(r.error);
@@ -408,8 +409,8 @@ async function networkGuardChecks(base, check) {
     JSON.stringify(seen),
   );
   check(
-    "network guard: going around fetch, through its dispatcher or an Agent of the plugin's own, is refused too",
-    Object.values(around).every((r) => r?.ok === false && r.code === "EACCES"),
+    "network guard: going around fetch, through its dispatcher or an Agent of the plugin's own, or after replacing Set.prototype.has and other built-ins, is refused too",
+    Object.values(around).every((r) => r?.ok === false && (r.code === "EACCES" || r.code === "EPRIVATE")),
     JSON.stringify(around),
   );
   check("network guard: a private host the deployment allows is reached", seen.allowed?.ok && seen.allowed.text === "hello from inside", JSON.stringify(seen.allowed));
