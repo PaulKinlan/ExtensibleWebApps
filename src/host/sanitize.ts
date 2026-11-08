@@ -71,7 +71,8 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       if (name === "href" && !SAFE_HREF.test(value.trim()) && !isLocal(value)) continue;
       // An https image is a request: only plugins allowed on the network may make one. A file next to the template is the plugin's own.
       if (name === "src" && !(remote ? SAFE_SRC : DATA_SRC).test(value.trim())) {
-        const own = tag === "img" ? ownFile(value, base) : undefined;
+        // So is a Markdown file a ui-markdown draws: it is fetched from this site and shown as text.
+        const own = tag === "img" || tag === "ui-markdown" ? ownFile(value, base) : undefined;
         if (own) out.setAttribute("src", own);
         continue;
       }

@@ -1,0 +1,12 @@
+<!--
+  The docs' two views. docs.js sends the contents { repo }, and the page
+  { file, repo, source }: file is the Markdown file to draw, relative to this
+  folder, and source is where it lives on GitHub.
+-->
+<template id="contents">
+  <ui-markdown src="contents.md" pages="/docs/" repo="{{repo}}" compact></ui-markdown>
+</template>
+<template id="page">
+  <ui-markdown src="{{file}}" pages="/docs/" repo="{{repo}}" sets-title></ui-markdown>
+  <p class="source"><small><a href="{{source}}">See this page on GitHub</a>, where it can be changed.</small></p>
+</template>

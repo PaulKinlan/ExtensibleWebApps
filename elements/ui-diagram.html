@@ -1,0 +1,24 @@
+<!--
+  ui-diagram: a Mermaid diagram. Its text content is the diagram, written in
+  Mermaid's language (https://mermaid.js.org/):
+
+    <ui-diagram label="How a write is checked">
+      flowchart LR
+        plugin --> kernel --> gate --> data
+    </ui-diagram>
+
+  Attributes: label (what the diagram shows, for screen readers). It draws
+  again when its text changes, and in the page's light or dark colours.
+  Mermaid loads the first time a diagram is drawn (elements/mermaid.js).
+-->
+<template>
+  <style>
+    :host { display: block; margin: var(--space-3, 16px) 0; }
+    figure { margin: 0; padding: var(--space-3, 16px); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface, var(--bg)); overflow-x: auto; text-align: center; }
+    .diagram-error { color: var(--danger); text-align: left; }
+    pre { text-align: left; font: var(--text-sm)/1.5 var(--mono); white-space: pre-wrap; }
+    .waiting { color: var(--fg-2); font-size: var(--text-sm); }
+  </style>
+  <figure><p class="waiting">Drawing the diagram…</p></figure>
+</template>
+<script type="module" src="ui-diagram.js"></script>
