@@ -79,3 +79,12 @@ ctx.ui.onEvent((action) => {
 ## Helping others extend your views
 
 Name the parts people might care about. A `data-*` attribute on each row (`<li data-name="{{b.name}}">`) gives a transform a selector that lasts and tells it which thing each row is about, without asking anything else of you. Where you know others will want to add something, declare a slot: it is a promise of room, with the data to fill it well.
+
+## Inspect mode: changing a view without writing code
+
+Every app's **Customize** panel has **Inspect the page**. The person points at any part of the page and the panel says who drew it: which plugin, in which slot, under which key, or the app's own page. It also shows the selector a place would use for it. They click the part, then:
+
+- **Hide this** makes a small plugin of their own with a place that hides it. Inside a plugin's view that place is a transform (`in`, with `ui:transform:<plugin>`).
+- **Add note** makes one that adds their text after it.
+
+Each is an ordinary user plugin ([Places: a person's own plugins](places.md)). The author's locks still hold, Customize lists it, and turning it off gives the page back. The code is in [`src/host/inspect.ts`](../../src/host/inspect.ts).

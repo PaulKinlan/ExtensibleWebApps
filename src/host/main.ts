@@ -14,6 +14,7 @@
 import { folder as appFolder, followLinks, screen } from "./router";
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
 import { customize } from "./customize";
+import { inspect } from "./inspect";
 import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
 import { audioStats } from "./bridges/audio";
@@ -622,7 +623,8 @@ send({ t: "hello", tab, folder });
 introduced = true;
 for (const message of unsent.splice(0)) send(message);
 /** Every app gets the Customize button, where the person adds their own plugins. */
-const panel = isWorkbench ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status() });
+const inspector = isWorkbench ? undefined : inspect({ app, command });
+const panel = isWorkbench ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status(), inspect: () => inspector?.start() });
 if (!isWorkbench) await openApp();
 sendUrl();
 addEventListener("popstate", sendUrl);
@@ -630,4 +632,4 @@ followLinks();
 
 // For tests and poking around in the console.
 // Tests reach the template filler and the CSS cleaner here, to check them without a plugin.
-Object.assign(window, { __host: { tab, app, command, traces, audioStats, workers, fill, cleanCss, report, places: () => pagePlaces.status(), get spawner() { return spawner; } } });
+Object.assign(window, { __host: { tab, app, command, traces, audioStats, workers, fill, cleanCss, report, places: () => pagePlaces.status(), inspect: () => inspector?.start(), get spawner() { return spawner; } } });
