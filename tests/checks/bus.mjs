@@ -1,4 +1,4 @@
-// The bus (src/kernel/services/bus.ts): inboxes with replies, topics, and
+// The bus (std/bus/module.ts): inboxes with replies, topics, and
 // questions for the person on the board (std/board.js). Plugins installed in
 // the workbench check the rules; then, in the librarian demo, a plugin asks
 // the bibliographer agent about a book, the agent asks the person on the

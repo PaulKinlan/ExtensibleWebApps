@@ -1,5 +1,8 @@
 {
   "modules": [
-    "debug"
+    "agents",
+    "bus",
+    "debug",
+    "tools"
   ]
 }

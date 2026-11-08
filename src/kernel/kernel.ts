@@ -229,10 +229,10 @@ const parts = { root, store, hosts, remote, apps, reviewed, describe, collection
 Object.assign(services, loadServices(parts));
 // Then the kernel modules the site lists in kernel.json (docs/layers.md): each may add services and page commands.
 /** The page commands the kernel answers itself; a module's commands (loadModules) can't take these names. */
-const CORE_COMMANDS = new Set(["changes", "install", "reference", "reload", "route", "sync", "trace", "uninstall"]);
+const CORE_COMMANDS = new Set(["changes", "install", "reference", "reload", "restart-module", "route", "sync", "trace", "uninstall"]);
 
 const commands = new Map<string, (arg: unknown) => unknown>();
-loadModules(modules, parts, services, commands, (name) => CORE_COMMANDS.has(name) || /^(user|place):/.test(name));
+const kernelModules = loadModules(modules, parts, services, commands, (name) => CORE_COMMANDS.has(name) || /^(user|place):/.test(name));
 // A plugin can't take a service's name as its id, whichever way the service was added.
 for (const name of Object.keys(services)) RESERVED.add(name);
 
@@ -343,6 +343,8 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   const added = commands.get(name);
   if (added) return added(arg);
   if (name === "reload") return remote.reload(String(arg));
+  // Stops a kernel module and the ones that use it, then starts them again: what it added must come and go with it.
+  if (name === "restart-module") return kernelModules.restart(String(arg)).then(() => ({ ok: true }), (error) => ({ ok: false, error: String(error?.message ?? error) }));
   if (name === "install") return plugins.install(String(arg));
   if (name === "uninstall") return plugins.remove(String(arg));
   if (name === "trace") return recent();
