@@ -19,6 +19,8 @@ export const PLATFORM = new Set([
   // A space's sync log and a device's sync state (sync.ts, sync-device.ts), and a server's apps (server-apps.ts).
   "sync",
   "server",
+  // Plugins' scheduled jobs (services/schedule.ts).
+  "schedule",
 ]);
 
 export class PathError extends Error {}

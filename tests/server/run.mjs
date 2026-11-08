@@ -291,9 +291,11 @@ async function serverPluginChecks(base, check, owner, restart) {
   for (let i = 0; i < 40 && !(tick?.after?.n >= 2); i++) {
     await new Promise((r) => setTimeout(r, 250));
     await phone.settle();
-    tick = phone.changes().filter((c) => c.collection === "ticks").at(-1);
+    tick = phone.changes().filter((c) => c.collection === "ticks" && c.id === "count").at(-1);
   }
   check("server plugins: a job a server plugin schedules with ctx.schedule.every runs on the server, again and again", tick?.after?.n >= 2 && tick.by === "plugin:ticker", JSON.stringify(tick));
+  const tamper = phone.changes().find((c) => c.collection === "ticks" && c.id === "tamper")?.after;
+  check("server plugins: a plugin can't rewrite the space's jobs as a file, even with files:schedule", !!tamper?.refused, JSON.stringify(tamper));
   check("server plugins: a plugin linked only inside an HTML comment doesn't start on the server", !phone.changes().some((c) => c.collection === "ghosts"), JSON.stringify(phone.changes().filter((c) => c.collection === "ghosts")));
   phone.close();
 
@@ -319,8 +321,8 @@ async function serverPluginChecks(base, check, owner, restart) {
   await new Promise((r) => setTimeout(r, 4000));
   const watcher = await device(url, "guarded", owner.cookie);
   await watcher.hello(0);
-  const ticked = watcher.changes().filter((c) => c.collection === "ticks").at(-1);
-  const firstTick = watcher.changes().find((c) => c.collection === "ticks" && c.after?.at > stoppedAt);
+  const ticked = watcher.changes().filter((c) => c.collection === "ticks" && c.id === "count").at(-1);
+  const firstTick = watcher.changes().find((c) => c.collection === "ticks" && c.id === "count" && c.after?.at > stoppedAt);
   check(
     "server plugins: after a restart, a scheduled job starts the space by itself and keeps running, with no one connected",
     !!firstTick && firstTick.after.at < Date.now() - 1000 && ticked?.after?.at > stoppedAt,
