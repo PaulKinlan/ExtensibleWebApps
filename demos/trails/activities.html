@@ -1,0 +1,89 @@
+<!--
+  The feed. activities.js sends { kinds: [{ id, name, on }], count, more,
+  items: [{ id, title, kind, name, glyph, when, km, time, pace, climb,
+  feelGlyph, route, notes }] }. `route` is an SVG file in routes/, next to
+  this template, so it loads as the plugin's own file.
+
+  data-kind on each card picks its colour. data-km on each distance is
+  there for other plugins: the Miles sample finds them by it.
+-->
+<style>
+  .log { display: flex; flex-direction: column; gap: var(--space-4); }
+  .log-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .log-head h2 { margin: 0 auto 0 0; font-size: var(--text-xl); letter-spacing: -0.01em; }
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; }
+  .filters button { height: 32px; padding: 0 14px; border-radius: 999px; background: var(--surface); }
+  .filters button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+  .new { border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); }
+  .new summary { padding: var(--space-3) var(--space-4); font-weight: 600; cursor: pointer; list-style: none; }
+  .new summary::before { content: "＋"; margin-right: 8px; color: var(--accent); }
+  .new[open] summary { border-bottom: 1px solid var(--border); }
+  .new ui-form { display: block; padding: var(--space-4); }
+
+  .feed { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+  .act { --kind: var(--accent); display: grid; grid-template-rows: auto 1fr; overflow: hidden; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); transition: transform var(--duration) var(--ease), box-shadow var(--duration) var(--ease); }
+  .act:hover { transform: translateY(-3px); box-shadow: 0 18px 32px -18px rgb(0 0 0 / 0.35); }
+  .act[data-kind="run"] { --kind: #f97316; }
+  .act[data-kind="ride"] { --kind: #0ea5e9; }
+  .act[data-kind="hike"] { --kind: #16a34a; }
+  .act[data-kind="swim"] { --kind: #8b5cf6; }
+  .map { position: relative; height: 150px; background: linear-gradient(160deg, color-mix(in srgb, var(--kind) 14%, var(--bg-2)), var(--bg-2)); }
+  .map img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .map .kind { position: absolute; top: 10px; left: 10px; display: inline-flex; gap: 6px; align-items: center; padding: 3px 10px 3px 6px; border-radius: 999px; font-size: var(--text-sm); font-weight: 600; color: #fff; background: var(--kind); box-shadow: 0 4px 12px -4px var(--kind); }
+  .map .feel { position: absolute; top: 8px; right: 10px; font-size: 1.3rem; filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.2)); }
+  .body { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4); }
+  .body h3 { margin: 0; font-size: var(--text-lg); }
+  .body time { color: var(--fg-2); font-size: var(--text-sm); }
+  .numbers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0; }
+  .numbers div { display: flex; flex-direction: column-reverse; }
+  .numbers dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-2); }
+  .numbers dd { margin: 0; font-weight: 700; font-size: var(--text-xl); line-height: 1.15; font-family: var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .numbers dd small { font-size: 0.55em; font-weight: 600; color: var(--fg-2); margin-left: 2px; }
+  .extra { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--fg-2); font-size: var(--text-sm); }
+  .extra span::before { margin-right: 4px; }
+  .extra .pace::before { content: "⏱"; }
+  .extra .climb::before { content: "⛰"; }
+  .notes { margin: 0; color: var(--fg-2); font-size: var(--text-sm); }
+  .more { align-self: center; height: 36px; padding: 0 22px; border-radius: 999px; }
+</style>
+
+<template id="feed">
+  <section class="log" aria-label="Activity log">
+    <div class="log-head">
+      <h2>Log</h2>
+      <div class="filters" role="group" aria-label="Show">
+        <template for="k of kinds"><button key="{{k.id}}" data-action="kind" data-value="{{k.id}}" aria-pressed="{{k.on}}">{{k.name}}</button></template>
+      </div>
+    </div>
+    <details class="new">
+      <summary>Log an activity</summary>
+      <ui-form collection="activities" fields="title,kind,date,km,minutes,climb,feel,route,notes" submit="Save to the log"></ui-form>
+    </details>
+    <ul class="feed">
+      <template for="a of items">
+        <li class="act" key="{{a.id}}" data-id="{{a.id}}" data-kind="{{a.kind}}">
+          <div class="map">
+            <img src="{{a.route}}" alt="" loading="lazy" width="320" height="200">
+            <span class="kind">{{a.glyph}} {{a.name}}</span>
+            <span class="feel" title="Felt {{a.feel}}">{{a.feelGlyph}}</span>
+          </div>
+          <div class="body">
+            <div>
+              <h3>{{a.title}}</h3>
+              <time datetime="{{a.date}}">{{a.when}}</time>
+            </div>
+            <dl class="numbers">
+              <div><dt>Distance</dt><dd class="distance" data-km="{{a.km}}">{{a.km}}<small>km</small></dd></div>
+              <div><dt>Time</dt><dd>{{a.time}}</dd></div>
+              <div><dt>Climb</dt><dd>{{a.climb}}<small>m</small></dd></div>
+            </dl>
+            <div class="extra"><span class="pace">{{a.pace}}</span></div>
+            <template if="a.notes"><p class="notes">{{a.notes}}</p></template>
+          </div>
+        </li>
+      </template>
+    </ul>
+    <template if="more"><button class="more" data-action="more">Show more ({{count}} in all)</button></template>
+  </section>
+</template>
