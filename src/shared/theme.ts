@@ -28,14 +28,19 @@ export const THEME_TOKENS: Record<string, string> = {
   "--shadow-1": "The shadow under raised things",
   "--font": "The typeface",
   "--mono": "The fixed-width typeface",
+  "color-scheme": "The schemes the theme is made for: `dark` for a dark-only theme, `light`, or `light dark`. Every `light-dark()` on the page, in plugins' CSS too, follows it.",
 };
+
+/** The values color-scheme may take in a theme. */
+const SCHEMES = new Set(["light", "dark", "light dark", "dark light", "normal"]);
 
 /** The longest value a token may have. */
 const MAX = 200;
 
 /** Why a token's value can't be used, or undefined if it can. `light-dark(a, b)` gives light and dark values. */
-export function badThemeValue(value: unknown): string | undefined {
+export function badThemeValue(value: unknown, token?: string): string | undefined {
   if (typeof value !== "string" || !value.trim()) return "a value is a non-empty string";
+  if (token === "color-scheme") return SCHEMES.has(value.trim()) ? undefined : "color-scheme is light, dark, or light dark";
   if (value.length > MAX) return `a value is at most ${MAX} characters`;
   if (/[;{}<>@!\\]/.test(value)) return "a value can't hold ; { } < > @ ! or \\";
   if (/\b(url|src|image-set|image|element|cross-fade|attr|env)\s*\(/i.test(value)) return "a value can't load anything or read attributes";
@@ -57,6 +62,6 @@ export function badThemeValue(value: unknown): string | undefined {
 export function themeCss(themes: Record<string, string>[]): string {
   const lines: string[] = [];
   for (const theme of themes)
-    for (const [token, value] of Object.entries(theme)) if (token in THEME_TOKENS && !badThemeValue(value)) lines.push(`  ${token}: ${value};`);
+    for (const [token, value] of Object.entries(theme)) if (token in THEME_TOKENS && !badThemeValue(value, token)) lines.push(`  ${token}: ${value};`);
   return lines.length ? `@layer plugins {\n:root {\n${lines.join("\n")}\n}\n}\n` : "";
 }

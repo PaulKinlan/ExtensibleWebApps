@@ -13,6 +13,24 @@ export default async function (page, { check, proof }) {
   const icons = `${board} .card[data-id="card-icons"]`;
   proof.badges = await page.waitForSelector(`${icons} [data-plugin="due"] .due`, { timeout: 5000 }).then(() => page.locator(`${icons} slot [data-plugin]`).count(), () => 0);
   check("two plugins put badges in a card's room: when it's due, and its checklist", proof.badges === 2);
+  // board.html lays out the box each badge comes in, but its CSS stops at what the badge's plugin drew.
+  proof.room = await page.evaluate((icons) => {
+    const box = document.querySelector(`${icons} slot [data-plugin="due"]`);
+    const due = box?.querySelector(".due");
+    const probe = box && document.createElement("b");
+    probe?.classList.add("label");
+    due?.after(probe);
+    // A page rule that tries to take the containment off, to show the host's !important holds.
+    const override = document.createElement("style");
+    override.textContent = `${icons} slot [data-plugin="due"] { contain: none; }`;
+    document.head.append(override);
+    // The box is a flex item of the card's row, so the browser computes board.html's inline-flex as flex (a plain div would be block).
+    const result = { box: box && getComputedStyle(box).display, contain: box && getComputedStyle(box).contain, probe: probe && getComputedStyle(probe).borderTopLeftRadius };
+    probe?.remove();
+    override.remove();
+    return result;
+  }, icons);
+  check("a host's CSS lays out the box a guest's view comes in, but doesn't reach inside it, and can't take its containment off", proof.room.box === "flex" && proof.room.probe !== "999px" && proof.room.contain === "layout paint", JSON.stringify(proof.room));
 
   // wip.js transforms the board's view: a gauge in the headers of the columns it limits.
   proof.gauge = await page.waitForSelector(`${board} .column[data-column="doing"] .column-head [data-plugin="wip"] .gauge`, { timeout: 5000 }).then((el) => el.textContent(), () => "");
@@ -30,6 +48,43 @@ export default async function (page, { check, proof }) {
   proof.moved = await page.waitForSelector(`${board} .column[data-column="doing"] .card >> text=Haptics for rain alerts`, { timeout: 5000 }).then(() => true, () => false);
   proof.gaugeAfter = await page.waitForSelector(`${board} .column[data-column="doing"] [data-plugin="wip"] .gauge[data-full]`, { timeout: 5000 }).then((el) => el.textContent(), () => "");
   check("moving a card on puts it in the next column, and the gauge follows", proof.moved && /3 of 3/.test(proof.gaugeAfter), proof.gaugeAfter);
+
+  // Dragging a card onto another one in a column puts it there, just above that card.
+  const haptics = `${board} .card:has-text("Haptics for rain alerts")`;
+  await page.dragAndDrop(haptics, `${board} .column[data-column="review"] .card[data-id="card-rotate"]`);
+  proof.dragged = await page
+    .waitForFunction((b) => [...document.querySelectorAll(`${b} .column[data-column="review"] .card`)].map((c) => c.textContent).findIndex((t) => t.includes("Haptics")) === 0, board, { timeout: 5000 })
+    .then(() => true, () => false);
+  // A drop that didn't start as a drag in this view (another app's, a file from the desktop) moves nothing.
+  await page.evaluate((b) => {
+    const target = document.querySelector(`${b} .column[data-column="done"]`);
+    const data = new DataTransfer();
+    data.setData("application/x-ewa-drag", "forged");
+    for (const type of ["dragover", "drop"]) target.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: data }));
+  }, board);
+  await page.waitForTimeout(400);
+  proof.forged = await page.locator(`${board} .column[data-column="done"] .card:has-text("Haptics for rain alerts")`).count();
+  check("a card dragged onto another column lands above the card it was dropped on, and a drop from outside the view moves nothing", proof.dragged && proof.forged === 0, JSON.stringify({ dragged: proof.dragged, forged: proof.forged }));
+  const order = () => page.evaluate((b) => [...document.querySelectorAll(`${b} .column[data-column="review"] .card`)].map((c) => c.dataset.id), board);
+  // Put down where it was picked up, a card stays where it is.
+  const before = await order();
+  await page.evaluate((b) => {
+    const card = document.querySelector(`${b} .column[data-column="review"] .card[data-id]`);
+    const data = new DataTransfer();
+    for (const type of ["dragstart", "dragover", "drop", "dragend"]) card.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: data }));
+  }, board);
+  await page.waitForTimeout(400);
+  proof.selfDrop = { before, after: await order() };
+  // Without a pointer, ↓ moves a card down its column.
+  await page.click(`${haptics} button[aria-label="Move down"]`);
+  proof.down = await page
+    .waitForFunction(([b, id]) => [...document.querySelectorAll(`${b} .column[data-column="review"] .card`)].map((c) => c.dataset.id).indexOf(id) === 1, [board, before[0]], { timeout: 5000 })
+    .then(() => true, () => false);
+  check(
+    "a card dropped on itself stays put, and ↓ moves a card down its column without a pointer",
+    JSON.stringify(proof.selfDrop.before) === JSON.stringify(proof.selfDrop.after) && proof.down,
+    JSON.stringify({ selfDrop: proof.selfDrop, down: proof.down }),
+  );
 
   // A card's screen: its own address, controls that save as they change, and the checklist in the room it leaves.
   await page.click(`${icons} .title a`);

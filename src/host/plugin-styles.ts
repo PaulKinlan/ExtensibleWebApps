@@ -4,7 +4,8 @@
 //
 //   @layer platform, plugins;              styles.css declares the order
 //   @layer plugins {
-//     @scope ([data-plugin="month"] > *) { only inside this plugin's views
+//     @scope ([data-plugin="month"] > *) to (:scope [data-plugin] > *) {
+//                                            only inside this plugin's views
 //       .month td { height: 5.5rem }
 //     }
 //   }
@@ -16,6 +17,10 @@
 // over the rest of the page, even with position: fixed. The scope starts at
 // the entry's children, not the entry: a plugin's CSS can't match the element
 // that holds the containment (not even with :scope), so it can't undo it.
+// It stops inside another plugin's view drawn in one of this plugin's slots:
+// the host may lay out the box the guest's view comes in (inline, say), but
+// not what the guest drew. The containment itself is !important in the
+// platform layer, so neither a host nor the page can take it off a guest.
 //
 // The CSS is parsed by the browser, then rebuilt from what is allowed:
 //   - style rules, and the @media, @supports, @container and @layer blocks
@@ -35,7 +40,7 @@ export function installPluginStyle(plugin: string, src: string, css: string): vo
   const rules = cleanCss(css);
   if (!rules) return;
   const sheet = new CSSStyleSheet();
-  sheet.replaceSync(`@layer plugins { @scope ([data-plugin="${CSS.escape(plugin)}"] > *) {\n${rules}\n} }`);
+  sheet.replaceSync(`@layer plugins { @scope ([data-plugin="${CSS.escape(plugin)}"] > *) to (:scope [data-plugin] > *) {\n${rules}\n} }`);
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 }
 
