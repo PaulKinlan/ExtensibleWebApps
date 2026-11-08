@@ -1,0 +1,63 @@
+<!--
+  The reader. feeds.js sends { space, only, feeds: [{ id, url, title, error,
+  state, shown }], stories: [{ id, title, link, summary, feed, when }] }.
+  Everything here is text: a story's summary had its HTML taken out on the
+  server (fetch.js), and its link is only kept when it is http(s).
+-->
+<style>
+  .note { margin: 0 0 var(--space-3); padding: var(--space-3); border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 10%, transparent); font-size: var(--text-sm); }
+  .layout { display: grid; gap: var(--space-4); grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 900px) { .layout { grid-template-columns: 18rem minmax(0, 1fr); } }
+  .feeds { display: grid; gap: var(--space-2); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
+  .feed { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--space-2); align-items: center; padding: var(--space-2); border-radius: var(--radius); }
+  .feed[data-shown] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .feed .name { font-weight: 600; text-align: start; overflow-wrap: anywhere; background: none; border: none; padding: 0; color: var(--fg); cursor: pointer; }
+  .feed .state { grid-column: 1; font-size: var(--text-sm); color: var(--fg-2); }
+  .feed .error { grid-column: 1; font-size: var(--text-sm); color: var(--danger, #b42318); }
+  .feed .remove { grid-row: 1 / span 2; grid-column: 2; }
+  .stories { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+  .story h3 { margin: 0; font-size: var(--text-md); line-height: 1.35; }
+  .story h3 a { color: inherit; }
+  .story .meta { margin: 2px 0 var(--space-1); font-size: var(--text-sm); color: var(--fg-2); }
+  .story p { margin: 0; font-size: var(--text-sm); color: var(--fg-2); }
+</style>
+
+<template id="feeds">
+  <template if="!space">
+    <p class="note">Feeds are read by a server. Open this app in a space (from your <a href="/account/">account</a>), and the space's server reads each feed every half hour, with no one's browser open.</p>
+  </template>
+  <div class="layout">
+    <ui-card>
+      <h2>Following</h2>
+      <ui-form collection="feeds" fields="url" submit="Follow"></ui-form>
+      <ul class="feeds">
+        <template for="f of feeds">
+          <li class="feed" key="{{f.id}}" data-shown="{{f.shown}}">
+            <button class="name" data-action="show" data-value="{{f.id}}" title="{{f.url}}">{{f.title}}</button>
+            <template if="f.state"><span class="state">{{f.state}}</span></template>
+            <template if="f.error"><span class="error">{{f.error}}</span></template>
+            <button class="remove" data-action="remove" data-value="{{f.id}}" aria-label="Stop following {{f.title}}">Remove</button>
+          </li>
+        </template>
+      </ul>
+      <template if="!feeds.length"><ui-empty>Follow a feed by its address, at https://.</ui-empty></template>
+    </ui-card>
+    <section>
+      <ui-toolbar>
+        <h2>Stories</h2>
+        <ui-spacer></ui-spacer>
+        <template if="only"><button data-action="all">Every feed</button></template>
+      </ui-toolbar>
+      <ul class="stories">
+        <template for="s of stories">
+          <li class="story" key="{{s.id}}">
+            <h3><template if="s.link"><a href="{{s.link}}">{{s.title}}</a></template><template if="!s.link">{{s.title}}</template></h3>
+            <p class="meta">{{s.feed}}<template if="s.when"> · {{s.when}}</template></p>
+            <template if="s.summary"><p>{{s.summary}}</p></template>
+          </li>
+        </template>
+      </ul>
+      <template if="!stories.length"><ui-empty>No stories yet.</ui-empty></template>
+    </section>
+  </div>
+</template>

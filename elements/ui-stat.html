@@ -8,13 +8,15 @@
 -->
 <template>
   <style>
-    :host { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
-    .label { font-size: var(--text-sm); color: var(--fg-2); }
-    .value { font-size: var(--text-2xl); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
-    .delta { font-size: var(--text-sm); font-variant-numeric: tabular-nums; color: var(--fg-2); }
-    :host([tone="ok"]) .delta { color: var(--ok); }
-    :host([tone="danger"]) .delta { color: var(--danger); }
-    :host([tone="warn"]) .delta { color: var(--warn); }
+    :host { --tone: var(--fg-2); display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: var(--space-4) var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-1); min-width: 0; }
+    .label { font-size: var(--text-sm); font-weight: 600; color: var(--fg-2); text-transform: uppercase; letter-spacing: 0.06em; }
+    .value { font-size: calc(var(--text-2xl) + 4px); font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--fg); overflow-wrap: anywhere; }
+    /* The change sits in a pill, coloured by tone. */
+    .delta { font-size: var(--text-sm); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--tone); }
+    :host([tone]) .delta { padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--tone) 12%, transparent); }
+    :host([tone="ok"]) { --tone: var(--ok); }
+    :host([tone="danger"]) { --tone: var(--danger); }
+    :host([tone="warn"]) { --tone: var(--warn); }
     .delta:empty { display: none; }
   </style>
   <span class="label">{{label}}</span>
