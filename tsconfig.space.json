@@ -1,8 +1,9 @@
-// A space's kernel entry (src/server/space.ts): the browser's kernel, with
-// Node's worker threads around it, so it is checked with both sets of types.
+// A space's kernel entries (src/server/space.ts for Node, and
+// src/server/cloudflare/kernel.ts): the browser's kernel with a server around
+// it, so they are checked with the browser's types and Node's.
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "types": ["vite/client", "node"] },
-  "include": ["src/server/space.ts", "src/server/space-env.ts"],
+  "include": ["src/server/space.ts", "src/server/space-env.ts", "src/server/cloudflare/kernel.ts", "src/server/cloudflare/durable-object.d.ts"],
   "exclude": []
 }

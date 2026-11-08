@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && npm run build:cloudflare",
     "build:server": "vite build -c vite.server.config.ts",
+    "build:cloudflare": "vite build -c vite.cloudflare.config.ts",
     "check": "node scripts/check.mjs",
     "new-app": "node scripts/new-app.mjs",
     "preview": "vite preview --port 4173 --strictPort",
     "serve": "npm run build && npm run build:server && node --no-warnings src/server/serve.ts",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.space.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.space.json && npm run -s build:cloudflare >/dev/null && tsc --noEmit -p tsconfig.cloudflare.json",
     "test:seams": "node --no-warnings tests/seams/run.mjs",
     "test:server": "npm run build && npm run build:server && node --no-warnings tests/server/run.mjs",
     "test": "npm run build && node tests/platform.test.mjs",
@@ -21,8 +22,10 @@
     "cordis": "4.0.0-rc.11"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20261108.1",
     "@types/node": "^22.20.5",
     "typescript": "5.8.3",
-    "vite": "6.4.5"
+    "vite": "6.4.5",
+    "wrangler": "4.158.0"
   }
 }

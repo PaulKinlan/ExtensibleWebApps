@@ -7,7 +7,7 @@ It is built in steps, each its own pull request:
 1. **Seams and conformance checks**: this step, described below.
 2. **Kernel core**: the host-independent parts of `src/kernel/kernel.ts` behind an environment object, shared by a browser entry and a server entry. The store keeps its folder through the `files` seam (`src/seams/opfs.ts` in the browser), and `kernel.ts` reads what differs between hosts (who connects, its origin, its folder, where its errors go) from `src/kernel/env.ts`, which `src/kernel/browser.ts` sets in the browser.
 3. **Node host**: `npm run serve`, a space kernel on the Node seams (described below).
-4. **Cloudflare host**: a Durable Object per space, on DO SQLite, R2, Dynamic Workers and alarms.
+4. **Cloudflare host**: a Durable Object per space, with its kernel in a Dynamic Worker of its own (described below). R2 for large files and alarms for the schedule come with the features that need them.
 5. **Sign-in and spaces**: passkeys first, then GitHub and other OAuth providers as configuration; sessions and members. A space holds people and data (collections and plugins), and any app can open in it.
 6. **Sync**: a tab joins a space, and still works offline.
 7. **Server plugins**: `runs`, `http.route`, `schedule`, `email`, and `data:beforeWrite` on the server.
@@ -58,4 +58,20 @@ What isn't there yet:
 - **No sign-in.** The server listens only on `127.0.0.1` until sign-in and members arrive (step 5).
 - **Tabs don't sync with a space yet.** That's step 6.
 
-Options: `node src/server/serve.ts --port 8787 --host 127.0.0.1 --spaces .spaces --site dist`. [`tests/server/run.mjs`](../tests/server/run.mjs) checks it (`npm run test:server`), and `npm test` runs those checks too.
+Options: `node src/server/serve.ts --port 8787 --host 127.0.0.1 --spaces .spaces --site dist`. [`tests/server/run.mjs`](../tests/server/run.mjs) checks it (`npm run test:server`, or `node tests/server/run.mjs node` for this host only), and `npm test` runs those checks too.
+
+## The Cloudflare host
+
+The same site and the same spaces run on Cloudflare: `wrangler.jsonc` points at a Worker, [`src/server/cloudflare/worker.ts`](../src/server/cloudflare/worker.ts), alongside the static assets.
+
+- **Files that exist are served as static assets**, as before. Anything else gets `404.html`.
+- **`/s/<space>/kernel` goes to that space's Durable Object, `Space`.** It is the space's supervisor: it holds the clients' WebSockets.
+- **The kernel runs in a Dynamic Worker.** The supervisor loads the kernel, built by `npm run build:cloudflare` from [`src/server/cloudflare/kernel.ts`](../src/server/cloudflare/kernel.ts), as a [Dynamic Worker](https://developers.cloudflare.com/dynamic-workers/) under the space's own id. That gives each space an isolate of its own, as a worker thread does on Node.
+- **The kernel's storage is a facet.** The supervisor runs the kernel as a [facet](https://developers.cloudflare.com/dynamic-workers/usage/durable-object-facets/), which has its own SQLite database. That database is the space's folder, through the `files` seam in [`src/seams/durable.ts`](../src/seams/durable.ts).
+
+Two things are different from Node:
+
+- **Messages cross by RPC.** Each client is a call to `join` with a function that sends to its socket, then `deliver` for each message and `leave` at the end. Inside the kernel, each client is still a `MessagePort`, as a tab is.
+- **Timers wait while the kernel loads.** Cloudflare runs a module's top level outside any request, where timers aren't allowed, so the timers the kernel sets while loading (the trace's batches, say) start once it has loaded.
+
+`npx wrangler dev` runs all of this on this machine, with no account. [`tests/server/run.mjs`](../tests/server/run.mjs) runs the same checks against Node and against `wrangler dev`. The Durable Object's files seam also passes the seams' conformance checks, on Node's SQLite.
