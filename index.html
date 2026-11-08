@@ -13,6 +13,9 @@
   /std/switchboard.js     a switch for each plugin on this page
   /std/reset.js           turns everything back on
   /std/debug-console.js   the bug button: errors and the trace
+  /std/plugin-editor.js   write your own plugin, or change a copy of one
+  /std/view-source.js     read any plugin's code, and what it may do
+  /std/hook-tracer.js     the hooks each action runs, and what plugins said
 
   If a plugin breaks the page, or you switch off the switchboard itself,
   add ?reset to the address: the host turns this page's plugins back on.
@@ -33,10 +36,13 @@
   <link rel="plugin" href="home/chapter-2-plugins.js">
   <link rel="plugin" href="home/chapter-3-hooks.js">
   <link rel="plugin" href="home/chapter-4-make.js">
+  <link rel="plugin" href="home/chapter-5-inspect.js">
   <link rel="plugin" href="/std/switchboard.js">
   <link rel="plugin" href="/std/reset.js">
   <link rel="plugin" href="/std/debug-console.js">
   <link rel="plugin" href="/std/plugin-editor.js">
+  <link rel="plugin" href="/std/view-source.js">
+  <link rel="plugin" href="/std/hook-tracer.js">
   <style>
     /* The page's own layout: the guided view, chapters beside the playground. One column on phones. */
     body { display: block; }
@@ -82,6 +88,7 @@
     <section class="chapters" aria-label="How it works">
       <slot name="chapters"><p class="empty">This is where the chapters go. They're plugins, and they're either loading or switched off. <a href="?reset">Turn everything back on</a>.</p></slot>
       <slot name="editor"></slot>
+      <slot name="inspect"></slot>
     </section>
     <aside class="side">
       <slot name="playground"><p class="empty">Your learning notes go here, once their plugin is running.</p></slot>

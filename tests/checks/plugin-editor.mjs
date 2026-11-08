@@ -51,7 +51,7 @@ export default async function ({ check, context, URL, errors }) {
   // A copy keeps drawing with the original's templates, which live next to the original, not next to the copy.
   check("a copy reads its templates from where the original lives", /views\("\/home\/chapter-4-make\.html"\)/.test(await (async () => {
     await start("plugin:chapter-4-make");
-    await seen(`${editor} >> text=(copy) asks to`);
+    await seen(`${editor} >> text=Chapter 4: Make your own (copy) asks to`);
     return code();
   })()));
 

@@ -1,0 +1,54 @@
+<!--
+  Hook tracer. hook-tracer.js sends { actions, paused, none }: actions is the
+  newest actions first, each { key, started, steps }; a step is { key, n,
+  hook, mode, means, answers, listeners, quiet }, and an answer is { key,
+  who, said, ms, tone }, tone being "stopped", "failed" or "". listeners names the plugins that only
+  hear the hook. Pause sends "pause", Clear sends "clear".
+-->
+<style>
+  .tracer-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
+  .tracer-head div { display: flex; gap: var(--space-1); }
+  .actions { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
+  .action > p { margin: 0 0 var(--space-1); }
+  .steps { margin: 0; padding-left: 1.5em; display: grid; gap: var(--space-1); }
+  .steps code { font-weight: 600; }
+  .steps .means { color: var(--fg-2); font-size: var(--text-sm); }
+  .answers { list-style: none; margin: 2px 0 0; padding: 0; font-size: var(--text-sm); }
+  .answers .stopped, .answers .failed { color: var(--danger, #c62828); }
+  .listeners { margin: 2px 0 0; font-size: var(--text-sm); }
+</style>
+<template id="tracer">
+  <ui-card>
+    <div class="tracer-head">
+      <h2>Hook tracer</h2>
+      <div>
+        <template if="paused"><button type="button" class="primary" data-action="pause">Resume</button></template>
+        <template if="!paused"><button type="button" data-action="pause">Pause</button></template>
+        <button type="button" data-action="clear">Clear</button>
+      </div>
+    </div>
+    <p>Each thing you do runs hooks, one after another, and the plugins listening answer. Write a note, or switch a plugin off, and watch it here.</p>
+    <template if="none"><p class="empty">Nothing yet. Write a note in Learning notes to see the hooks it runs.</p></template>
+    <ol class="actions">
+      <template for="a of actions">
+        <li class="action" key="{{a.key}}">
+          <p><strong>{{a.started}}</strong></p>
+          <ol class="steps">
+            <template for="s of a.steps">
+              <li key="{{s.key}}">
+                <code>{{s.hook}}</code> <ui-badge>{{s.mode}}</ui-badge> <span class="means">{{s.means}}</span>
+                <ul class="answers">
+                  <template for="r of s.answers">
+                    <li key="{{r.key}}" class="{{r.tone}}">{{r.who}} {{r.said}} <span class="means">({{r.ms}} ms)</span></li>
+                  </template>
+                </ul>
+                <template if="s.listeners"><p class="listeners">Heard by {{s.listeners}}</p></template>
+                <template if="s.quiet"><p class="listeners means">No plugin on this page listens.</p></template>
+              </li>
+            </template>
+          </ol>
+        </li>
+      </template>
+    </ol>
+  </ui-card>
+</template>

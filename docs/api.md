@@ -156,7 +156,7 @@ Helps a plugin editor: reads the code of the plugins in the caller's app and fil
 
 `authoring.check(code)` → { ok: true, manifest: { id, name, description, scope }, permissions: [{ name, about }] } or { ok: false, error }
 
-Needs: `plugins:author`.
+Needs: `plugins:read`.
 
 Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do.
 
@@ -204,7 +204,7 @@ Saves a plugin as one of the person's own for the caller's app, and turns it on,
 
 `authoring.source(id)` → { id, name, code }
 
-Needs: `plugins:author`.
+Needs: `plugins:read`.
 
 The code of a plugin the caller's app links, or of one of the person's own for it, on or off.
 
@@ -620,9 +620,9 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `files:<folder>` | Call files.read, files.write. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `network:<host>` | Call net.fetch. |
-| `plugins:author` | Call authoring.source, authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file, authoring.check. |
+| `plugins:author` | Call authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file. |
 | `plugins:manage` | Call plugins.setEnabled. |
-| `plugins:read` | Call plugins.app. |
+| `plugins:read` | Call authoring.source, authoring.check, plugins.app. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `ui` | Call page.matches. |
 
