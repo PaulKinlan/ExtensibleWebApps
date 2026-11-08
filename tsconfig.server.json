@@ -1,0 +1,13 @@
+// The server side (src/server/): Node's types instead of the browser's, and
+// imports that name their .ts files, so Node runs them as they are (it strips
+// the types) with no build step. `npm run typecheck` checks both halves.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": ["src/server"],
+  "exclude": []
+}
