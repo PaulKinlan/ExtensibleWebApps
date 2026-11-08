@@ -720,6 +720,34 @@ Needs: `data:write:notes`, and the person's review.
 
 Creates or replaces a note. Fails if the person declines, nobody answers in five minutes, or the note changed while the review was open.
 
+### sync
+
+How a page in a space stands with it, and the drafts it kept when someone else changed a record first.
+
+#### sync.dismiss
+
+`sync.dismiss(ref)` → { ok }
+
+Needs: `sync`.
+
+Lets a draft go: the record stays as the space has it.
+
+#### sync.keep
+
+`sync.keep(ref)` → { ok } or { ok: false, error }
+
+Needs: `sync`.
+
+Makes a draft the record again, with no review, as a new change sent to the space. data:beforeWrite listeners can still stop it.
+
+#### sync.state
+
+`sync.state()` → { space: null } or { space, connected, pending, drafts }
+
+Needs: `sync`.
+
+Whether this page keeps a copy of a space, whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
+
 ### tools
 
 The service methods the caller may call, described as tools a language model can call, and a way to call one. The first piece of the agent plugin.
@@ -994,6 +1022,14 @@ Mode: `emit`. Listening needs `share`.
 
 Listeners get `{}`.
 
+### `sync:changed`
+
+This page's sync with its space changed: it connected or lost the server, sent what it had, or kept or let go of a draft. Read sync.state().
+
+Mode: `emit`. Listening needs `sync`.
+
+Listeners get `{}`.
+
 ### `transfer:changed`
 
 A record in a collection transfer.collections listed was written or deleted, so the counts may have changed: call transfer.collections() again.
@@ -1049,6 +1085,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `share` | Call share.send, share.take. |
+| `sync` | Call sync.state, sync.keep, sync.dismiss. |
 | `transfer` | Call transfer.collections, transfer.export, transfer.import. |
 | `ui` | Call page.matches, page.slots. |
 
@@ -1104,6 +1141,7 @@ Reserved ids, which no plugin can take:
 - `share`
 - `storage`
 - `store`
+- `sync`
 - `tools`
 - `transfer`
 

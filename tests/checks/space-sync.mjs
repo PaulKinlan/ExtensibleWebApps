@@ -126,6 +126,18 @@ export default async function ({ check, context, errors }) {
       final.ann.length === 1 && JSON.stringify(final.ann) === JSON.stringify(final.ben) && drafts.length === 1 && /Middlemarch, by (Ann|Ben)/.test(JSON.stringify(drafts[0].mine)) && !final.ann[0].includes(drafts[0].mine?.title),
       JSON.stringify({ final, drafts }),
     );
+
+    // The page that lost shows its draft (std/sync.js); "Use mine" makes it the record again, everywhere.
+    const loser = (await sync(ann.page)).drafts.length ? ann.page : ben.page;
+    const other = loser === ann.page ? ben.page : ann.page;
+    const mine = drafts[0]?.mine?.title ?? "";
+    const shown = await loser.locator('[data-key^="sync-status"] .draft', { hasText: "Middlemarch" }).first().waitFor({ timeout: 8000 }).then(() => true, () => false);
+    const status = (await loser.locator('[data-key^="sync-status"] .status').first().textContent().catch(() => "")) ?? "";
+    check("a space: a page shows the draft it kept, and whether it is in step with the space", shown && /In step with home/.test(status), status);
+    await loser.locator('[data-key^="sync-status"] .draft button', { hasText: "Use mine" }).first().click().catch(() => {});
+    const everywhere = (await hasTitle(loser, mine, 10000)) && (await hasTitle(other, mine, 20000));
+    const gone = await loser.locator('[data-key^="sync-status"] .draft').count().catch(() => -1);
+    check("a space: Use mine makes a draft the record again, on every device, and the draft goes", everywhere && gone === 0 && (await sync(loser)).drafts.length === 0, JSON.stringify({ mine, loser: await titles(loser), other: await titles(other), gone }));
   } finally {
     for (const device of devices) await device.close().catch(() => {});
     await server.stop().catch(() => {});

@@ -34,6 +34,8 @@
   <link rel="plugin" href="book-share.js">
   <!-- A plugin the person may add themselves, in Customize; it draws in a place, as the app has no slot for it. -->
   <link rel="plugin-sample" href="samples/goal.js" title="Reading goal">
+  <!-- A standard plugin: opened in a space (/s/<space>/…), whether this page reaches it, and the drafts it kept. -->
+  <link rel="plugin" href="/std/sync.js">
   <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
   <link rel="plugin" href="/std/debug-console.js">
   <!-- A standard plugin: Ctrl K (Cmd K on a Mac) searches what the plugins can do, such as library.js's commands. -->
@@ -51,6 +53,7 @@
     <slot name="commands"></slot>
   </header>
   <main>
+    <slot name="sync"></slot>
     <slot name="main"><p>Loading your books…</p></slot>
   </main>
   <aside>

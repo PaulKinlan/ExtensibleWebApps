@@ -27,6 +27,8 @@ const same = (a: SyncRecord | null, b: SyncRecord | null) => {
 };
 
 export interface Draft {
+  /** Names this draft, for keeping or dismissing it. */
+  ref: string;
   collection: string;
   id: string;
   /** What this device had made the record, which the space didn't take. */
@@ -34,6 +36,12 @@ export interface Draft {
   why: string;
   at: string;
 }
+
+/** This kernel's sync, if it keeps a copy of a space, and who hears when what it has changes (services/sync.ts). */
+export const thisDevice: { sync?: ReturnType<typeof syncDevice>; changed: Set<() => void> } = { changed: new Set() };
+const changed = () => {
+  for (const heard of thisDevice.changed) heard();
+};
 
 interface State {
   seq: number;
@@ -47,10 +55,13 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   let state: State = { seq: 0, versions: {}, pending: {}, drafts: [] };
   const loaded = store.readJson<unknown>(STATE, null).then((saved) => {
     const s = saved as State | null;
-    if (s && typeof s.seq === "number") state = { seq: s.seq, versions: { ...s.versions }, pending: { ...s.pending }, drafts: Array.isArray(s.drafts) ? s.drafts : [] };
+    if (s && typeof s.seq === "number") state = { seq: s.seq, versions: { ...s.versions }, pending: { ...s.pending }, drafts: Array.isArray(s.drafts) ? s.drafts.map((d, i) => ({ ...d, ref: d.ref ?? `d${i}-${d.at}` })) : [] };
   });
   let saving: Promise<unknown> = Promise.resolve();
-  const save = () => (saving = saving.then(() => store.writeJson(STATE, state)).catch((error) => trace({ kind: "error", name: "sync:save", detail: String(error) })));
+  const save = () => {
+    changed();
+    return (saving = saving.then(() => store.writeJson(STATE, state)).catch((error) => trace({ kind: "error", name: "sync:save", detail: String(error) })));
+  };
 
   let socket: WebSocket | undefined;
   /** True once the space has sent what it had: only then are changes pushed, so their versions are current. */
@@ -131,7 +142,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       }
       // Refused: the space's record wins here, and this device's version is kept as a draft.
       const why = "stale" in verdict ? "Someone changed it first" : verdict.error;
-      state.drafts.push({ collection: change.collection, id: change.id, mine: pending?.after ?? change.after, why, at: new Date().toISOString() });
+      state.drafts.push({ ref: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, collection: change.collection, id: change.id, mine: pending?.after ?? change.after, why, at: new Date().toISOString() });
       delete state.pending[k];
       if ("stale" in verdict) {
         state.versions[k] = verdict.version;
@@ -159,6 +170,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       await loaded;
       retry = 1000;
       status.connected = true;
+      changed();
       ws.send(JSON.stringify({ t: "hello", tab: `sync-${Math.random().toString(36).slice(2, 8)}` }));
       ws.send(JSON.stringify({ t: "sync", op: "hello", since: state.seq }));
       trace({ kind: "lifecycle", name: "sync:connected", detail: `from ${state.seq}, ${Object.keys(state.pending).length} to send` });
@@ -184,6 +196,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       if (socket !== ws) return;
       socket = undefined;
       status.connected = false;
+      changed();
       // Offline, or the server restarted: try again, less often each time, up to every half minute.
       setTimeout(connect, retry);
       retry = Math.min(retry * 2, 30_000);
@@ -192,16 +205,44 @@ export function syncDevice(url: string, store: Store, records: Collections, host
 
   connect();
 
-  return {
+  const space = /\/s\/([^/]+)\/kernel$/.exec(url)?.[1] ?? "";
+  const api = {
     status,
     /** What this device has, for the page and for checks. */
     async state() {
       await loaded;
-      return { seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
+      return { space, seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
+    },
+    /**
+     * Makes a draft the record again, as a change made here: it replaces what the space has now (only
+     * if the record is still that), and is sent like any other change. The draft goes once it's done.
+     */
+    async keep(ref: string, dispatch: { trace?: string }): Promise<{ ok: true } | { ok: false; error: string }> {
+      await loaded;
+      const draft = state.drafts.find((d) => d.ref === ref);
+      if (!draft) return { ok: false, error: "There's no such draft" };
+      const now = (await records.record(draft.collection, draft.id)) as StoredRecord | null;
+      const mine = draft.mine ? ({ ...draft.mine, updatedAt: new Date().toISOString() } as StoredRecord) : undefined;
+      const result = await records.restore(draft.collection, draft.id, now ?? undefined, mine, dispatch);
+      if (!result.ok) return { ok: false, error: result.error };
+      state.drafts = state.drafts.filter((d) => d.ref !== ref);
+      save();
+      return { ok: true };
+    },
+    /** Lets a draft go: the record stays as the space has it. */
+    async dismiss(ref: string): Promise<{ ok: boolean }> {
+      await loaded;
+      const before = state.drafts.length;
+      state.drafts = state.drafts.filter((d) => d.ref !== ref);
+      if (state.drafts.length !== before) save();
+      return { ok: state.drafts.length !== before };
     },
     stop() {
       stopped = true;
       socket?.close();
+      if (thisDevice.sync === api) thisDevice.sync = undefined;
     },
   };
+  thisDevice.sync = api;
+  return api;
 }
