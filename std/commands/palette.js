@@ -53,7 +53,7 @@ export default async function (ctx) {
     // A command whose arguments are required can't be run from a list, so it isn't shown.
     commands = all
       .filter((c) => !c.args?.required?.length)
-      .map((c) => ({ name: c.name, title: c.title, group: c.group ?? "", description: c.description ?? "", keys: (c.keys ?? []).join(",") }));
+      .map((c) => ({ name: c.name, title: c.title, group: c.group ?? "", description: c.description ?? "", keys: JSON.stringify(c.keys ?? []) }));
     draw();
   };
 

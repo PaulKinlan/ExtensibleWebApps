@@ -684,11 +684,11 @@ Listeners get `{}`.
 
 ### `commands:ran`
 
-A command ran, or failed (ok false, with the error).
+A command ran, or failed (ok false, with the error). Its arguments aren't included: listen to commands:before for those.
 
 Mode: `emit`. Listening needs `commands`.
 
-Listeners get `{ name, plugin, id, args, by, ok, error? }`.
+Listeners get `{ name, plugin, id, by, ok, error? }`.
 
 ### `data:beforeWrite`
 
@@ -921,7 +921,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
 | `<ui-spacer>` |  | Takes up the free space in a row. |
 | `<ui-code>` | name, label, rows="20", readonly, revision | A plain code editor: a textarea with line numbers, where Tab indents (Escape, then Tab, leaves it). Its text content is the starting code; edits survive redraws until `revision` changes. In a `form` it is sent under its `name`. |
-| `<ui-commands>` | label, open-keys="Mod+K", run, no-button, message, message-at | A command palette: a button (and the `open-keys` shortcut) opens a searchable list of the commands inside it, each a `<button data-command="name" data-keys="Mod+B,Shift+N" data-group data-description>Title</button>`. Picking one, or pressing one of its keys anywhere on the page, sends `run` with its name. `message` is announced briefly whenever `message-at` changes. |
+| `<ui-commands>` | label, open-keys="Mod+K", run, no-button, message, message-at | A command palette: a button (and the `open-keys` shortcut) opens a searchable list of the commands inside it, each a `<button data-command="name" data-keys='["Mod+B","Shift+N"]' data-group data-description>Title</button>`. Picking one, or pressing one of its keys anywhere on the page, sends `run` with its name. `message` is announced briefly whenever `message-at` changes. |
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
 
 ### Actions

@@ -37,7 +37,7 @@ const answer = await ctx.call("commands", "run", "library/add", { title: "Pirane
 
 ## Stopping a run
 
-Before each run the kernel raises `commands:before` with `{ name, plugin, id, args, by }`. A plugin with `hook:intercept:commands:before` may return `{ block: reason }` to stop it: a security agent could refuse anything an agent runs between midnight and six, or ask the person first. Afterwards `commands:ran` says what ran and whether it worked.
+Before each run the kernel raises `commands:before` with `{ name, plugin, id, args, by }`. A plugin with `hook:intercept:commands:before` may return `{ block: reason }` to stop it: a security agent could refuse anything an agent runs between midnight and six, or ask the person first. Afterwards `commands:ran` says what ran, who ran it and whether it worked, without the arguments.
 
 ## Commands as an agent's tools
 

@@ -83,7 +83,11 @@ export default async function (ctx) {
 
   // Commands: what the library can do, for the palette, a shortcut or an agent.
   const shelf = async (from) => (await ctx.call("data", "list", "library")).filter((b) => (b.shelf ?? "to read") === from);
-  const move = (book, to) => ctx.call("data", "put", "library", { ...book, shelf: to });
+  const move = async (book, to) => {
+    // A write can be refused (a plugin intercepting it, or the book changing meanwhile): fail the command, don't claim it moved.
+    const result = await ctx.call("data", "put", "library", { ...book, shelf: to });
+    if (!result.ok) throw new Error(`Couldn't move ${book.title}: ${result.error ?? JSON.stringify(result.errors)}`);
+  };
   ctx.commands.add({ id: "start-next", title: "Start the next book", group: "Books", description: "Moves the book due back soonest from “to read” to “reading”.", keys: ["Alt+N"] }, async () => {
     const [next] = (await shelf("to read")).sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.title.localeCompare(b.title));
     if (!next) return "Nothing left to read";

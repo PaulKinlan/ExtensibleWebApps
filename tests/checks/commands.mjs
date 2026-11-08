@@ -10,6 +10,10 @@ export default (ctx) => {
   ctx.commands.add({ id: 'greet', title: 'Greet', keys: ['Mod+G'], args: { type: 'object', required: ['name'], properties: { name: { type: 'string' } } } }, ({ name }, { by }) => 'hello ' + name + ' from ' + by);
   ctx.commands.add({ id: 'fail', title: 'Fail' }, () => { throw new Error('boom'); });
   ctx.commands.add({ id: 'plain', title: 'Plain' }, () => 'ran');
+  ctx.commands.add({ id: 'shape', title: 'Shape' }, () => ({ block: 'paragraph', failed: false }));
+  const offOld = ctx.commands.add({ id: 'twice', title: 'Twice' }, () => 'old');
+  ctx.commands.add({ id: 'twice', title: 'Twice again' }, () => 'new');
+  offOld();
   ctx.commands.add({ id: 'Bad Id', title: 'Bad' }, () => {});
   ctx.commands.add({ id: 'bad-keys', title: 'Bad keys', keys: ['Hyper+K'] }, () => {});
   ctx.log('owner-ready');
@@ -33,6 +37,8 @@ export default async (ctx) => {
   ctx.log('greet-missing ' + await attempt('cmd-owner/greet', {}));
   ctx.log('fail ' + await attempt('cmd-owner/fail'));
   ctx.log('plain ' + await attempt('cmd-owner/plain'));
+  ctx.log('shape ' + await attempt('cmd-owner/shape'));
+  ctx.log('twice ' + await attempt('cmd-owner/twice'));
   ctx.log('copycat ' + await attempt('cmd-copycat/greet'));
   const tools = await ctx.call('tools', 'list');
   ctx.log('tools ' + JSON.stringify(tools.filter((t) => t.service === 'commands').map((t) => t.name)));
@@ -42,13 +48,15 @@ export default async (ctx) => {
 };`);
     await pluginLog("cmd-runner", "runner-done");
     const list = await pluginLog("cmd-runner", "list");
-    check("commands.list has each command a running plugin added and listens for, as <plugin>/<id>", list === 'list ["cmd-owner/fail","cmd-owner/greet","cmd-owner/plain"]', list);
+    check("commands.list has each command a running plugin added and listens for, as <plugin>/<id>", list === 'list ["cmd-owner/fail","cmd-owner/greet","cmd-owner/plain","cmd-owner/shape","cmd-owner/twice"]', list);
     check("a command's keys are kept as written", (await pluginLog("cmd-runner", "keys")) === 'keys ["Mod+G"]');
     const refused = await a.evaluate(() => window.__host.traces.filter((e) => e.plugin === "cmd-owner" && /Couldn't add the command/.test(e.detail ?? "")).map((e) => e.detail));
     check("commands.add refuses a bad id and a shortcut it can't read", refused.length === 2 && refused.some((r) => /lowercase/.test(r)) && refused.some((r) => /isn't a shortcut/.test(r)), refused.join("; "));
     check("commands.run runs the owner's handler with the arguments, says who ran it, and returns its answer", (await pluginLog("cmd-runner", "greet ")) === 'greet "hello Ada from cmd-runner"', await pluginLog("cmd-runner", "greet "));
     check("commands.run checks the arguments against the command's schema", /error: .*name/.test(await pluginLog("cmd-runner", "greet-missing")), await pluginLog("cmd-runner", "greet-missing"));
     check("a handler that throws fails the run with its error", (await pluginLog("cmd-runner", "fail error")) === "fail error: boom", await pluginLog("cmd-runner", "fail "));
+    check("a handler's answer comes back as it is, even an object with block or failed in it", (await pluginLog("cmd-runner", "shape")) === 'shape {"block":"paragraph","failed":false}', await pluginLog("cmd-runner", "shape"));
+    check("adding a command's id again replaces its handler, and the old off() leaves the new one", (await pluginLog("cmd-runner", "twice")) === 'twice "new"', await pluginLog("cmd-runner", "twice"));
     check("a plugin listening to commands:before can stop a run", /error: cmd-owner\/plain was stopped: not for runners/.test(await pluginLog("cmd-runner", "plain")), await pluginLog("cmd-runner", "plain"));
     check("listening for a command name only answers the plugin's own command, never another's", /error: No command named cmd-copycat\/greet/.test(await pluginLog("cmd-runner", "copycat")) && !list.includes("cmd-copycat"));
     check("commands:ran tells plugins with `commands` what ran, and whether it worked", (await pluginLog("cmd-runner", "ran cmd-owner/fail")) === "ran cmd-owner/fail false" && (await pluginLog("cmd-runner", "ran cmd-owner/greet")) === "ran cmd-owner/greet true");

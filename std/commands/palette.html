@@ -1,7 +1,7 @@
 <!--
   The command palette's one view. palette.js sends { commands, openKeys,
   hidden, message }: each command is { name, title, group, description,
-  keys }, keys joined with commas. <ui-commands> reads the buttons inside,
+  keys }, keys as a JSON list. <ui-commands> reads the buttons inside,
   shows them as a searchable list, catches their keys, and sends "run" with
   the name of the one picked.
 -->

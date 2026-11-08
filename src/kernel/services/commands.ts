@@ -71,8 +71,8 @@ defineHook("commands:before", {
 defineHook("commands:ran", {
   mode: "emit",
   needs: "commands",
-  args: "{ name, plugin, id, args, by, ok, error? }",
-  description: "A command ran, or failed (ok false, with the error).",
+  args: "{ name, plugin, id, by, ok, error? }",
+  description: "A command ran, or failed (ok false, with the error). Its arguments aren't included: listen to commands:before for those.",
 });
 
 const base = (instance: string) => instance.split("@")[0];
@@ -135,8 +135,10 @@ export default ({ root, remote, apps }: Kernel): ServiceProvider => {
    * instance per tab. Only commands whose plugin listens for them are listed.
    */
   function visible(caller: string): { command: Listed; instance: string }[] {
-    const app = apps.alongside(caller);
     const tab = caller.split("@")[1];
+    // A tab's own instance sees only its tab's app; alongside() would add every other app that links the same plugin.
+    const linked = tab ? apps.linkedBy(tab) : undefined;
+    const app = linked ? new Set(linked) : apps.alongside(caller);
     const out = new Map<string, { command: Listed; instance: string }>();
     for (const [instance, commands] of added) {
       const live = remote.live.get(instance);
@@ -217,18 +219,23 @@ export default ({ root, remote, apps }: Kernel): ServiceProvider => {
         if (errors.length) throw new Error(`${command.name}: ${errors.map((e) => e.message).join("; ")}`);
       } else if (Object.keys(input).length) throw new Error(`${command.name} takes no arguments`);
 
+      // A run with no trace of its own (a call made outside any action) gets one, so its hooks group together in the trace, as a route's do.
+      dispatch = dispatch.trace ? dispatch : { ...dispatch, trace: `command-${Math.random().toString(36).slice(2, 8)}` };
       const about = { name: command.name, plugin: command.plugin, id: command.id, args: input, by: base(instance) };
       const verdict = await root.serial(dispatch, "commands:before", about);
       if (isObject(verdict) && "block" in verdict) throw new Error(`${command.name} was stopped: ${String(verdict.block)}`);
+      // The runtime sends a handler's result as { value }, so a result that happens to hold `block` or `failed` is still a result.
       const answer = await root.bail(dispatch, commandHook(found.instance, command.id), input, { by: about.by });
-      if (isObject(answer) && "block" in answer) {
+      // What went out to every plugin with `commands`: which command and who ran it, not the arguments, which may be private to the app.
+      const told = { name: command.name, plugin: command.plugin, id: command.id, by: about.by };
+      if (!isObject(answer) || !("value" in answer)) {
         // The kernel's words for a handler that threw or took too long: keep only what went wrong.
-        const error = String(answer.block).replace(/^.* could not answer .*? \((?:Error: )?(.*)\)$/s, "$1");
-        root.emit(dispatch, "commands:ran", { ...about, ok: false, error });
+        const error = !isObject(answer) ? `${command.name} didn't answer` : String(answer.block).replace(/^.* could not answer .*? \((?:Error: )?(.*)\)$/s, "$1");
+        root.emit(dispatch, "commands:ran", { ...told, ok: false, error });
         throw new Error(error);
       }
-      root.emit(dispatch, "commands:ran", { ...about, ok: true });
-      const json = JSON.stringify(answer ?? null);
+      root.emit(dispatch, "commands:ran", { ...told, ok: true });
+      const json = JSON.stringify(answer.value ?? null);
       if (json.length > MAX_ANSWER) throw new Error(`${command.name} answered with more than 1 MB`);
       return JSON.parse(json);
     },

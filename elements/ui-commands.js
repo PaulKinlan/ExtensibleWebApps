@@ -47,6 +47,16 @@ function typing(/** @type {KeyboardEvent} */ e) {
   return !!el && (el.isContentEditable || /^(?:INPUT|TEXTAREA|SELECT)$/.test(el.tagName ?? ""));
 }
 
+/** data-keys is a JSON list, since a shortcut may itself be a comma: ["Mod+,"]. */
+function keysOf(/** @type {string | null} */ value) {
+  try {
+    const keys = JSON.parse(value || "[]");
+    return Array.isArray(keys) ? keys.filter((k) => typeof k === "string" && k) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default class UiCommands extends HTMLElement {
   static observedAttributes = ["label", "open-keys", "message-at"];
   /** @type {HTMLTemplateElement | undefined} set by the host from ui-commands.html */
@@ -141,7 +151,7 @@ export default class UiCommands extends HTMLElement {
     this.commands = [...this.querySelectorAll("[data-command]")].map((el) => ({
       name: el.getAttribute("data-command") ?? "",
       title: el.textContent?.trim() || el.getAttribute("data-command") || "",
-      keys: (el.getAttribute("data-keys") ?? "").split(",").map((k) => k.trim()).filter(Boolean),
+      keys: keysOf(el.getAttribute("data-keys")),
       group: el.getAttribute("data-group") ?? "",
       description: el.getAttribute("data-description") ?? "",
     }));
@@ -152,7 +162,7 @@ export default class UiCommands extends HTMLElement {
   onKey = (/** @type {KeyboardEvent} */ e) => {
     if (e.defaultPrevented || e.isComposing || e.repeat) return;
     const plain = !e.ctrlKey && !e.metaKey && !e.altKey;
-    if (matches(this.openKeys, e)) {
+    if (matches(this.openKeys, e) && !(plain && typing(e) && !this.dialog?.open)) {
       e.preventDefault();
       if (this.dialog.open) this.dialog.close();
       else this.openPalette();
