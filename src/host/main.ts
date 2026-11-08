@@ -740,7 +740,37 @@ const panel = !withCustomize ? undefined : customize({ app, command, running: ()
 await openApp();
 sendUrl();
 addEventListener("popstate", sendUrl);
+resetLinks();
 followLinks();
+
+/**
+ * A link on the app's own page to ?reset (the homepage's "turn everything back on") would be a screen change,
+ * which the router follows without loading the page, so the host's ?reset on load never runs. The person's own
+ * click on such a link turns the app's plugins back on here, in place, as a load would. Only a real click:
+ * router.go("/?reset") from a plugin, which needs no more than `router`, changes nothing (`plugins:manage`
+ * switches plugins). Registered before followLinks, so the router sees the click as handled.
+ */
+function resetLinks() {
+  addEventListener("click", (event: MouseEvent) => {
+    if (!event.isTrusted || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const link = event.composedPath().find((el): el is HTMLAnchorElement => el instanceof HTMLAnchorElement && el.hasAttribute("href"));
+    if (!link || (link.target && link.target !== "_self") || link.hasAttribute("download")) return;
+    const url = new URL(link.href);
+    if (url.origin !== location.origin || url.pathname !== location.pathname || !url.searchParams.has("reset")) return;
+    event.preventDefault();
+    // Every plugin's code, or none: the kernel treats a plugin left out of `open` as gone, and would stop it.
+    void Promise.all(
+      links.map(async (href) => {
+        const response = await fetch(href).catch(() => undefined);
+        return { href, source: response?.ok ? await response.text() : "" };
+      }),
+    ).then((plugins) => {
+      const missing = plugins.filter((p) => !p.source);
+      if (missing.length) return notice(`Couldn't turn the plugins back on: ${missing.map((p) => p.href).join(", ")} didn't load. Try again, or reload the page.`);
+      send({ t: "open", plugins, reset: true, app });
+    });
+  });
+}
 
 // For tests and poking around in the console.
 // Tests reach the template filler and the CSS cleaner here, to check them without a plugin.
