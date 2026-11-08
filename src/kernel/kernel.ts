@@ -14,6 +14,7 @@ import { catalog } from "./catalog";
 import { changeLog } from "./changes";
 import { checkPath, PathError } from "./paths";
 import { allowed, reviews as makeReviews } from "./review";
+import { llm } from "./llm";
 import { net } from "./net";
 import { notesApp } from "./notes";
 import { grants } from "./gate";
@@ -266,6 +267,7 @@ const remote = new RemotePlugins(root, hosts, services);
 const secrets = makeSecrets(store, hosts, (instance) => remote.installed.get(base(instance))?.manifest.name ?? base(instance));
 services.secrets = secrets.service;
 services.net = net(secrets, (instance) => remote.installed.get(base(instance))?.caps ?? new Set());
+services.llm = llm(root);
 const plugins = catalog(remote, store, hosts, log, reviews);
 remote.onDispose = (instance) => {
   reviews.cancelInstance(instance);

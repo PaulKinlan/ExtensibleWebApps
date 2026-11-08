@@ -308,6 +308,26 @@ Needs: `network:<host>`.
 
 Fetches `url` (https:, or http: on localhost) and returns the answer as text, up to 4 MB, within two minutes. A header given as `{ secret: name }` is filled with that secret, if the plugin has `secret:<name>` and the host is one the secret is for.
 
+### llm
+
+Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js). The caller never holds a key.
+
+#### llm.complete
+
+`llm.complete({ messages, system?, tools?, schema?, model?, maxTokens?, provider? })` → { text, json?, toolCalls, stop, usage: { input, output }, provider, model }
+
+Needs: nothing.
+
+Asks a model. messages are { role: "user" | "assistant", content }, an assistant's { toolCalls: [{ id, name, args }] }, or a tool's answer { role: "tool", id, name, content }. tools are [{ name, description, parameters }]; schema asks for an answer of that JSON Schema, in json. Without provider, the first ready one answers. Needs llm.
+
+#### llm.providers
+
+`llm.providers()` → [{ id, name, model?, ready }]
+
+Needs: nothing.
+
+The providers in the app; ready means it has its key. Needs llm.
+
 ### settings
 
 The plugin's own settings, from the form the plugins panel builds out of its manifest.
@@ -418,6 +438,22 @@ Mode: `emit`. Listening needs `debug:read`.
 
 Listeners get `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]`.
 
+### `llm:complete`
+
+Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }. Listening needs provide:llm.
+
+Mode: `bail`, 660000 ms per listener, fails open. Listening needs `provide:llm`.
+
+Listeners get `request, with provider set to the id of the provider that should answer`.
+
+### `llm:providers`
+
+Asks which language models are available. A provider returns { providers: [...providers, itself] }. Listening needs provide:llm.
+
+Mode: `waterfall`, 2000 ms per listener, fails open. Listening needs `provide:llm`.
+
+Listeners get `{ providers: [{ id, name, model?, ready }] }`.
+
 ### `note:change`
 
 The person typed in the open note (unsaved is true).
@@ -518,7 +554,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin's view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
-Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`, `net`, `secrets`.
+Reserved ids: `kernel`, `host`, `notes`, `plugins`, `review`, `store`, `settings`, `storage`, `files`, `audio`, `data`, `debug`, `net`, `secrets`, `llm`.
 
 Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`.
 

@@ -5,6 +5,7 @@ written, and asks only for the permissions in its manifest.
 
 | Plugin | What it does | Add it with |
 | --- | --- | --- |
+| [`llm/`](llm/) | Language models behind the `llm` service: [`anthropic.js`](llm/anthropic.js) (Claude), [`openai.js`](llm/openai.js) (OpenAI, or Ollama on this computer) and [`gemini.js`](llm/gemini.js). Any plugin with the `llm` permission can then ask a model, without holding a key. | `<link rel="plugin" href="/std/llm/anthropic.js">` in the head |
 | [`debug-console.js`](debug-console.js) | A bug button in a corner of the page. It counts problems (errors, refused permissions, failed calls) and opens a log of them, or of everything the kernel traced, with a Copy button that puts the log on the clipboard, headed with the page's address, browser and time, ready for a bug report. | `<link rel="plugin" href="/std/debug-console.js">` in the head, and `<slot name="debug"></slot>` anywhere in the body |
 | [`reset.js`](reset.js) | When any of the app's plugins is off, a card that names them and turns them all back on. If it is switched off itself, opening the page with `?reset` does the same. | `<link rel="plugin" href="/std/reset.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
 | [`switchboard.js`](switchboard.js) | A switch for each plugin the app links, with its name and description, so people can see what the page is made of and turn parts of it off. | `<link rel="plugin" href="/std/switchboard.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
