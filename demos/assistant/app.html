@@ -44,7 +44,12 @@
   <header>
     <h1>Assistant</h1>
     <slot name="commands"></slot>
-    <a href="/workbench/">Workbench</a>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
   </header>
   <main>
     <slot name="chat"></slot>
