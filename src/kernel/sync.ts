@@ -8,7 +8,7 @@
 //   sync/log/<chunk>.json   the accepted changes, a hundred to a file, so a device catches up from any point
 
 import type { Dispatch } from "../shared/protocol";
-import type { Accepted, Outgoing, SyncRecord, SyncToSpace, Verdict } from "../shared/sync";
+import type { Accepted, Outgoing, PluginRequest, SyncRecord, SyncToDevice, SyncToSpace, Verdict } from "../shared/sync";
 import { hooks } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import type { Collections, StoredRecord } from "./records";
@@ -180,7 +180,13 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     });
   }
 
-  return {
+  const api = {
+    /** Members' plugins (shared-plugins.ts): the space's kernel sets this. */
+    plugins: undefined as ((host: Host, message: PluginRequest) => unknown) | undefined,
+    /** Sends a message to every device that said hello. */
+    tell(message: SyncToDevice) {
+      for (const other of listening) hosts.send(other, message);
+    },
     /** A sync message from a device. */
     async handle(host: Host, message: SyncToSpace & { member?: string }): Promise<void> {
       if (hosts.mode !== "server") return hosts.send(host, { t: "sync", op: "refused", error: "Only a space's kernel answers sync" });
@@ -196,6 +202,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
         return;
       }
       if (message.op === "app") return void onApp?.(message.app);
+      if (message.op === "plugins") return void (api.plugins ? api.plugins(host, message) : hosts.send(host, { t: "sync", op: "plugins:reply", id: message.id, ok: false, error: "This space doesn't keep plugins" }));
       if (message.op === "push") {
         const changes = Array.isArray(message.changes) ? message.changes.slice(0, MAX_PUSH) : [];
         const dispatch = { trace: `sync-${message.id}` };
@@ -223,4 +230,5 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     /** The latest sequence number and the accepted changes after `n`, for checks and tools. */
     since,
   };
+  return api;
 }

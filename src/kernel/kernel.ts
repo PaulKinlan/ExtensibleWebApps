@@ -32,6 +32,7 @@ import { Store } from "./store";
 import { switches } from "./switches";
 import { syncHub } from "./sync";
 import { syncDevice } from "./sync-device";
+import { devicePlugins, spacePlugins } from "./shared-plugins";
 import { isolateHost } from "./isolate-host";
 import { serverApps } from "./server-apps";
 import { asPlugin } from "./agents/file";
@@ -114,6 +115,8 @@ const sync = syncHub(root, store, records, hosts, (app) => onServer?.use(app));
 /** In a browser kernel for a space (a page at /s/<space>/…): its sync with the space, once the folder is known. */
 let device: ReturnType<typeof syncDevice> | undefined;
 const userAdded = userPlugins(store, where.origin, where.kind === "server" ? undefined : where.space);
+// A space keeps the plugins its members share with each other, and never runs them (shared-plugins.ts).
+if (where.kind === "server") sync.plugins = spacePlugins(userAdded, store, hosts, (message) => sync.tell(message)).handle;
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
@@ -240,7 +243,10 @@ hosts.onHello = (host, folder) => {
   if (!started) {
     started = true;
     store.use(where.folder ?? folder);
-    if (where.space && where.kind !== "server") device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
+    if (where.space && where.kind !== "server") {
+      device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
+      devicePlugins(userAdded, store, device, reopen);
+    }
     return;
   }
   remote.hostJoined(host);

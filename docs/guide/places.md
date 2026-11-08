@@ -95,6 +95,8 @@ The author lists their plugins in `app.html` with `<link rel="plugin">`. A perso
 
 Customize is on in every app. An author who doesn't want the button (a kiosk, say) adds `<meta name="customize" content="off">` to `app.html`, which also leaves out inspect mode. The person still has the last word: opening the app with `?customize` brings the button back.
 
+**In a space, they're shared with its members.** A plugin someone adds to an app they opened in a space (at `/s/<space>/…`) goes to every member's browser, for that app in that space. It arrives turned off: each person sees what it asks for in Customize and decides for themselves. When someone changes it, it arrives off again, and when anyone removes it, it goes from everyone's device. It never runs on the space's server. How it works is in [Servers: members' plugins](../server.md#members-plugins).
+
 User plugins run with the same rules as any other: their own worker, only what their manifest asks for, and a review card before they change data they don't own. No plugin can add another by writing files: `user/` belongs to the platform.
 
 ## What places aren't for
