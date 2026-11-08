@@ -28,6 +28,16 @@ export interface KernelEnv {
   /** On a server, how it reads the site's own files (an app's app.html and plugins), when not with fetch. */
   site?: (url: string) => Promise<Response>;
   /**
+   * On a host that can put a space to sleep (Cloudflare), asks to be woken at `at` (ms since 1970), or
+   * not at all when undefined, for the earliest job plugins scheduled (services/schedule.ts).
+   */
+  wake?(at: number | undefined): void;
+  /**
+   * On a server, hands the kernel a way to start its plugins and scheduled jobs with no client
+   * connected: when the host starts a space for a job (after a restart, or a Cloudflare alarm).
+   */
+  boot?(start: () => void): void;
+  /**
    * On a server, hands the kernel's answer for the space's public routes (a server plugin's
    * ctx.routes.add), which the host calls for an HTTP request to /s/<space>/<path> (src/server/routes.ts).
    * The answer is null when no plugin has that route.

@@ -127,7 +127,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     // The space's own plugins (step 7) can stop a change, as a browser's can stop a write.
     const name = `data:beforeWrite:${change.collection}`;
     if (hooks.has(name)) {
-      const verdict = await root.serial(dispatch, name, { collection: change.collection, id: change.id, before: before ?? undefined, after: after ?? undefined });
+      const verdict = await root.serial(dispatch, name, { collection: change.collection, id: change.id, before: before ?? undefined, after: after ?? undefined, ...(by ? { by } : {}) });
       if (verdict && typeof verdict === "object" && "block" in verdict) return { verdict: { ok: false, error: String(verdict.block), version, record: before } };
     }
     // A server plugin may have written the record while its hook ran: then this change is stale too.
@@ -138,7 +138,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     head.seq = accepted.seq;
     head.versions[key(change.collection, change.id)] = accepted.seq;
     try {
-      await records.apply(change.collection, change.id, after as StoredRecord | null, dispatch);
+      await records.apply(change.collection, change.id, after as StoredRecord | null, dispatch, by);
     } catch (error) {
       announce(accepted.seq, null);
       throw error;
@@ -190,7 +190,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
         // Ordered with pushes, so a change accepted while this device catches up isn't missed or sent twice.
         await serially(async () => {
           // Only what has gone to every device: anything later comes to this one as it does to them.
-          hosts.send(host, { t: "sync", op: "changes", changes: (await since(after)).filter((c) => c.seq <= sent), seq: sent });
+          hosts.send(host, { t: "sync", op: "changes", changes: (await since(after)).filter((c) => c.seq <= sent), seq: sent, ...(host.member ? { member: host.member } : {}) });
           listening.add(host);
         });
         return;
