@@ -298,6 +298,12 @@ export default async (ctx) => {
   for (const id of ["books", "shelf", "nosy", "lender", "squatter"]) await a.evaluate((i) => window.__host.command("uninstall", i), id);
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 5000 });
 
+  // Checks after the demos read what plugins traced as they started (the worker CSP, the gate). The tab keeps only
+  // its last 5000 traces and the demos add many, so keep the startup ones now, as window.__startup.
+  await a.waitForFunction(() => ["network:", "escape:"].every((p) => window.__host.traces.some((e) => e.detail?.startsWith(p))), null, { timeout: 5000 }).catch(() => {});
+  await a.evaluate(() => (window.__startup = window.__host.traces.slice()));
+  const startupHas = (page, fn) => page.evaluate(`window.__startup.concat(window.__host.traces).some(${fn})`);
+
   // The demos: each folder in demos/ is an app whose app.html links its plugins.
   const demoNames = readdirSync(new globalThis.URL("../demos/", import.meta.url), { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort(); // sorted: calendar runs before contacts
   const linkedIds = (name) => {
@@ -336,13 +342,13 @@ export default async (ctx) => {
   check("closing an app's last tab stops the plugins it linked", (await a.evaluate(() => window.__host.workers.size)) === before, `${await a.evaluate(() => window.__host.workers.size)} workers, expected ${before}`);
 
   // Worker content security policy.
-  await a.waitForFunction(() => window.__host.traces.filter((e) => e.detail?.startsWith("network:")).length >= 2, null, { timeout: 5000 });
-  const net = await a.evaluate(() => Object.fromEntries(window.__host.traces.filter((e) => e.detail?.startsWith("network:")).map((e) => [e.plugin, e.detail])));
+  await a.waitForFunction(() => window.__startup.concat(window.__host.traces).filter((e) => e.detail?.startsWith("network:")).length >= 2, null, { timeout: 5000 });
+  const net = await a.evaluate(() => Object.fromEntries(window.__startup.concat(window.__host.traces).filter((e) => e.detail?.startsWith("network:")).map((e) => [e.plugin, e.detail])));
   check("a plugin with the network permission can fetch", /status 200/.test(net.fetcher ?? ""), net.fetcher);
   check("a plugin without it is blocked by its worker's CSP", /refused/.test(net.offline ?? ""), net.offline);
   // offline also tries to start a network-enabled worker of its own.
-  await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "offline" && e.detail?.startsWith("escape:")), null, { timeout: 5000 }).catch(() => {});
-  const escape = await a.evaluate(() => window.__host.traces.filter((e) => e.plugin === "offline" && e.detail?.startsWith("escape:")).map((e) => e.detail).join(", "));
+  await a.waitForFunction(() => window.__startup.concat(window.__host.traces).some((e) => e.plugin === "offline" && e.detail?.startsWith("escape:")), null, { timeout: 5000 }).catch(() => {});
+  const escape = await a.evaluate(() => window.__startup.concat(window.__host.traces).filter((e) => e.plugin === "offline" && e.detail?.startsWith("escape:")).map((e) => e.detail).join(", "));
   check("a plugin can't start a worker of its own", /blocked/.test(escape), escape);
   check("the kernel runs in a shared worker", (await a.textContent("#mode")).includes("shared worker"));
 
@@ -368,8 +374,8 @@ export default async (ctx) => {
   check("no-shouting.js blocks the write from its worker", true);
 
   // The gate.
-  check("the gate refuses a hook the manifest doesn't grant", await traceHas(a, `(e) => e.kind === "denied" && e.plugin === "sneaky" && e.name === "hook:intercept:data:beforeWrite"`));
-  check("the gate refuses a service the manifest doesn't grant", await traceHas(a, `(e) => e.kind === "denied" && e.plugin === "sneaky" && e.name === "audio"`));
+  check("the gate refuses a hook the manifest doesn't grant", await startupHas(a, `(e) => e.kind === "denied" && e.plugin === "sneaky" && e.name === "hook:intercept:data:beforeWrite"`));
+  check("the gate refuses a service the manifest doesn't grant", await startupHas(a, `(e) => e.kind === "denied" && e.plugin === "sneaky" && e.name === "audio"`));
 
   // Audio: DSP in an AudioWorklet, registered by a plugin in a worker.
   // Settings: a form built from the manifest; the plugin hears the change.
