@@ -6,10 +6,11 @@
 // and the Node kernel built (npm run build:server). The main test run calls it
 // (tests/checks/space-server.mjs).
 
-import { spawn } from "node:child_process";
-import { cpSync, existsSync, readdirSync, rmSync, symlinkSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { cpSync, existsSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer as createHttpServer, request } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { connect, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -453,6 +454,63 @@ async function networkGuardChecks(base, check) {
   check("network guard: a private host the deployment allows is reached", seen.allowed?.ok && seen.allowed.text === "hello from inside", JSON.stringify(seen.allowed));
 }
 
+/**
+ * The feed reader (demos/feeds/), a proof app, on Node: an https feed server on this machine (allowed, and its
+ * certificate trusted through NODE_EXTRA_CA_CERTS, which the server passes to its plugins), and feeds a device adds.
+ */
+async function feedChecks(base, check, owner) {
+  const folder = await mkdtemp(join(tmpdir(), "feeds-tls-"));
+  try {
+    execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", join(folder, "key.pem"), "-out", join(folder, "cert.pem"), "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"], { stdio: "ignore" });
+  } catch {
+    return check("feed reader: openssl makes a certificate for the https feed server (skipped: no openssl)", true);
+  }
+  process.env.NODE_EXTRA_CA_CERTS = join(folder, "cert.pem");
+  const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>Local &amp; news</title>
+<item><title>First story</title><link>https://example.com/1</link><guid>one</guid><pubDate>Sat, 07 Nov 2026 09:00:00 GMT</pubDate><description><![CDATA[<p>Hello <b>there</b><script>alert(1)</script></p>]]></description></item>
+<item><title>Second &lt;story&gt;</title><link>javascript:alert(1)</link><guid>two</guid><pubDate>Sun, 08 Nov 2026 09:00:00 GMT</pubDate><description>Plain words</description></item>
+</channel></rss>`;
+  const feeds = createHttpsServer({ key: readFileSync(join(folder, "key.pem")), cert: readFileSync(join(folder, "cert.pem")) }, (req, res) => {
+    if (req.url === "/to-http") return res.writeHead(302, { location: `http://127.0.0.1:${feeds.address().port}/rss.xml` }).end();
+    res.writeHead(200, { "content-type": "application/rss+xml" }).end(rss);
+  });
+  await new Promise((r) => feeds.listen(0, "127.0.0.1", r));
+  const at = `https://127.0.0.1:${feeds.address().port}`;
+  await owner.call("/auth/spaces", { name: "news" });
+  const phone = await device(base, "news", owner.cookie);
+  await phone.hello(0);
+  phone.app("demos/feeds");
+  const added = await phone.push([
+    { collection: "feeds", id: "local", base: 0, after: { id: "local", url: `${at}/rss.xml` } },
+    { collection: "feeds", id: "plain", base: 0, after: { id: "plain", url: `http://127.0.0.1:${feeds.address().port}/rss.xml` } },
+    { collection: "feeds", id: "away", base: 0, after: { id: "away", url: `${at}/to-http` } },
+  ]);
+  const latest = (collection, id) => phone.changes().filter((c) => c.collection === collection && c.id === id).at(-1)?.after;
+  let items = [];
+  for (let i = 0; i < 60 && !(items.length >= 2 && latest("fetched", "plain") && latest("fetched", "away")); i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    await phone.settle();
+    items = phone.changes().filter((c) => c.collection === "items" && c.after?.feed === "local");
+  }
+  feeds.close();
+  const first = items.find((c) => c.after.title === "First story")?.after;
+  const second = items.find((c) => c.after.title === "Second <story>")?.after;
+  const local = latest("fetched", "local");
+  check(
+    "feed reader: a feed a device adds is read on the space's server over https, and its stories reach the device as plain text",
+    added.every((a) => a.ok) && items.every((c) => c.by === "plugin:fetch") && local?.title === "Local & news" && !local.error && first?.link === "https://example.com/1" && first.summary === "Hello there" && first.published === "2026-11-07T09:00:00.000Z" && second && !second.link && second.summary === "Plain words",
+    JSON.stringify({ local, first, second, count: items.length }),
+  );
+  check(
+    "feed reader: a feed at http://, or one that redirects there, isn't read",
+    /Only https/.test(latest("fetched", "plain")?.error ?? "") && /redirected away from https/.test(latest("fetched", "away")?.error ?? ""),
+    JSON.stringify({ plain: latest("fetched", "plain"), away: latest("fetched", "away") }),
+  );
+  phone.close();
+  delete process.env.NODE_EXTRA_CA_CERTS;
+  await rm(folder, { recursive: true, force: true });
+}
+
 function person(base) {
   const me = {
     cookie: "",
@@ -756,6 +814,7 @@ async function suite(name, make) {
 
     // Workers can't reach a private network in production; wrangler's local runtime isn't a guide to that.
     if (name === "node") await networkGuardChecks(server.url, check);
+    if (name === "node") await feedChecks(server.url, check, owner);
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {
