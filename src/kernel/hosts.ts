@@ -28,10 +28,16 @@ export class Hosts {
   onHello?: (host: Host, folder: FileSystemDirectoryHandle | undefined) => void;
   onLeave?: (host: Host) => void;
 
-  constructor(readonly mode: "shared" | "dedicated") {}
+  constructor(readonly mode: "shared" | "dedicated" | "server") {}
 
   get spawner(): Host | undefined {
-    return this.list[0];
+    // On a server no client starts plugin workers: the space runs its own (the isolate seam).
+    return this.mode === "server" ? undefined : this.list[0];
+  }
+
+  /** The clients that start tab-scoped plugins' workers: every tab, and none on a server. */
+  get workerHosts(): Host[] {
+    return this.mode === "server" ? [] : this.list;
   }
 
   connect(port: MessagePort): void {
@@ -46,7 +52,8 @@ export class Hosts {
         // the kernel gets the lock only once the tab has gone. This catches
         // tabs that close without a chance to say goodbye.
         const leaving = host;
-        void navigator.locks.request(`ewa-tab-${message.tab}`, () => this.disconnect(leaving));
+        // (A server has no Web Locks: its clients say bye, or their socket closes.)
+        void (globalThis.navigator as Navigator | undefined)?.locks?.request(`ewa-tab-${message.tab}`, () => this.disconnect(leaving));
         const spawner = this.spawner === host;
         this.send(host, { t: "welcome", tab: message.tab, spawner, mode: this.mode });
         for (const { tab, ...view } of this.views.values()) if (!tab || tab === host.tab) this.send(host, { t: "render", ...view });
@@ -71,7 +78,7 @@ export class Hosts {
   private disconnect(host: Host): void {
     const index = this.list.indexOf(host);
     if (index < 0) return;
-    const wasSpawner = index === 0;
+    const wasSpawner = host === this.spawner;
     this.list.splice(index, 1);
     record({ kind: "lifecycle", name: "host:disconnect", detail: host.tab });
     this.onLeave?.(host);

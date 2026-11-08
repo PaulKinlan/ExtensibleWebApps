@@ -1,0 +1,8 @@
+// A space's kernel entry (src/server/space.ts): the browser's kernel, with
+// Node's worker threads around it, so it is checked with both sets of types.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": ["vite/client", "node"] },
+  "include": ["src/server/space.ts", "src/server/space-env.ts"],
+  "exclude": []
+}

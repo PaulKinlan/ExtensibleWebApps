@@ -23,6 +23,8 @@ export default async function ({ a, check, openTab, URL }) {
   );
 
   const page = await openTab(`${URL}demos/trip/app.html`);
+  // The app has opened (its plugins have drawn) before a theme is added, so turning it on opens the app again.
+  await page.waitForSelector("[data-plugin][data-key]", { timeout: 8000 });
   const accent = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim());
   const before = await accent();
   const added = await page.evaluate(() => window.__host.command("user:add", { app: "demos/trip", url: "/demos/trip/samples/plum.js" }));
