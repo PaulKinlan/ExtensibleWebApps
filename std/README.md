@@ -6,6 +6,7 @@ written, and asks only for the permissions in its manifest.
 | Plugin | What it does | Add it with |
 | --- | --- | --- |
 | [`debug-console.js`](debug-console.js) | A bug button in a corner of the page. It counts problems (errors, refused permissions, failed calls) and opens a log of them, or of everything the kernel traced, with a Copy button that puts the log on the clipboard, headed with the page's address, browser and time, ready for a bug report. | `<link rel="plugin" href="/std/debug-console.js">` in the head, and `<slot name="debug"></slot>` anywhere in the body |
+| [`plugin-editor.js`](plugin-editor.js) | An editor for the person's own plugins: start from a template in [`plugin-editor/templates/`](plugin-editor/templates/) or a copy of a plugin on the page, see what it asks for in plain words, then save and run it after a review card that shows its code. Its logs and errors show beside it. | `<link rel="plugin" href="/std/plugin-editor.js">` in the head, and `<slot name="editor"></slot>` in the body |
 | [`reset.js`](reset.js) | When any of the app's plugins is off, a card that names them and turns them all back on. If it is switched off itself, opening the page with `?reset` does the same. | `<link rel="plugin" href="/std/reset.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
 | [`switchboard.js`](switchboard.js) | A switch for each plugin the app links, with its name and description, so people can see what the page is made of and turn parts of it off. | `<link rel="plugin" href="/std/switchboard.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
 
@@ -40,3 +41,24 @@ written, and asks only for the permissions in its manifest.
 - **The way back.** Both can be switched off like anything else. The host
   handles `?reset` in the page's address before any plugin runs, turning the
   app's plugins back on, so a page can always be recovered.
+
+## The plugin editor
+
+[`plugin-editor.js`](plugin-editor.js) uses the kernel's `authoring` service
+([`src/kernel/authoring.ts`](../src/kernel/authoring.ts)), which needs
+`plugins:author`. The service reads the code of the app's plugins and the
+templates next to the editor, checks a draft's manifest without running it,
+and saves the draft with the person's own plugins for the app (the same ones
+the Customize panel lists). Every save and removal waits for the person to
+accept a review card that shows the code and what it asks for.
+
+Until a person's plugin can stand in for one of the app's own, a copy gets
+an id of its own (`note-stats-copy`) and runs beside the original. Switch the
+original off on the switchboard to try the copy instead.
+
+The templates are plain plugins: [`card.js`](plugin-editor/templates/card.js)
+draws, [`listen.js`](plugin-editor/templates/listen.js) shows the latest note by hearing a hook,
+[`block.js`](plugin-editor/templates/block.js) stops a write, and
+[`button.js`](plugin-editor/templates/button.js) writes data it doesn't own,
+which the person reviews. They use the homepage's `learning` notes; on
+another page, change the collection to one it has.

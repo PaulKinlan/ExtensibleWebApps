@@ -78,7 +78,10 @@ body:not(.workbench) > footer { grid-area: footer; padding: 6px 16px; border-top
   .workbench main > nav, .workbench main > aside { border: 0; border-top: 1px solid var(--border); }
   #mode { display: none; }
 }
-#review { padding: 16px; }
+/* Review cards: a dialog that stays in view at the bottom of the screen until each card is answered. */
+dialog#review { position: fixed; inset: auto 16px 16px; z-index: 20; width: auto; max-width: 760px; max-height: min(70vh, 640px); margin: 0 auto; padding: 16px; overflow: auto; border: 2px solid var(--accent); border-radius: var(--radius); background: var(--surface); color: var(--fg); box-shadow: 0 8px 32px light-dark(rgb(0 0 0 / 0.18), rgb(0 0 0 / 0.6)); }
+dialog#review > [data-key] { border: 0; border-radius: 0; padding: 0; margin: 0; }
+dialog#review > [data-key] + [data-key] { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .muted { color: var(--fg-2); }
 .error { color: var(--danger); }
 .ok { color: var(--ok); }

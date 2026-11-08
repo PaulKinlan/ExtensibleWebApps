@@ -113,6 +113,7 @@ export const COMPONENTS: Record<string, { attributes: string; about: string }> =
   "ui-form": { attributes: "collection, fields=\"title,author\", record, submit, action", about: "A form built from the collection's schema: labels, input types, required fields and errors from the kernel's checks, beside the control they are about. A list field gets a row per item with Add and Remove buttons, and a group gets a fieldset, two levels deep. Saves a new record, or edits `record`; sends `action` with the saved record's id." },
   "ui-toolbar": { attributes: "", about: "A row of controls that wraps, with the last group pushed to the end by a ui-spacer." },
   "ui-spacer": { attributes: "", about: "Takes up the free space in a row." },
+  "ui-code": { attributes: "name, label, rows=\"20\", readonly, revision", about: "A plain code editor: a textarea with line numbers, where Tab indents (Escape, then Tab, leaves it). Its text content is the starting code; edits survive redraws until `revision` changes. In a `form` it is sent under its `name`." },
   "ui-debug": { attributes: "corner=\"bottom-left|bottom-right|top-left|top-right|inline\", problems, label, toggle", about: "A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy=\"name\"` copies the text of the element with `data-copy-source=\"name\"`, headed with the page's address, browser and time." },
 };
 
@@ -123,5 +124,6 @@ export const ACTIONS = [
   "A click on an element with `data-action` sends that action, with `data-value` as the value if it has one.",
   "An `input`, `select` or `textarea` with `data-action` sends it when the change is committed, with the new value (a boolean for a checkbox, a number for a number). Add `data-live` to send it as the person types, after a 300 ms pause.",
   "A `form` with `data-action` sends it on submit, with `{ name: value }` for every named field.",
+  "A submit button with `data-action` of its own, in such a form, sends its action instead, with the same fields.",
   "Give repeated elements a `key` attribute so an update moves them instead of redrawing them; focus, typing and scroll survive updates either way.",
 ];

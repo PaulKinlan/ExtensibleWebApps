@@ -15,7 +15,10 @@ export default async function ({ check, context, URL, errors }) {
   const ids = ["learning-notes", "note-stats", "chapter-1-core", "chapter-2-plugins", "chapter-3-hooks", "switchboard"];
   const drawn = await Promise.all(ids.map((id) => page.waitForSelector(key(id), { state: "attached", timeout: 8000 }).then(() => true, () => false)));
   check("the homepage draws its notes, stats, chapters and switchboard", drawn.every(Boolean), ids.filter((_, i) => !drawn[i]).join(", "));
-  check("the switchboard lists every plugin the homepage links", (await page.$$('slot[name="switchboard"] input[data-action^="switch:"]')).length === 9);
+  // As many switches as the page links plugins, so adding one to the homepage doesn't change this check.
+  const listsAll = (p) =>
+    p.waitForFunction(() => document.querySelectorAll('slot[name="switchboard"] input[data-action^="switch:"]').length === document.querySelectorAll('link[rel~="plugin"]').length, null, { timeout: 8000 }).then(() => true, () => false);
+  check("the switchboard lists every plugin the homepage links", await listsAll(page));
 
   // A note is saved, and Quiet please stops one written in capitals.
   const notes = 'slot[name="playground"]';
@@ -37,7 +40,7 @@ export default async function ({ check, context, URL, errors }) {
   // A second tab: its tab-scoped plugins start before its app has opened, and catch up when it has.
   const second = await own.newPage();
   await second.goto(URL);
-  const listed = await second.waitForFunction(() => document.querySelectorAll('slot[name="switchboard"] input[data-action^="switch:"]').length === 9, null, { timeout: 8000 }).then(() => true, () => false);
+  const listed = await listsAll(second);
   const ticked = await second.waitForFunction(() => document.querySelector('[data-plugin="chapter-2-plugins"] input[data-action="toggle"]')?.checked, null, { timeout: 5000 }).then(() => true, () => false);
   check("a second homepage tab lists the plugins and shows the chapters' switches as on", listed && ticked);
   await second.close({ runBeforeUnload: true });

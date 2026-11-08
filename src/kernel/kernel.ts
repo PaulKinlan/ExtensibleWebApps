@@ -24,6 +24,7 @@ import { loadServices } from "./services";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
+import { authoring } from "./authoring";
 import { record, recent, setSink, startedAt, tap } from "./trace";
 import { checkApp, userPlugins } from "./user-plugins";
 import type { Opened } from "../shared/protocol";
@@ -118,6 +119,14 @@ const userAdded = userPlugins(store, self.location.origin);
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
+services.authoring = authoring(remote, apps, {
+  store,
+  userAdded,
+  appIn: (tab) => openApps.get(tab)?.app,
+  ask: (request, dispatch) => reviews.ask(request, dispatch),
+  reopen: (app) => reopen(app),
+  turnOn: (ids) => plugins.turnOn(ids),
+});
 
 /**
  * Opens an app in a tab: the plugins its app.html links, and the person's own plugins for it that are
