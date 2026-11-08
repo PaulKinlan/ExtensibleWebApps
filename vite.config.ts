@@ -34,7 +34,6 @@ function workerPolicy(): Plugin {
 // (a new app area, the service worker) doesn't edit this file.
 const NOT_SERVED = [
   "dist",
-  "docs",
   "node_modules",
   "plugins", // built into the kernel
   "public", // Vite copies it itself
