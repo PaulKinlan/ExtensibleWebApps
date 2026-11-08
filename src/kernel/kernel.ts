@@ -197,7 +197,7 @@ services.plugins = pluginSwitches.service;
 const describe = () => reference(services, remote);
 
 // The rest of the services are a file each in services/, found by name.
-Object.assign(services, loadServices({ root, store, hosts, remote, apps, reviewed, describe }));
+Object.assign(services, loadServices({ root, store, hosts, remote, apps, reviewed, describe, collections: records }));
 // A plugin can't take a service's name as its id, whichever way the service was added.
 for (const name of Object.keys(services)) RESERVED.add(name);
 

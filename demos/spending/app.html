@@ -22,10 +22,13 @@
   <link rel="plugin" href="categories.js">
   <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
   <link rel="plugin" href="/std/debug-console.js">
+  <!-- A standard plugin: Undo and Redo for any change to the expenses, whichever plugin made it. -->
+  <link rel="plugin" href="/std/undo.js">
 </head>
 <body>
   <header>
     <h1>Spending</h1>
+    <slot name="history"></slot>
     <a href="/workbench/">Workbench</a>
   </header>
   <main>
