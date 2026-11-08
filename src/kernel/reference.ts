@@ -12,7 +12,7 @@
 import type { Api, ApiMember } from "../shared/api";
 import type { Command, Slot, View } from "../shared/protocol";
 import { EDITOR_PERMISSIONS } from "./gate";
-import { capabilityFor, hooks, type Mode } from "./hooks";
+import { capabilityFor, hookOwners, hooks, type Mode } from "./hooks";
 import { ACTIONS, COMPONENTS, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, HTML_MAX, INPUT_TYPES } from "../shared/html";
 import { MANIFEST_FIELDS, RESERVED } from "./manifest";
 import { RECORD_FIELDS } from "./records";
@@ -34,6 +34,16 @@ const CTX: Record<ApiMember<Api>, Doc> = {
     signature: "ctx.call(service, method, ...args) → Promise",
     needs: "What the method needs (see Services)",
     description: "Calls a kernel service. Rejects if the capability is missing, the method doesn't exist, or the service refuses.",
+  },
+  "hooks.emit": {
+    signature: "ctx.hooks.emit(key, value) → Promise",
+    needs: "",
+    description: "Tells every listener of one of the plugin's own emit or parallel hooks (the manifest's `hooks`), with value. No other plugin can run it. Listeners hear it with `ctx.on(\"<id>:<key>\", …)` and `hook:listen:<id>:<key>`.",
+  },
+  "hooks.call": {
+    signature: "ctx.hooks.call(key, value) → Promise<answer>",
+    needs: "",
+    description: "Runs one of the plugin's own serial, bail or waterfall hooks and waits for its listeners, each within the hook's time limit: a serial hook answers `{ block }` when a listener stops the action, a bail hook with the first answer, and a waterfall with value as the listeners changed it. Listening needs `hook:intercept:<id>:<key>`.",
   },
   "commands.add": {
     signature: "ctx.commands.add({ id, title, description?, keys?, group?, args? }, (args, { by }) => result) → off()",
@@ -203,7 +213,7 @@ export interface Reference {
   slots: { slot: string; about: string }[];
   commands: { name: string; about: string }[];
   /** What is installed right now. Not part of the contract, so not in docs/api.md. */
-  plugins: { id: string; name: string; origin: string; enabled: boolean; scope: string; permissions: string[]; instances: string[]; hooks: string[] }[];
+  plugins: { id: string; name: string; origin: string; enabled: boolean; scope: string; permissions: string[]; instances: string[]; hooks: string[]; defines: string[] }[];
 }
 
 export function reference(services: Record<string, ServiceProvider>, remote: RemotePlugins): Reference {
@@ -228,7 +238,8 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
   ];
   return {
     modes: Object.entries(MODES).map(([mode, about]) => ({ mode, about })),
-    hooks: [...hooks].map(([name, spec]) => ({ name, ...spec, listen: capabilityFor(name) })),
+    // The kernel's own hooks. A collection's hooks and a plugin's own come and go with their plugins: see Installed now.
+    hooks: [...hooks].filter(([name]) => !hookOwners.has(name) && !/^data:(changed|beforeWrite):/.test(name)).map(([name, spec]) => ({ name, ...spec, listen: capabilityFor(name) })),
     ctx: Object.entries(CTX).map(([member, doc]) => ({ member, ...doc })),
     services: serviceList,
     capabilities,
@@ -260,6 +271,7 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
         permissions: p.manifest.permissions,
         instances,
         hooks: [...new Set(instances.flatMap((i) => remote.live.get(i)?.heard ?? []))],
+        defines: [...hookOwners].filter(([, owner]) => owner === p.id).map(([name]) => name),
       };
     }),
   };
@@ -306,6 +318,8 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
   out.push(
     "",
     "## Hooks",
+    "",
+    "The kernel's own hooks. A plugin defines more in its manifest's `hooks`, named `<plugin>:<key>`, which only it runs (with `ctx.hooks`), and each collection has `data:beforeWrite:<collection>` and `data:changed:<collection>` (see Collections). Those last while their plugin is installed, so they are listed under Installed now.",
     "",
     ...spaced([...ref.hooks].sort(byName((h) => h.name)).map((h) =>
       entry("###", code(h.name), [
@@ -386,7 +400,7 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
       "",
       "## Installed now",
       "",
-      table(["Plugin", "From", "State", "Permissions", "Listens to"], ref.plugins.map((p) => [`${p.name} (${code(p.id)})`, p.origin, `${p.enabled ? "on" : "off"}, ${p.scope}, ${p.instances.length} running`, p.permissions.map(code).join(", "), p.hooks.map(code).join(", ")])),
+      table(["Plugin", "From", "State", "Permissions", "Defines", "Listens to"], ref.plugins.map((p) => [`${p.name} (${code(p.id)})`, p.origin, `${p.enabled ? "on" : "off"}, ${p.scope}, ${p.instances.length} running`, p.permissions.map(code).join(", "), p.defines.map(code).join(", "), p.hooks.map(code).join(", ")])),
     );
   }
   return out.join("\n") + "\n";

@@ -80,8 +80,6 @@ export default ({ remote }: Kernel): ServiceProvider => {
     if (data) {
       // A plugin reads and writes the collections it owns, by the registry rather than its manifest's claim.
       for (const c of collections.values()) if (c.owner === base(instance)) out.add(c.name);
-      // `notes` belongs to the store service, not a collection, though data:read:notes looks like one.
-      out.delete("notes");
     }
     return [...out].sort();
   }

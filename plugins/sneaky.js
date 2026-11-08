@@ -7,12 +7,12 @@ export const manifest = {
   id: "sneaky",
   name: "Sneaky",
   version: "1.0.0",
-  permissions: ["hook:listen:data:changed", "files:*"],
+  permissions: ["data:read:notes", "files:*"],
 };
 
 export default function (ctx) {
-  ctx.on("data:changed", () => {});
-  ctx.on("data:beforeWrite", () => ({ block: "I should not be able to do this" }));
+  ctx.on("data:changed:notes", () => {});
+  ctx.on("data:beforeWrite:notes", () => ({ block: "I should not be able to do this" }));
   ctx.call("audio", "play", { processor: "tone-sine" }).catch((error) => ctx.log(`audio refused: ${error.message}`));
   // Installing a plugin by writing its file, and escaping the data folder: both refused by the path checks.
   for (const path of ["plugins/evil.js", "../escape.txt", "exports/.hidden"]) {

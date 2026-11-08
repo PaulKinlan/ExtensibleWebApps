@@ -14,7 +14,8 @@ How to build apps on this platform, from the first page to sharing data between 
 10. [Agents](agents.md): a Markdown file an app links with `rel="agent"`, run as a plugin that wakes on hooks, commands, messages or topics, asks a model and calls its tools, or checks an action before it happens; the bus, where agents, plugins and the person send each other messages; agents that act for the person; and the standard assistant and builder.
 11. [Commands and the command palette](commands.md): something a plugin can do, named once, and run from a palette, a shortcut or an agent.
 12. [Slots in views, and view transforms](slots-and-transforms.md): a plugin leaving a room in its view for others, and a plugin changing another plugin's view.
-13. [Deploying one app on its own](deploying-an-app.md): one app as a Worker of its own, on its own address, in two commands.
+13. [Hooks of your own](plugin-hooks.md): a plugin defining hooks in its manifest, which only it runs and others listen to, even before it is installed.
+14. [Deploying one app on its own](deploying-an-app.md): one app as a Worker of its own, on its own address, in two commands.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 

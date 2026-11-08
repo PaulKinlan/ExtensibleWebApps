@@ -6,29 +6,30 @@ export const manifest = {
   name: "Note lengths",
   description: "Bars for the length of each note, drawn on a canvas in a worker.",
   version: "1.0.0",
-  permissions: ["ui", "hook:listen:data:changed", "data:read:notes"],
+  permissions: ["ui", "data:read:notes"],
   scope: "tab",
   order: 30,
 };
 
 export default async function (ctx) {
-  let notes = await ctx.call("store", "list");
+  // The notes plugin's collection. Reading it includes hearing it change.
+  let notes = await ctx.call("data", "list", "notes");
   let shown = notes.map(() => 0);
   let canvas;
   let frames = 0;
 
-  ctx.on("data:changed", async () => {
-    notes = await ctx.call("store", "list");
+  ctx.on("data:changed:notes", async () => {
+    notes = await ctx.call("data", "list", "notes");
   });
 
   const frame = () => {
     if (!canvas) return;
     const g = canvas.getContext("2d");
-    const max = Math.max(1, ...notes.map((n) => n.text.length));
+    const max = Math.max(1, ...notes.map((n) => (n.text ?? "").length));
     g.clearRect(0, 0, canvas.width, canvas.height);
     const h = canvas.height / Math.max(1, notes.length);
     notes.forEach((note, i) => {
-      const target = (note.text.length / max) * (canvas.width - 8);
+      const target = ((note.text ?? "").length / max) * (canvas.width - 8);
       shown[i] = (shown[i] ?? 0) + (target - (shown[i] ?? 0)) * 0.15;
       g.fillStyle = "#6b9bff";
       g.fillRect(4, i * h + 4, shown[i], Math.max(2, h - 8));

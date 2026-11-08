@@ -18,8 +18,8 @@
 import type { Dispatch, KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
 import { HTML_MAX } from "../shared/html";
 import { made } from "./agents/file";
-import { capabilities, check } from "./gate";
-import { BEFORE_WRITE, capabilityFor, hooks, type HookSpec } from "./hooks";
+import { capabilities, check, grants } from "./gate";
+import { BEFORE_WRITE, capabilityFor, defineHook, hookOwners, hooks, kernelPrefix, PLUGIN_HOOKS, type HookSpec } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import { ManifestError, readManifest } from "./manifest";
 import type { Schema } from "./schema";
@@ -151,9 +151,17 @@ export class RemotePlugins {
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }
+    // A plugin's hooks are named after it: one the kernel already has can't be taken.
+    const taken = Object.keys(manifest.hooks ?? {}).map((key) => `${manifest.id}:${key}`).find((name) => hooks.has(name) && hookOwners.get(name) !== manifest.id);
+    if (taken) {
+      const message = `The hook ${taken} is the kernel's`;
+      record({ kind: "error", name: "plugin:refused", detail: message });
+      return { ok: false, error: message };
+    }
     this.stop(manifest.id);
     const enabled = options.enabled ?? previous?.enabled ?? true;
     this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest), origin: options.origin ?? "data", enabled, href: options.href });
+    this.defineHooks(manifest.id, manifest.hooks ?? {});
     this.onManifest?.(manifest);
     record({ kind: "lifecycle", name: "plugin:install", plugin: manifest.id, detail: `${manifest.scope ?? "shared"}: ${manifest.permissions.join(" ")}${enabled ? "" : " (off)"}` });
     this.onChange?.("install", manifest.id);
@@ -256,10 +264,42 @@ export class RemotePlugins {
     record({ kind: "lifecycle", name: "plugin:stop", plugin: instance });
   }
 
+  /**
+   * Defines a plugin's own hooks, `<id>:<key>`, from its manifest, in place of the ones it had. Listeners
+   * waiting for one (they listened before the plugin was installed) start hearing it, and the listeners of
+   * a hook that goes wait for it again.
+   */
+  private defineHooks(id: string, wanted: NonNullable<Manifest["hooks"]>): void {
+    const next = new Map<string, HookSpec>();
+    for (const [key, h] of Object.entries(wanted)) {
+      const waits = h.mode !== "emit" && h.mode !== "parallel";
+      next.set(`${id}:${key}`, {
+        mode: h.mode,
+        ...(h.args ? { args: h.args } : {}),
+        ...(h.description ? { description: h.description } : {}),
+        ...(waits ? { timeoutMs: Math.min(h.timeoutMs ?? PLUGIN_HOOKS.defaultTimeoutMs, PLUGIN_HOOKS.timeoutMs), onFailure: h.onFailure ?? "open" } : {}),
+        ...(waits && h.agentTimeoutMs ? { agentTimeoutMs: Math.min(h.agentTimeoutMs, PLUGIN_HOOKS.agentTimeoutMs) } : {}),
+      });
+    }
+    for (const [name, owner] of hookOwners) {
+      if (owner !== id || JSON.stringify(hooks.get(name)) === JSON.stringify(next.get(name))) continue;
+      hooks.delete(name);
+      hookOwners.delete(name);
+      for (const remote of this.live.values()) remote.hookGone(name);
+    }
+    for (const [name, spec] of next) {
+      if (hookOwners.get(name) === id) continue;
+      defineHook(name, spec);
+      hookOwners.set(name, id);
+      for (const remote of this.live.values()) remote.hookCame(name);
+    }
+  }
+
   /** Stops a plugin and forgets it. */
   uninstall(id: string): void {
     this.stop(id);
     if (!this.installed.delete(id)) return;
+    this.defineHooks(id, {});
     record({ kind: "lifecycle", name: "plugin:uninstall", plugin: id });
     this.onChange?.("uninstall", id);
   }
@@ -368,6 +408,8 @@ export class Remote {
   private ctx: any;
   private fiber: any;
   private listeners = new Map<number, { name: string; off: () => void }>();
+  /** Listeners waiting for a plugin's hook that isn't defined yet: its plugin isn't installed. */
+  private ahead = new Map<number, string>();
   private pending = new Map<number, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout> }>();
   private nextId = 0;
   private disposed = false;
@@ -386,9 +428,29 @@ export class Remote {
     port.start();
   }
 
-  /** The hooks this instance listens to, each once. */
+  /** The hooks this instance listens to, each once, with the ones it waits for. */
   get heard(): string[] {
-    return [...new Set([...this.listeners.values()].map((l) => l.name))];
+    return [...new Set([...[...this.listeners.values()].map((l) => l.name), ...this.ahead.values()])];
+  }
+
+  /** A plugin's hook was defined: listeners waiting for it start hearing it. */
+  hookCame(name: string): void {
+    if (!this.ctx) return;
+    for (const [listener, waiting] of this.ahead) {
+      if (waiting !== name) continue;
+      this.ahead.delete(listener);
+      this.listen(listener, name);
+    }
+  }
+
+  /** A plugin's hook went with its plugin: its listeners wait for it to come back. */
+  hookGone(name: string): void {
+    for (const [listener, l] of this.listeners) {
+      if (l.name !== name) continue;
+      l.off();
+      this.listeners.delete(listener);
+      this.ahead.set(listener, name);
+    }
   }
 
   /** The tab this instance belongs to, for tab-scoped plugins. */
@@ -436,6 +498,7 @@ export class Remote {
       case "on":
         return this.listen(message.listener, message.name);
       case "off": {
+        this.ahead.delete(message.listener);
         const name = this.listeners.get(message.listener)?.name;
         this.listeners.get(message.listener)?.off();
         this.listeners.delete(message.listener);
@@ -479,6 +542,18 @@ export class Remote {
     // A collection's change hook is made when its owner first runs. A reader may listen
     // before that (the contacts app hasn't been opened yet), and hears changes once it exists.
     const spec = hooks.get(name) ?? (name.startsWith("data:changed:") ? ({ mode: "emit" } as HookSpec) : name.startsWith("data:beforeWrite:") ? BEFORE_WRITE : undefined);
+    // A plugin's hook (`<plugin>:<key>`) whose plugin isn't installed yet: wait for it, if this plugin may hear it.
+    const own = /^([a-z][a-z0-9-]{0,63}):[a-z][a-z0-9-]{0,40}$/.exec(name);
+    if (!spec && own && !kernelPrefix(own[1])) {
+      if (!grants(this.caps, `hook:listen:${name}`) && !grants(this.caps, `hook:intercept:${name}`)) {
+        check(this.instance, this.caps, `hook:listen:${name}`); // traced as denied
+        this.post({ t: "event", action: "kernel:denied", value: `hook:listen:${name}` });
+        return;
+      }
+      this.ahead.set(listener, name);
+      record({ kind: "lifecycle", name: "hook:ahead", plugin: this.instance, detail: `${name}, until ${own[1]} is installed` });
+      return;
+    }
     if (!spec) {
       record({ kind: "error", name: "hook:unknown", plugin: this.instance, detail: name });
       this.post({ t: "event", action: "kernel:error", value: `No hook named ${name}` });
@@ -641,6 +716,7 @@ export class Remote {
     this.pending.clear();
     const routed = this.heard.some((name) => name.startsWith("route:"));
     this.listeners.clear();
+    this.ahead.clear();
     if (routed) this.manager.onRoutes?.();
     void this.fiber?.dispose?.();
     this.port.close();

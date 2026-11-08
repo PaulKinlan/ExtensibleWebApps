@@ -4,9 +4,9 @@
 // as a space's kernel. An entry sets where (env.ts) before importing this:
 // browser.ts in the browser.
 //
-// Nothing in here draws UI or knows what a note is, except the two trusted
-// demo plugins (store and notes) mounted at the bottom. It runs no plugins of
-// its own: each page runs the ones it links.
+// Nothing in here draws UI or knows about any app. It runs no plugins of its
+// own: each page runs the ones it links (the notes app is plugins/notes.js,
+// which only the workbench links).
 
 import { Context } from "cordis";
 import { env } from "./env";
@@ -18,7 +18,6 @@ import { catalog } from "./catalog";
 import { changeLog } from "./changes";
 import { allowed, reviews as makeReviews } from "./review";
 import { net } from "./net";
-import { notesApp } from "./notes";
 import { grants } from "./gate";
 import { readManifest, RESERVED } from "./manifest";
 import { collections } from "./records";
@@ -46,15 +45,8 @@ const shared = where.kind === "shared";
 const root: any = new Context();
 tap(root);
 
-// Hooks the kernel and its built-in plugins define. Plugins can define more.
-const CHANGE = "{ collection, id, before?, after }";
-const POST = "{ path, url, title, siteName, text, bodyStart, selection, unsaved }";
-defineHook("data:changed", { mode: "emit", args: CHANGE, description: "A record was written." });
-defineHook("data:beforeWrite", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: CHANGE, description: "Before a record is written. Return { block: reason } to stop the write." });
-defineHook("note:open", { mode: "emit", args: POST, description: "The person opened a note." });
-defineHook("note:change", { mode: "emit", args: POST, description: "The person typed in the open note (unsaved is true)." });
-defineHook("note:save", { mode: "emit", args: POST, description: "The open note was saved, by the person or by a reviewed write." });
-defineHook("note:close", { mode: "emit", args: "null", description: "The open note was closed." });
+// Hooks the kernel defines here; its services define more, each collection has its own, and plugins define
+// theirs in their manifests (`<plugin>:<key>`).
 defineHook("debug:trace", { mode: "emit", needs: "debug:read", args: "[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]", description: "New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read." });
 defineHook("bench:ping", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "n", description: "Used by the round-trip benchmark; answer with anything." });
 
@@ -81,11 +73,10 @@ where.connect((port) => {
   hosts.connect(port);
 });
 
-// Constructing the store directly (rather than root.plugin) keeps it synchronous;
+// The data folder. Constructing it directly (rather than root.plugin) keeps it synchronous;
 // it is still a Cordis service on root.
 const store = new Store(root);
 
-const notes = notesApp(root, store, hosts);
 const log = changeLog(store);
 const reviews = makeReviews(store, hosts, log);
 const base = (instance: string) => instance.split("@")[0];
@@ -241,7 +232,6 @@ hosts.onHello = (host, folder) => {
   if (!started) {
     started = true;
     store.use(where.folder ?? folder);
-    void notes.start();
     if (where.space && where.kind !== "server") device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
     return;
   }
@@ -271,7 +261,6 @@ hosts.onSpawnerChange = (host) => {
 hosts.onMessage = async (host, message) => {
   switch (message.t) {
     case "event":
-      if (message.owner === "notes") return void notes.event(message.action, message.value, message.trace);
       if (message.owner === "review") return reviews.event(message.action, message.trace);
       if (message.owner === "secrets") return secrets.event(message.action, message.value);
       if (message.owner === "plugins") return void plugins.event(message.action, message.value, message.trace);

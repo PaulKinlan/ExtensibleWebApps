@@ -80,7 +80,6 @@ Each kind of code has its own place:
     - [`catalog.ts`](src/kernel/catalog.ts) is the plugins panel
     - [`switches.ts`](src/kernel/switches.ts) is the `plugins` service, which lets a plugin list and switch the plugins in its own app
   - **Built in:**
-    - [`notes.ts`](src/kernel/notes.ts) is the notes app
     - [`reference.ts`](src/kernel/reference.ts) is the API reference
     - [`trace.ts`](src/kernel/trace.ts) is the trace you see at the bottom of the page
 - **The service worker** ([`sw.js`](sw.js)) sits between pages and the network. It serves an app's folder address, keeps what it served for offline use, and sends requests for plugin routes to the kernel through a tab. Each job is a file in [`sw/routes/`](sw/routes/); see [Routes and the service worker](docs/guide/routes.md).
