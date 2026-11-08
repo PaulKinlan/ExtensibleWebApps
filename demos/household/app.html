@@ -1,0 +1,63 @@
+<!doctype html>
+<!--
+  Household: a shopping list and the chores, shared by everyone who lives
+  there. It's made to open in a space (/s/<space>/demos/household/), where
+  each person's phone keeps a copy, works offline, and syncs. Opened at
+  /demos/household/ it works the same, for one person in this browser.
+
+  housemates.js  owns the `housemates` collection (everyone's name), and
+                 asks who is using this device; it posts the answer on the
+                 bus topic `household-me`, which stays on this device
+  groceries.js   owns `groceries`: what to buy, who added it and who got it
+  chores.js      owns `chores`: what needs doing, how often, and who did it last
+
+  groceries.js and chores.js read the `household-me` topic to sign what the
+  person does here. The space records who sent each change too, but plugins
+  can't read that yet, so the app keeps its own names on its records.
+
+  Two standard plugins: std/sync.js says whether the page is in step with the
+  space and lists the drafts it kept (when two people changed the same thing
+  while apart, say both bought the milk), and the debug console.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Household</title>
+  <meta name="description" content="A shopping list and the chores, shared by everyone in the house.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="housemates.js">
+  <link rel="plugin" href="groceries.js">
+  <link rel="plugin" href="chores.js">
+  <!-- A standard plugin: opened in a space (/s/<space>/…), whether this page reaches it, and the drafts it kept. -->
+  <link rel="plugin" href="/std/sync.js">
+  <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->
+  <link rel="plugin" href="/std/debug-console.js">
+  <style>
+    .household { display: grid; gap: var(--space-4, 16px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); align-items: start; }
+    .share { color: var(--fg-2); font-size: var(--text-sm); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Household</h1>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <slot name="who"></slot>
+    <slot name="sync"></slot>
+    <div class="household">
+      <section aria-label="Shopping list"><slot name="groceries"><p>Loading the shopping list…</p></slot></section>
+      <section aria-label="Chores"><slot name="chores"><p>Loading the chores…</p></slot></section>
+    </div>
+    <p class="share">To share it, make a space on <a href="/account/">your account</a>, invite the people you live with, and open <code>/s/&lt;space&gt;/demos/household/</code>. Each phone keeps a copy and works offline.</p>
+  </main>
+  <slot name="debug"></slot>
+</body>
+</html>
