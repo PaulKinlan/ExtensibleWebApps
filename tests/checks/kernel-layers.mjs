@@ -1,0 +1,85 @@
+// The kernel's layers (docs/layers.md): every file in src/kernel/ is either
+// core, which every app and space server needs, or a kernel service an app
+// may not use. A new file has to say which, here and on that page, so the
+// core can't grow by accident. A file on neither list fails the check.
+import { readdirSync, readFileSync } from "node:fs";
+
+const KERNEL = new URL("../../src/kernel/", import.meta.url);
+
+/** Needed to run any plugin, in any app or space server. */
+const CORE = [
+  "apps.ts",
+  "authoring.ts",
+  "browser-env.ts",
+  "browser.ts",
+  "catalog.ts",
+  "changes.ts",
+  "diff.ts",
+  "env.ts",
+  "gate.ts",
+  "hooks.ts",
+  "hosts.ts",
+  "isolate-host.ts",
+  "kernel.ts",
+  "manifest.ts",
+  "net.ts",
+  "paths.ts",
+  "records.ts",
+  "reference.ts",
+  "remote.ts",
+  "review.ts",
+  "schema.ts",
+  "secrets.ts",
+  "services/files.ts",
+  "services/hooks.ts",
+  "services/index.ts",
+  "services/kernel.ts",
+  "services/storage.ts",
+  "store.ts",
+  "switches.ts",
+  "trace.ts",
+  "user-plugins.ts",
+];
+
+/** Kernel services an app may not use, and the files that belong to them, being split out of the core. */
+const SERVICES = [
+  "agents/file.ts",
+  "agents/runner.js",
+  "csv.ts",
+  "routes.ts",
+  "server-apps.ts",
+  "services/agents.ts",
+  "services/audio.ts",
+  "services/bus.ts",
+  "services/commands.ts",
+  "services/debug.ts",
+  "services/email.ts",
+  "services/history.ts",
+  "services/llm.ts",
+  "services/page.ts",
+  "services/reflect.ts",
+  "services/router.ts",
+  "services/schedule.ts",
+  "services/share.ts",
+  "services/sync.ts",
+  "services/tools.ts",
+  "services/transfer.ts",
+  "sync-device.ts",
+  "sync.ts",
+];
+
+const files = (dir = "") =>
+  readdirSync(new URL(dir, KERNEL), { withFileTypes: true }).flatMap((e) =>
+    e.name.startsWith(".") ? [] : e.isDirectory() ? files(`${dir}${e.name}/`) : [`${dir}${e.name}`],
+  );
+
+export default async function ({ check }) {
+  const all = files();
+  const unknown = all.filter((path) => !CORE.includes(path) && !SERVICES.includes(path));
+  check("every file in src/kernel/ is listed as core or as a kernel service (docs/layers.md)", !unknown.length, unknown.join(", "));
+  const gone = [...CORE, ...SERVICES].filter((path) => !all.includes(path));
+  check("every file the layers list is still there", !gone.length, gone.join(", "));
+  const page = readFileSync(new URL("../../docs/layers.md", import.meta.url), "utf8");
+  const missing = SERVICES.filter((path) => !page.includes(path.split("/").pop()));
+  check("docs/layers.md names every kernel service file", !missing.length, missing.join(", "));
+}

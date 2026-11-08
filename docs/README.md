@@ -36,6 +36,7 @@ An app works with no server at all. A **space** lets a group of people share its
 | Build your first app | [How an app works](guide/how-an-app-works.md), then [Writing a plugin](guide/writing-a-plugin.md) |
 | Read the whole guide, in order | [The developer guide](guide/README.md) |
 | See how the pieces fit | [Architecture](architecture.md) |
+| Know which layer a piece of code belongs in, from Cordis up to apps | [The layers](layers.md) |
 | Know what a plugin can and can't do | [The security model](security.md), and [every permission](permissions.md) in plain words |
 | Add a ready-made feature to an app | [Standard plugins](plugins.md) |
 | Share an app's data with other people, or run a plugin on a server | [Spaces, and plugins on a server](guide/spaces-and-servers.md), then [Servers and spaces](server.md) for how it's built |
