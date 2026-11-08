@@ -1,0 +1,29 @@
+<!--
+  The import and export buttons. import-export.js sends
+  { collections: [{ name, title, count }], none, message, busy }: a row for
+  each of the app's collections, and what the last press did.
+-->
+<style>
+  .transfer { display: flex; flex-direction: column; gap: var(--space-2); }
+  .transfer h2 { margin: 0; font-size: var(--text-md); }
+  .transfer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); }
+  .transfer li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .transfer li > span { flex: 1 1 8rem; }
+</style>
+<template id="panel">
+  <section class="transfer" aria-label="Import and export">
+    <h2>Import and export</h2>
+    <template if="none"><p>This app has no data to import into or export yet.</p></template>
+    <ul>
+      <template for="c of collections">
+        <li key="{{c.name}}">
+          <span>{{c.title}} <small>{{c.count}}</small></span>
+          <button type="button" data-action="import" data-value="{{c.name}}" disabled="{{busy}}" title="Add rows from a CSV or JSON file to {{c.title}}">Import…</button>
+          <button type="button" data-action="export:csv" data-value="{{c.name}}" disabled="{{busy}}" title="Save {{c.title}} as a CSV file, for a spreadsheet">CSV</button>
+          <button type="button" data-action="export:json" data-value="{{c.name}}" disabled="{{busy}}" title="Save {{c.title}} as a JSON file">JSON</button>
+        </li>
+      </template>
+    </ul>
+    <template if="message"><small role="status">{{message}}</small></template>
+  </section>
+</template>
