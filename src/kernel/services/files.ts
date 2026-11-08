@@ -10,8 +10,8 @@ export default ({ store, reviewed }: Kernel): ServiceProvider => {
   return {
     description: "Text files in the data folder. A path is checked first: no `..`, no hidden names, nothing in the platform's own folders.",
     methods: {
-      read: { args: "(path)", returns: "text or null", needs: "files:<folder>", description: "Reads a file. `<folder>` is the path's first folder." },
-      write: { args: "(path, text, reason)", returns: "{ ok, path, outcome } or { ok, unchanged }", needs: "files:<folder>", reviewed: true, description: "Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open." },
+      read: { args: "(path)", returns: "text or null", needs: "files:<folder>", description: "Reads a file. `<folder>` is the path's first folder.", params: [{ name: "path", schema: { type: "string", description: "A path in the data folder, such as exports/books.csv" } }] },
+      write: { args: "(path, text, reason)", returns: "{ ok, path, outcome } or { ok, unchanged }", needs: "files:<folder>", reviewed: true, description: "Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open.", params: [{ name: "path", schema: { type: "string", description: "A path in the data folder, such as exports/books.csv" } }, { name: "text", schema: { type: "string", description: "The whole new text of the file" } }, { name: "reason", schema: { type: "string", description: "Why, in a sentence the person reads when they review the change" }, optional: true }] },
     },
     /** Each folder is its own capability: `files:exports` lets a plugin use `exports/...`. */
     capability: (_method, args) => `files:${typeof args[0] === "string" ? args[0].split("/")[0] : ""}`,
