@@ -14,6 +14,7 @@
 //   GET  /auth/providers                    the other sites you can sign in with (providers.ts)
 //   GET  /auth/oauth/<id>/start             goes to that site to sign in (or, signed in, to link it)
 //   GET  /auth/oauth/<id>/callback          where that site sends you back; signs in, then /account/
+//   GET  /auth/oauth/<id>/<other>           anything else a flow serves (Bluesky's client metadata)
 //
 // And the spaces people share (a space holds people and data; any app can
 // open in it, and a personal space is one with one member):
@@ -30,7 +31,7 @@
 // hash, so its files can't be used to sign in.
 
 import type { Files } from "../../seams/index.ts";
-import type { Provider } from "./providers.ts";
+import { isFlow, type OAuthProvider, type Provider } from "./providers.ts";
 import { ALGORITHMS, b64url, unb64url, type CredentialJSON, type PublicKey, verifyAssertion, verifyRegistration } from "./webauthn.ts";
 
 export interface User {
@@ -54,6 +55,8 @@ interface Challenge {
   verifier?: string;
   /** An invite to accept once back on /account/, so signing in with another site doesn't lose it. */
   invite?: string;
+  /** What a flow (providers.ts) keeps between its start and its callback. */
+  data?: Record<string, unknown>;
   expires: number;
   /** For a registration: the account it adds to (new or signed in), and that account's name. */
   user?: string;
@@ -193,13 +196,26 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       const verifier = random(48);
       const invite = url.searchParams.get("invite") ?? "";
       const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
+      let to: string;
+      let data: Record<string, unknown> | undefined;
+      if (isFlow(provider)) {
+        // A flow may need to look things up first (Bluesky finds the person's server), or send the browser elsewhere.
+        try {
+          ({ location: to, data } = await provider.start({ url, back, state, challenge }));
+        } catch (error) {
+          return toAccount(new Headers(), messageOf(error, `${provider.name} didn't start a sign-in`));
+        }
+        if (!data) return new Response(null, { status: 302, headers: { location: to } });
+      } else {
+        const at = new URL(provider.authorize);
+        for (const [k, v] of Object.entries({ client_id: provider.clientId, redirect_uri: back, state, scope: provider.scope, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" })) if (v) at.searchParams.set(k, v);
+        to = at.href;
+      }
       await sweep();
-      await write(`challenges/${state}.json`, { kind: "oauth", provider: id, verifier, ...(await asker(request)), ...(INVITE.test(invite) ? { invite } : {}), expires: Date.now() + CHALLENGE_MS } satisfies Challenge);
-      const to = new URL(provider.authorize);
-      for (const [k, v] of Object.entries({ client_id: provider.clientId, redirect_uri: back, state, scope: provider.scope, response_type: "code", code_challenge: challenge, code_challenge_method: "S256" })) if (v) to.searchParams.set(k, v);
-      return new Response(null, { status: 302, headers: { location: to.href, "set-cookie": `ewa-oauth=${state}; Path=/auth/oauth/; HttpOnly; SameSite=Lax; Max-Age=${CHALLENGE_MS / 1000}${secure}` } });
+      await write(`challenges/${state}.json`, { kind: "oauth", provider: id, verifier, ...(await asker(request)), ...(INVITE.test(invite) ? { invite } : {}), ...(data ? { data } : {}), expires: Date.now() + CHALLENGE_MS } satisfies Challenge);
+      return new Response(null, { status: 302, headers: { location: to, "set-cookie": `ewa-oauth=${state}; Path=/auth/oauth/; HttpOnly; SameSite=Lax; Max-Age=${CHALLENGE_MS / 1000}${secure}` } });
     }
-    if (step !== "callback") return undefined;
+    if (step !== "callback") return isFlow(provider) ? provider.serve?.(url, step) : undefined;
 
     const state = url.searchParams.get("state") ?? "";
     const mine = /(?:^|;\s*)ewa-oauth=([A-Za-z0-9_-]+)/.exec(request.headers.get("cookie") ?? "")?.[1];
@@ -208,22 +224,13 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     const code = url.searchParams.get("code");
     if (!code) return toAccount(new Headers(), `${provider.name} didn't sign you in`);
 
-    let profile: Record<string, unknown>;
+    let theirs: { id: string; name: string };
     try {
-      const tokenAnswer = await fetch(provider.token, {
-        method: "POST",
-        headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: back, client_id: provider.clientId, client_secret: provider.clientSecret, code_verifier: found.verifier }),
-      });
-      const { access_token } = (await tokenAnswer.json()) as { access_token?: string };
-      if (!access_token) throw new Error("no token");
-      const who = await fetch(provider.user, { headers: { accept: "application/json", authorization: `Bearer ${access_token}`, "user-agent": "extensible-web-apps" } });
-      if (!who.ok) throw new Error(`user ${who.status}`);
-      profile = (await who.json()) as Record<string, unknown>;
-    } catch {
-      return toAccount(new Headers(), `${provider.name} didn't say who you are`);
+      theirs = isFlow(provider) ? await provider.finish({ url, back, data: found.data ?? {}, verifier: found.verifier }) : await whoAt(provider, code, back, found.verifier);
+    } catch (error) {
+      return toAccount(new Headers(), messageOf(error, `${provider.name} didn't say who you are`, isFlow(provider)));
     }
-    const theirId = provider.id_(profile);
+    const theirId = theirs.id;
     if (!theirId || theirId === "undefined") return toAccount(new Headers(), `${provider.name} didn't say who you are`);
 
     // The identity's file is named by a hash, so any id a provider uses makes a safe path.
@@ -241,7 +248,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         if (!user) return toAccount(new Headers(), "Sign in again, then link it");
         await write(identity, { user: user.id, provider: id, created: Date.now() });
       } else if (!user) {
-        user = { id: random(16), name: provider.name_(profile).slice(0, 64), created: Date.now() };
+        user = { id: random(16), name: theirs.name.slice(0, 64), created: Date.now() };
         await write(`users/${user.id}.json`, user);
         await write(identity, { user: user.id, provider: id, created: Date.now() });
       }
@@ -370,8 +377,8 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         return current ? json({ user: current.user }) : json({ error: "Not signed in" }, 401);
       }
       if (request.method === "GET" && url.pathname.startsWith("/auth/spaces")) return spaces(request, url.pathname, {});
-      if (route === "GET /auth/providers") return json({ providers: providers.map((p) => ({ id: p.id, name: p.name })) });
-      const other = /^\/auth\/oauth\/([a-z0-9-]+)\/(start|callback)$/.exec(url.pathname);
+      if (route === "GET /auth/providers") return json({ providers: providers.map((p) => ({ id: p.id, name: p.name, ...(isFlow(p) && p.ask ? { ask: p.ask } : {}) })) });
+      const other = /^\/auth\/oauth\/([a-z0-9-]+)\/([a-z0-9.-]+)$/.exec(url.pathname);
       if (other && request.method === "GET") return oauth(request, url, other[1], other[2]);
       if (request.method !== "POST" || !url.pathname.startsWith("/auth/")) return undefined;
       // Only this site's own pages may sign in or out (a form on another site can't).
@@ -471,6 +478,25 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     return undefined;
   }
 }
+
+/** Plain OAuth 2: trade the code for a token, then ask the provider's user API who it belongs to. */
+async function whoAt(provider: OAuthProvider, code: string, back: string, verifier: string): Promise<{ id: string; name: string }> {
+  const tokenAnswer = await fetch(provider.token, {
+    method: "POST",
+    headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ grant_type: "authorization_code", code, redirect_uri: back, client_id: provider.clientId, client_secret: provider.clientSecret, code_verifier: verifier }),
+  });
+  const { access_token } = (await tokenAnswer.json()) as { access_token?: string };
+  if (!access_token) throw new Error("no token");
+  const who = await fetch(provider.user, { headers: { accept: "application/json", authorization: `Bearer ${access_token}`, "user-agent": "extensible-web-apps" } });
+  if (!who.ok) throw new Error(`user ${who.status}`);
+  const profile = (await who.json()) as Record<string, unknown>;
+  return { id: provider.id_(profile), name: provider.name_(profile) };
+}
+
+/** What to tell the person when a sign-in step fails: a flow's own words, else a plain fallback. */
+const messageOf = (error: unknown, fallback: string, own = true) =>
+  own && error instanceof Error && error.name === "Error" && error.message ? error.message.slice(0, 200) : fallback;
 
 /** Where a passkey is kept: by a hash of its id, which can be up to 1023 bytes, too long for a file's name. */
 const credentialPath = async (id: string) => `credentials/${await hash(id)}.json`;

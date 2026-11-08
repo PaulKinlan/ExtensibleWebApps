@@ -11,6 +11,8 @@
       main.account form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
       main.account input { flex: 1 1 12rem; }
       main.account [hidden] { display: none; }
+      main.account .providers { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+      main.account .providers form { flex: 1 1 100%; }
       #status:empty { display: none; }
       .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     </style>
@@ -34,7 +36,7 @@
       <section id="out" hidden>
         <p>Sign in with a passkey: your phone or computer keeps it for this site, and unlocks it with your face, fingerprint or screen lock.</p>
         <button id="signin" type="button">Sign in with a passkey</button>
-        <p class="providers"></p>
+        <div class="providers"></div>
         <h2>New here?</h2>
         <form id="register">
           <label for="name" class="visually-hidden">Your name</label>
@@ -49,7 +51,7 @@
           <button id="add" type="button">Add a passkey on another device</button>
           <button id="signout" type="button">Sign out</button>
         </p>
-        <p class="providers" data-link></p>
+        <div class="providers" data-link></div>
 
         <h2>Your spaces</h2>
         <p>A space holds people and their data, and any app can open in it. One with just you in it is your own.</p>
@@ -84,7 +86,17 @@
         const { providers = [] } = await fetch("/auth/providers").then((r) => (r.ok ? r.json() : {}), () => ({}));
         for (const holder of document.querySelectorAll(".providers")) {
           holder.replaceChildren(
-            ...providers.map(({ id, name }) => Object.assign(document.createElement("a"), { href: `/auth/oauth/${id}/start${pendingInvite ? `?invite=${encodeURIComponent(pendingInvite)}` : ""}`, className: "button", textContent: holder.hasAttribute("data-link") ? `Link your ${name} account` : `Sign in with ${name}` })),
+            ...providers.map(({ id, name, ask }) => {
+              const text = holder.hasAttribute("data-link") ? `Link your ${name} account` : `Sign in with ${name}`;
+              if (!ask) return Object.assign(document.createElement("a"), { href: `/auth/oauth/${id}/start${pendingInvite ? `?invite=${encodeURIComponent(pendingInvite)}` : ""}`, className: "button", textContent: text });
+              // A provider that needs something typed first (Bluesky, your handle): a small form that goes to the same place.
+              const form = Object.assign(document.createElement("form"), { method: "get", action: `/auth/oauth/${id}/start` });
+              const field = Object.assign(document.createElement("input"), { name: ask.name, placeholder: ask.placeholder, required: true, autocomplete: "username", spellcheck: false, autocapitalize: "none" });
+              field.setAttribute("aria-label", ask.label);
+              const invite = pendingInvite ? [Object.assign(document.createElement("input"), { type: "hidden", name: "invite", value: pendingInvite })] : [];
+              form.append(field, ...invite, Object.assign(document.createElement("button"), { type: "submit", textContent: text }));
+              return form;
+            }),
           );
         }
       }
