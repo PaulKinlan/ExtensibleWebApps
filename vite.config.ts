@@ -94,6 +94,13 @@ function asWritten(): Plugin {
         const name = path === "/" ? "index.html" : path.slice(1);
         const exact = entries.find((e) => e.url === name);
         if (exact && statSync(join(root, exact.disk)).isFile()) return serve(res, resolve(root, exact.disk));
+        // A folder of site/ named without its slash (/workbench) goes to its address with one, as Vite does for the others.
+        const folder = entries.find((e) => e.disk.startsWith(`${SITE}/`) && path === `/${e.url}` && statSync(join(root, e.disk)).isDirectory());
+        if (folder) {
+          res.statusCode = 301;
+          res.setHeader("Location", `/${folder.url}/${new URL(req.url ?? "/", "http://host").search}`);
+          return res.end();
+        }
         const top = entries.find((e) => statSync(join(root, e.disk)).isDirectory() && path.startsWith(`/${e.url}/`));
         if (!top) return next();
         // A folder's address serves its index.html, as Vite (and Cloudflare) do for the folders at the top.

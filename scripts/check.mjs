@@ -124,7 +124,11 @@ function scan(source) {
 /** A path as a link or ctx.ui.views gives it: from the site's root if it starts with /, else next to `from`; no query or fragment. */
 const local = (path, from) => {
   const clean = path.replace(/[?#].*$/, "");
-  return clean.startsWith("/") ? join(ROOT, clean) : join(dirname(from), clean);
+  if (!clean.startsWith("/")) return join(dirname(from), clean);
+  // The site's own pages are in site/, served at the root (vite.config.ts): /workbench/plugins/x.js is site/workbench/plugins/x.js.
+  const top = join(ROOT, clean);
+  const site = join(ROOT, "site", clean);
+  return !existsSync(top) && existsSync(site) ? site : top;
 };
 const rel = (file) => relative(ROOT, file) || ".";
 
