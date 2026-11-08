@@ -2,6 +2,8 @@
 // service worker and servers never import a plugin, a demo or the homepage,
 // and an app runs only the plugins its app.html links. The demo plugins in
 // site/workbench/plugins/ run on the workbench, which links them, and nowhere else.
+// Kernel modules in std/<name>/module.ts reach the kernel only through the
+// site's kernel.json (vite.kernel-modules.ts), never by an import in the core.
 import { readdirSync, readFileSync, statSync } from "node:fs";
 
 const ROOT = new URL("../../", import.meta.url);

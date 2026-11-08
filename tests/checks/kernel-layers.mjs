@@ -2,7 +2,7 @@
 // core, which every app and space server needs, or a kernel service an app
 // may not use. A new file has to say which, here and on that page, so the
 // core can't grow by accident. A file on neither list fails the check.
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 
 const KERNEL = new URL("../../src/kernel/", import.meta.url);
 
@@ -20,8 +20,10 @@ const CORE = [
   "hooks.ts",
   "hosts.ts",
   "isolate-host.ts",
+  "kernel-modules.d.ts",
   "kernel.ts",
   "manifest.ts",
+  "modules.ts",
   "net.ts",
   "paths.ts",
   "records.ts",
@@ -52,7 +54,6 @@ const SERVICES = [
   "services/audio.ts",
   "services/bus.ts",
   "services/commands.ts",
-  "services/debug.ts",
   "services/email.ts",
   "services/history.ts",
   "services/llm.ts",
@@ -83,4 +84,11 @@ export default async function ({ check }) {
   // By its whole path (a link to ../src/kernel/<path>), so a file can't pass on another's name.
   const missing = [...CORE, ...SERVICES].filter((path) => !page.includes(`src/kernel/${path})`));
   check("docs/layers.md links every file in src/kernel/, by its whole path", !missing.length, missing.join(", "));
+  // The kernel modules the site runs (kernel.json): each is std/<name>/module.ts, and the layers page names it.
+  const { modules } = JSON.parse(readFileSync(new URL("../../kernel.json", import.meta.url), "utf8"));
+  const absent = modules.filter((name) => !existsSync(new URL(`../../std/${name}/module.ts`, import.meta.url)));
+  check("every module kernel.json lists is a std/<name>/module.ts", !absent.length, absent.join(", "));
+  check("kernel.json lists its modules one per line, sorted", JSON.stringify([...modules].sort()) === JSON.stringify(modules), modules.join(", "));
+  const unnamed = modules.filter((name) => !page.includes(`std/${name}/module.ts`));
+  check("docs/layers.md names every kernel module", !unnamed.length, unnamed.join(", "));
 }

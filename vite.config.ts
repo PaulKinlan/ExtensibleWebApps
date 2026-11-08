@@ -1,5 +1,6 @@
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
+import { kernelModules } from "./vite.kernel-modules";
 import { defineConfig, type Plugin } from "vite";
 
 // Plugin workers get their content security policy from the response that
@@ -144,7 +145,8 @@ function notFoundPage(): Plugin {
 
 export default defineConfig({
   plugins: [workerPolicy(), asWritten(), notFoundPage()],
-  worker: { format: "es" },
+  // The kernel is a worker: its modules are the ones kernel.json lists.
+  worker: { format: "es", plugins: () => [kernelModules()] },
   build: {
     target: "es2022",
     // The host is the one entry: /platform/host.js, which every page loads. Pages themselves are copied as written.

@@ -24,6 +24,8 @@ import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { loadServices } from "./services";
+import { loadModules } from "./modules";
+import modules from "virtual:kernel-modules";
 import { routed } from "./services/router";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
@@ -48,7 +50,6 @@ tap(root);
 // Hooks the kernel defines here; its services define more, each collection has its own, and plugins define
 // theirs in their manifests (`<plugin>:<key>`).
 defineHook("debug:trace", { mode: "emit", needs: "debug:read", args: "[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]", description: "New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read." });
-defineHook("bench:ping", { mode: "serial", timeoutMs: 1000, onFailure: "open", args: "n", description: "Used by the round-trip benchmark; answer with anything." });
 
 const hosts = new Hosts(where.kind);
 setSink((events) => {
@@ -220,8 +221,12 @@ services.plugins = pluginSwitches.service;
 /** The kernel's API reference, built from the registries above as they are now. */
 const describe = () => reference(services, remote);
 
-// The rest of the services are a file each in services/, found by name.
-Object.assign(services, loadServices({ root, store, hosts, remote, apps, reviewed, describe, collections: records }));
+// The rest of the core's services are a file each in services/, found by name.
+const parts = { root, store, hosts, remote, apps, reviewed, describe, collections: records };
+Object.assign(services, loadServices(parts));
+// Then the kernel modules the site lists in kernel.json (docs/layers.md): each may add services and page commands.
+const commands = new Map<string, (arg: unknown) => unknown>();
+loadModules(modules, parts, services, commands);
 // A plugin can't take a service's name as its id, whichever way the service was added.
 for (const name of Object.keys(services)) RESERVED.add(name);
 
@@ -326,8 +331,8 @@ hosts.onMessage = async (host, message) => {
 };
 
 async function command(name: string, arg: unknown): Promise<unknown> {
-  if (name === "bench") return bench(Number(arg) || 300);
-  if (name === "reload-test") return reloadTest(Number(arg) || 50);
+  const added = commands.get(name);
+  if (added) return added(arg);
   if (name === "reload") return remote.reload(String(arg));
   if (name === "install") return plugins.install(String(arg));
   if (name === "uninstall") return plugins.remove(String(arg));
@@ -395,58 +400,6 @@ async function customize(name: string, arg: unknown): Promise<unknown> {
     }
   }
   return undefined;
-}
-
-const percentile = (values: number[], p: number) => {
-  const sorted = [...values].sort((a, b) => a - b);
-  return Math.round(sorted[Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length))] * 1000) / 1000;
-};
-
-/** Round trip of a serial hook answered by a plugin in another worker, against one answered in the kernel. */
-async function bench(n: number) {
-  const remoteTimes: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = performance.now();
-    await root.serial({ trace: `bench-${i}` }, "bench:ping", i);
-    remoteTimes.push(performance.now() - t);
-  }
-  const fiber = root.plugin({ name: "bench-local", apply: (ctx: any) => {
-      ctx.on("bench:local", async (i: number) => i);
-    },
-  });
-  await fiber;
-  const localTimes: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const t = performance.now();
-    await root.serial("bench:local", i);
-    localTimes.push(performance.now() - t);
-  }
-  await fiber.dispose();
-  const result = {
-    n,
-    remote: { p50: percentile(remoteTimes, 50), p95: percentile(remoteTimes, 95), max: percentile(remoteTimes, 100) },
-    local: { p50: percentile(localTimes, 50), p95: percentile(localTimes, 95) },
-  };
-  record({ kind: "note", name: "bench", detail: JSON.stringify(result) });
-  return result;
-}
-
-const hookCount = () =>
-  Object.entries(root.events._hooks as Record<string, unknown[]>)
-    .filter(([name]) => !name.startsWith("internal/"))
-    .reduce((n, [, list]) => n + list.length, 0);
-
-/** Reloads a sandboxed plugin many times and checks nothing is left behind. */
-async function reloadTest(n: number) {
-  const before = { hooks: hookCount(), workers: await hosts.bridge("host", "workerCount", []) };
-  let failures = 0;
-  for (let i = 0; i < n; i++) if (!(await remote.reload("word-count"))) failures++;
-  // Let terminate messages reach the tab.
-  await new Promise((r) => setTimeout(r, 200));
-  const after = { hooks: hookCount(), workers: await hosts.bridge("host", "workerCount", []) };
-  const result = { n, failures, before, after };
-  record({ kind: "note", name: "reload-test", detail: JSON.stringify(result) });
-  return result;
 }
 
 record({ kind: "lifecycle", name: "kernel:start", detail: { shared: "shared worker", dedicated: "dedicated worker", server: "space kernel" }[where.kind] });

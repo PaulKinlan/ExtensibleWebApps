@@ -20,6 +20,14 @@ written, and asks only for the permissions in its manifest.
 | [`import-export.js`](import-export.js) | Import and Export for each of the app's collections. Export saves one to a CSV file for a spreadsheet, or JSON. Import brings a CSV or JSON file's rows in (a bank statement, a spreadsheet, an earlier export): columns fill the fields with the same name or title, rows that don't fit are skipped and listed, and the person reviews the import once, as a whole. Undo takes it back. | `<link rel="plugin" href="/std/import-export.js">` in the head, and `<slot name="import-export"></slot>` in the body |
 | [`view-source.js`](view-source.js) | Every plugin the app links, and for the one picked, its code and what its manifest lets it do, in plain words. It can't change anything. | `<link rel="plugin" href="/std/view-source.js">` in the head, and `<slot name="inspect"></slot>` in the body |
 
+## Kernel modules
+
+Some folders here also hold a `module.ts`: a **kernel module**, trusted code that runs inside the kernel and gives plugins a service. An app doesn't link a module; the site lists the ones it runs in [`kernel.json`](../kernel.json), and only those are built into its kernel. [The layers](../docs/layers.md) says where modules sit between the kernel core and the plugins above.
+
+| Module | What it adds |
+| --- | --- |
+| [`debug/module.ts`](debug/module.ts) | The `debug` service, which the debug console and other developer tools read the trace from, and the `bench` and `reload-test` commands the tests run |
+
 ## The command palette
 
 - **What it uses.** The `commands` service: `commands.list()` and
