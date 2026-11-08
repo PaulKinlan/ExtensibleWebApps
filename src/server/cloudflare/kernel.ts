@@ -18,6 +18,7 @@ import { DurableObject } from "cloudflare:workers";
 import { setEnv } from "../../kernel/env";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { type IsolateHost, remoteIsolates } from "../../seams/remote-isolates.ts";
+import type { RouteRequest, RouteResponse } from "../routes.ts";
 import { signed } from "../signed.ts";
 
 type Send = (text: string) => void | Promise<void>;
@@ -62,6 +63,9 @@ async function whileLoading<T>(load: () => Promise<T>): Promise<T> {
   }
 }
 
+/** The kernel's answer for a public route, once it has started. */
+let answerRoute: ((request: RouteRequest) => Promise<RouteResponse | null>) | undefined;
+
 export class SpaceKernel extends DurableObject {
   private started?: Promise<(port: MessagePort) => void>;
   private clients = new Map<string, { port: MessagePort; send: Send; member: string }>();
@@ -77,6 +81,7 @@ export class SpaceKernel extends DurableObject {
         origin,
         folder: durableFiles(this.ctx.storage.sql as unknown as Sql),
         connect: (a) => void (accept = a),
+        serve: (answer) => void (answerRoute = answer),
         ...(host && {
           isolates: remoteIsolates(host, (name, error) => console.error(`Plugin ${name}:`, error)),
           site: (url: string) => host.site(url),
@@ -109,6 +114,12 @@ export class SpaceKernel extends DurableObject {
     };
     this.clients.set(client, { port: port1, send: kept, member });
     accept(port2);
+  }
+
+  /** A public route's request (src/server/routes.ts), which may be what wakes the space. Null if no plugin has it. */
+  async route(origin: string, request: RouteRequest, host?: SpaceHost): Promise<RouteResponse | null> {
+    await this.start(origin, host);
+    return (await answerRoute?.(request)) ?? null;
   }
 
   async deliver(client: string, text: string): Promise<void> {
