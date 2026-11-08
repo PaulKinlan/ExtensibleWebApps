@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "bin": {
+    "create-extensible-app": "scripts/create-app.mjs"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build && npm run build:cloudflare",
