@@ -5,6 +5,7 @@
 // Worker can import it and Wrangler bundles it in. Never served.
 import { createHash } from "node:crypto";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { kernelModules } from "./vite.kernel-modules";
 import { defineConfig, type Plugin } from "vite";
 
 const asSource = (): Plugin => ({
@@ -22,7 +23,7 @@ const asSource = (): Plugin => ({
 
 export default defineConfig({
   publicDir: false,
-  plugins: [asSource()],
+  plugins: [asSource(), kernelModules()],
   ssr: { target: "webworker", noExternal: true },
   build: {
     ssr: "src/server/cloudflare/kernel.ts",

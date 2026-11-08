@@ -4,10 +4,12 @@
 // because it imports plugin sources as text and finds services by name; the
 // server itself (serve.ts) and the seams run as written. The output goes in
 // .build/, which is never served.
+import { kernelModules } from "./vite.kernel-modules";
 import { defineConfig } from "vite";
 
 export default defineConfig({
   publicDir: false,
+  plugins: [kernelModules()],
   build: {
     ssr: true,
     outDir: ".build/server",

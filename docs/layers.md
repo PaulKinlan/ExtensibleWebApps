@@ -19,7 +19,7 @@ flowchart TB
 | --- | --- | --- | --- |
 | Apps | `demos/`, `site/`, your own folder | The page, plus its plugins' workers | The app's author (`app.html`), and the person (Customize) |
 | std plugins | [`std/`](../std/) | A sandboxed worker each | Each app, with `<link rel="plugin">` |
-| Kernel services | [`src/kernel/services/`](../src/kernel/services/), and a few files beside them | Inside the kernel, trusted | Nobody yet: every one is built into every kernel, which is [being changed](#where-this-is-going) |
+| Kernel services | [`src/kernel/services/`](../src/kernel/services/) and beside it, and kernel modules in `std/<name>/module.ts` | Inside the kernel, trusted | Modules: the site, in [`kernel.json`](../kernel.json). The rest: nobody yet, every one is built into every kernel ([being changed](#where-this-is-going)) |
 | Kernel core | [`src/kernel/`](../src/kernel/) | Inside the kernel, trusted | Always there |
 | Cordis | `node_modules/cordis` ([cordiverse/cordis](https://github.com/cordiverse/cordis)) | Inside the kernel | Pinned in `package.json` |
 
@@ -52,12 +52,13 @@ The core is what every app and every space server needs to run any plugin at all
 | The person's own plugins | [`user-plugins.ts`](../src/kernel/user-plugins.ts), [`authoring.ts`](../src/kernel/authoring.ts) | Plugins a person (or their agent) adds to an app, and the help to write them |
 | Describing itself | [`reference.ts`](../src/kernel/reference.ts) | The [API reference](api.md), built from the tables the kernel enforces |
 | Wiring | [`kernel.ts`](../src/kernel/kernel.ts) | Puts the pieces together |
+| Kernel modules | [`modules.ts`](../src/kernel/modules.ts), [`kernel-modules.d.ts`](../src/kernel/kernel-modules.d.ts) | Runs the modules the site lists in `kernel.json` (below) |
 
 And the services every plugin relies on: `kernel`, `settings`, `plugins`, `storage`, `files`, `data`, `secrets`, `net` and `hooks`. Most are made beside the module they belong to; four are a file each, which [`services/index.ts`](../src/kernel/services/index.ts) finds by name: [`services/files.ts`](../src/kernel/services/files.ts), [`services/hooks.ts`](../src/kernel/services/hooks.ts), [`services/kernel.ts`](../src/kernel/services/kernel.ts) and [`services/storage.ts`](../src/kernel/services/storage.ts).
 
 ## Kernel services
 
-These are capabilities with trusted code in the kernel: an app may use them, but not every app does. Each is a file in [`src/kernel/services/`](../src/kernel/services/) (some with helpers beside it), and today **every one is built into every kernel**, in the browser and on a server, whether an app uses it or not, and nobody can leave one out. Each is also made when the kernel starts, not when first called: most only define their hooks then, but some start work of their own. `schedule` reads its saved jobs and sets their timers, and `sync` listens for this device's changes. A site that leaves a service out will skip that start-up work as well.
+These are capabilities with trusted code in the kernel: an app may use them, but not every app does. Most are still a file in [`src/kernel/services/`](../src/kernel/services/) (some with helpers beside it), and **each of those is built into every kernel**, in the browser and on a server, whether an app uses it or not, and nobody can leave one out. Each is also made when the kernel starts, not when first called: most only define their hooks then, but some start work of their own. `schedule` reads its saved jobs and sets their timers, and `sync` listens for this device's changes. A site that leaves a service out will skip that start-up work as well.
 
 | Service | Files | Why it is trusted code |
 | --- | --- | --- |
@@ -71,15 +72,33 @@ These are capabilities with trusted code in the kernel: an app may use them, but
 | `history` | [`services/history.ts`](../src/kernel/services/history.ts) | Undo across every plugin's writes |
 | `commands` | [`services/commands.ts`](../src/kernel/services/commands.ts) | Commands from any plugin, run from a palette or a key |
 | `router`, `share`, `audio`, `page` | [`services/router.ts`](../src/kernel/services/router.ts), [`services/share.ts`](../src/kernel/services/share.ts), [`services/audio.ts`](../src/kernel/services/audio.ts), [`services/page.ts`](../src/kernel/services/page.ts) | Bridges to what only a page can do |
-| `reflect`, `debug` | [`services/reflect.ts`](../src/kernel/services/reflect.ts), [`services/debug.ts`](../src/kernel/services/debug.ts) | Read-only views of the whole kernel, for debuggers |
+| `reflect` | [`services/reflect.ts`](../src/kernel/services/reflect.ts) | A read-only view of the whole kernel, for debuggers |
 | spaces | [`sync.ts`](../src/kernel/sync.ts), [`sync-device.ts`](../src/kernel/sync-device.ts), [`server-apps.ts`](../src/kernel/server-apps.ts), [`routes.ts`](../src/kernel/routes.ts), [`services/sync.ts`](../src/kernel/services/sync.ts) | Sync with a space, plugins on its server, public routes |
+
+### Kernel modules
+
+The first services have moved out of the core into **kernel modules**. A module is a Cordis plugin in `std/<name>/module.ts`, and the site lists the ones it runs in [`kernel.json`](../kernel.json), one per line:
+
+```json
+{
+  "modules": [
+    "debug"
+  ]
+}
+```
+
+Only the listed modules are built into the kernel, in the browser and on the site's servers ([`vite.kernel-modules.ts`](../vite.kernel-modules.ts)). A name with no `module.ts` stops the build, and a module that `uses` another the site doesn't list stops the kernel: neither quietly goes without. [`src/kernel/modules.ts`](../src/kernel/modules.ts) says how to write one.
+
+| Module | File | What it adds |
+| --- | --- | --- |
+| `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
 
 ### Where this is going
 
 The plan, being reviewed now, splits this layer out of the core:
 
-1. Each kernel service becomes a Cordis plugin of its own that `provide`s its service and `inject`s what it needs (agents injects `llm`, `tools` and `bus`).
-2. A site lists the ones it runs, in one file. Only those are built into its kernel, in the browser and on its servers. The default lists them all, so nothing changes for an app until its site asks.
+1. Each of the services above becomes a kernel module, as `debug` has, naming the modules it `uses` (agents uses `llm`, `tools` and `bus`). This repo's `kernel.json` lists them all, so no demo changes.
+2. A smaller site lists fewer, and has less built in.
 3. A plugin's manifest says which services it calls. An app whose plugins need a service the site doesn't run fails to open, with a message naming the service, rather than failing later on the first call.
 4. A sandboxed plugin can provide a service too. Then much of what is trusted code today can be a std plugin, and a plugin a person or their agent writes can add a service as first-class as one the platform ships.
 

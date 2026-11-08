@@ -11,6 +11,6 @@
     "allowImportingTsExtensions": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "elements"],
+  "include": ["src", "elements", "std/*/module.ts"],
   "exclude": ["src/server", "src/seams/node.ts", "src/seams/node-isolates.ts"]
 }
