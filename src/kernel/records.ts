@@ -50,6 +50,14 @@ const MAX_BYTES = 5_000_000;
 const INDEX = "collections/_registry.json";
 
 /** What `reviewed` in the kernel does: asks the person, throws unless they allow it. */
+/** A write to a record: `after` is missing for a delete, `before` for a new record. */
+export interface Change {
+  collection: string;
+  id: string;
+  before?: StoredRecord;
+  after?: StoredRecord;
+}
+
 type Review = (instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: Dispatch) => Promise<string>;
 
 const base = (instance: string) => instance.split("@")[0];
@@ -167,8 +175,11 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
 
   const sorted = (records: Map<string, StoredRecord>) => [...records.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
-  /** Writes (or, with `fields` null, deletes) a record as `instance`. Reviewed unless the plugin owns the collection. */
-  async function write(instance: string, name: string, id: string | undefined, fields: Fields | null, reason: unknown, dispatch: Dispatch) {
+  /**
+   * Writes (or, with `fields` null, deletes) a record as `instance`. Reviewed unless the plugin owns the collection,
+   * or `reviewed` says the person already reviewed it with others (services/transfer.ts reviews an import once).
+   */
+  async function write(instance: string, name: string, id: string | undefined, fields: Fields | null, reason: unknown, dispatch: Dispatch, reviewed = false) {
     const collection = known(name);
     const records = await load(name);
     const recordId = typeof id === "string" && /^[\w-]{1,64}$/.test(id) ? id : newId();
@@ -186,7 +197,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       if (!before && records.size >= MAX_RECORDS) throw new Error(`The ${name} collection is limited to ${MAX_RECORDS} records`);
     }
     let outcome: string | undefined;
-    if (collection.owner !== base(instance)) {
+    if (collection.owner !== base(instance) && !reviewed) {
       const show = (r?: StoredRecord) => (r ? JSON.stringify(Object.fromEntries(Object.entries(r).filter(([k]) => !RECORD_FIELDS.includes(k) || k === "id")), null, 2) : "");
       outcome = await review(instance, `data:${name}`, `${fields ? (before ? "a record" : "a new record") : "and delete a record"} in ${collection.title}`, show(before), show(after), reason, dispatch);
     }
@@ -210,7 +221,44 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     });
     if (committed) return committed;
     root.emit(dispatch, `data:changed:${name}`, change);
+    for (const heard of written) heard(change, instance);
     return { ok: true, id: recordId, ...(outcome ? { outcome } : {}) };
+  }
+
+  const STALE = "It has changed since";
+
+  /** Who hears every write by a plugin, with the plugin that made it (services/history.ts). */
+  const written = new Set<(change: Change, instance: string) => void>();
+
+  /**
+   * Puts a record back as it was (`to`, or deleted when it is missing), for the person: no review,
+   * as it undoes a change already made. Only if the record is still `from`, what the change left;
+   * data:beforeWrite listeners can still stop it.
+   */
+  async function restore(name: string, id: string, from: StoredRecord | undefined, to: StoredRecord | undefined, dispatch: Dispatch): Promise<{ ok: true } | { ok: false; error: string; stale?: boolean }> {
+    known(name);
+    const records = await load(name);
+    const change: Change = { collection: name, id, before: from, after: to };
+    const verdict = await root.serial(dispatch, `data:beforeWrite:${name}`, change);
+    if (verdict && typeof verdict === "object" && "block" in verdict) return { ok: false, error: String(verdict.block) };
+    const failed = await serially(name, async () => {
+      if (JSON.stringify(records.get(id)) !== JSON.stringify(from)) return STALE;
+      if (to && !from && records.size >= MAX_RECORDS) return `The ${name} collection is limited to ${MAX_RECORDS} records`;
+      if (to) records.set(id, to);
+      else records.delete(id);
+      try {
+        await save(name, records);
+      } catch (error) {
+        if (from) records.set(id, from);
+        else records.delete(id);
+        throw error;
+      }
+      return undefined;
+    });
+    // A record that changed since can never be put back; anything else may work another time.
+    if (failed) return { ok: false, error: failed, ...(failed === STALE ? { stale: true } : {}) };
+    root.emit(dispatch, `data:changed:${name}`, change);
+    return { ok: true };
   }
 
   const service: ServiceProvider = {
@@ -293,6 +341,12 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       }
     },
     registry,
+    written,
+    restore,
+    write,
+    may,
+    /** Every record in a collection, most recently changed first, for a service that checks rights itself. */
+    records: async (name: string) => sorted(await load(name)),
     /** Settles once the collections saved from earlier runs are known. */
     ready,
   };

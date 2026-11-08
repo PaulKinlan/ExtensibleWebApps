@@ -464,6 +464,34 @@ Needs: `files:<folder>`, and the person's review.
 
 Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open.
 
+### history
+
+Undo and redo for the person, across every write to the app's collections, whichever plugin made it.
+
+#### history.redo
+
+`history.redo()` → { ok, step } or { ok: false, step?, error }
+
+Needs: `history`.
+
+Makes the most recent undone write again. A new write to that record ends its redo.
+
+#### history.state
+
+`history.state()` → { undo: step or null, redo: step or null }
+
+Needs: `history`.
+
+What Undo and Redo would do now in the caller's app. A step is `{ kind, collection, title, id, label?, by, at, text }`, with kind add, edit or delete and text such as `delete “Coffee” in Expenses`.
+
+#### history.undo
+
+`history.undo()` → { ok, step } or { ok: false, step?, error }
+
+Needs: `history`.
+
+Takes back the app's most recent write: the record goes back to how it was, with no review. If the record changed since, that step is dropped and the answer says so; the next undo takes the one before.
+
 ### kernel
 
 The kernel itself.
@@ -684,6 +712,34 @@ Needs: nothing.
 
 The caller's tools: each service method that describes its arguments and that the caller's manifest lets it call. Pass them to `llm.complete` as `tools`. A method that takes a collection is one tool per collection the caller may use, such as `data_put_books` with that collection's fields (one tool listing them, past five).
 
+### transfer
+
+Import and export for the person: a collection of the app's to a CSV or JSON file, and a file they choose into a collection.
+
+#### transfer.collections
+
+`transfer.collections()` → [{ name, title, count, fields }]
+
+Needs: `transfer`.
+
+The collections the caller's app's plugins own, which it can import into and export, with how many records each has and its fields.
+
+#### transfer.export
+
+`transfer.export(collection, format?)` → { ok, file, count }
+
+Needs: `transfer`.
+
+Saves every record in the collection to a file the person downloads, such as expenses-2026-11-08.csv: a column for the id, each field, and when it was made and changed.
+
+#### transfer.import
+
+`transfer.import(collection, reason?)` → { ok, file, added, replaced, skipped: [{ row, error }], ignored: [column] } or { ok: false, cancelled?, error }
+
+Needs: `transfer`, and the person's review.
+
+Asks the person for a CSV or JSON file and adds its rows to the collection, after one review of them all. Columns match fields by name or title; rows that don't fit the schema are skipped and listed; a row whose id is in the collection replaces that record. Only right after the person clicks, as the browser opens a file chooser only then.
+
 ## Hooks
 
 ### `agent:budget`
@@ -814,6 +870,14 @@ Mode: `emit`. Listening needs `debug:read`.
 
 Listeners get `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]`.
 
+### `history:changed`
+
+Something was written, undone or redone, so what Undo and Redo would do may have changed: read history.state().
+
+Mode: `emit`. Listening needs `history`.
+
+Listeners get `{}`.
+
 ### `llm:complete`
 
 Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }. Listening needs provide:llm.
@@ -886,6 +950,14 @@ Mode: `emit`. Listening needs `router`.
 
 Listeners get `{ app, tab, path, query }`.
 
+### `transfer:changed`
+
+A record in a collection transfer.collections listed was written or deleted, so the counts may have changed: call transfer.collections() again.
+
+Mode: `emit`. Listening needs `transfer`.
+
+Listeners get `{}`.
+
 ### Dispatch modes
 
 | Mode | What happens |
@@ -922,6 +994,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:write:notes` | Call store.put. |
 | `debug:read` | Call debug.recent, debug.app. |
 | `files:<folder>` | Call files.read, files.write. |
+| `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `network:<host>` | Call net.fetch. |
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file. |
@@ -929,6 +1002,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `plugins:read` | Call authoring.source, authoring.check, plugins.app. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
+| `transfer` | Call transfer.collections, transfer.export, transfer.import. |
 | `ui` | Call page.matches. |
 
 Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
@@ -967,6 +1041,7 @@ Reserved ids, which no plugin can take:
 - `data`
 - `debug`
 - `files`
+- `history`
 - `host`
 - `kernel`
 - `llm`
@@ -981,6 +1056,7 @@ Reserved ids, which no plugin can take:
 - `storage`
 - `store`
 - `tools`
+- `transfer`
 
 Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`.
 
