@@ -1,0 +1,15 @@
+<!--
+  The gauge wip.js adds to a column's header. It sends { count, limit,
+  over, full, by }; data-over and data-full are there only when true.
+-->
+<style>
+  .gauge { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font: 600 0.7rem var(--mono); color: var(--fg-2); background: var(--bg-2); }
+  .gauge[data-full] { color: light-dark(#b45309, #fcd34d); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+  .gauge[data-over] { color: #fff; background: var(--danger); }
+</style>
+<template id="gauge">
+  <span class="gauge" data-over="{{over}}" data-full="{{full}}" title="Work-in-progress limit: {{limit}}">
+    <template if="over">Over by {{by}}</template>
+    <template if="!over">{{count}} of {{limit}}</template>
+  </span>
+</template>
