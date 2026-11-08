@@ -2,6 +2,7 @@
 // Makes a project of your own: a copy of the whole platform, with a new app
 // in it made from the starter. No checkout of this repo needed.
 //
+//   npm create extensible-app packing-list           (scripts/create-extensible-app/ runs the line below)
 //   npx github:PaulKinlan/ExtensibleWebApps packing-list
 //   npx github:PaulKinlan/ExtensibleWebApps packing-list --name "Packing"
 //   npx github:PaulKinlan/ExtensibleWebApps packing-list --no-install
@@ -72,7 +73,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   const noInstall = args.includes("--no-install");
   const rest = args.filter((a) => a !== "--no-install");
   if (rest.length !== 1 || rest[0].startsWith("-")) {
-    console.error('Usage: npx github:PaulKinlan/ExtensibleWebApps <folder> [--name "My app"] [--no-install]');
+    console.error('Usage: npm create extensible-app <folder> [--name "My app"] [--no-install]');
     process.exit(2);
   }
   let made;
