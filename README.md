@@ -161,3 +161,7 @@ Every push to `main` is deployed to Cloudflare, at https://extensibleweb.app/, t
   - the [Markdown editor](https://github.com/PaulKinlan/MarkdownEdiitor)'s extension system
   - [Pi](https://github.com/badlogic/pi-mono)'s extensions
   - Ink & Switch's [Malleable software](https://www.inkandswitch.com/essay/malleable-software/) essay
+
+## License
+
+[Apache License 2.0](LICENSE).
