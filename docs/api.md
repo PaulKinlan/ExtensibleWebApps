@@ -518,7 +518,23 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each? } }. `at` is a CSS selector run against the page (never inside another plugin's view); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
 
-Reserved ids: `audio`, `data`, `debug`, `files`, `host`, `kernel`, `net`, `notes`, `page`, `plugins`, `review`, `secrets`, `settings`, `storage`, `store`.
+Reserved ids, which no plugin can take:
+
+- `audio`
+- `data`
+- `debug`
+- `files`
+- `host`
+- `kernel`
+- `net`
+- `notes`
+- `page`
+- `plugins`
+- `review`
+- `secrets`
+- `settings`
+- `storage`
+- `store`
 
 Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `notes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`.
 
