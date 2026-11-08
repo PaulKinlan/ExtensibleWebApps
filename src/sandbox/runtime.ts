@@ -17,6 +17,8 @@ const handlers = new Map<number, (...args: any[]) => unknown>();
 const calls = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 const eventHandlers = new Set<(action: string, value: unknown) => void>();
 const canvasHandlers = new Map<string, (canvas: OffscreenCanvas) => void>();
+/** Each command's listener, by id, so adding an id again replaces the old handler (ctx.commands.add). */
+const commandListeners = new Map<string, () => void>();
 const settingsHandlers = new Set<(values: Record<string, unknown>) => void>();
 
 /** The trace id of the hook or event being handled; calls made while handling it carry it. */
@@ -60,6 +62,25 @@ function api(trace: () => string | undefined): Api {
     routes: {
       add(method, path, handler) {
         return self.on(`route:${String(method).toUpperCase()} ${path}`, (request: RouteRequest) => handler(request));
+      },
+    },
+    commands: {
+      add(command, handler) {
+        const id = String(command?.id);
+        // Adding an id again replaces it: the old handler stops listening.
+        commandListeners.get(id)?.();
+        // Listen first: the kernel lists a command only once its plugin is listening for it. The result goes back
+        // as { value }, so the kernel can tell it from its own failure answers.
+        const off = self.on(`command:${id}`, async (args: Record<string, unknown>, about: { by: string }) => ({ value: await handler(args, about) }));
+        commandListeners.set(id, off);
+        call("commands", "add", command).catch((error) => log(`Couldn't add the command ${id}: ${error instanceof Error ? error.message : error}`, "error"));
+        return () => {
+          // A replaced registration's off() leaves its replacement alone.
+          if (commandListeners.get(id) !== off) return;
+          commandListeners.delete(id);
+          off();
+          void call("commands", "remove", id).catch(() => {});
+        };
       },
     },
     ui: {
