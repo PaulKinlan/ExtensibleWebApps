@@ -82,6 +82,8 @@ export default async function ({ check, context, errors }) {
     await openList(ben.page, server.url);
     const reached = await hasTitle(ben.page, "Middlemarch");
     check("a space: a book one person adds in the reading list at /s/<space>/ shows on another person's device", reached, JSON.stringify(await titles(ben.page)));
+    const who = { ann: (await sync(ann.page)).member, ben: (await sync(ben.page)).member };
+    check("a space: each device knows which member it is signed in as there", !!who.ann && !!who.ben && who.ann !== who.ben, JSON.stringify(who));
 
     // Both devices added the app's sample books, which have ids of their own: the space has each once.
     const samples = (await titles(ben.page)).filter((t) => t.includes("Piranesi")).length;

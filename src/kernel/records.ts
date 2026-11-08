@@ -56,6 +56,8 @@ export interface Change {
   id: string;
   before?: StoredRecord;
   after?: StoredRecord;
+  /** In a space, who made a change that came from elsewhere: a member's name, or `plugin:<id>` for a server plugin. */
+  by?: string;
 }
 
 type Review = (instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: Dispatch) => Promise<string>;
@@ -102,7 +104,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     registry.set(collection.name, collection);
     const { name } = collection;
     if (!hooks.has(`data:changed:${name}`)) {
-      defineHook(`data:changed:${name}`, { mode: "emit", args: "{ collection, id, before?, after? }", description: `A record in ${name} was written or deleted (after is missing for a delete).` });
+      defineHook(`data:changed:${name}`, { mode: "emit", args: "{ collection, id, before?, after?, by? }", description: `A record in ${name} was written or deleted (after is missing for a delete). In a space, a change from another device or the space's server says who made it with \`by\`: a member's name, or plugin:<id>.` });
       defineHook(`data:beforeWrite:${name}`, { ...BEFORE_WRITE, args: "{ collection, id, before?, after? }", description: `Before a record in ${name} is written or deleted. Return { block: reason } to stop it.` });
       root.on(`data:changed:${name}`, () => push(name));
     }
@@ -268,15 +270,15 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
   /**
    * Puts a record as another device made it (`after`, or deleted when it is null), for sync (sync.ts):
    * no review, as the person who made it already did, and the collection needn't be known here yet.
-   * Views and `data:changed` listeners hear it as they hear any write.
+   * Views and `data:changed` listeners hear it as they hear any write, with `by`, who made it, when sync knows.
    */
-  async function apply(name: string, id: string, after: StoredRecord | null, dispatch: Dispatch = {}): Promise<Change> {
+  async function apply(name: string, id: string, after: StoredRecord | null, dispatch: Dispatch = {}, by?: string): Promise<Change> {
     if (!NAME.test(name)) throw new Error(`${name} isn't a collection's name`);
     const records = await load(name);
     let change!: Change;
     await serially(name, async () => {
       const before = records.get(id);
-      change = { collection: name, id, before, ...(after ? { after } : {}) };
+      change = { collection: name, id, before, ...(after ? { after } : {}), ...(by ? { by } : {}) };
       if (after) records.set(id, after);
       else records.delete(id);
       try {

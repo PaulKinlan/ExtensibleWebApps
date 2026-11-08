@@ -814,11 +814,11 @@ Makes a draft the record again, with no review, as a new change sent to the spac
 
 #### sync.state
 
-`sync.state()` → { space: null } or { space, connected, pending, drafts }
+`sync.state()` → { space: null } or { space, member?, connected, pending, drafts }
 
 Needs: `sync`.
 
-Whether this page keeps a copy of a space, whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
+Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
 
 ### tools
 

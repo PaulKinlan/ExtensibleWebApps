@@ -53,6 +53,8 @@ interface State {
 /** Connects to `url` (the space's kernel) and keeps this kernel's collections in step with it. */
 export function syncDevice(url: string, store: Store, records: Collections, hosts: Hosts, { WebSocketImpl = globalThis.WebSocket } = {}) {
   let state: State = { seq: 0, versions: {}, pending: {}, drafts: [] };
+  /** Who this device is signed in as, once the space has said (its answer to hello). */
+  let member: string | undefined;
   const loaded = store.readJson<unknown>(STATE, null).then((saved) => {
     const s = saved as State | null;
     if (s && typeof s.seq === "number") state = { seq: s.seq, versions: { ...s.versions }, pending: { ...s.pending }, drafts: Array.isArray(s.drafts) ? s.drafts.map((d, i) => ({ ...d, ref: d.ref ?? `d${i}-${d.at}` })) : [] };
@@ -124,7 +126,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
         // will refuse it as stale when it's sent, and then the space's record comes here and this one
         // becomes a draft.)
         try {
-          await records.apply(c.collection, c.id, c.after as StoredRecord | null, { trace: `sync-${c.seq}` });
+          await records.apply(c.collection, c.id, c.after as StoredRecord | null, { trace: `sync-${c.seq}` }, c.by);
         } catch (error) {
           trace({ kind: "error", name: "sync:apply", detail: `${k} (${c.seq}): ${error instanceof Error ? error.message : error}` });
           save();
@@ -204,6 +206,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     }
     if (m?.t !== "sync") return;
     if (m.op === "changes") {
+      if (typeof m.member === "string") member = m.member;
       const applied = await changes(m.changes, m.seq);
       first();
       if (!applied) return void ws.close();
@@ -266,7 +269,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     /** What this device has, for the page and for checks. */
     async state() {
       await loaded;
-      return { space, seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
+      return { space, ...(member ? { member } : {}), seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
     },
     /**
      * Makes a draft the record again, as a change made here: it replaces what the space has now (only
