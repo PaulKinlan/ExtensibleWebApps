@@ -35,14 +35,14 @@
   /* The grid: a label column and sixteen steps, in groups of four. */
   .grid { display: grid; grid-template-columns: minmax(84px, max-content) repeat(16, minmax(0, 1fr)); gap: 6px; align-items: center; overflow-x: auto; }
   .grid > .row { display: contents; }
-  .steps span { font: 600 0.62rem var(--mono); text-align: center; color: var(--fg-2); opacity: 0.6; }
+  .steps span { font-weight: 600; font-size: 0.62rem; font-family: var(--mono); text-align: center; color: var(--fg-2); opacity: 0.6; }
   .steps span[data-beat] { opacity: 1; }
   .steps span[data-now] { color: var(--accent); opacity: 1; }
   .track { display: flex; align-items: center; gap: 8px; padding-right: var(--space-2); }
   .track button { flex: none; width: 28px; height: 28px; padding: 0; border-radius: 8px; font-size: 13px; color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, transparent); border-color: color-mix(in srgb, var(--hue) 35%, transparent); }
   .track button[aria-pressed="true"] { color: var(--fg-2); background: transparent; border-style: dashed; border-color: var(--border); }
   .track span { font-weight: 600; font-size: var(--text-sm); }
-  .track small { margin-left: auto; font: 0.68rem var(--mono); color: var(--fg-2); }
+  .track small { margin-left: auto; font-size: 0.68rem; font-family: var(--mono); color: var(--fg-2); }
   /* The room other plugins fill, under each row's name. */
   .track .tools { display: contents; }
 
