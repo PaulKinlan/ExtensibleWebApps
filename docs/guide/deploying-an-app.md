@@ -27,6 +27,15 @@ Then it runs `npx wrangler deploy -c .build/apps/<name>/wrangler.jsonc`.
 
 The app keeps its path, so the packing list lives at `/demos/packing-list/`, and nothing in it is rewritten. It warns when `app.html` links to a page the Worker won't have, such as a demo's header links to `/docs/`.
 
+## Deploying from GitHub instead
+
+[`.github/workflows/deploy-app.yml`](../../.github/workflows/deploy-app.yml) runs the same command on GitHub, so nothing runs on your machine. Set it up once:
+
+1. In Cloudflare, make an API token from the **Edit Cloudflare Workers** template (My Profile → API Tokens → Create Token), for the account the Workers go in.
+2. In the repo's Settings → Secrets and variables → Actions, add `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (from the Workers overview page in Cloudflare).
+
+Then each deploy is one step: Actions → **Deploy one app** → Run workflow, with the app's folder. Or from a terminal: `gh workflow run deploy-app.yml -f app=demos/habits`. The run's summary shows the address.
+
 ## Deploying on every push instead
 
 The main site deploys through Cloudflare's Git integration. An app's Worker can too, if the app is committed to the repo. In the Cloudflare dashboard, create a Worker from this repository, name it after the app, and set:
