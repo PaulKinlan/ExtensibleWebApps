@@ -62,7 +62,9 @@ export type HostToKernel =
   | { t: "bye"; tab: string }
   | { t: "event"; owner: string; action: string; value?: unknown; trace: string }
   | { t: "spawned"; plugin: string; port: MessagePort }
-  | { t: "canvas"; owner: string; id: string; canvas: OffscreenCanvas }
+  | { t: "canvas"; owner: string; id: string; canvas: OffscreenCanvas; theme?: CanvasTheme }
+  /** The theme changed: for a plugin with canvases in this tab. */
+  | { t: "canvas:theme"; owner: string; theme: CanvasTheme }
   | { t: "bridge:result"; id: number; ok: boolean; value?: unknown; error?: string }
   | { t: "command"; name: Command; arg?: unknown; id: number }
   /** A view bound to a collection, drawn by `owner`, wants its records. */
@@ -145,11 +147,20 @@ export interface Place {
   in?: string;
 }
 
+/** The page's theme, for drawing on a canvas: resolved colours of the platform's tokens, the font, and light or dark. */
+export interface CanvasTheme {
+  scheme: "light" | "dark";
+  /** fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok, warn: colours a 2D context takes. */
+  colors: Record<string, string>;
+  font: string;
+}
+
 // kernel <-> plugin worker
 export type KernelToPlugin =
   | { t: "hook"; id?: number; listener: number; name: string; args: unknown[]; trace?: string }
   | { t: "event"; action: string; value?: unknown; trace?: string }
-  | { t: "canvas"; id: string; canvas: OffscreenCanvas }
+  | { t: "canvas"; id: string; canvas: OffscreenCanvas; theme?: CanvasTheme }
+  | { t: "canvas:theme"; theme: CanvasTheme }
   | { t: "result"; id: number; ok: boolean; value?: unknown; error?: string };
 
 export type PluginToKernel =

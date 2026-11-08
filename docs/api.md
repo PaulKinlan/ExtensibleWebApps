@@ -126,11 +126,11 @@ Draws what the function returns, like `ui.render`, and draws it again whenever a
 
 ### ctx.ui.onCanvas
 
-`ctx.ui.onCanvas(id, (canvas) => …)`
+`ctx.ui.onCanvas(id, (canvas, theme) => …)`
 
 Needs: nothing.
 
-Receives the OffscreenCanvas for a canvas view the plugin rendered. Use scope "tab" for plugins that draw.
+Receives the OffscreenCanvas for a canvas view the plugin rendered, with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope "tab" for plugins that draw.
 
 ### ctx.ui.onEvent
 
@@ -139,6 +139,14 @@ Receives the OffscreenCanvas for a canvas view the plugin rendered. Use scope "t
 Needs: nothing.
 
 Hears the person use the plugin's views: a button's or field's `action`, with a field's new value.
+
+### ctx.ui.onTheme
+
+`ctx.ui.onTheme((theme) => …) → off()`
+
+Needs: nothing.
+
+Hears the theme change (light and dark flip, a theme is turned on or off) in a tab where the plugin has a canvas, so it can draw again in the new colours.
 
 ### ctx.ui.render
 
