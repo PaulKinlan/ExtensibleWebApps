@@ -38,6 +38,28 @@ The handler gets `{ method, path, query, form }`. `form` holds a posted form's f
 - A route works while the app is open in a tab, because the service worker reaches the kernel through a tab. With no tab open, a route answers 503.
 - A request no running plugin claims never reaches the kernel. The service worker keeps the table of routes and sends everything else straight to the network.
 
+```mermaid
+sequenceDiagram
+    participant B as The browser
+    participant SW as The service worker
+    participant T as An open tab of the app
+    participant K as The kernel
+    participant P as library.js
+
+    B->>SW: GET /demos/reading-list/books.json
+    alt a running plugin added this route
+        SW->>T: the request
+        T->>K: the request
+        K->>P: the route's handler, with { method, path, query, form }
+        P-->>K: { json: books }
+        K-->>T: the response
+        T-->>SW: the response
+        SW-->>B: 200, application/json
+    else no plugin claims it
+        SW->>B: straight to the network
+    end
+```
+
 ## What else the service worker does
 
 Each job is a file in [`sw/routes/`](../../sw/routes/), listed in [`sw/routes/index.js`](../../sw/routes/index.js). To add one, add a file and one line there.

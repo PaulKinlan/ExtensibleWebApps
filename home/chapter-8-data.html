@@ -1,0 +1,35 @@
+<!--
+  Chapter 8's words. chapter-8-data.js sends { waiting, result }: whether a
+  review card is open, and the last try, null or { ok, text }. The buttons
+  send "add" and "invalid".
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter pre { overflow-x: auto; padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); font-size: var(--text-sm); }
+  .chapter .try { padding: var(--space-3); border-radius: var(--radius); background: var(--bg-2); }
+  .chapter .try p:first-child { margin-top: 0; }
+  .chapter .try-buttons { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .chapter .answer { margin: var(--space-2) 0 0; }
+</style>
+<template id="chapter">
+  <ui-card class="chapter">
+    <h2><ui-badge tone="accent">8</ui-badge> Your data, and your say</h2>
+    <p>Data lives in <strong>collections</strong>: records with a schema, each owned by one plugin. Your notes are the <code>learning</code> collection, and Learning notes owns it:</p>
+    <pre><code>collections: {
+  learning: { schema: { type: "object", required: ["text"],
+    properties: { text: { type: "string", minLength: 1, maxLength: 2000 } } } },
+}</code></pre>
+    <p>The owner reads and writes its own collection freely. Another plugin needs <code>data:read:learning</code> to read it, or <code>data:write:learning</code> to change it. Even then, the kernel checks every change against the schema, and <strong>asks you</strong> before it is written, on a card that shows the change. You can accept it once, always allow that plugin, or decline.</p>
+    <p>The data stays in this browser, in a private folder the kernel keeps. Apps on the same site can share a collection, with the same permissions.</p>
+    <div class="try">
+      <p><strong>Try it.</strong> This chapter has <code>data:write:learning</code>, but the notes aren't its own.</p>
+      <div class="try-buttons">
+        <button type="button" data-action="add" disabled="{{waiting}}">Add a note for me</button>
+        <button type="button" data-action="invalid" disabled="{{waiting}}">Add a note that isn't text</button>
+      </div>
+      <template if="waiting"><p class="answer" role="status">Waiting for your answer on the review card.</p></template>
+      <template if="result"><p class="answer" role="status">{{result.text}}</p></template>
+    </div>
+    <p>Read more: <a href="/docs/guide/data-and-permissions">data and permissions</a>, and <a href="/docs/guide/sharing-data-between-apps">sharing data between apps</a>.</p>
+  </ui-card>
+</template>
