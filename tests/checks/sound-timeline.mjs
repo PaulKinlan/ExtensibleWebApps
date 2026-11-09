@@ -39,6 +39,7 @@ export default async function ({ check, context, URL, errors }) {
 
     // Drag the phrase along its lane, on the canvas: it starts later.
     const canvas = page.locator('[data-plugin="sound-timeline"] canvas');
+    await canvas.scrollIntoViewIfNeeded();
     const box = await canvas.boundingBox();
     // Lanes start 26 of 300 canvas pixels down, a third of the rest each (at least three lanes are drawn).
     const y = box.y + box.height * ((26 + ((300 - 26) / 3) * 1.5) / 300);
