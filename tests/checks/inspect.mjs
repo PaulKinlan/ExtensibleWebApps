@@ -47,6 +47,10 @@ export default async function ({ check, context, URL, errors }) {
   await page.click(toggle);
   check("the hook tracer says which plugin switched another off", await seen(`${inspect} ${tracer} .action >> text=Switchboard called plugins.setEnabled`));
   await page.click(toggle);
+  // Switching it back on is an action of its own: wait for it, so it can't arrive after Clear.
+  await page
+    .waitForFunction((s) => [...document.querySelectorAll(s)].filter((a) => a.textContent.includes("Switchboard called plugins.setEnabled")).length >= 2, `${inspect} ${tracer} .action`, { timeout: 3000 })
+    .catch(() => {});
 
   await page.click(`${inspect} ${tracer} button[data-action="clear"]`);
   check("Clear empties the hook tracer", await page.waitForSelector(`${inspect} ${tracer} .action`, { state: "detached", timeout: 3000 }).then(() => true, () => false));

@@ -180,6 +180,21 @@ export function spacePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts,
       const reply = await answer(host, m).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
       hosts.send(host, { t: "sync", op: "plugins:reply", id: m.id, ...reply });
     },
+    /** The plugins members share, for a member's debugger (reflect.ts): kept here, never run. */
+    async list(): Promise<SharedSummary[]> {
+      await loaded;
+      return Object.entries(index).flatMap(([app, plugins]) => Object.entries(plugins).map(([id, p]) => ({ app, id, ...p })));
+    },
+    /** A shared plugin's code, from whichever app keeps it, or undefined. */
+    async code(id: string): Promise<string | undefined> {
+      await loaded;
+      for (const [app, plugins] of Object.entries(index)) {
+        if (!plugins[id]) continue;
+        const first = (await filesOf(store, userAdded, app, id))?.[0];
+        if (first && "text" in first) return first.text;
+      }
+      return undefined;
+    },
   };
 }
 

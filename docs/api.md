@@ -1248,6 +1248,14 @@ Needs: `members`.
 
 The space's members, each with the name on their account, and which of them this page is signed in as (`you`). A change's `by` and data:changed's `by` are a member's id: show the name from here. Outside a space, `space` is null and the list is empty.
 
+#### sync.reflect
+
+`sync.reflect(method, id?)` → what the space's reflect.<method>() returns
+
+Needs: `reflect:read`.
+
+For debuggers: asks the space's own kernel, on its server, what its reflect service says (its server plugins, their permissions, hooks and workers, and the members' devices connected, each with its member). A snapshot also lists `shared`: the plugins members share, which the space keeps but never runs ({ app, id, by?, at }); source reads theirs too. Read only, like reflect. Fails outside a space, or while this page can't reach it.
+
 #### sync.state
 
 `sync.state()` → { space: null } or { space, member?, connected, pending, drafts }
@@ -1625,7 +1633,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
 | `plugins:manage` | Call authoring.turn, plugins.setEnabled. |
 | `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.inspect, authoring.check, plugins.app. |
-| `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source. |
+| `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source, sync.reflect. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `share` | Call share.send, share.take. |

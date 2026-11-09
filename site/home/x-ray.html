@@ -1,0 +1,11 @@
+<!--
+  X-ray's switch. The page's own style in /index.html outlines every
+  [data-plugin] part while this button says aria-pressed="true".
+-->
+<style>
+  .x-ray { display: inline-flex; align-items: center; gap: var(--space-1); }
+  .x-ray[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg, #fff); border-color: var(--accent); }
+</style>
+<template id="switch">
+  <button type="button" class="x-ray" data-action="x-ray" aria-pressed="{{pressed}}" title="Outline every part of the page, named for the plugin that drew it">X-ray</button>
+</template>
