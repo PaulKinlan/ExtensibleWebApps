@@ -23,6 +23,7 @@ import { authenticator } from "./authenticator.mjs";
 import { blueskyChecks } from "./bluesky.mjs";
 import { mcpChecks } from "./mcp.mjs";
 import { mcpMoreChecks } from "./mcp-more.mjs";
+import { mcpStreamChecks } from "./mcp-stream.mjs";
 import { pagePolicyChecks } from "./page-policy.mjs";
 import { fakeAtproto } from "./fake-atproto.mjs";
 import { fakeProvider } from "./fake-oauth.mjs";
@@ -1140,6 +1141,7 @@ async function suite(name, make) {
     const stranger = await person(server.url).account("Stranger");
     await mcpChecks(server.url, check, owner, stranger);
     await mcpMoreChecks(server.url, check, owner, stranger);
+    await mcpStreamChecks(server.url, check, owner);
 
     // The same cases on both hosts. (On Cloudflare in production, the Worker's own egress refuses them too.)
     await networkGuardChecks(server.url, check, name);

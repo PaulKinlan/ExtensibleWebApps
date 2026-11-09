@@ -15,7 +15,8 @@
 //   POST /auth/me/email/confirm  { token }  confirms it (the link opens /account/?confirm=<token>, which posts here)
 //   POST /auth/me/email/test                sends your confirmed address a test message, to see mail arrives
 //   GET  /auth/providers                    the other sites you can sign in with (providers.ts)
-//   GET  /auth/oauth/<id>/start             goes to that site to sign in (or, signed in, to link it)
+//   GET  /auth/oauth/<id>/start             goes to that site to sign in (or, signed in, to link it);
+//                                            ?return=/auth/mcp/authorize?… comes back there instead of /account/
 //   GET  /auth/oauth/<id>/callback          where that site sends you back; signs in, then /account/
 //   GET  /auth/oauth/<id>/<other>           anything else a flow serves (Bluesky's client metadata)
 //
@@ -76,6 +77,8 @@ interface Challenge {
   verifier?: string;
   /** An invite to accept once back on /account/, so signing in with another site doesn't lose it. */
   invite?: string;
+  /** Where to go once signed in, if not /account/: the page where an agent asks to connect (mcp-oauth.ts). */
+  then?: string;
   /** What a flow (providers.ts) keeps between its start and its callback. */
   data?: Record<string, unknown>;
   expires: number;
@@ -104,6 +107,8 @@ const SESSION_MS = 30 * 24 * 3600_000;
 const CHALLENGE_MS = 5 * 60_000;
 const ID = /^[A-Za-z0-9_-]{1,1400}$/;
 const INVITE = /^[A-Za-z0-9_-]{20,100}$/;
+/** Where a sign-in with another site may come back to instead of /account/: only the page where an agent asks to connect. */
+const RETURN = /^\/auth\/mcp\/authorize\?[A-Za-z0-9%._~*&=+-]{1,4000}$/;
 const MAX_BODY = 64 * 1024;
 const SWEEP_MS = 10 * 60_000;
 
@@ -220,8 +225,8 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     if (!provider) return json({ error: "No such provider" }, 404);
     const back = `${url.origin}/auth/oauth/${id}/callback`;
     const secure = url.protocol === "https:" ? "; Secure" : "";
-    const toAccount = (headers: Headers, error?: string, invite?: string) => {
-      headers.set("location", error ? `/account/?error=${encodeURIComponent(error)}` : invite ? `/account/?invite=${invite}` : "/account/");
+    const toAccount = (headers: Headers, error?: string, invite?: string, then?: string) => {
+      headers.set("location", error ? `/account/?error=${encodeURIComponent(error)}` : invite ? `/account/?invite=${invite}` : (then ?? "/account/"));
       headers.append("set-cookie", `ewa-oauth=; Path=/auth/oauth/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
       return new Response(null, { status: 303, headers });
     };
@@ -235,6 +240,8 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       const state = random(24);
       const verifier = random(48);
       const invite = url.searchParams.get("invite") ?? "";
+      // Only back to this site's page where an agent asks to connect: never anywhere else.
+      const then = url.searchParams.get("return") ?? "";
       const challenge = b64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier))));
       let to: string;
       let data: Record<string, unknown> | undefined;
@@ -257,7 +264,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         to = at.href;
       }
       await sweep();
-      await write(`challenges/${state}.json`, { kind: "oauth", provider: id, verifier, ...(await asker(request)), ...(INVITE.test(invite) ? { invite } : {}), ...(data ? { data } : {}), expires: Date.now() + CHALLENGE_MS } satisfies Challenge);
+      await write(`challenges/${state}.json`, { kind: "oauth", provider: id, verifier, ...(await asker(request)), ...(INVITE.test(invite) ? { invite } : {}), ...(RETURN.test(then) ? { then } : {}), ...(data ? { data } : {}), expires: Date.now() + CHALLENGE_MS } satisfies Challenge);
       return new Response(null, { status: 302, headers: { location: to, "set-cookie": `ewa-oauth=${state}; Path=/auth/oauth/; HttpOnly; SameSite=Lax; Max-Age=${CHALLENGE_MS / 1000}${secure}` } });
     }
     if (step !== "callback") return isFlow(provider) ? provider.serve?.(url, step) : undefined;
@@ -299,7 +306,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       }
       const headers = new Headers();
       headers.append("set-cookie", await sessionCookie(request, user));
-      return toAccount(headers, undefined, found.invite);
+      return toAccount(headers, undefined, found.invite, found.then);
     });
   };
 
@@ -324,7 +331,13 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   const spaceOf = (name: string) => (SPACE_NAME.test(name) ? read<Space>(`spaces/${name}.json`) : Promise.resolve(null));
 
   const keys = agentKeys(files, { isMember: async (name, user) => !!(await spaceOf(name))?.members[user] });
-  const mcpSignIn = mcpOAuth(files, { user: async (request) => (await session(request))?.user ?? null, isMember: async (name, user) => !!(await spaceOf(name))?.members[user], keys, serial });
+  const mcpSignIn = mcpOAuth(files, {
+    user: async (request) => (await session(request))?.user ?? null,
+    isMember: async (name, user) => !!(await spaceOf(name))?.members[user],
+    keys,
+    serial,
+    providers: () => providers.map((p) => ({ id: p.id, name: p.name, ...(isFlow(p) && p.ask ? { ask: p.ask } : {}) })),
+  });
 
   const join = async (space: Space, user: string, role: Role) => {
     space.members[user] = role;
