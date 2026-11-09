@@ -89,6 +89,21 @@ function asWritten(): Plugin {
   return {
     name: "as-written",
     configureServer(server) {
+      // A generated file, made now from what is on disk (a folder's address is its index.html). Anything else
+      // goes on to be served as written, below.
+      server.middlewares.use((req, res, next) => {
+        const path = decodeURIComponent(new URL(req.url ?? "/", "http://host").pathname);
+        const wanted = path.slice(1) + (path.endsWith("/") ? "index.html" : "");
+        if (!/^(demos|packages)\//.test(wanted)) return next();
+        generatedFiles(root)
+          .then(async ({ PATHS, generated }) => {
+            if (!PATHS.includes(wanted)) return next();
+            const text = (await generated())[wanted];
+            res.setHeader("Content-Type", TYPES[extname(wanted)] ?? "application/octet-stream");
+            res.end(text);
+          })
+          .catch((error) => next(error));
+      });
       server.middlewares.use((req, res, next) => {
         const path = decodeURIComponent(new URL(req.url ?? "/", "http://host").pathname);
         if (path === "/platform/host.js") {
@@ -97,17 +112,6 @@ function asWritten(): Plugin {
           return res.end();
         }
         if (path === "/platform/host.css") return serve(res, resolve(root, HOST_CSS));
-        // A generated file, made now from what is on disk (a folder's address is its index.html).
-        const wanted = path.slice(1) + (path.endsWith("/") ? "index.html" : "");
-        if (/^(demos|packages)\//.test(wanted))
-          return void generatedFiles(root)
-            .then(async ({ PATHS, generated }) => {
-              if (!PATHS.includes(wanted)) return next();
-              const text = (await generated())[wanted];
-              res.setHeader("Content-Type", TYPES[extname(wanted)] ?? "application/octet-stream");
-              res.end(text);
-            })
-            .catch((error) => next(error));
         // site/ is served at the root, never under /site/, as in the build.
         if (path === `/${SITE}` || path.startsWith(`/${SITE}/`)) {
           res.statusCode = 404;
