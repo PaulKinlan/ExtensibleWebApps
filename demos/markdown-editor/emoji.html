@@ -1,0 +1,17 @@
+<!--
+  The emoji picker: { items: [{ i, emoji, name }] }, recent ones first.
+  Each sends pick:<i>; Close closes it.
+-->
+<style>
+  .emoji .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(2.25rem, 1fr)); gap: 2px; max-height: 16rem; overflow: auto; }
+  .emoji .grid button { all: unset; cursor: pointer; text-align: center; font-size: 1.35rem; line-height: 2.25rem; border-radius: var(--radius); }
+  .emoji .grid button:hover, .emoji .grid button:focus-visible { background: var(--bg-2); }
+</style>
+<template id="emoji">
+  <ui-card class="emoji">
+    <ui-stack direction="row" justify="between" align="center"><h3>Insert emoji</h3><button type="button" data-action="close">Close</button></ui-stack>
+    <div class="grid">
+      <template for="e of items"><button type="button" key="{{e.i}}" data-action="pick:{{e.i}}" title="{{e.name}}" aria-label="{{e.name}}">{{e.emoji}}</button></template>
+    </div>
+  </ui-card>
+</template>

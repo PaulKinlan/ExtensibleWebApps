@@ -1,0 +1,25 @@
+<!--
+  The Streak panel: { streak, today, bars: [{ day, label, words, tenth }] },
+  the last 14 days oldest first. tenth is the bar's height in tenths of the
+  busiest day, which picks its class.
+-->
+<style>
+  .streak p { margin: 0; }
+  .streak .bars { display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; align-items: end; height: 6rem; margin: var(--space-2) 0 2px; }
+  .streak .bar { background: var(--accent); border-radius: 3px 3px 0 0; min-height: 2px; opacity: 0.8; }
+  .streak .labels { display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; font-size: 10px; color: var(--fg-2); text-align: center; }
+  .streak [data-tenth="1"] { height: 10%; } .streak [data-tenth="2"] { height: 20%; } .streak [data-tenth="3"] { height: 30%; }
+  .streak [data-tenth="4"] { height: 40%; } .streak [data-tenth="5"] { height: 50%; } .streak [data-tenth="6"] { height: 60%; }
+  .streak [data-tenth="7"] { height: 70%; } .streak [data-tenth="8"] { height: 80%; } .streak [data-tenth="9"] { height: 90%; }
+  .streak [data-tenth="10"] { height: 100%; }
+</style>
+<template id="streak">
+  <ui-card class="streak">
+    <h3>Streak</h3>
+    <p><strong>{{streak}}</strong> day streak · <strong>{{today}}</strong> words today</p>
+    <div class="bars">
+      <template for="b of bars"><div class="bar" key="{{b.day}}" data-tenth="{{b.tenth}}" title="{{b.day}}: {{b.words}} words"></div></template>
+    </div>
+    <div class="labels"><template for="b of bars"><span key="{{b.day}}">{{b.label}}</span></template></div>
+  </ui-card>
+</template>

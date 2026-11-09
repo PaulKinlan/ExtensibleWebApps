@@ -23,7 +23,17 @@ export type View =
   | { type: "text"; text: string; title?: string; tone?: "muted" | "error" | "ok" }
   | { type: "button"; label: string; action: string; primary?: boolean }
   | { type: "list"; items: { label: string; action: string; selected?: boolean }[] }
-  | { type: "textarea"; name: string; value: string; action: string; placeholder?: string }
+  | {
+      type: "textarea";
+      name: string;
+      value: string;
+      action: string;
+      placeholder?: string;
+      /** Editor events (src/host/editing.ts): the action the settled selection, a paste and a drop from outside are sent as. */
+      selectionAction?: string;
+      pasteAction?: string;
+      dropAction?: string;
+    }
   | { type: "canvas"; id: string; width: number; height: number }
   /** A line diff, for change review. */
   | { type: "diff"; lines: { op: "same" | "add" | "del"; text: string }[] }

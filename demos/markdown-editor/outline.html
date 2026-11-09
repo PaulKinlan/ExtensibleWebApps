@@ -1,0 +1,26 @@
+<!--
+  The Outline panel: { open, empty, sections: [{ i, text, words, indent }] }.
+  Each heading is a button that sends jump:<index>; indent is its level - 1.
+-->
+<style>
+  .outline ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+  .outline button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; justify-content: space-between; gap: var(--space-2); padding: 3px var(--space-2); border-radius: var(--radius); }
+  .outline button:hover, .outline button:focus-visible { background: var(--bg-2); }
+  .outline [data-indent="1"] { padding-inline-start: calc(var(--space-2) + 0.9rem); }
+  .outline [data-indent="2"] { padding-inline-start: calc(var(--space-2) + 1.8rem); }
+  .outline [data-indent="3"], .outline [data-indent="4"], .outline [data-indent="5"] { padding-inline-start: calc(var(--space-2) + 2.7rem); }
+  .outline .words { color: var(--fg-2); font-variant-numeric: tabular-nums; }
+  .outline p { color: var(--fg-2); margin: 0; }
+</style>
+<template id="outline">
+  <ui-card class="outline">
+    <h3>Outline</h3>
+    <template if="!open"><p>Open a post to see its outline.</p></template>
+    <template if="empty"><p>No headings yet. Lines starting with ## become sections here.</p></template>
+    <ol>
+      <template for="h of sections">
+        <li key="{{h.i}}"><button type="button" data-action="jump:{{h.i}}" data-indent="{{h.indent}}"><span>{{h.text}}</span><span class="words">{{h.words}}</span></button></li>
+      </template>
+    </ol>
+  </ui-card>
+</template>

@@ -1,0 +1,57 @@
+<!--
+  ui-editor: a Markdown editor, on CodeMirror 6 (vendor/codemirror/, loaded
+  the first time one is drawn). Headings, emphasis, links and code are
+  styled as you type, Hugo shortcodes stand out, the front matter is shown plainly, and it has undo, search
+  (Mod+F) and Tab to indent.
+
+  Attributes:
+    name, label          the field's name in a form, and its accessible name
+    placeholder, readonly
+    revision             the text content is read again when this changes
+    action               sent with the whole text after a pause in typing
+    selection-action     sent with { from, to, text } when the selection settles
+    paste-action         a paste is sent as { from, to, text, html, files } and
+    drop-action          a drop from outside as the same, instead of going in
+    select="from,to"     selects that range and scrolls to it, when it changes
+    annotations          JSON: [{ from, to, severity, message }] to underline,
+                         severity "info", "warning" or "error"
+
+  The text to start with is the element's text content:
+
+    <ui-editor name="text" action="edit" revision="{{rev}}">{{text}}</ui-editor>
+
+  As with ui-code, a redraw keeps what the person typed until `revision`
+  changes. When it does, the new text goes in as an edit (only what differs
+  changes), so the undo history, the selection and the scroll position are
+  kept. After a paste or drop the plugin put in, the caret goes after it.
+
+  The events are the host's editor events (src/host/editing.ts), sent through
+  `ui-action`, so a plugin hears them the same way from a textarea. Offsets
+  count characters in the whole text. The behaviour is in ui-editor.js.
+-->
+<template>
+  <style>
+    :host { display: block; min-height: 12rem; }
+    .frame { height: 100%; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+    .frame:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+    .frame .cm-editor { height: 100%; min-height: inherit; font-size: var(--text-md, 1rem); line-height: 1.65; color: var(--fg); }
+    .frame .cm-editor.cm-focused { outline: none; }
+    .frame .cm-editor .cm-scroller { font-family: var(--font, system-ui), sans-serif; line-height: inherit; }
+    /* The front matter is settings, not prose: small, plain and quiet, whatever Markdown would make of it. */
+    .cm-frontmatter, .cm-frontmatter * { font-family: var(--mono) !important; font-size: 0.85rem !important; font-weight: 400 !important; font-style: normal !important; text-decoration: none !important; color: var(--fg-2) !important; }
+    .cm-content { padding: var(--space-3) var(--space-3) 30vh; caret-color: var(--accent); max-width: 72ch; }
+    .cm-cursor { border-left-color: var(--accent); }
+    .cm-activeLine { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+    .cm-selectionBackground, .cm-focused .cm-selectionBackground, ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent) !important; }
+    .cm-placeholder { color: var(--fg-2); }
+    .cm-shortcode { color: var(--accent); font-family: var(--mono); font-size: 0.9em; }
+    .cm-note { text-decoration: underline wavy; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: var(--fg-2); }
+    .cm-note-warning { text-decoration-color: var(--warn, #b45309); }
+    .cm-note-error { text-decoration-color: var(--danger, #b91c1c); }
+    .cm-panels { background: var(--bg-2); color: var(--fg); border-color: var(--border); }
+    .cm-panels input, .cm-panels button { font: inherit; color: inherit; }
+    .cm-searchMatch { background: color-mix(in srgb, var(--warn, #f59e0b) 30%, transparent); }
+  </style>
+  <div class="frame"></div>
+</template>
+<script type="module" src="ui-editor.js"></script>

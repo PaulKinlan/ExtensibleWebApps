@@ -6,6 +6,7 @@
     "commands",
     "debug",
     "email",
+    "folder",
     "history",
     "llm",
     "page",

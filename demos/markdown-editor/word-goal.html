@@ -1,0 +1,16 @@
+<!--
+  Word goal's panel, open while the person sets a goal: { goal, title }.
+  A blank goal clears it.
+-->
+<template id="goal">
+  <ui-card>
+    <form data-action="set">
+      <h3>Word goal for “{{title}}”</h3>
+      <ui-stack direction="row" gap="2">
+        <input name="goal" type="number" min="0" step="50" value="{{goal}}" aria-label="Words" placeholder="Blank to clear">
+        <button type="submit" class="primary">Set</button>
+        <button type="button" data-action="cancel">Cancel</button>
+      </ui-stack>
+    </form>
+  </ui-card>
+</template>

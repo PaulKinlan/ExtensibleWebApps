@@ -1,8 +1,10 @@
 // The notes app, as a plugin: a list of notes and an editor, kept in its own
 // `notes` collection. It turns what the person does into hooks of its own
-// (notes:open, notes:change, notes:save, notes:close), which other plugins
-// listen to, and which the Markdown editor's extensions hear as post events
-// through the shim in the sandbox. Only the workbench links it.
+// (notes:open, notes:change, notes:save, notes:close, notes:selection), which
+// other plugins listen to, and which the Markdown editor's extensions hear as
+// post events through the shim in the sandbox. A paste or a drop goes through
+// notes:paste and notes:drop first, so a plugin can change what goes in (a
+// link pasted onto a word becomes a Markdown link). Only the workbench links it.
 
 export const manifest = {
   id: "notes",
@@ -28,6 +30,19 @@ export const manifest = {
     change: { mode: "emit", args: "{ id, path, url, title, siteName, text, bodyStart, selection, unsaved }", description: "The person typed in the open note (unsaved is true)." },
     save: { mode: "emit", args: "{ id, path, url, title, siteName, text, bodyStart, selection, unsaved }", description: "The open note was saved, by the person or by another plugin's reviewed write." },
     close: { mode: "emit", args: "null", description: "The open note was closed." },
+    selection: { mode: "emit", args: "{ from, to, text }", description: "The selection in the open note settled: offsets into its text, and the text selected." },
+    paste: {
+      mode: "waterfall",
+      timeoutMs: 2000,
+      args: "{ from, to, text, html, files, selected }",
+      description: "The person pasted into the open note, replacing from..to (the text `selected`). Return { text } to put in something else, or { block } to paste nothing. files are { name, type, size, text?, dataUrl? }.",
+    },
+    drop: {
+      mode: "waterfall",
+      timeoutMs: 2000,
+      args: "{ from, to, text, html, files, selected }",
+      description: "The person dropped text or files onto the open note, at from..to. Return { text } to put in something else, or { block } to drop nothing. A text file's text goes in if nothing else does.",
+    },
   },
 };
 
@@ -43,6 +58,8 @@ export default async function (ctx) {
   let dirty = false;
   /** Counts the person's edits, so a save that comes back after a newer edit doesn't mark that edit saved. */
   let revision = 0;
+  /** The selection in the open note, as offsets into its text. */
+  let selection = { from: 0, to: 0 };
 
   const list = async (api = ctx) => (notes = await api.call("data", "list", "notes"));
   /**
@@ -55,7 +72,7 @@ export default async function (ctx) {
   /** What a note's hooks carry: the Markdown editor's post, for its extensions. */
   const snapshot = (unsaved) => {
     const note = openId && find(openId);
-    return note ? { id: note.id, path: `notes/${note.id}.md`, url: `/notes/${note.id}/`, title: note.title ?? "Untitled", siteName: "Notes", text: draft, bodyStart: 0, selection: { from: 0, to: 0 }, unsaved } : null;
+    return note ? { id: note.id, path: `notes/${note.id}.md`, url: `/notes/${note.id}/`, title: note.title ?? "Untitled", siteName: "Notes", text: draft, bodyStart: 0, selection, unsaved } : null;
   };
 
   const render = (api = ctx) => {
@@ -74,7 +91,7 @@ export default async function (ctx) {
         ? {
             type: "stack",
             children: [
-              { type: "textarea", name: "text", value: draft, action: "edit", placeholder: "Write something" },
+              { type: "textarea", name: "text", value: draft, action: "edit", placeholder: "Write something", selectionAction: "select", pasteAction: "paste", dropAction: "drop" },
               { type: "stack", direction: "row", children: [
                 { type: "button", label: "Save", action: "save", primary: true },
                 { type: "text", text: status, tone: status.startsWith("Not saved") ? "error" : "muted" },
@@ -89,6 +106,7 @@ export default async function (ctx) {
     if (openId) await api.hooks.emit("close", null);
     openId = id;
     draft = find(id)?.text ?? "";
+    selection = { from: 0, to: 0 };
     status = "";
     dirty = false;
     revision++;
@@ -131,7 +149,34 @@ export default async function (ctx) {
       return here.hooks.emit("change", snapshot(true));
     }
     if (action === "save") return save(here);
+    if (action === "select" && openId && value && typeof value === "object") {
+      selection = { from: Number(value.from) || 0, to: Number(value.to) || 0 };
+      return here.hooks.emit("selection", { ...selection, text: draft.slice(selection.from, selection.to) });
+    }
+    if ((action === "paste" || action === "drop") && openId && value && typeof value === "object") return put(action, value, here);
   });
+
+  /**
+   * A paste or drop: its listeners may change what goes in, then it replaces the range it was made on, like
+   * typing. With no text of its own (files only), a dropped text file's text goes in.
+   */
+  const put = async (hook, value, api) => {
+    const from = Math.max(0, Math.min(Number(value.from) || 0, draft.length));
+    const to = Math.max(from, Math.min(Number(value.to) || 0, draft.length));
+    const files = Array.isArray(value.files) ? value.files : [];
+    const offered = { from, to, text: String(value.text ?? ""), html: String(value.html ?? ""), files, selected: draft.slice(from, to) };
+    if (!offered.text) offered.text = files.map((f) => f.text ?? "").filter(Boolean).join("\n");
+    const answer = await api.hooks.call(hook, offered);
+    if (!answer || answer.block || typeof answer.text !== "string" || !answer.text) return render(api);
+    draft = draft.slice(0, from) + answer.text + draft.slice(to);
+    selection = { from: from + answer.text.length, to: from + answer.text.length };
+    status = "Unsaved changes";
+    dirty = true;
+    revision++;
+    render(api);
+    void remember(api);
+    return api.hooks.emit("change", snapshot(true));
+  };
 
   // A note can also change from elsewhere: another plugin's reviewed write. Show it, unless the person has
   // unsaved edits of their own.

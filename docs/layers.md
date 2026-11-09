@@ -91,6 +91,7 @@ Most services have moved out of the core into **kernel modules**. A module is a 
     "commands",
     "debug",
     "email",
+    "folder",
     "history",
     "llm",
     "page",
@@ -116,6 +117,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `commands` | [`std/commands/module.ts`](../std/commands/module.ts) | The `commands` service: commands from any plugin, run from a palette, a key or an agent (the palette is [`std/commands/palette.js`](../std/commands/palette.js)) |
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
 | `email` | [`std/email/module.ts`](../std/email/module.ts) | The `email` service: mail from a space's server to its members, with daily limits |
+| `folder` | [`std/folder/module.ts`](../std/folder/module.ts) | The `folder` service: a folder of files the person works on (a Hugo site), picked on their disk or private in the browser; plugins other than its keeper propose writes, which the person reviews |
 | `history` | [`std/history/module.ts`](../std/history/module.ts) | The `history` service: undo and redo across every plugin's writes |
 | `llm` | [`std/llm/module.ts`](../std/llm/module.ts) | The `llm` service: the one interface to every model; the vendors are std plugins beside it ([`std/llm/`](../std/llm/)) |
 | `page` | [`std/page/module.ts`](../std/page/module.ts) | The `page` service: the app's own page, as far as a plugin's places reach into it, and the slots plugins declare |

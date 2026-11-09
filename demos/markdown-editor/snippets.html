@@ -1,0 +1,37 @@
+<!--
+  The snippets panel: { insert, remove, save, items: [{ i, name }], none,
+  selected, note }. One of insert, remove and save is true: the list to
+  insert from (insert:<i>), the list to remove from (remove:<i>), or the
+  form that names the selection (keep).
+-->
+<style>
+  .snippets ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .snippets li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-2); }
+  .snippets p { margin: 0; color: var(--fg-2); }
+  .snippets pre { margin: 0; max-height: 6rem; overflow: auto; font-size: var(--text-sm); white-space: pre-wrap; }
+</style>
+<template id="snippets">
+  <ui-card class="snippets">
+    <ui-stack direction="row" justify="between" align="center">
+      <h3><template if="insert">Insert snippet</template><template if="remove">Remove a snippet</template><template if="save">Save as snippet</template></h3>
+      <button type="button" data-action="close">Close</button>
+    </ui-stack>
+    <template if="note"><p role="status">{{note}}</p></template>
+    <template if="insert">
+      <template if="none"><p>No snippets yet. Select some text and use “Save selection as snippet”.</p></template>
+      <ul><template for="s of items"><li key="{{s.name}}"><button type="button" data-action="insert:{{s.i}}">{{s.name}}</button></li></template></ul>
+    </template>
+    <template if="remove">
+      <template if="none"><p>No snippets saved in this browser.</p></template>
+      <ul><template for="s of items"><li key="{{s.name}}"><span>{{s.name}}</span><button type="button" data-action="remove:{{s.i}}">Remove</button></li></template></ul>
+    </template>
+    <template if="save">
+      <template if="selected">
+        <form data-action="keep">
+          <pre>{{selected}}</pre>
+          <ui-stack direction="row" gap="2"><input name="name" placeholder="Name" aria-label="Snippet name" required><button type="submit" class="primary">Save</button></ui-stack>
+        </form>
+      </template>
+    </template>
+  </ui-card>
+</template>

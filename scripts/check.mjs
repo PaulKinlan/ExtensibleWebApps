@@ -177,6 +177,24 @@ function checkApp(file, rules, reference) {
   const plugins = links.filter((t) => rels(t).includes("plugin"));
   // No plugins is fine: an app can be plain HTML that people extend with their own (see demos/trip).
 
+  // Services the app's own plugins provide (a manifest's `provides`): a call to one is checked against what
+  // its method needs, as a kernel service's is against docs/api.md.
+  const methods = new Map(reference.methods);
+  for (const link of plugins) {
+    const href = link.attributes.href;
+    if (!href || /^[a-z]+:/i.test(href) || !existsSync(local(href, file))) continue;
+    let manifest;
+    try {
+      manifest = rules.readManifest(readFileSync(local(href, file), "utf8"));
+    } catch {
+      continue; // checkPlugin reports it
+    }
+    for (const [name, service] of Object.entries(manifest.provides ?? {})) {
+      for (const [method, spec] of Object.entries(service.methods ?? {})) methods.set(`${name}.${method}`, spec.needs ? [spec.needs] : []);
+    }
+  }
+  reference = { ...reference, methods };
+
   const ids = new Map();
   for (const link of plugins) {
     const href = link.attributes.href;
