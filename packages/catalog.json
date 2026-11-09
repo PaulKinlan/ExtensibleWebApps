@@ -1,0 +1,3694 @@
+{
+  "apps": [
+    {
+      "path": "demos/assistant",
+      "title": "Assistant",
+      "href": "/demos/assistant/app.html"
+    },
+    {
+      "path": "demos/audio-editor",
+      "title": "Sound editor",
+      "href": "/demos/audio-editor/app.html"
+    },
+    {
+      "path": "demos/beats",
+      "title": "Beat pad",
+      "href": "/demos/beats/app.html"
+    },
+    {
+      "path": "demos/board",
+      "title": "Studio board",
+      "href": "/demos/board/app.html"
+    },
+    {
+      "path": "demos/calendar",
+      "title": "Calendar",
+      "href": "/demos/calendar/app.html"
+    },
+    {
+      "path": "demos/contacts",
+      "title": "Contacts",
+      "href": "/demos/contacts/app.html"
+    },
+    {
+      "path": "demos/debugger",
+      "title": "Debugger",
+      "href": "/demos/debugger/app.html"
+    },
+    {
+      "path": "demos/feeds",
+      "title": "Feeds",
+      "href": "/demos/feeds/app.html"
+    },
+    {
+      "path": "demos/glowfall-together",
+      "title": "Glowfall together",
+      "href": "/demos/glowfall-together/app.html"
+    },
+    {
+      "path": "demos/glowfall",
+      "title": "Glowfall",
+      "href": "/demos/glowfall/app.html"
+    },
+    {
+      "path": "demos/habits",
+      "title": "Habits",
+      "href": "/demos/habits/app.html"
+    },
+    {
+      "path": "demos/household",
+      "title": "Household",
+      "href": "/demos/household/app.html"
+    },
+    {
+      "path": "demos/invoice",
+      "title": "Invoice",
+      "href": "/demos/invoice/app.html"
+    },
+    {
+      "path": "demos/librarian",
+      "title": "Librarian",
+      "href": "/demos/librarian/app.html"
+    },
+    {
+      "path": "demos/markdown-editor",
+      "title": "Markdown editor",
+      "href": "/demos/markdown-editor/app.html"
+    },
+    {
+      "path": "demos/menu",
+      "title": "Menu",
+      "href": "/demos/menu/app.html"
+    },
+    {
+      "path": "demos/reading-list",
+      "title": "Reading list",
+      "href": "/demos/reading-list/app.html"
+    },
+    {
+      "path": "demos/recipes",
+      "title": "Recipes",
+      "href": "/demos/recipes/app.html"
+    },
+    {
+      "path": "demos/security",
+      "title": "Security",
+      "href": "/demos/security/app.html"
+    },
+    {
+      "path": "demos/spending",
+      "title": "Spending",
+      "href": "/demos/spending/app.html"
+    },
+    {
+      "path": "demos/survey",
+      "title": "Surveys",
+      "href": "/demos/survey/app.html"
+    },
+    {
+      "path": "demos/trails",
+      "title": "Trails",
+      "href": "/demos/trails/app.html"
+    },
+    {
+      "path": "demos/trip",
+      "title": "Trip",
+      "href": "/demos/trip/app.html"
+    },
+    {
+      "path": "docs",
+      "title": "Docs",
+      "href": "/docs/app.html"
+    },
+    {
+      "path": "home",
+      "title": "Home page",
+      "href": "/"
+    },
+    {
+      "path": "site/new",
+      "title": "Make an app",
+      "href": "/new/"
+    },
+    {
+      "path": "workbench",
+      "title": "Workbench",
+      "href": "/workbench/"
+    }
+  ],
+  "services": [
+    {
+      "id": "agents",
+      "module": "agents",
+      "description": "Agents run here, and the app hears what they do.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/agents/module.ts",
+      "docs": "/docs/api#agents"
+    },
+    {
+      "id": "audio",
+      "module": "audio",
+      "description": "Sound for plugins, played by the tab that runs the plugin workers.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/audio/module.ts",
+      "docs": "/docs/api#audio"
+    },
+    {
+      "id": "bus",
+      "module": "bus",
+      "description": "How agents and plugins talk to each other and to the person, by message rather than by calling each other.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/bus/module.ts",
+      "docs": "/docs/api#bus"
+    },
+    {
+      "id": "commands",
+      "module": "commands",
+      "description": "Things a person (or an agent) can do in an app, named once by the plugin that does them, and run from anywhere: a command palette, a keyboard shortcut, or a model's tool call.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/commands/module.ts",
+      "docs": "/docs/api#commands"
+    },
+    {
+      "id": "debug",
+      "module": "debug",
+      "description": "Tools for looking inside a running kernel, which no app needs to run.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/debug/module.ts",
+      "docs": "/docs/api#debug"
+    },
+    {
+      "id": "email",
+      "module": "email",
+      "description": "Mail a server plugin sends, with the `email` permission.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/email/module.ts",
+      "docs": "/docs/api#email"
+    },
+    {
+      "id": "folder",
+      "module": "folder",
+      "description": "A folder of files the person works on, such as a Hugo site: on their disk, if they pick one, or a private folder in the browser until they do.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/folder/module.ts",
+      "docs": "/docs/api#folder"
+    },
+    {
+      "id": "game",
+      "module": "game",
+      "description": "A game loop, with every rule of the game in plugins.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/game/module.ts",
+      "docs": "/docs/api#game"
+    },
+    {
+      "id": "history",
+      "module": "history",
+      "description": "Undo and redo for the person, across every write to an app's collections, whichever plugin made it: a delete in a table, an edit in a form, a book a plugin imported, a change an agent made.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/history/module.ts",
+      "docs": "/docs/api#history"
+    },
+    {
+      "id": "launch",
+      "module": "launch",
+      "description": "Files opened with an app.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/launch/module.ts",
+      "docs": "/docs/api#launch"
+    },
+    {
+      "id": "llm",
+      "module": "llm",
+      "description": "One way for any plugin to ask a language model, whoever makes the model.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/llm/module.ts",
+      "docs": "/docs/api#llm"
+    },
+    {
+      "id": "maker",
+      "module": "maker",
+      "description": "Apps a person makes in the browser, by describing them to the app maker (std/maker/app-maker.agent.md) or by hand.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/maker/module.ts",
+      "docs": "/docs/api#maker"
+    },
+    {
+      "id": "notify",
+      "module": "notify",
+      "description": "The operating system's notifications, so a plugin can tell the person something while they are in another tab or app (the writer agent has finished, a long export is done).",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/notify/module.ts",
+      "docs": "/docs/api#notify"
+    },
+    {
+      "id": "outside",
+      "module": "outside",
+      "description": "Lets agents that live outside the app (a browser's own assistant, Claude Code, any MCP client) use it.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/outside/module.ts",
+      "docs": "/docs/api#outside"
+    },
+    {
+      "id": "page",
+      "module": "page",
+      "description": "The app's own page, as far as a plugin's places reach into it.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/page/module.ts",
+      "docs": "/docs/api#page"
+    },
+    {
+      "id": "reflect",
+      "module": "reflect",
+      "description": "The kernel describes what is running in it, for debuggers (demos/debugger/).",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/reflect/module.ts",
+      "docs": "/docs/api#reflect"
+    },
+    {
+      "id": "router",
+      "module": "router",
+      "description": "A screen for every address: the reading list opened at /demos/reading-list/book/42 shows the screen `/book/42`, so a person can bookmark or share it, and back and forward move between screens.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/router/module.ts",
+      "docs": "/docs/api#router"
+    },
+    {
+      "id": "schedule",
+      "module": "schedule",
+      "description": "Work a plugin wants done later, once or again and again, with the `schedule` permission.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/schedule/module.ts",
+      "docs": "/docs/api#schedule"
+    },
+    {
+      "id": "share",
+      "module": "share",
+      "description": "Sharing out, and sharing in: a plugin can hand a link or some text to the system's share sheet (Web Share), and an app installed from the browser can be a place to share to (a share target), so a page shared from the browser lands in the reading list.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/share/module.ts",
+      "docs": "/docs/api#share"
+    },
+    {
+      "id": "sync",
+      "module": "spaces",
+      "description": "What lets an app open in a space (/s/<space>/…) and be shared by its members.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/spaces/module.ts",
+      "docs": "/docs/api#sync"
+    },
+    {
+      "id": "tools",
+      "module": "tools",
+      "description": "The service methods a plugin may call, described as tools a language model can call.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/tools/module.ts",
+      "docs": "/docs/api#tools"
+    },
+    {
+      "id": "transfer",
+      "module": "transfer",
+      "description": "Import and export for the person: a collection out to a CSV or JSON file they keep, open in a spreadsheet or take to another app, and a file they choose (a bank's statement, a list from a spreadsheet, an earlier export) into a collection.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/transfer/module.ts",
+      "docs": "/docs/api#transfer"
+    }
+  ],
+  "plugins": [
+    {
+      "id": "clock",
+      "name": "Clock",
+      "description": "Provides the clock service: the time now in any time zone.",
+      "href": "/packages/clock/clock.js",
+      "source": "registry",
+      "kind": "service",
+      "offered": true,
+      "group": "Examples",
+      "permissions": [
+        "provide:clock"
+      ],
+      "provides": [
+        "clock"
+      ],
+      "services": [],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "world-clock",
+      "name": "World clock",
+      "description": "The time in London, New York and Tokyo, at the foot of the page.",
+      "href": "/packages/world-clock/world-clock.js",
+      "source": "registry",
+      "kind": "ui",
+      "offered": true,
+      "group": "Examples",
+      "permissions": [
+        "ui",
+        "clock"
+      ],
+      "provides": [],
+      "services": [
+        "clock"
+      ],
+      "places": [
+        "append main"
+      ],
+      "apps": []
+    },
+    {
+      "id": "assistant",
+      "name": "Assistant",
+      "description": "Does what you ask in this app, using the app's own commands, and asks you when it isn't sure.",
+      "href": "/std/agents/assistant.agent.md",
+      "source": "std",
+      "kind": "agent",
+      "permissions": [
+        "commands",
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
+      "places": [],
+      "apps": [
+        "demos/assistant"
+      ]
+    },
+    {
+      "id": "builder",
+      "name": "Builder",
+      "description": "Writes a plugin that does what you describe, and shows you its code to accept before it runs.",
+      "href": "/std/agents/builder.agent.md",
+      "source": "std",
+      "kind": "agent",
+      "permissions": [
+        "plugins:author",
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
+      "places": [],
+      "apps": [
+        "demos/assistant",
+        "demos/markdown-editor",
+        "home"
+      ]
+    },
+    {
+      "id": "chat",
+      "name": "Chat",
+      "description": "Write to the app's agents, such as the assistant or the builder, and read their answers.",
+      "href": "/std/agents/chat.js",
+      "source": "std",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "bus:send:*"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus"
+      ],
+      "places": [],
+      "apps": [
+        "demos/assistant",
+        "demos/markdown-editor",
+        "home"
+      ]
+    },
+    {
+      "id": "ask-the-page",
+      "name": "Ask the page",
+      "description": "Answers questions about this page with a language model, from the plugins it is made of.",
+      "href": "/std/ask-the-page.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Building plugins",
+      "permissions": [
+        "ui",
+        "llm",
+        "plugins:read"
+      ],
+      "provides": [],
+      "services": [
+        "llm"
+      ],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "board",
+      "name": "Board",
+      "description": "Questions from the app's agents, waiting for your answer, and what they did lately.",
+      "href": "/std/board.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Agents",
+      "permissions": [
+        "ui",
+        "bus:board",
+        "hook:listen:bus:asked",
+        "hook:listen:bus:answered",
+        "hook:listen:agent:*"
+      ],
+      "provides": [],
+      "services": [
+        "bus"
+      ],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "demos/assistant",
+        "demos/librarian",
+        "demos/markdown-editor",
+        "demos/security",
+        "site/new"
+      ]
+    },
+    {
+      "id": "command-palette",
+      "name": "Command palette",
+      "description": "Search everything the app can do, and run it, or press its shortcut.",
+      "href": "/std/commands/palette.js",
+      "source": "std",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "commands"
+      ],
+      "provides": [],
+      "services": [
+        "commands"
+      ],
+      "places": [],
+      "apps": [
+        "demos/assistant",
+        "demos/audio-editor",
+        "demos/beats",
+        "demos/board",
+        "demos/glowfall-together",
+        "demos/glowfall",
+        "demos/markdown-editor",
+        "demos/reading-list",
+        "demos/trails"
+      ]
+    },
+    {
+      "id": "customize",
+      "name": "Customize",
+      "description": "A Customize button that adds, turns on and off, removes and shares the person's own plugins for an app.",
+      "href": "/std/customize.js",
+      "source": "std",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:author",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "debug-console",
+      "name": "Debug console",
+      "description": "A bug button that shows errors and the trace, ready to copy into a bug report.",
+      "href": "/std/debug-console.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Looking inside",
+      "permissions": [
+        "ui",
+        "debug:read"
+      ],
+      "provides": [],
+      "services": [
+        "debug"
+      ],
+      "places": [
+        "append body"
+      ],
+      "apps": [
+        "demos/calendar",
+        "demos/contacts",
+        "demos/household",
+        "demos/reading-list",
+        "demos/recipes",
+        "demos/spending",
+        "home",
+        "site/new"
+      ]
+    },
+    {
+      "id": "hook-tracer",
+      "name": "Hook tracer",
+      "description": "Shows each hook an action runs, in order, and what every plugin listening said.",
+      "href": "/std/hook-tracer.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Looking inside",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "debug:read"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "import-export",
+      "name": "Import and export",
+      "description": "Buttons to save each of the app's collections to a CSV or JSON file, and to import a file's rows into one.",
+      "href": "/std/import-export.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Your data",
+      "permissions": [
+        "ui",
+        "transfer"
+      ],
+      "provides": [],
+      "services": [
+        "transfer"
+      ],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "demos/spending"
+      ]
+    },
+    {
+      "id": "llm-anthropic",
+      "name": "Claude (Anthropic)",
+      "description": "Answers the app's llm requests with Claude, using the person's Anthropic API key.",
+      "href": "/std/llm/anthropic.js",
+      "source": "std",
+      "kind": "service",
+      "offered": true,
+      "group": "Language models",
+      "permissions": [
+        "provide:llm",
+        "network:api.anthropic.com",
+        "secret:anthropic"
+      ],
+      "provides": [
+        "llm"
+      ],
+      "services": [
+        "llm"
+      ],
+      "places": [],
+      "apps": [
+        "demos/assistant",
+        "demos/librarian",
+        "demos/markdown-editor",
+        "demos/security",
+        "home",
+        "site/new"
+      ]
+    },
+    {
+      "id": "llm-gemini",
+      "name": "Gemini (Google)",
+      "description": "Answers the app's llm requests with Gemini, using the person's Gemini API key.",
+      "href": "/std/llm/gemini.js",
+      "source": "std",
+      "kind": "service",
+      "offered": true,
+      "group": "Language models",
+      "permissions": [
+        "provide:llm",
+        "network:generativelanguage.googleapis.com",
+        "secret:gemini"
+      ],
+      "provides": [
+        "llm"
+      ],
+      "services": [
+        "llm"
+      ],
+      "places": [],
+      "apps": [
+        "home",
+        "site/new"
+      ]
+    },
+    {
+      "id": "llm-openai-compatible",
+      "name": "Ollama",
+      "description": "Answers the app's llm requests with a model served on this computer by Ollama, or another OpenAI-style API.",
+      "href": "/std/llm/openai-compatible.js",
+      "source": "std",
+      "kind": "service",
+      "offered": true,
+      "group": "Language models",
+      "permissions": [
+        "provide:llm",
+        "network:localhost:11434"
+      ],
+      "provides": [
+        "llm"
+      ],
+      "services": [
+        "llm"
+      ],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "llm-openai",
+      "name": "OpenAI",
+      "description": "Answers the app's llm requests with OpenAI's models, using the person's OpenAI API key.",
+      "href": "/std/llm/openai.js",
+      "source": "std",
+      "kind": "service",
+      "offered": true,
+      "group": "Language models",
+      "permissions": [
+        "provide:llm",
+        "network:api.openai.com",
+        "secret:openai"
+      ],
+      "provides": [
+        "llm"
+      ],
+      "services": [
+        "llm"
+      ],
+      "places": [],
+      "apps": [
+        "home",
+        "site/new"
+      ]
+    },
+    {
+      "id": "app-maker",
+      "name": "App maker",
+      "description": "Makes an app from what you describe, or changes one you made, and shows you every file to accept before it is saved.",
+      "href": "/std/maker/app-maker.agent.md",
+      "source": "std",
+      "kind": "agent",
+      "permissions": [
+        "apps:make",
+        "apps:read",
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
+      "places": [],
+      "apps": [
+        "site/new"
+      ]
+    },
+    {
+      "id": "your-apps",
+      "name": "Your apps",
+      "description": "Describe an app to make it, or a change to one you made; see each app running, and go back to an earlier version of any file.",
+      "href": "/std/maker/your-apps.js",
+      "source": "std",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "apps:read",
+        "apps:make",
+        "bus:send:app-maker",
+        "hook:listen:agent:toolResult"
+      ],
+      "provides": [],
+      "services": [
+        "bus",
+        "maker"
+      ],
+      "places": [],
+      "apps": [
+        "site/new"
+      ]
+    },
+    {
+      "id": "plugin-editor",
+      "name": "Plugin editor",
+      "description": "Write a plugin, or change a copy of one on the page, and see what it asks for before it runs.",
+      "href": "/std/plugin-editor.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Building plugins",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:author",
+        "debug:read"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "reset",
+      "name": "Reset",
+      "description": "Turns every plugin on the page back on.",
+      "href": "/std/reset.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Turning plugins on and off",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "switchboard",
+      "name": "Switchboard",
+      "description": "A switch for each plugin on the page.",
+      "href": "/std/switchboard.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Turning plugins on and off",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "home",
+        "site/new"
+      ]
+    },
+    {
+      "id": "sync-status",
+      "name": "Sync",
+      "description": "In a space: whether this page reaches it, and the versions of records it kept when someone else changed them first.",
+      "href": "/std/sync.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Your data",
+      "permissions": [
+        "ui",
+        "sync"
+      ],
+      "provides": [],
+      "services": [
+        "sync"
+      ],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "demos/feeds",
+        "demos/household",
+        "demos/reading-list",
+        "demos/survey"
+      ]
+    },
+    {
+      "id": "undo",
+      "name": "Undo",
+      "description": "Undo and Redo buttons that take back the app's most recent change to its data, and put it back again.",
+      "href": "/std/undo.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Your data",
+      "permissions": [
+        "ui",
+        "history"
+      ],
+      "provides": [],
+      "services": [
+        "history"
+      ],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "demos/spending"
+      ]
+    },
+    {
+      "id": "view-source",
+      "name": "View source",
+      "description": "Shows the code of every plugin on the page, and what each one may do.",
+      "href": "/std/view-source.js",
+      "source": "std",
+      "kind": "ui",
+      "offered": true,
+      "group": "Looking inside",
+      "permissions": [
+        "ui",
+        "plugins:read"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "append main"
+      ],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "effect-crusher",
+      "name": "Lo-fi",
+      "description": "A bit crusher for the sound editor.",
+      "href": "/demos/audio-editor/crusher.js",
+      "source": "audio-editor",
+      "kind": "background",
+      "permissions": [
+        "audio",
+        "hook:intercept:sound-editor:effects"
+      ],
+      "provides": [],
+      "services": [
+        "audio"
+      ],
+      "places": [],
+      "apps": [
+        "demos/audio-editor"
+      ]
+    },
+    {
+      "id": "effect-echo",
+      "name": "Echo",
+      "description": "An echo for the sound editor.",
+      "href": "/demos/audio-editor/echo.js",
+      "source": "audio-editor",
+      "kind": "background",
+      "permissions": [
+        "audio",
+        "hook:intercept:sound-editor:effects"
+      ],
+      "provides": [],
+      "services": [
+        "audio"
+      ],
+      "places": [],
+      "apps": [
+        "demos/audio-editor"
+      ]
+    },
+    {
+      "id": "sound-editor",
+      "name": "Sound editor",
+      "description": "A clip's waveform to pick parts of, play, edit and run through effects.",
+      "href": "/demos/audio-editor/editor.js",
+      "source": "audio-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "audio",
+        "commands",
+        "plugins:read"
+      ],
+      "provides": [],
+      "services": [
+        "audio",
+        "commands"
+      ],
+      "places": [],
+      "apps": [
+        "demos/audio-editor"
+      ]
+    },
+    {
+      "id": "effect-telephone",
+      "name": "Telephone",
+      "description": "Sounds like it's on the phone.",
+      "href": "/demos/audio-editor/samples/telephone.js",
+      "source": "audio-editor",
+      "kind": "background",
+      "permissions": [
+        "audio",
+        "hook:intercept:sound-editor:effects"
+      ],
+      "provides": [],
+      "services": [
+        "audio"
+      ],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "effect-tremolo",
+      "name": "Tremolo",
+      "description": "A tremolo for the sound editor.",
+      "href": "/demos/audio-editor/tremolo.js",
+      "source": "audio-editor",
+      "kind": "background",
+      "permissions": [
+        "audio",
+        "hook:intercept:sound-editor:effects"
+      ],
+      "provides": [],
+      "services": [
+        "audio"
+      ],
+      "places": [],
+      "apps": [
+        "demos/audio-editor"
+      ]
+    },
+    {
+      "id": "euclid",
+      "name": "Euclidean rhythms",
+      "description": "Spreads a number of hits evenly across a row.",
+      "href": "/demos/beats/euclid.js",
+      "source": "beats",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "commands"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/beats"
+      ]
+    },
+    {
+      "id": "ripples",
+      "name": "Ripples",
+      "description": "The pattern as a radar, with a ripple for every hit.",
+      "href": "/demos/beats/ripples.js",
+      "source": "beats",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:patterns",
+        "data:read:transport"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/beats"
+      ]
+    },
+    {
+      "id": "drums-only",
+      "name": "Drums only",
+      "description": "Hides the bass and bell rows.",
+      "href": "/demos/beats/samples/drums-only.js",
+      "source": "beats",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "ui:transform:sequencer"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "hide each .row[data-track='bass'], .row[data-track='bell'] in sequencer"
+      ],
+      "apps": []
+    },
+    {
+      "id": "sunset",
+      "name": "Sunset theme",
+      "description": "Warm plum surfaces and a coral accent.",
+      "href": "/demos/beats/samples/sunset.js",
+      "source": "beats",
+      "kind": "ui",
+      "permissions": [
+        "ui:theme"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "sequencer",
+      "name": "Sequencer",
+      "description": "Sixteen steps, six voices: the pads, the clock and the sound.",
+      "href": "/demos/beats/sequencer.js",
+      "source": "beats",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "audio"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/beats"
+      ]
+    },
+    {
+      "id": "studio",
+      "name": "Board",
+      "description": "The cards, as a board of columns, and each card on its own screen.",
+      "href": "/demos/board/board.js",
+      "source": "board",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "router"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/board"
+      ]
+    },
+    {
+      "id": "checklist",
+      "name": "Checklist",
+      "description": "Steps for each card: a count on the board, and a checklist on the card's screen.",
+      "href": "/demos/board/checklist.js",
+      "source": "board",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/board"
+      ]
+    },
+    {
+      "id": "due",
+      "name": "Due dates",
+      "description": "How soon each card is due, as a badge on the card.",
+      "href": "/demos/board/due.js",
+      "source": "board",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/board"
+      ]
+    },
+    {
+      "id": "pulse",
+      "name": "Pulse",
+      "description": "Progress, flow and who has what, from the board's cards.",
+      "href": "/demos/board/pulse.js",
+      "source": "board",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:studio-cards"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/board"
+      ]
+    },
+    {
+      "id": "focus",
+      "name": "Focus",
+      "description": "Hides the Ideas and Shipped columns, so only the work in flight shows.",
+      "href": "/demos/board/samples/focus.js",
+      "source": "board",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "ui:transform:studio"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "hide each .column[data-column='ideas'], .column[data-column='done'] in studio"
+      ],
+      "apps": []
+    },
+    {
+      "id": "midnight",
+      "name": "Midnight theme",
+      "description": "Deep blue surfaces and an electric accent at night, cool blue-grey by day.",
+      "href": "/demos/board/samples/midnight.js",
+      "source": "board",
+      "kind": "ui",
+      "permissions": [
+        "ui:theme"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "wip",
+      "name": "Work-in-progress limits",
+      "description": "A limit on how many cards each busy column holds, shown in its header.",
+      "href": "/demos/board/wip.js",
+      "source": "board",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "ui:transform:studio"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "append each .column-head in studio"
+      ],
+      "apps": [
+        "demos/board"
+      ]
+    },
+    {
+      "id": "agenda",
+      "name": "Agenda",
+      "description": "The next two weeks: events, and birthdays from your contacts.",
+      "href": "/demos/calendar/agenda.js",
+      "source": "calendar",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:events",
+        "data:read:contacts"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/calendar"
+      ]
+    },
+    {
+      "id": "events",
+      "name": "Events",
+      "description": "Add, edit and delete events.",
+      "href": "/demos/calendar/events.js",
+      "source": "calendar",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/calendar"
+      ]
+    },
+    {
+      "id": "month",
+      "name": "Month",
+      "description": "A month of events as a grid.",
+      "href": "/demos/calendar/month.js",
+      "source": "calendar",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:events"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/calendar"
+      ]
+    },
+    {
+      "id": "birthdays",
+      "name": "Birthdays",
+      "description": "Birthdays coming up, and how old each person will be.",
+      "href": "/demos/contacts/birthdays.js",
+      "source": "contacts",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:contacts"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/contacts"
+      ]
+    },
+    {
+      "id": "next-meeting",
+      "name": "Next meeting",
+      "description": "Adds each person's next calendar event to the birthdays list.",
+      "href": "/demos/contacts/next-meeting.js",
+      "source": "contacts",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "ui:transform:birthdays",
+        "data:read:events"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "append each li[data-name] in birthdays"
+      ],
+      "apps": [
+        "demos/contacts"
+      ]
+    },
+    {
+      "id": "people",
+      "name": "People",
+      "description": "Everyone you know, with a form to add or edit a person and a table of them all.",
+      "href": "/demos/contacts/people.js",
+      "source": "contacts",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/contacts"
+      ]
+    },
+    {
+      "id": "vcard-import",
+      "name": "vCard import",
+      "description": "Paste vCards to add people to your contacts.",
+      "href": "/demos/contacts/vcard-import.js",
+      "source": "contacts",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:contacts",
+        "data:write:contacts"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/contacts"
+      ]
+    },
+    {
+      "id": "debugger-events",
+      "name": "Debugger: events",
+      "description": "Hooks, calls, refusals, workers and errors as they happen, filtered and paused at will.",
+      "href": "/demos/debugger/events.js",
+      "source": "debugger",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "reflect:read",
+        "debug:read",
+        "bus:read:debugger-focus",
+        "hook:listen:bus:posted"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/debugger"
+      ]
+    },
+    {
+      "id": "debugger-hooks",
+      "name": "Debugger: hooks",
+      "description": "Every hook: who defines it, its mode and limits, who listens, and how often it fired.",
+      "href": "/demos/debugger/hooks.js",
+      "source": "debugger",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "reflect:read",
+        "debug:read",
+        "bus:read:debugger-focus",
+        "hook:listen:bus:posted"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/debugger"
+      ]
+    },
+    {
+      "id": "debugger-plugins",
+      "name": "Debugger: plugins",
+      "description": "Each plugin's manifest, requested and granted permissions, refusals, hooks, workers and code.",
+      "href": "/demos/debugger/plugins.js",
+      "source": "debugger",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "reflect:read",
+        "debug:read",
+        "bus:read:debugger-focus",
+        "hook:listen:bus:posted"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/debugger"
+      ]
+    },
+    {
+      "id": "debugger-space-events",
+      "name": "Debugger: space server events",
+      "description": "In a space, the trace of the kernel on the space's server as it happens: hooks, calls, refusals and errors.",
+      "href": "/demos/debugger/space-events.js",
+      "source": "debugger",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "reflect:read",
+        "members",
+        "hook:listen:sync:trace"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/debugger"
+      ]
+    },
+    {
+      "id": "debugger-space",
+      "name": "Debugger: space server",
+      "description": "In a space, shows what runs in the kernel on the space's server: its plugins, permissions, hooks, routes, workers and the members connected.",
+      "href": "/demos/debugger/space.js",
+      "source": "debugger",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "reflect:read",
+        "members"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/debugger"
+      ]
+    },
+    {
+      "id": "debugger-target",
+      "name": "Debugger: target",
+      "description": "Lists every open tab and its app, and picks the one the debugger looks at.",
+      "href": "/demos/debugger/target.js",
+      "source": "debugger",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "reflect:read",
+        "debug:read",
+        "bus:post:debugger-focus",
+        "bus:read:debugger-focus",
+        "hook:listen:bus:posted"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/debugger"
+      ]
+    },
+    {
+      "id": "debugger-workers",
+      "name": "Debugger: workers",
+      "description": "Every plugin worker running, grouped by the tab that started it.",
+      "href": "/demos/debugger/workers.js",
+      "source": "debugger",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "reflect:read",
+        "debug:read",
+        "bus:read:debugger-focus",
+        "hook:listen:bus:posted"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/debugger"
+      ]
+    },
+    {
+      "id": "feeds",
+      "name": "Feeds",
+      "description": "Follow RSS and Atom feeds, and read their stories.",
+      "href": "/demos/feeds/feeds.js",
+      "source": "feeds",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:items",
+        "data:read:fetched",
+        "sync"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/feeds"
+      ]
+    },
+    {
+      "id": "fetch",
+      "name": "Feed fetcher",
+      "description": "Reads each feed over https on the space's server, every half hour, and keeps the stories.",
+      "href": "/demos/feeds/fetch.js",
+      "source": "feeds",
+      "kind": "background",
+      "permissions": [
+        "network",
+        "schedule",
+        "data:read:feeds"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "runs": "server",
+      "apps": [
+        "demos/feeds"
+      ]
+    },
+    {
+      "id": "glowfall-catch",
+      "name": "Catch",
+      "description": "Scores the fireflies the jar catches and counts the raindrops it doesn't dodge.",
+      "href": "/demos/glowfall/catch.js",
+      "source": "glowfall",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:game:rules"
+      ],
+      "provides": [],
+      "services": [
+        "game"
+      ],
+      "places": [],
+      "apps": [
+        "demos/glowfall"
+      ]
+    },
+    {
+      "id": "glowfall-controls",
+      "name": "Controls",
+      "description": "Start, pause and steer, by button or key, and the best scores.",
+      "href": "/demos/glowfall/controls.js",
+      "source": "glowfall",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "game",
+        "commands",
+        "hook:listen:game:ended",
+        "hook:listen:game:started"
+      ],
+      "provides": [],
+      "services": [
+        "commands",
+        "game"
+      ],
+      "places": [],
+      "apps": [
+        "demos/glowfall"
+      ]
+    },
+    {
+      "id": "glowfall-jar",
+      "name": "Jar",
+      "description": "Moves the jar a lane left or right for each press.",
+      "href": "/demos/glowfall/jar.js",
+      "source": "glowfall",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:game:update"
+      ],
+      "provides": [],
+      "services": [
+        "game"
+      ],
+      "places": [],
+      "apps": [
+        "demos/glowfall"
+      ]
+    },
+    {
+      "id": "glowfall-meadow",
+      "name": "Meadow",
+      "description": "Draws the night meadow, the jar and everything falling, on a canvas, and steers the jar to where you tap or drag.",
+      "href": "/demos/glowfall/meadow.js",
+      "source": "glowfall",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "game",
+        "hook:listen:game:frame"
+      ],
+      "provides": [],
+      "services": [
+        "game"
+      ],
+      "places": [],
+      "apps": [
+        "demos/glowfall"
+      ]
+    },
+    {
+      "id": "glowfall-chime",
+      "name": "Chime",
+      "description": "A bell for each catch, a plop for each splash.",
+      "href": "/demos/glowfall/samples/chime.js",
+      "source": "glowfall",
+      "kind": "background",
+      "permissions": [
+        "audio",
+        "hook:listen:game:frame"
+      ],
+      "provides": [],
+      "services": [
+        "audio",
+        "game"
+      ],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "glowfall-wind",
+      "name": "Wind",
+      "description": "Gusts that blow falling things sideways.",
+      "href": "/demos/glowfall/samples/wind.js",
+      "source": "glowfall",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:game:update"
+      ],
+      "provides": [],
+      "services": [
+        "game"
+      ],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "glowfall-sky",
+      "name": "Sky",
+      "description": "Drops fireflies and raindrops down the five lanes.",
+      "href": "/demos/glowfall/sky.js",
+      "source": "glowfall",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:game:update"
+      ],
+      "provides": [],
+      "services": [
+        "game"
+      ],
+      "places": [],
+      "runs": "both",
+      "apps": [
+        "demos/glowfall-together",
+        "demos/glowfall"
+      ]
+    },
+    {
+      "id": "glowfall-catches",
+      "name": "Catches for everyone",
+      "description": "Scores each player's catches and the team's, and counts the rain.",
+      "href": "/demos/glowfall-together/catches.js",
+      "source": "glowfall-together",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:game:rules"
+      ],
+      "provides": [],
+      "services": [
+        "game"
+      ],
+      "places": [],
+      "runs": "server",
+      "apps": [
+        "demos/glowfall-together"
+      ]
+    },
+    {
+      "id": "glowfall-field",
+      "name": "Field",
+      "description": "Draws the game everyone in the space plays, and sends your moves to it.",
+      "href": "/demos/glowfall-together/field.js",
+      "source": "glowfall-together",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "live",
+        "commands",
+        "hook:listen:sync:live"
+      ],
+      "provides": [],
+      "services": [
+        "commands",
+        "sync"
+      ],
+      "places": [],
+      "apps": [
+        "demos/glowfall-together"
+      ]
+    },
+    {
+      "id": "glowfall-jars",
+      "name": "Jars for everyone",
+      "description": "Moves each player's jar a lane, or to the lane they tapped.",
+      "href": "/demos/glowfall-together/jars.js",
+      "source": "glowfall-together",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:game:update"
+      ],
+      "provides": [],
+      "services": [
+        "game"
+      ],
+      "places": [],
+      "runs": "server",
+      "apps": [
+        "demos/glowfall-together"
+      ]
+    },
+    {
+      "id": "glowfall-lobby",
+      "name": "Lobby",
+      "description": "Joins the game on the space's server, starts it, and shows who is playing and the scores.",
+      "href": "/demos/glowfall-together/lobby.js",
+      "source": "glowfall-together",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "live",
+        "members",
+        "sync",
+        "hook:listen:sync:live",
+        "hook:listen:members:changed",
+        "hook:listen:sync:changed"
+      ],
+      "provides": [],
+      "services": [
+        "sync"
+      ],
+      "places": [],
+      "apps": [
+        "demos/glowfall-together"
+      ]
+    },
+    {
+      "id": "glowfall-together",
+      "name": "Glowfall together",
+      "description": "Runs a game of Glowfall on the space's server, for every member who joins.",
+      "href": "/demos/glowfall-together/together.js",
+      "source": "glowfall-together",
+      "kind": "background",
+      "permissions": [
+        "game",
+        "live",
+        "hook:listen:sync:live",
+        "hook:listen:game:frame",
+        "hook:listen:game:ended"
+      ],
+      "provides": [],
+      "services": [
+        "game",
+        "sync"
+      ],
+      "places": [],
+      "runs": "server",
+      "apps": [
+        "demos/glowfall-together"
+      ]
+    },
+    {
+      "id": "habits",
+      "name": "Habits",
+      "description": "Tick off today's habits, and keep a streak.",
+      "href": "/demos/habits/habits.js",
+      "source": "habits",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/habits"
+      ]
+    },
+    {
+      "id": "chores",
+      "name": "Chores",
+      "description": "What needs doing around the house, how often, and who did it last.",
+      "href": "/demos/household/chores.js",
+      "source": "household",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "members",
+        "hook:listen:members:changed",
+        "bus:read:household-new",
+        "hook:listen:bus:posted"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/household"
+      ]
+    },
+    {
+      "id": "groceries",
+      "name": "Shopping list",
+      "description": "What the house needs, who added it, and who got it.",
+      "href": "/demos/household/groceries.js",
+      "source": "household",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "members",
+        "hook:listen:members:changed",
+        "bus:read:household-new",
+        "hook:listen:bus:posted"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/household"
+      ]
+    },
+    {
+      "id": "housemates",
+      "name": "Housemates",
+      "description": "Everyone who lives here (the space's members), and who is using this device.",
+      "href": "/demos/household/housemates.js",
+      "source": "household",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "members",
+        "hook:listen:members:changed",
+        "bus:post:household-new"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/household"
+      ]
+    },
+    {
+      "id": "stamps",
+      "name": "Honest stamps",
+      "description": "Refuses a change that signs it with someone else's name.",
+      "href": "/demos/household/stamps.js",
+      "source": "household",
+      "kind": "background",
+      "permissions": [
+        "data:read:groceries",
+        "data:read:chores",
+        "hook:intercept:data:beforeWrite:groceries",
+        "hook:intercept:data:beforeWrite:chores"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "runs": "server",
+      "apps": [
+        "demos/household"
+      ]
+    },
+    {
+      "id": "memo",
+      "name": "Private memo",
+      "description": "A note to yourself about this invoice.",
+      "href": "/demos/invoice/samples/memo.js",
+      "source": "invoice",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "prepend main"
+      ],
+      "apps": []
+    },
+    {
+      "id": "pay-later",
+      "name": "Pay later",
+      "description": "Swaps the pay button for a reminder to pay on the due date.",
+      "href": "/demos/invoice/samples/pay-later.js",
+      "source": "invoice",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "replace #pay"
+      ],
+      "apps": []
+    },
+    {
+      "id": "tip",
+      "name": "Add a tip",
+      "description": "Adds a 10% tip line to the items.",
+      "href": "/demos/invoice/samples/tip.js",
+      "source": "invoice",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "append #lines"
+      ],
+      "apps": []
+    },
+    {
+      "id": "agent-activity",
+      "name": "Agent activity",
+      "description": "Lists what the app's agents did: each run, the tools they called, and how it ended.",
+      "href": "/demos/librarian/activity.js",
+      "source": "librarian",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "hook:listen:agent:*"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/librarian",
+        "demos/security"
+      ]
+    },
+    {
+      "id": "bibliographer",
+      "name": "Bibliographer",
+      "description": "Answers questions about who wrote a book and when, asking you when a title could be more than one book.",
+      "href": "/demos/librarian/bibliographer.agent.md",
+      "source": "librarian",
+      "kind": "agent",
+      "permissions": [
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
+      "places": [],
+      "apps": [
+        "demos/librarian",
+        "demos/security"
+      ]
+    },
+    {
+      "id": "librarian",
+      "name": "Librarian",
+      "description": "Fills in a book's author and first year of publication when they're missing.",
+      "href": "/demos/librarian/librarian.agent.md",
+      "source": "librarian",
+      "kind": "agent",
+      "permissions": [
+        "data:read:library",
+        "data:write:library",
+        "bus:send:bibliographer",
+        "llm",
+        "agent"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
+      "places": [],
+      "apps": [
+        "demos/librarian",
+        "demos/security"
+      ]
+    },
+    {
+      "id": "alerts",
+      "name": "Assistant alerts",
+      "description": "Tells you when an agent finishes a reply or stops with an error.",
+      "href": "/demos/markdown-editor/alerts.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "hook:listen:agent:done"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "autosave",
+      "name": "Autosave",
+      "description": "Saves the post a few seconds after you stop typing, or every few minutes. Pick when in its settings.",
+      "href": "/demos/markdown-editor/autosave.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "document:write",
+        "hook:listen:posts:change",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "data-checker",
+      "name": "Data checker",
+      "description": "Lists every number, date, money amount and quote in the post, and has the writer agent check them.",
+      "href": "/demos/markdown-editor/data-checker.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "folder:read",
+        "bus:send:writer",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "bus",
+        "document",
+        "folder"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "dictation",
+      "name": "Dictation",
+      "description": "Type by speaking: a Dictate button that puts what you say in at the cursor, with spoken punctuation.",
+      "href": "/demos/markdown-editor/dictation.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "document:write",
+        "hook:listen:posts:open",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "editor-agents",
+      "name": "Outside agents",
+      "description": "Lets an agent in your browser read and edit the open post with the writer's tools, through WebMCP.",
+      "href": "/demos/markdown-editor/editor-agents.js",
+      "source": "markdown-editor",
+      "kind": "background",
+      "permissions": [
+        "outside",
+        "commands",
+        "document:read",
+        "document:write",
+        "folder:read"
+      ],
+      "provides": [],
+      "services": [
+        "document",
+        "outside",
+        "tools"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "emoji",
+      "name": "Emoji",
+      "description": "Insert an emoji from a picker (Mod+Shift+E), with your recent ones first.",
+      "href": "/demos/markdown-editor/emoji.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:write",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "front-matter",
+      "name": "Front matter",
+      "description": "A form for the post's front matter: title, date, draft, tags and the rest, each with a control that fits.",
+      "href": "/demos/markdown-editor/front-matter.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "document:write",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:save",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "hugo-preview",
+      "name": "Hugo preview",
+      "description": "Shows the open post as your site's own hugo server renders it, with your theme, next to the editor.",
+      "href": "/demos/markdown-editor/hugo-preview.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "folder:read",
+        "hook:listen:posts:open",
+        "hook:listen:posts:save",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document",
+        "folder"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "images",
+      "name": "Images",
+      "description": "Saves images you paste or drop on a post next to it (a page bundle) or in static/images/, and puts a Markdown image or Hugo figure for each in the post.",
+      "href": "/demos/markdown-editor/images.js",
+      "source": "markdown-editor",
+      "kind": "background",
+      "permissions": [
+        "document:read",
+        "document:write",
+        "hook:intercept:posts:paste",
+        "hook:intercept:posts:drop"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "link-checker",
+      "name": "Link checker",
+      "description": "Checks the post's links: internal ones against the site's pages and files, external ones by connecting to them.",
+      "href": "/demos/markdown-editor/link-checker.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "network",
+        "document:read",
+        "folder:read",
+        "hook:listen:posts:open",
+        "hook:listen:posts:save",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document",
+        "folder"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "notifications",
+      "name": "Notifications",
+      "description": "Your computer's notifications when the writer finishes, while you're away from the editor.",
+      "href": "/demos/markdown-editor/notifications.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "notify",
+        "hook:listen:agent:done"
+      ],
+      "provides": [],
+      "services": [
+        "notify"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "outline",
+      "name": "Outline",
+      "description": "Shows the post's headings, with words per section, in an Outline panel. Click a heading to jump to it.",
+      "href": "/demos/markdown-editor/outline.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "post-times",
+      "name": "Edit and save times",
+      "description": "Shows when you last edited and last saved the post.",
+      "href": "/demos/markdown-editor/post-times.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:save",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "post-words",
+      "name": "Word count",
+      "description": "Shows the post's word count and reading time in the status bar.",
+      "href": "/demos/markdown-editor/post-words.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:save",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "posts",
+      "name": "Posts",
+      "description": "The site's Markdown posts: open one, write, save. Other plugins hear what you do through its hooks, and change the post through its document service.",
+      "href": "/demos/markdown-editor/posts.js",
+      "source": "markdown-editor",
+      "kind": "service",
+      "permissions": [
+        "ui",
+        "folder:read",
+        "folder:write",
+        "folder:choose",
+        "provide:document"
+      ],
+      "provides": [
+        "document"
+      ],
+      "services": [
+        "folder"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "readability",
+      "name": "Readability",
+      "description": "Shows the post's reading grade, underlines long sentences, and gives agents a readability report.",
+      "href": "/demos/markdown-editor/readability.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "bus:send:writer",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "bus",
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "repetition",
+      "name": "Repetition",
+      "description": "Underlines words repeated within a few lines of each other, and shows your most used words.",
+      "href": "/demos/markdown-editor/repetition.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "seo-check",
+      "name": "SEO check",
+      "description": "Checks title and description length, heading order, image alt text and link text, and gives agents an SEO report.",
+      "href": "/demos/markdown-editor/seo-check.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "bus:send:writer",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "bus",
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "snippets",
+      "name": "Snippets",
+      "description": "Insert saved snippets of text (Mod+Shift+X), save the selection as one, or share them in the site's .editor/snippets.json.",
+      "href": "/demos/markdown-editor/snippets.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "document:write",
+        "folder:read",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document",
+        "folder"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "spell-check",
+      "name": "Spell check",
+      "description": "Checks the spelling as you write, with the browser's spell checker, and accepts the site's tags and its own word list.",
+      "href": "/demos/markdown-editor/spell-check.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "document:write",
+        "folder:read",
+        "hook:listen:posts:open",
+        "hook:listen:posts:save"
+      ],
+      "provides": [],
+      "services": [
+        "document",
+        "folder"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "style-guide",
+      "name": "Style guide",
+      "description": "Underlines words your site's style guide replaces or avoids (.editor/style-guide.json), and has the writer agent apply the guide (.editor/style-guide.md).",
+      "href": "/demos/markdown-editor/style-guide.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "folder:read",
+        "bus:send:writer",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "bus",
+        "document",
+        "folder"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "tag-suggester",
+      "name": "Tag suggester",
+      "description": "Suggests tags the site already uses that fit the post, adds the one you pick, and gives agents a suggest-tags tool.",
+      "href": "/demos/markdown-editor/tag-suggester.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "document:write",
+        "bus:send:writer",
+        "hook:listen:posts:open",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "bus",
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "word-goal",
+      "name": "Word goal",
+      "description": "Shows progress towards a word count goal, set per post in its panel or with a wordGoal front matter field.",
+      "href": "/demos/markdown-editor/word-goal.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change",
+        "hook:listen:posts:close"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "writer",
+      "name": "Writer",
+      "description": "Works on the open post: checks it with the editor's reports and edits it, for you to keep or undo.",
+      "href": "/demos/markdown-editor/writer.agent.md",
+      "source": "markdown-editor",
+      "kind": "agent",
+      "permissions": [
+        "commands",
+        "document:read",
+        "document:write",
+        "folder:read",
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "writing-streak",
+      "name": "Writing streak",
+      "description": "Counts the words you write each day and shows your streak of writing days, with a history panel.",
+      "href": "/demos/markdown-editor/writing-streak.js",
+      "source": "markdown-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "document:read",
+        "hook:listen:posts:open",
+        "hook:listen:posts:change"
+      ],
+      "provides": [],
+      "services": [
+        "document"
+      ],
+      "places": [],
+      "apps": [
+        "demos/markdown-editor"
+      ]
+    },
+    {
+      "id": "currency",
+      "name": "Prices in my currency",
+      "description": "Shows the menu's prices in pounds, dollars or yen.",
+      "href": "/demos/menu/samples/currency.js",
+      "source": "menu",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "replace each [data-part=price]"
+      ],
+      "apps": []
+    },
+    {
+      "id": "quiet",
+      "name": "Hide the newsletter box",
+      "description": "Hides the café's newsletter sign-up.",
+      "href": "/demos/menu/samples/quiet.js",
+      "source": "menu",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "hide #newsletter"
+      ],
+      "apps": []
+    },
+    {
+      "id": "book-files",
+      "name": "Book files",
+      "description": "Adds an ebook (.pdf or .epub) opened with the reading list as a book to read.",
+      "href": "/demos/reading-list/book-files.js",
+      "source": "reading-list",
+      "kind": "background",
+      "permissions": [
+        "launch",
+        "data:write:library"
+      ],
+      "provides": [],
+      "services": [
+        "launch"
+      ],
+      "places": [],
+      "apps": [
+        "demos/reading-list"
+      ]
+    },
+    {
+      "id": "book-import",
+      "name": "Book import",
+      "description": "Paste a list of books to add them to the library.",
+      "href": "/demos/reading-list/book-import.js",
+      "source": "reading-list",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:write:library"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/reading-list"
+      ]
+    },
+    {
+      "id": "book-page",
+      "name": "Book page",
+      "description": "Shows one book on its own screen, at book/<id>, so a book can be linked to.",
+      "href": "/demos/reading-list/book-page.js",
+      "source": "reading-list",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "router",
+        "data:read:library",
+        "share"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/reading-list"
+      ]
+    },
+    {
+      "id": "book-share",
+      "name": "Book share",
+      "description": "Adds a page shared to the reading list as a book to read, with its link in the notes.",
+      "href": "/demos/reading-list/book-share.js",
+      "source": "reading-list",
+      "kind": "background",
+      "permissions": [
+        "share",
+        "data:write:library"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/reading-list"
+      ]
+    },
+    {
+      "id": "due-soon",
+      "name": "Due soon",
+      "description": "Books due back in the next two weeks, or overdue.",
+      "href": "/demos/reading-list/due-soon.js",
+      "source": "reading-list",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:library"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/reading-list"
+      ]
+    },
+    {
+      "id": "library",
+      "name": "Library",
+      "description": "The books, with a form to add or edit one and a table of them all.",
+      "href": "/demos/reading-list/library.js",
+      "source": "reading-list",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "routes"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/assistant",
+        "demos/librarian",
+        "demos/reading-list",
+        "demos/security"
+      ]
+    },
+    {
+      "id": "reading-list-agents",
+      "name": "Outside agent",
+      "description": "Lets agents outside the app read the reading list and suggest changes, which you review.",
+      "href": "/demos/reading-list/outside-agents.js",
+      "source": "reading-list",
+      "kind": "background",
+      "permissions": [
+        "outside",
+        "data:read:library",
+        "data:write:library"
+      ],
+      "provides": [],
+      "services": [
+        "outside",
+        "tools"
+      ],
+      "places": [],
+      "runs": "both",
+      "apps": [
+        "demos/reading-list"
+      ]
+    },
+    {
+      "id": "goal",
+      "name": "Reading goal",
+      "description": "How far you are towards reading 12 books this year.",
+      "href": "/demos/reading-list/samples/goal.js",
+      "source": "reading-list",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:library"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "prepend main"
+      ],
+      "apps": []
+    },
+    {
+      "id": "cookbook",
+      "name": "Cookbook",
+      "description": "Recipes, and the open recipe scaled to how many you're feeding.",
+      "href": "/demos/recipes/cookbook.js",
+      "source": "recipes",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/recipes"
+      ]
+    },
+    {
+      "id": "quick",
+      "name": "Quick meals",
+      "description": "Recipes you can make in the time you have.",
+      "href": "/demos/recipes/quick.js",
+      "source": "recipes",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:recipes"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/recipes"
+      ]
+    },
+    {
+      "id": "shopping",
+      "name": "Shopping list",
+      "description": "A shopping list you can fill from a recipe.",
+      "href": "/demos/recipes/shopping.js",
+      "source": "recipes",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:recipes"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/recipes"
+      ]
+    },
+    {
+      "id": "timer",
+      "name": "Kitchen timer",
+      "description": "A timer for the open recipe, in the room the cookbook leaves for it.",
+      "href": "/demos/recipes/timer.js",
+      "source": "recipes",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/recipes"
+      ]
+    },
+    {
+      "id": "security",
+      "name": "Security",
+      "description": "Stops card numbers being saved in the library, and checks what the other agents are about to do.",
+      "href": "/demos/security/security.agent.md",
+      "source": "security",
+      "kind": "agent",
+      "permissions": [
+        "data:read:library",
+        "llm",
+        "agent",
+        "hook:intercept:data:beforeWrite:library",
+        "hook:intercept:agent:beforeTool"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
+      "places": [],
+      "apps": [
+        "demos/security"
+      ]
+    },
+    {
+      "id": "budget",
+      "name": "Budget",
+      "description": "Spending against a monthly budget.",
+      "href": "/demos/spending/budget.js",
+      "source": "spending",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:expenses"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/spending"
+      ]
+    },
+    {
+      "id": "categories",
+      "name": "By category",
+      "description": "Spending split by category.",
+      "href": "/demos/spending/categories.js",
+      "source": "spending",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:expenses"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/spending"
+      ]
+    },
+    {
+      "id": "expenses",
+      "name": "Expenses",
+      "description": "The expenses, in a table, with a form to add one.",
+      "href": "/demos/spending/expenses.js",
+      "source": "spending",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/spending"
+      ]
+    },
+    {
+      "id": "collect",
+      "name": "Survey answers",
+      "description": "Serves each survey as a public form on the space's server, keeps the answers, and emails a daily digest.",
+      "href": "/demos/survey/collect.js",
+      "source": "survey",
+      "kind": "background",
+      "permissions": [
+        "routes",
+        "schedule",
+        "email",
+        "data:read:surveys"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "runs": "server",
+      "apps": [
+        "demos/survey"
+      ]
+    },
+    {
+      "id": "surveys",
+      "name": "Surveys",
+      "description": "Build surveys, share a link anyone can answer, and see the answers come in.",
+      "href": "/demos/survey/surveys.js",
+      "source": "survey",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:answers",
+        "sync",
+        "share"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/survey"
+      ]
+    },
+    {
+      "id": "activities",
+      "name": "Activities",
+      "description": "The log: a feed of activity cards, and a form to add one.",
+      "href": "/demos/trails/activities.js",
+      "source": "trails",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/trails"
+      ]
+    },
+    {
+      "id": "bests",
+      "name": "Personal bests",
+      "description": "Longest, fastest and highest, from the log.",
+      "href": "/demos/trails/bests.js",
+      "source": "trails",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:activities"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/trails"
+      ]
+    },
+    {
+      "id": "forest",
+      "name": "Forest theme",
+      "description": "Moss and pine, light and dark.",
+      "href": "/demos/trails/samples/forest.js",
+      "source": "trails",
+      "kind": "ui",
+      "permissions": [
+        "ui:theme"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "miles",
+      "name": "Miles",
+      "description": "Shows the log's distances in miles.",
+      "href": "/demos/trails/samples/miles.js",
+      "source": "trails",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "ui:transform:activities"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "replace each [data-km] in activities"
+      ],
+      "apps": []
+    },
+    {
+      "id": "weekly",
+      "name": "Weekly distance",
+      "description": "Twelve weeks of distance, stacked by kind, on a canvas.",
+      "href": "/demos/trails/weekly.js",
+      "source": "trails",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:activities"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/trails"
+      ]
+    },
+    {
+      "id": "year",
+      "name": "Year",
+      "description": "A year of activity, a square a day.",
+      "href": "/demos/trails/year.js",
+      "source": "trails",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:activities"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/trails"
+      ]
+    },
+    {
+      "id": "countdown",
+      "name": "Countdown",
+      "description": "How many days until the trip, under the heading.",
+      "href": "/demos/trip/samples/countdown.js",
+      "source": "trip",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "after h1[data-start]"
+      ],
+      "apps": []
+    },
+    {
+      "id": "packing",
+      "name": "Packing list",
+      "description": "What to pack, at the bottom of the page.",
+      "href": "/demos/trip/samples/packing.js",
+      "source": "trip",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [
+        "prepend footer"
+      ],
+      "apps": []
+    },
+    {
+      "id": "plum",
+      "name": "Plum theme",
+      "description": "Plum accents and rounder corners for the whole app.",
+      "href": "/demos/trip/samples/plum.js",
+      "source": "trip",
+      "kind": "ui",
+      "permissions": [
+        "ui:theme"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "chapter-1-core",
+      "name": "Chapter 1: A tiny core",
+      "description": "Explains the kernel, and can turn every plugin on this page off.",
+      "href": "/home/chapter-1-core.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-10-your-app",
+      "name": "Chapter 10: An app of your own",
+      "description": "Explains how to make a customizable app of your own with one command, run it, and put it online by itself.",
+      "href": "/home/chapter-10-your-app.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-11-agent",
+      "name": "Chapter 11: Let an agent change the page",
+      "description": "Explains how an agent writes a plugin for the page, with a recorded run you can replay without a key.",
+      "href": "/home/chapter-11-agent.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:author"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-12-security",
+      "name": "Chapter 12: A second pair of eyes",
+      "description": "Explains the checks a plugin goes through before its review card, and tries one that should be stopped.",
+      "href": "/home/chapter-12-security.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:author",
+        "data:read:security-reviews"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-2-plugins",
+      "name": "Chapter 2: Everything is a plugin",
+      "description": "Explains what a plugin is, with Note stats as the example and a switch for it.",
+      "href": "/home/chapter-2-plugins.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-3-hooks",
+      "name": "Chapter 3: Hooks",
+      "description": "Explains hooks, with Quiet please as the example and a switch for it.",
+      "href": "/home/chapter-3-hooks.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-4-make",
+      "name": "Chapter 4: Make your own",
+      "description": "Explains how to write a plugin for this page, with the plugin editor below it.",
+      "href": "/home/chapter-4-make.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-5-inspect",
+      "name": "Chapter 5: Look inside",
+      "description": "Explains how to see any plugin's code and follow the hooks an action runs, above view source and the hook tracer.",
+      "href": "/home/chapter-5-inspect.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-6-models",
+      "name": "Chapter 6: Ask a model",
+      "description": "Explains how a plugin asks a language model without ever holding a key, above Ask the page.",
+      "href": "/home/chapter-6-models.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-7-permissions",
+      "name": "Chapter 7: What a plugin may do",
+      "description": "Explains permissions and the gate, and lets you watch the gate refuse this chapter.",
+      "href": "/home/chapter-7-permissions.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-8-data",
+      "name": "Chapter 8: Your data",
+      "description": "Explains collections, schemas and review, and asks you to accept a note it wants to add.",
+      "href": "/home/chapter-8-data.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:write:learning"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-9-views",
+      "name": "Chapter 9: Views are HTML",
+      "description": "Explains how plugins draw, and draws any HTML you type so you can see what the page keeps.",
+      "href": "/home/chapter-9-views.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "learning-notes",
+      "name": "Learning notes",
+      "description": "Your notes as you learn how the page works, kept in this browser.",
+      "href": "/home/learning-notes.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "note-stats",
+      "name": "Note stats",
+      "description": "Counts your learning notes and their words. It reads the notes; it doesn't own them.",
+      "href": "/home/note-stats.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:learning"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "quiet-please",
+      "name": "Quiet please",
+      "description": "Stops a note written all in capitals, by listening on the hook that runs before each write.",
+      "href": "/home/quiet-please.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "data:read:learning",
+        "hook:intercept:data:beforeWrite:learning"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "security-check",
+      "name": "Security check",
+      "description": "Stops a plugin of your own that could send your data away, or runs code you can't read, before its review card.",
+      "href": "/home/security-check.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:plugins:beforeAdd"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "security-agent",
+      "name": "Security agent",
+      "description": "Reads a plugin of your own before you review it, and stops one that would do something it doesn't say.",
+      "href": "/home/security.agent.md",
+      "source": "site",
+      "kind": "agent",
+      "permissions": [
+        "llm",
+        "agent",
+        "hook:intercept:plugins:beforeAdd"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "story-view",
+      "name": "Story view",
+      "description": "Switches the page between the guided view and one scrolling story.",
+      "href": "/home/story-view.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "x-ray",
+      "name": "X-ray",
+      "description": "Outlines every part of the page and labels it with the plugin that drew it.",
+      "href": "/home/x-ray.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "bars",
+      "name": "Note lengths",
+      "description": "Bars for the length of each note, drawn on a canvas in a worker.",
+      "href": "/workbench/plugins/bars.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:notes"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "edit-times",
+      "name": "Edit and save times",
+      "description": "Shows when you last edited and last saved the note.",
+      "href": "/workbench/plugins/edit-times.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "hook:listen:notes:open",
+        "hook:listen:notes:change",
+        "hook:listen:notes:save",
+        "hook:listen:notes:close"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "fetcher",
+      "name": "Fetcher",
+      "description": "",
+      "href": "/workbench/plugins/fetcher.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "network"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "no-shouting",
+      "name": "No shouting",
+      "description": "Stops a note from being saved when it is all capitals.",
+      "href": "/workbench/plugins/no-shouting.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "data:read:notes",
+        "hook:intercept:data:beforeWrite:notes"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "notes",
+      "name": "Notes",
+      "description": "Notes you can open, edit and save. Other plugins hear what you do through its hooks.",
+      "href": "/workbench/plugins/notes.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "offline",
+      "name": "Offline",
+      "description": "",
+      "href": "/workbench/plugins/offline.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "pinger",
+      "name": "Pinger",
+      "description": "",
+      "href": "/workbench/plugins/pinger.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:bench:ping"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "sneaky",
+      "name": "Sneaky",
+      "description": "",
+      "href": "/workbench/plugins/sneaky.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "data:read:notes",
+        "files:*"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "tidy",
+      "name": "Tidy",
+      "description": "Tidies the open note's spacing and exports it as Markdown, to show change review.",
+      "href": "/workbench/plugins/tidy.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "hook:listen:notes:open",
+        "hook:listen:notes:save",
+        "hook:listen:notes:close",
+        "data:write:notes",
+        "files:exports"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "tone",
+      "name": "Tone",
+      "description": "A button that plays a tone, to prove audio runs with no plugin code on the main thread.",
+      "href": "/workbench/plugins/tone.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "audio"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "word-count",
+      "name": "Word count",
+      "description": "Shows the note's word count and reading time in the status bar.",
+      "href": "/workbench/plugins/word-count.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "hook:listen:notes:open",
+        "hook:listen:notes:change",
+        "hook:listen:notes:save",
+        "hook:listen:notes:close"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "docs",
+      "name": "Docs",
+      "description": "Draws a page of the docs, from the Markdown file its address names, beside the list of pages.",
+      "href": "/docs/docs.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "router"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "docs"
+      ]
+    },
+    {
+      "id": "docs-panel",
+      "name": "Docs panel",
+      "description": "Opens the docs beside the page, at the page about what you're reading.",
+      "href": "/docs/panel.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    }
+  ]
+}
