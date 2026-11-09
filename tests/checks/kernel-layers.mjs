@@ -9,6 +9,7 @@ const KERNEL = new URL("../../src/kernel/", import.meta.url);
 /** Needed to run any plugin, in any app or space server. */
 const CORE = [
   "address.ts",
+  "agents/linked.ts",
   "apps.ts",
   "authoring.ts",
   "browser-env.ts",
@@ -24,6 +25,7 @@ const CORE = [
   "kernel-modules.d.ts",
   "kernel.ts",
   "legacy.ts",
+  "manifest-fields.ts",
   "manifest.ts",
   "modules.ts",
   "moves.ts",
@@ -53,6 +55,18 @@ const SERVICES = [
   "agents/file.ts",
 ];
 
+/**
+ * Files of src/kernel/ the kernel fetches when they are first needed, never with its own file: only some apps use
+ * them (docs/layers.md, "The kernel stays small"). No other file of src/kernel/ may import one, except for its
+ * types or with import().
+ */
+const ON_DEMAND = [
+  "agents/file.ts",
+  "authoring.ts",
+  "manifest-fields.ts",
+  "reference.ts",
+];
+
 const files = (dir = "") =>
   readdirSync(new URL(dir, KERNEL), { withFileTypes: true }).flatMap((e) =>
     e.name.startsWith(".") ? [] : e.isDirectory() ? files(`${dir}${e.name}/`) : [`${dir}${e.name}`],
@@ -79,4 +93,19 @@ export default async function ({ check }) {
   // defineHook, or setting one of the core's callbacks (remote.onDispose = …), would outlive it, and Cordis never fires ctx.on("dispose").
   const unscoped = modules.filter((name) => /\bdefineHook\b|\bhooks\.set\(|on\(\s*["']dispose["']|\.on[A-Z]\w*\s*=[^=]/.test(readFileSync(new URL(`../../std/${name}/module.ts`, import.meta.url), "utf8")));
   check("kernel modules add hooks and clean up only through their kernel, so stopping one takes it all back", !unscoped.length, unscoped.join(", "));
+
+  // The kernel stays small (docs/layers.md): the core's own file has no kernel module in it, and none of the
+  // parts of the core that only some apps use. Each is fetched when first needed, with import().
+  const staticImports = (path) =>
+    [...readFileSync(new URL(path, KERNEL), "utf8").matchAll(/^\s*(?:import|export)\s+(?!type\b)[^;]*?from\s+["']([^"']+)["']/gm)].map((m) => new URL(m[1], new URL(path, KERNEL)).pathname);
+  const std = new URL("../../std/", import.meta.url).pathname;
+  const builtIn = all.filter((path) => /\.ts$/.test(path)).flatMap((path) => staticImports(path).filter((to) => to.startsWith(std)).map((to) => `${path} imports std/${to.slice(std.length)}`));
+  check("no file in src/kernel/ imports a kernel module or anything else in std/: modules are fetched when used", !builtIn.length, builtIn.join("; "));
+  const onDemand = ON_DEMAND.map((path) => new URL(path, KERNEL).pathname.replace(/\.ts$/, ""));
+  const pulledIn = all
+    .filter((path) => /\.ts$/.test(path) && !ON_DEMAND.includes(path))
+    .flatMap((path) => staticImports(path).filter((to) => onDemand.includes(to.replace(/\.ts$/, ""))).map((to) => `${path} imports ${to.slice(KERNEL.pathname.length)}`));
+  check("the parts of the core only some apps use (the reference, authoring, the agent file reader) are fetched with import(), never imported by the rest", !pulledIn.length, pulledIn.join("; "));
+  const noManifest = modules.filter((name) => !existsSync(new URL(`../../std/${name}/module.json`, import.meta.url)));
+  check("every kernel module has its manifest beside it, std/<name>/module.json", !noManifest.length, noManifest.join(", "));
 }

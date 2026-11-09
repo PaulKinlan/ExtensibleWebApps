@@ -1,4 +1,4 @@
-// Audio on time (src/host/bridges/audio.ts): a plugin asks for a sound `at` a time, a little ahead, and it is
+// Audio on time (src/host/audio.ts, behind src/host/bridges/audio.ts): a plugin asks for a sound `at` a time, a little ahead, and it is
 // scheduled on the audio clock for then, with `start` passed to its processor, not played when the message lands.
 // What is heard is measured too (window.__host.audioProbe), with a processor that ignores `start`: the gate keeps
 // it silent until then. And a sound in a group can be taken back before it starts.

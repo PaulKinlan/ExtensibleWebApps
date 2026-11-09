@@ -10,7 +10,7 @@
 
 import type { Opened } from "../shared/protocol";
 import type { Host, Hosts } from "./hosts";
-import { asPlugin } from "./agents/file";
+import { asPlugin } from "./agents/linked";
 import { readManifest } from "./manifest";
 import type { RemotePlugins } from "./remote";
 import { record } from "./trace";

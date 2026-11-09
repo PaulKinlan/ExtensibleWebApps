@@ -66,6 +66,13 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     root.emit({}, "share:received", {});
   });
 
+  // The module starts when it is first used, which may be after a tab opened at the share screen: what that tab
+  // was sent is waiting from the start (the router, which this module uses, keeps each tab's screen).
+  for (const host of hosts.list) {
+    const shared = host.url?.path.replace(/\/$/, "") === SCREEN ? fieldsOf(host.url.query) : undefined;
+    if (shared) pending.set(host.tab, { ...shared, app: kernel.appIn(host.tab) });
+  }
+
   /** The tabs a plugin instance acts for: its own, or every tab with its app open (any, for a plugin no app links). */
   const tabsOf = (instance: string): Host[] => {
     const [id, tab] = instance.split("@");
@@ -113,4 +120,5 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   };
 };
 
-export default service("share", make);
+// It hears of a share from the router (router:changed), so the router runs whenever it does.
+export default service("share", make, ["router"]);

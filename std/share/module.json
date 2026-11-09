@@ -1,0 +1,8 @@
+{
+  "services": [
+    "share"
+  ],
+  "hooks": [
+    "share:received"
+  ]
+}
