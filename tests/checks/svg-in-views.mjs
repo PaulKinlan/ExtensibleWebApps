@@ -7,6 +7,7 @@ export default async function ({ a, check }) {
     <defs><linearGradient id="g"><stop offset="0" stop-color="red"></stop></linearGradient></defs>
     <rect class="ok" width="5" height="5" fill="url(#g)" stroke="url(https://example.com/s.svg#a)" onclick="window.__svgRan = 1"></rect>
     <rect class="escaped" width="5" height="5" fill="u\\\\72l(https://example.com/x)"></rect>
+    <rect class="masked" width="5" height="5" mask='image-set("https://example.com/track.png" 1x)' filter="cross-fade(red, blue)"></rect>
     <use class="near" href="#g"></use><use class="far" href="https://example.com/sprite.svg#i"></use><use class="xlink" xlink:href="#g"></use>
     <script>window.__svgRan = 1</script>
     <foreignObject width="5" height="5"><p class="smuggled">HTML</p></foreignObject>
@@ -33,6 +34,7 @@ export default (ctx) => ctx.ui.render("status", "probe", { type: "html", html: $
       fill: ok?.getAttribute("fill"),
       stroke: ok?.getAttribute("stroke"),
       escaped: svg.querySelector("rect.escaped")?.getAttribute("fill") ?? null,
+      masked: svg.querySelector("rect.masked")?.attributes.length,
       near: svg.querySelector("use.near")?.getAttribute("href"),
       far: svg.querySelector("use.far")?.getAttribute("href") ?? null,
       xlink: svg.querySelector("use.xlink")?.attributes.length,
@@ -44,8 +46,8 @@ export default (ctx) => ctx.ui.render("status", "probe", { type: "html", html: $
       ran: window.__svgRan ?? null,
     };
   });
-  check("an <svg> in a view keeps shapes, text and gradients, and drops script, foreignObject, links, images, animation and <style> with their content", installed?.ok && drawn && seen.tags.join() === "defs,linearGradient,stop,rect,rect,use,use,use,text,tspan" && seen.said === "Said it" && seen.ran === null && !seen.handlers, JSON.stringify(seen));
-  check("in an <svg>, url() and href may only name an #id in the view, and a CSS escape can't spell one", /--g\)$/.test(seen.fill ?? "") && seen.stroke === null && seen.escaped === null && /--g$/.test(seen.near ?? "") && seen.far === null && seen.xlink === 1, JSON.stringify(seen));
+  check("an <svg> in a view keeps shapes, text and gradients, and drops script, foreignObject, links, images, animation and <style> with their content", installed?.ok && drawn && seen.tags.join() === "defs,linearGradient,stop,rect,rect,rect,use,use,use,text,tspan" && seen.said === "Said it" && seen.ran === null && !seen.handlers, JSON.stringify(seen));
+  check("in an <svg>, url() and href may only name an #id in the view, no image-set() or other image function loads, and a CSS escape can't spell one", /--g\)$/.test(seen.fill ?? "") && seen.stroke === null && seen.escaped === null && seen.masked === 3 && /--g$/.test(seen.near ?? "") && seen.far === null && seen.xlink === 1, JSON.stringify(seen));
   check("a canvas from a plugin that isn't tab-scoped, or with no id, isn't handed out", seen.canvases === 0 && seen.notes === 2, JSON.stringify(seen));
   check("a picture in a view drawn from code may come from the site's root, with no ?query, and not from a server address", seen.imgs.join() === `,,,${new URL("/app-icon.svg", await a.evaluate(() => location.href)).href}`, JSON.stringify(seen.imgs));
   await a.evaluate(() => window.__host.command("uninstall", "svg-probe")).catch(() => {});

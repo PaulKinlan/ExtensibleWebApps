@@ -14,7 +14,7 @@
 // keeps what it served.
 
 import { launchManifest } from "../launch-meta.js";
-import { APP_NAME } from "../made-page.js";
+import { APP_NAME, tags } from "../made-page.js";
 
 /** Used when a page names no icon of its own: the platform's, in public/. */
 const ICON = "/app-icon.svg";
@@ -54,8 +54,13 @@ function meta(html, name) {
   return "";
 }
 
-/** True if a page has a <meta name="…">. @param {string} html @param {string} name */
-const hasMeta = (html, name) => [...html.matchAll(/<meta\b[^>]*>/gi)].some((m) => new RegExp(`\\bname=["']?${name}["'\\s>]`, "i").test(m[0]));
+/** The content of each <meta name="…"> in a page, read as a browser does (any quotes, spaces around =), by lowercased name. @param {string} html */
+function metas(html) {
+  /** @type {Map<string, string>} */
+  const found = new Map();
+  for (const t of tags(html).tags) if (t.name === "meta" && !t.closing && t.attributes.name && !found.has(t.attributes.name.toLowerCase())) found.set(t.attributes.name.toLowerCase(), t.attributes.content ?? "");
+  return found;
+}
 
 /** A page's icon address for its manifest: resolved against the app's folder, keeping its query and fragment; an address on another site as it is. @param {string} href @param {string} folder */
 function iconSrc(href, folder) {
@@ -88,7 +93,7 @@ export function manifestFor(html, folder) {
     ...(/^#[0-9a-f]{3,8}$/i.test(theme) ? { theme_color: theme } : {}),
     icons: [icon ? { src: iconSrc(plain(icon), folder), sizes: "any", purpose: "any" } : { src: ICON, sizes: "any", type: "image/svg+xml", purpose: "any" }],
     // <meta name="file-handlers"> and <meta name="share-target"> (../launch-meta.js). A line it can't read adds nothing.
-    ...launchManifest((n) => (hasMeta(html, n) ? meta(html, n) : undefined)).manifest,
+    ...launchManifest((n) => metas(html).get(n)).manifest,
   };
 }
 

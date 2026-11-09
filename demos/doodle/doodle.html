@@ -21,7 +21,7 @@
       </template>
       <button data-action="clear" disabled="{{empty}}">Clear</button>
     </div>
-    <canvas id="pad" class="pad" width="640" height="360" pointer role="img" aria-label="The drawing pad: drag to draw"></canvas>
+    <canvas id="pad" class="pad" data-tool="pen" width="640" height="360" pointer role="img" aria-label="The drawing pad: drag to draw"></canvas>
     <figure>
       <svg class="chart" viewBox="0 0 210 140" role="img" aria-label="Strokes by colour: {{summary}}">
         <defs>

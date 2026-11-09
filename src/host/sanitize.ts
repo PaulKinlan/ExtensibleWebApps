@@ -5,8 +5,7 @@
 // unknown elements are unwrapped so their text survives.
 
 import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../shared/html";
-import { CANVAS_MAX } from "../shared/svg";
-import { copySvg, SVG_NS, type SvgScope } from "./sanitize-svg";
+import { drawing, type DrawScope } from "./drawing-hooks";
 import { html as trusted } from "./trusted";
 
 const SAFE_HREF = /^(https?:|mailto:|#)/i;
@@ -94,39 +93,10 @@ function siteImage(value: string, base: string | undefined): string | undefined 
   return url.origin === location.origin && !url.search && IMAGE_FILE.test(url.pathname) ? url.href : undefined;
 }
 
-/** A canvas's side, in pixels, from its attribute: a whole number from 1 to CANVAS_MAX, else the default. */
-function side(value: string | null, fallback: number): number {
-  const n = Number(value);
-  return Number.isInteger(n) && n >= 1 && n <= CANVAS_MAX ? n : fallback;
-}
+const SVG_NS = "http://www.w3.org/2000/svg";
 
-/**
- * A <canvas id> becomes a stand-in the view turns live (canvas-live.ts): its id is the name the plugin's
- * worker gets it by. Without a usable id there is nothing to hand the worker, so it says so instead.
- */
-function canvasStandIn(el: Element, owner: string): Element {
-  const id = el.getAttribute("id") ?? "";
-  if (!/^[A-Za-z][\w-]{0,63}$/.test(id)) {
-    const note = document.createElement("span");
-    note.className = "muted";
-    note.textContent = "A canvas needs an id, such as <canvas id=\"chart\">.";
-    return note;
-  }
-  const out = document.createElement("canvas");
-  out.width = side(el.getAttribute("width"), 300);
-  out.height = side(el.getAttribute("height"), 150);
-  out.dataset.canvasId = id;
-  if (el.hasAttribute("pointer")) out.setAttribute("data-pointer", "");
-  out.id = scoped(owner, id);
-  for (const { name, value } of [...el.attributes]) {
-    if (name.startsWith("on") || name === "data-plugin" || name === "data-canvas" || name === "data-canvas-id") continue;
-    if (name.startsWith("aria-") || name.startsWith("data-") || GLOBAL_ATTRIBUTES.includes(name)) out.setAttribute(name, scopedValue(owner, name, value));
-  }
-  return out;
-}
-
-function svgScope(owner: string): SvgScope {
-  return { scoped: (name, value) => scopedValue(owner, name, value), style: customProperties, id: (id) => scoped(owner, id) };
+function drawScope(owner: string): DrawScope {
+  return { scoped: (name, value) => scopedValue(owner, name, value), style: customProperties, id: (id) => scoped(owner, id), globals: GLOBAL_ATTRIBUTES };
 }
 
 function copy(source: Node, into: Node, owner: string, remote: boolean, base?: string): void {
@@ -138,14 +108,11 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
     if (child.nodeType !== Node.ELEMENT_NODE) continue; // comments, processing instructions
     const el = child as Element;
     const tag = el.localName;
-    // An <svg> is copied by its own list (sanitize-svg.ts); a <canvas> becomes one the plugin draws on.
-    if (tag === "svg" && el.namespaceURI === SVG_NS) {
-      const svg = copySvg(el, svgScope(owner));
-      if (svg) into.appendChild(svg);
-      continue;
-    }
-    if (tag === "canvas") {
-      into.appendChild(canvasStandIn(el, owner));
+    // An <svg> is copied by its own list, and a <canvas> becomes one the plugin draws on (drawing.ts, which
+    // drawing-gate.ts loads before a view that has either is drawn; until then they are dropped).
+    if ((tag === "svg" && el.namespaceURI === SVG_NS) || tag === "canvas") {
+      const kept = tag === "svg" ? drawing?.copySvg(el, drawScope(owner)) : drawing?.canvasStandIn(el, drawScope(owner));
+      if (kept) into.appendChild(kept);
       continue;
     }
     if (DROPPED_WITH_CONTENT.has(tag)) continue;

@@ -1,5 +1,5 @@
 // What a plugin may draw in an <svg> inside an HTML view or template. Like
-// html.ts, it is a list the sanitiser enforces (src/host/sanitize-svg.ts) and
+// html.ts, it is a list the sanitiser enforces (src/host/drawing.ts) and
 // the API reference prints. Shapes, text, gradients, clips, masks, markers
 // and simple filters are in; anything that runs or loads is out: no
 // <script>, <foreignObject>, <image>, <a>, <style>, no animation elements
@@ -37,9 +37,3 @@ export const SVG_ATTRIBUTES = [
 
 /** Attributes that may hold `url(#id)`: a gradient, clip, mask, marker or filter in the same view. */
 export const SVG_URL_ATTRIBUTES = new Set(["fill", "stroke", "clip-path", "mask", "filter", "marker-start", "marker-mid", "marker-end"]);
-
-/** The attributes of a <canvas> in a view. */
-export const CANVAS_ATTRIBUTES = ["id", "width", "height", "pointer"];
-
-/** The largest canvas side, in pixels. */
-export const CANVAS_MAX = 4096;

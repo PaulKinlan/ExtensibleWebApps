@@ -5,7 +5,8 @@
 // reference prints these tables, so the builder reads the same list the
 // sanitiser enforces.
 
-import { CANVAS_ATTRIBUTES } from "./svg";
+/** The attributes of a <canvas> in a view (each side at most 4096 pixels). */
+export const CANVAS_ATTRIBUTES = ["id", "width", "height", "pointer"];
 
 /** The largest HTML view the kernel passes on, in characters. */
 export const HTML_MAX = 200_000;
@@ -33,7 +34,7 @@ export const ELEMENTS: Record<string, string> = {
   hr: "",
   blockquote: "",
   a: "A link; opens in a new tab. href must be https:, http:, mailto:, # or relative. A relative one (book/42, ./) stays on this site and opens in the same tab: a link to a screen of the app moves to it without loading the page (see the router service)",
-  img: "An image; src must be https: (with the network permission), a data: image, or a picture on this site (.png, .jpg, .gif, .webp, .avif, .svg, .ico, with no ?query): relative to the template file (../images/bus.svg), or from the site's root (/icons/bus.svg)",
+  img: "An image; src must be https: (with the network permission), a data: image, or a picture on this site with no ?query",
   figure: "",
   figcaption: "",
   ul: "Lists",
@@ -71,8 +72,8 @@ export const ELEMENTS: Record<string, string> = {
   meter: "",
   time: "",
   abbr: "",
-  svg: "A drawing, from the SVG list (see SVG in views); href and url() may only name an #id in the view",
-  canvas: "Drawn on by the plugin's worker: ctx.ui.onCanvas(id, (canvas, theme) => …). With `pointer`, taps and drags arrive as canvas:pointer events. Needs scope \"tab\"",
+  svg: "A drawing: see SVG in views",
+  canvas: "Drawn on by the plugin's worker: ctx.ui.onCanvas(id, …)",
   slot: "A room in this view that other plugins fill: `<slot name=\"<your plugin id>.<room>\" data-id=\"…\">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md",
 };
 

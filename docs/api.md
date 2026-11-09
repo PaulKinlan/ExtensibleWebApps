@@ -1998,7 +1998,7 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<hr>` |  |  |
 | `<blockquote>` |  |  |
 | `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto:, # or relative. A relative one (book/42, ./) stays on this site and opens in the same tab: a link to a screen of the app moves to it without loading the page (see the router service) |
-| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: (with the network permission), a data: image, or a picture on this site (.png, .jpg, .gif, .webp, .avif, .svg, .ico, with no ?query): relative to the template file (../images/bus.svg), or from the site's root (/icons/bus.svg) |
+| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: (with the network permission), a data: image, or a picture on this site with no ?query |
 | `<figure>` |  |  |
 | `<figcaption>` |  |  |
 | `<ul>` |  | Lists |
@@ -2036,8 +2036,8 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<meter>` | `value`, `min`, `max`, `low`, `high`, `optimum` |  |
 | `<time>` | `datetime` |  |
 | `<abbr>` |  |  |
-| `<svg>` | `viewBox`, `preserveAspectRatio`, `width`, `height`, `focusable` | A drawing, from the SVG list (see SVG in views); href and url() may only name an #id in the view |
-| `<canvas>` | `id`, `width`, `height`, `pointer` | Drawn on by the plugin's worker: ctx.ui.onCanvas(id, (canvas, theme) => …). With `pointer`, taps and drags arrive as canvas:pointer events. Needs scope "tab" |
+| `<svg>` | `viewBox`, `preserveAspectRatio`, `width`, `height`, `focusable` | A drawing: see SVG in views |
+| `<canvas>` | `id`, `width`, `height`, `pointer` | Drawn on by the plugin's worker: ctx.ui.onCanvas(id, …) |
 | `<slot>` | `name` | A room in this view that other plugins fill: `<slot name="<your plugin id>.<room>" data-id="…">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md |
 
 ### SVG in views

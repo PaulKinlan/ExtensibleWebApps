@@ -13,9 +13,9 @@ export default async function (page, { check, proof }) {
     } catch {
       handed = true; // its drawing belongs to the plugin's worker now
     }
-    return { handed, size: `${el.width}x${el.height}`, cls: el.className, label: el.getAttribute("aria-label") };
+    return { handed, size: `${el.width}x${el.height}`, cls: el.className, label: el.getAttribute("aria-label"), tool: el.dataset.tool };
   }, view);
-  check("a <canvas id> in a template goes to the plugin's worker, keeping its size, class and label", canvas.handed && canvas.size === "640x360" && canvas.cls === "pad" && /drawing pad/.test(canvas.label ?? ""), JSON.stringify(canvas));
+  check("a <canvas id> in a template goes to the plugin's worker, keeping its size, class, label and data-*", canvas.handed && canvas.size === "640x360" && canvas.cls === "pad" && canvas.tool === "pen" && /drawing pad/.test(canvas.label ?? ""), JSON.stringify(canvas));
 
   const box = await (await page.$(`${view} canvas[data-canvas]`)).boundingBox();
   const stroke = async (dx) => {

@@ -82,8 +82,10 @@ export default async function (ctx) {
       render();
     } else if (action === "canvas:pointer" && value?.canvas === "pad") {
       const p = { x: value.x, y: value.y };
+      // One stroke at a time: a second finger waits until the first lifts.
+      if (current && value.id !== current.pointer) return;
       if (value.type === "down") {
-        current = { hex: colour.hex, name: colour.name, points: [p] };
+        current = { hex: colour.hex, name: colour.name, points: [p], pointer: value.id };
         strokes.push(current);
         segment(current.points);
       } else if (current) {

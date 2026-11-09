@@ -10,11 +10,11 @@
 // app.html, plugins, templates, styles and agents) can have them too. Files
 // open at the app's `open` screen, for the `launch` service; shares arrive
 // at its `share` screen, for the `share` service (docs/guide/installing-and-
-// files.md). The page checks (sw/made-page.js) refuse a line these can't
-// read, so a typo fails where it is made, not on someone's device later.
+// files.md). The app maker refuses a page with a line these can't read
+// (launchProblems, std/maker/module.ts), so a typo fails where it is made, not
+// on someone's device later. The kernel loads this file only then.
 
-/** The two meta names. */
-export const LAUNCH_META = ["file-handlers", "share-target"];
+import { tags } from "./made-page.js";
 
 /** The kinds of file a `.ext` names. Anything else is written type/subtype:.ext. */
 export const FILE_TYPES = /** @type {Record<string, string>} */ ({
@@ -115,4 +115,19 @@ export function launchManifest(meta) {
     problems.push(...p);
   }
   return { manifest, problems };
+}
+
+/**
+ * What is wrong with the file-handlers and share-target lines in a page, with their line numbers.
+ * @param {string} html
+ */
+export function launchProblems(html) {
+  /** @type {{ line: number; message: string }[]} */
+  const problems = [];
+  for (const tag of tags(html).tags) {
+    const which = tag.name === "meta" && !tag.closing ? (tag.attributes.name ?? "").toLowerCase() : "";
+    if (which !== "file-handlers" && which !== "share-target") continue;
+    for (const message of launchManifest((n) => (n === which ? (tag.attributes.content ?? "") : undefined)).problems) problems.push({ line: tag.line, message });
+  }
+  return problems;
 }

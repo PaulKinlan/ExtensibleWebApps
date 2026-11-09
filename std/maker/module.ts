@@ -220,6 +220,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const refused: Problem[] = [];
     for (const [fname, text] of wanted) {
       if (fname === "app.html") for (const p of pageProblems(text)) refused.push({ level: "error", file: fname, line: p.line, message: p.message });
+      // A file-handlers or share-target line the manifest can't use (sw/launch-meta.js, loaded only for a page that has one).
+      if (fname === "app.html" && /file-handlers|share-target/i.test(text)) {
+        const { launchProblems } = await import("../../sw/launch-meta.js");
+        for (const p of launchProblems(text)) refused.push({ level: "error", file: fname, line: p.line, message: p.message });
+      }
       if (fname.endsWith(".js")) {
         try {
           readManifest(text);
