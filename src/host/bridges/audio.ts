@@ -237,7 +237,7 @@ function decode(pcm: string): Float32Array {
 /** Samples from -1 to 1, to base64 of little-endian 16-bit samples. */
 function encode(samples: Float32Array): string {
   const view = new DataView(new ArrayBuffer(samples.length * 2));
-  for (let i = 0; i < samples.length; i++) view.setInt16(i * 2, Math.round(Math.max(-1, Math.min(1, samples[i])) * 32767), true);
+  for (let i = 0; i < samples.length; i++) view.setInt16(i * 2, Math.max(-32768, Math.min(32767, Math.round(samples[i] * 32768))), true);
   const bytes = new Uint8Array(view.buffer);
   let text = "";
   for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -272,7 +272,7 @@ function wav(samples: Float32Array, rate: number): ArrayBuffer {
   view.setUint16(34, 16, true);
   text(36, "data");
   view.setUint32(40, samples.length * 2, true);
-  for (let i = 0; i < samples.length; i++) view.setInt16(44 + i * 2, Math.round(Math.max(-1, Math.min(1, samples[i])) * 32767), true);
+  for (let i = 0; i < samples.length; i++) view.setInt16(44 + i * 2, Math.max(-32768, Math.min(32767, Math.round(samples[i] * 32768))), true);
   return view.buffer;
 }
 

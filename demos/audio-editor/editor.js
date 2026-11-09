@@ -66,7 +66,8 @@ export default async function (ctx) {
   let redo = [];
   let stopTimer;
 
-  // Samples to and from the audio service's base64 16-bit format.
+  // Samples to and from the audio service's base64 16-bit format. Both scale by 32768, so a clip decoded and
+  // encoded again is the same clip, sample for sample: undo gives back exactly what was there.
   const decode = (pcm) => {
     const bytes = Uint8Array.from(atob(pcm), (c) => c.charCodeAt(0));
     const view = new DataView(bytes.buffer);
@@ -76,7 +77,7 @@ export default async function (ctx) {
   };
   const encode = (data) => {
     const view = new DataView(new ArrayBuffer(data.length * 2));
-    for (let i = 0; i < data.length; i++) view.setInt16(i * 2, Math.round(Math.max(-1, Math.min(1, data[i])) * 32767), true);
+    for (let i = 0; i < data.length; i++) view.setInt16(i * 2, Math.max(-32768, Math.min(32767, Math.round(data[i] * 32768))), true);
     const bytes = new Uint8Array(view.buffer);
     let text = "";
     for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
@@ -148,8 +149,9 @@ export default async function (ctx) {
     status = note;
   };
   const keep = async (next) => {
-    samples = next;
-    const pcm = encode(samples);
+    const pcm = encode(next);
+    // What is edited is what is kept: 16-bit samples, not the finer numbers an edit worked out.
+    samples = decode(pcm);
     clip = { ...clip, pcm, seconds: Math.round(seconds() * 100) / 100 };
     await put();
   };
@@ -351,8 +353,13 @@ export default async function (ctx) {
   ctx.commands.add({ id: "normalize", title: "Normalise", group: "Sound" }, () => edit("normalize"));
   ctx.commands.add({ id: "apply-effect", title: "Apply an effect", group: "Sound", args: { type: "object", properties: { effect: { type: "string", description: "The effect's id, as sound-editor:effects lists it" } }, required: ["effect"] } }, ({ effect }) => apply(effect));
 
-  // An effect plugin turned on or added later is offered as soon as it starts.
-  ctx.on("plugins:changed", () => setTimeout(() => collect().then(draw), 300));
+  // An effect plugin turned on or added later is offered once it has started, which takes a moment after it is
+  // installed; so are the app's own effects that started after this one.
+  const recollect = () => {
+    for (const ms of [300, 1500]) setTimeout(() => collect().then(draw), ms);
+  };
+  ctx.on("plugins:changed", recollect);
+  recollect();
 
   // Start with the first clip there is, or make one.
   await collect();
