@@ -20,7 +20,7 @@
 export const manifest = {
   id: "llm-openai-compatible",
   name: "Ollama",
-  description: "Answers the app's llm requests with a model served on this computer by Ollama, or another OpenAI-style API.",
+  description: "A language model for this app that runs on your own computer, with Ollama. No key needed.",
   version: "1.0.0",
   permissions: ["provide:llm", "network:localhost:11434"],
   services: ["llm"],
