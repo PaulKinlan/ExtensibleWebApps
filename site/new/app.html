@@ -1,0 +1,56 @@
+<!doctype html>
+<!--
+  Make an app: describe the app you want, and the app maker writes it, page
+  and plugins, showing you every file to accept before it is saved. It
+  checks the app as it runs in the preview below and fixes what fails.
+  Each app you make is yours, at /apps/<name>/ on this device, and every
+  file keeps its earlier versions.
+
+  The apps it makes are plain files: none links the model or the app maker,
+  so they keep working with both switched off (the switches are at the
+  bottom of this page).
+
+    your-apps.js        the box to describe an app, your apps, the preview
+                        and each file's versions (std/maker/)
+    app-maker.agent.md  the agent that writes and fixes them
+    board.js            where the app maker asks you something
+    llm/*.js            the models it can use, with your own key
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Make an app</title>
+  <meta name="description" content="Describe an app, and get one that works, made of plugins you can see, change and switch off.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="agent" href="/std/maker/app-maker.agent.md">
+  <link rel="plugin" href="/std/maker/your-apps.js">
+  <link rel="plugin" href="/std/board.js">
+  <link rel="plugin" href="/std/llm/anthropic.js">
+  <link rel="plugin" href="/std/llm/gemini.js">
+  <link rel="plugin" href="/std/llm/openai.js">
+  <link rel="plugin" href="/std/switchboard.js">
+  <link rel="plugin" href="/std/debug-console.js">
+</head>
+<body>
+  <header>
+    <h1>Make an app</h1>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <slot name="make"></slot>
+    <slot name="apps"></slot>
+  </main>
+  <aside>
+    <slot name="board"></slot>
+    <slot name="switchboard"></slot>
+  </aside>
+  <slot name="debug"></slot>
+</body>
+</html>

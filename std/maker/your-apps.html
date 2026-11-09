@@ -1,0 +1,79 @@
+<!--
+  Your apps. your-apps.js sends two views:
+  make: { working, request, steps: [{ n, text, ok }], answer: { text, tone }, targets: [{ name, title, picked }] }
+  apps: { none, apps: [{ name, title, url, picked }], app: { name, title, url, revision }, files: [{ name, count, open, versions: [{ version, when, by, note, current, removed }] }] }
+-->
+<style>
+  .make form { display: grid; gap: var(--space-2); margin: 0; }
+  .make textarea { font: inherit; min-height: 5rem; padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+  .make .row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .make ol { margin: 0; padding-left: 1.25rem; color: var(--fg-2); font-size: var(--text-sm); }
+  .make .answer { white-space: pre-wrap; margin: 0; }
+  .yours .list { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .yours .list button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .yours .files { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .yours .files li > div { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .yours .versions { margin: var(--space-1) 0 0; padding-left: 1.25rem; font-size: var(--text-sm); color: var(--fg-2); }
+  .yours code { font: var(--text-sm)/1.4 var(--mono); }
+</style>
+<template id="make">
+  <ui-card class="make">
+    <h2>Make an app</h2>
+    <form data-action="make">
+      <label class="row">For
+        <select name="app" aria-label="Make a new app, or change one you made" disabled="{{working}}">
+          <template for="t of targets"><option key="{{t.name}}" value="{{t.name}}" selected="{{t.picked}}">{{t.title}}</option></template>
+        </select>
+      </label>
+      <textarea name="text" aria-label="Describe the app" placeholder="A reading list with a Sunday reminder" maxlength="4000" required disabled="{{working}}"></textarea>
+      <div class="row">
+        <button type="submit" class="primary" disabled="{{working}}">Make it</button>
+        <template if="working"><span role="status">The app maker is working on “{{request}}”. You'll see each file before it is saved.</span></template>
+      </div>
+    </form>
+    <template if="steps.length">
+      <ol aria-label="What the app maker did">
+        <template for="s of steps"><li key="{{s.n}}">{{s.text}}<template if="!s.ok"> (it failed)</template></li></template>
+      </ol>
+    </template>
+    <template if="answer"><ui-card tone="{{answer.tone}}"><p class="answer">{{answer.text}}</p></ui-card></template>
+  </ui-card>
+</template>
+<template id="apps">
+  <ui-card class="yours">
+    <h2>Your apps</h2>
+    <template if="none"><p>None yet. Describe one above, and it appears here, working, with every version of its files.</p></template>
+    <template if="!none">
+      <div class="list">
+        <template for="a of apps"><button key="{{a.name}}" data-action="pick" data-value="{{a.name}}" aria-pressed="{{a.picked}}">{{a.title}}</button></template>
+      </div>
+      <template if="app">
+        <ui-toolbar>
+          <h3>{{app.title}}</h3>
+          <ui-spacer></ui-spacer>
+          <button data-action="reload">Reload</button>
+          <a href="{{app.url}}">Open {{app.url}}</a>
+        </ui-toolbar>
+        <ui-preview app="{{app.name}}" revision="{{app.revision}}" label="{{app.title}}"></ui-preview>
+        <h3>Files</h3>
+        <ul class="files">
+          <template for="f of files">
+            <li key="{{f.name}}">
+              <div><code>{{f.name}}</code> <ui-badge>{{f.count}} versions</ui-badge> <button data-action="history" data-value="{{f.name}}" aria-expanded="{{f.open}}">History</button></div>
+              <template if="f.open">
+                <ol class="versions">
+                  <template for="v of f.versions">
+                    <li key="{{v.version}}">Version {{v.version}}, {{v.when}}, by {{v.by}}: {{v.note}}
+                      <template if="v.current"> <ui-badge tone="ok">now</ui-badge></template>
+                      <template if="!v.current"> <button data-action="restore:{{f.name}}:{{v.version}}">Put this back</button></template>
+                    </li>
+                  </template>
+                </ol>
+              </template>
+            </li>
+          </template>
+        </ul>
+      </template>
+    </template>
+  </ui-card>
+</template>

@@ -21,8 +21,8 @@ export interface Kernel {
   hosts: Hosts;
   remote: RemotePlugins;
   apps: ReturnType<typeof apps>;
-  /** Asks the person to review a write by a plugin instance; throws unless they allow it. */
-  reviewed(instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: { trace?: string }): Promise<string>;
+  /** Asks the person to review a write by a plugin instance; throws unless they allow it. With `once`, the card offers no "Always allow" and no earlier grant answers it. */
+  reviewed(instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: { trace?: string }, options?: { once?: boolean }): Promise<string>;
   /** The kernel's API reference, as it is now. */
   describe(): Reference;
   /** The collections: their registry, and every write to them as it happens. */
