@@ -81,7 +81,8 @@ export default (host: BridgeHost) => {
             {
               name: tool.name,
               title: tool.name.replace(/_/g, " "),
-              description: `${o.name}: ${tool.description}`,
+              // WebMCP has no place for a server's instructions, so each tool carries what the app is for.
+              description: `${o.name}: ${tool.description}${o.instructions ? `\n\nAbout this app: ${o.instructions}` : ""}`,
               inputSchema: tool.inputSchema,
               annotations: { readOnlyHint: tool.readOnly },
               execute,
