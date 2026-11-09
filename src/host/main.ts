@@ -17,6 +17,7 @@ import { html as trustedHtml } from "./trusted";
 import { folder as appFolder, followLinks, screen } from "./router";
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
 import { inspect } from "./inspect";
+import type { Arranger } from "./arrange";
 import { themeCss } from "../shared/theme";
 import { isAgentFile, runnerHref } from "../shared/agent-runner";
 import { places as makePlaces } from "./places";
@@ -284,6 +285,11 @@ const sendUrl = () => send({ t: "url", ...screen() });
 
 /** The plugins running for this app, as the kernel last said: the Customize panel lists them. */
 let running: Opened[] = [];
+/** Arrange mode (arrange.ts), where the person moves plugins' views; it comes with Customize, and loads the first time it's used. */
+let arranger: Arranger | undefined;
+let arranging: Promise<Arranger> | undefined;
+const loadArranger = () =>
+  (arranging ??= import("./arrange").then(({ arrange }) => (arranger = arrange({ app, command, places: pagePlaces, running: () => running }))));
 
 function opened(plugins: Opened[]) {
   for (const p of plugins) if (p.error && !running.some((r) => r.href === p.href && r.error === p.error)) notice(`${p.href.split("/").pop()}: ${p.error}`);
@@ -301,6 +307,7 @@ function opened(plugins: Opened[]) {
   // Places first, so held views that go to a place find it.
   pagePlaces.configure(plugins);
   applyThemes(plugins);
+  arranger?.refresh();
   for (const [id, message] of held) {
     if (!showing(message.owner)) continue;
     held.delete(id);
@@ -699,6 +706,7 @@ const bridge = bridges({
   places: pagePlaces,
   running: () => running,
   inspect: withCustomize ? () => inspector?.start() : undefined,
+  arrange: withCustomize ? loadArranger : undefined,
   declared: (plugin, name) => {
     slotWatchers.set(name, (slotWatchers.get(name) ?? new Set()).add(plugin));
     return slotData(name);

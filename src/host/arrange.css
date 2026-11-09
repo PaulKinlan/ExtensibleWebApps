@@ -1,0 +1,15 @@
+/* Arrange mode (arrange.ts): each view that can move is outlined and named, the one under the pointer more so, and a panel lists them. */
+body.arranging [data-arrange] { position: relative; outline: 2px dashed color-mix(in srgb, var(--accent) 70%, transparent); outline-offset: 3px; cursor: grab; }
+body.arranging [data-arrange]::before { content: attr(data-arrange); position: absolute; top: -12px; left: 6px; z-index: 5; padding: 0 6px; border-radius: var(--radius); background: var(--accent); color: var(--accent-fg, #fff); font: 600 11px/18px var(--font); pointer-events: none; white-space: nowrap; }
+body.arranging .arrange-hover { outline: 2px solid var(--accent) !important; outline-offset: 3px; cursor: crosshair; }
+body.arranging .arrange-moving { outline: 3px solid var(--accent) !important; outline-offset: 3px; opacity: 0.7; }
+body.arranging .arrange-spot { outline: 3px solid var(--ok, var(--accent)) !important; outline-offset: 3px; }
+.arrange { position: fixed; right: 16px; bottom: 16px; z-index: 20; width: min(420px, calc(100vw - 32px)); max-height: min(60vh, 520px); overflow: auto; padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-2, var(--shadow-1)); font: var(--text-sm)/1.5 var(--font); }
+.arrange[hidden] { display: none; }
+.arrange p { margin: var(--space-1) 0; overflow-wrap: anywhere; }
+.arrange .muted { color: var(--fg-2); }
+.arrange-list { list-style: none; margin: var(--space-2) 0; padding: 0; display: grid; gap: var(--space-2); }
+.arrange-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-1) var(--space-2); padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); }
+.arrange-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: var(--space-1) 0; }
+.arrange button { min-height: 32px; min-width: 32px; }
+@media (max-width: 600px) { .arrange { left: 8px; right: 8px; bottom: 8px; width: auto; } }

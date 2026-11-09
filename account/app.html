@@ -1,0 +1,55 @@
+<!doctype html>
+<!--
+  Your account on this site's server, as an app like any other. Sign in with
+  a passkey, the key your phone or computer keeps for this site: there's no
+  password to remember or leak. The server's side is src/server/auth/
+  (docs/server.md, step 5); the plugins ask it through the `account` service
+  (std/account/module.ts), which only this app's own plugins may use.
+
+  account.js     who is signed in: passkeys, making an account, signing out,
+                 and what a link here asks for (an invite, confirming an email)
+  providers.js   the other sites this server lets people sign in with
+  email.js       the address apps in your spaces may email you at
+  spaces.js      your spaces: make one, invite people, open an app in one, move one
+  agent-keys.js  keys that let agents outside the browser use a space as you
+  page.js        what the service needs done in the page: passkeys, a file picked
+                 from disk (loaded by the host's account bridge, not a plugin)
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Your account · Extensible Web Apps</title>
+  <meta name="short-name" content="Account">
+  <meta name="description" content="Sign in with a passkey, and make and share spaces.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="account.js">
+  <link rel="plugin" href="agent-keys.js">
+  <link rel="plugin" href="email.js">
+  <link rel="plugin" href="providers.js">
+  <link rel="plugin" href="spaces.js">
+  <style>
+    main.account { max-width: 32rem; margin: 2rem auto; padding: 0 1rem; display: grid; gap: 1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong><a href="/">Extensible Web Apps</a></strong>
+    <nav class="site" aria-label="Site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main class="account">
+    <h1>Your account</h1>
+    <slot name="main"><p>Loading your account…</p></slot>
+    <slot name="email"></slot>
+    <slot name="spaces"></slot>
+    <slot name="keys"></slot>
+  </main>
+</body>
+</html>

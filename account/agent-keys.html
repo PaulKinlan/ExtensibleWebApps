@@ -1,0 +1,51 @@
+<!--
+  Agent keys (agent-keys.js). It sends { user, spaces, keys, made, status,
+  revision }: each key { id, name, about } (never the key itself), and
+  `made` ({ value, address, command, door }) for the key just made, shown once.
+-->
+<style>
+  .keys form { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+  .keys form input { flex: 1 1 12rem; }
+  .keys .made input { width: 100%; }
+  .keys .status:empty { display: none; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+<template id="keys">
+  <template if="user">
+    <section class="keys">
+      <h2>Agent keys</h2>
+      <p>A key lets an agent outside the browser, such as Claude Code, use the apps in one of your spaces as you, through the space's MCP server. It can do only what each app lets outside agents do, and you review every change it asks for in the app. Make one per agent, and revoke it when you stop using it.</p>
+      <ul class="key-list">
+        <template for="k of keys">
+          <li key="{{k.id}}"><strong>{{k.name}}</strong>{{k.about}}<button type="button" data-action="revoke:{{k.id}}">Revoke</button></li>
+        </template>
+        <template if="!keys.length">
+          <template if="spaces.length"><li>None yet.</li></template>
+          <template if="!spaces.length"><li>Make a space first: a key is for one space.</li></template>
+        </template>
+      </ul>
+      <template if="spaces.length">
+        <form data-action="make" key="new-key-{{revision}}">
+          <label for="key-space">Space</label>
+          <select id="key-space" name="space">
+            <template for="s of spaces"><option value="{{s}}">{{s}}</option></template>
+          </select>
+          <label for="key-name" class="visually-hidden">The agent it's for</label>
+          <input id="key-name" name="name" placeholder="Claude Code on my laptop" required maxlength="64">
+          <label for="key-door" class="visually-hidden">The app's agent plugin</label>
+          <input id="key-door" name="door" placeholder="The app's agent plugin, like reading-list-agents" maxlength="64" pattern="[a-z0-9][a-z0-9\-]{0,63}">
+          <button type="submit">Make a key</button>
+        </form>
+      </template>
+      <template if="made">
+        <div class="made">
+          <p>Here is the key. It's shown only now, so copy it into your agent: <input id="key-value" readonly value="{{made.value}}"></p>
+          <p>The app's address for agents: <input id="key-address" readonly value="{{made.address}}"></p>
+          <p>For Claude Code: <input id="key-command" readonly value="{{made.command}}"></p>
+          <template if="!made.door"><p>Put the id of the app's plugin that lets outside agents in where it says &lt;plugin&gt;: the app's guide names it, as the reading list's is reading-list-agents.</p></template>
+        </div>
+      </template>
+      <p class="status" role="status">{{status}}</p>
+    </section>
+  </template>
+</template>

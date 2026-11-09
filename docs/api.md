@@ -192,6 +192,66 @@ The `<template id>` elements in an .html file next to the plugin (only for plugi
 
 Called with `ctx.call(service, method, ...args)`. A method not listed here doesn't exist. Reviewed methods show the person a diff with the plugin's reason first; they accept once, allow that plugin in that place from then on, or decline.
 
+### account
+
+The person's account on this site's server, for the account app's own plugins: who is signed in, passkeys, other sites to sign in with, their email address, spaces and agent keys.
+
+#### account.came
+
+`account.came()` → { path, title } | { error } | null
+
+Needs: `account`.
+
+The app the person came here from, to open in a space: the one named in ?app=/demos/x/, or the app page that linked here. null if neither. It fails, saying so, while the tab is still opening; ask again then.
+
+#### account.get
+
+`account.get(path)` → { status, site, ...answer }
+
+Needs: `account`.
+
+Asks the server's accounts (src/server/auth/) for something, as the person signed in on this device; `site` is the site's own address, for links to it. A 401 comes back as { status: 401 }, not an error; /auth/me answers { status: 404, unavailable: true } when the site has no server.
+
+#### account.load
+
+`account.load(space)` → { status } | null
+
+Needs: `account`.
+
+Asks the person for a copy of a space (a .space.json file, from the server's Download a copy), right after they click, and loads it into `space`. null if they pick nothing.
+
+#### account.post
+
+`account.post(path, body)` → { status, ...answer }
+
+Needs: `account`.
+
+Sends something to the server's accounts as the person, and raises account:changed when it works.
+
+#### account.register
+
+`account.register(name?)` → { status }
+
+Needs: `account`.
+
+Makes a passkey in this tab (the browser asks the person) and gives it to the server: a new account called `name`, or another passkey for the account signed in.
+
+#### account.signin
+
+`account.signin()` → { status, error? }
+
+Needs: `account`.
+
+Signs in with a passkey the browser has for this site (it asks the person which). { status: 401, error } if the server didn't know it.
+
+#### account.start
+
+`account.start(provider, fields?)` → true
+
+Needs: `account`.
+
+Goes to another site to sign in (or, signed in, to link that account): the tab leaves the app, and comes back to /account/.
+
 ### agents
 
 Agents: Markdown files an app links with rel="agent", each run by the kernel as a plugin that asks a model and calls tools. Lists them, starts their commands, and is how an agent reaches its model and tools, so its limits hold and the app hears the agent:* events.
@@ -372,6 +432,14 @@ Needs: `plugins:author`.
 
 Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn().
 
+#### authoring.arrange
+
+`authoring.arrange(plugin?, place?)` → true
+
+Needs: `plugins:read`.
+
+Starts the page's arrange mode, where the person sees every plugin's view that can move and drags or points it somewhere else; with a plugin (and place), that one is picked to move.
+
 #### authoring.check
 
 `authoring.check(code)` → { ok: true, manifest: { id, name, description, scope }, permissions: [{ name, about }] } or { ok: false, error }
@@ -379,6 +447,14 @@ Adds a plugin from this site, such as one in the registry at /packages/, to the 
 Needs: `plugins:read`.
 
 Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do.
+
+#### authoring.choose
+
+`authoring.choose(prompt?)` → { at, put, label } or null
+
+Needs: `plugins:author`.
+
+Asks the person to point at a spot on the page, and says where: a selector and before, after, prepend or append, ready for a place in a new plugin's manifest. null if they cancel.
 
 #### authoring.copy
 
@@ -404,6 +480,14 @@ Needs: `plugins:read`.
 
 Starts the page's inspect mode, where the person points at a part to see which plugin drew it.
 
+#### authoring.layout
+
+`authoring.layout()` → { slots: [{ name, plugins }], parts: [{ selector, name, mark }], elements: [{ tag, attributes, about }] }
+
+Needs: `plugins:read`.
+
+Where plugins can go on the caller's page: the page's slots and which plugins draw in each, the parts its author named (ids, data-part, landmarks) with the mark that governs adding there (open, review or locked), and the ui-* elements a view can use.
+
 #### authoring.lock
 
 `authoring.lock(plugin, place)` → { ok: true }
@@ -419,6 +503,14 @@ Locks a part of the page again, for a plugin that was let into it.
 Needs: `plugins:author`.
 
 The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).
+
+#### authoring.move
+
+`authoring.move(plugin, place, to)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:manage`.
+
+Moves one of a plugin's places in the caller's app to another spot on the page, for this person: to is { at, put, order? } with put before, after, prepend or append, or null to put it back where the plugin said. A place that hides, replaces, draws in every match or changes another plugin's view can't be moved. The author's locks still hold at the new spot.
 
 #### authoring.packages
 
@@ -1492,6 +1584,14 @@ Asks the person for a CSV or JSON file and adds its rows to the collection, afte
 
 The kernel's own hooks. A plugin defines more in its manifest's `hooks`, named `<plugin>:<key>`, which only it runs (with `ctx.hooks`), and each collection has `data:beforeWrite:<collection>` and `data:changed:<collection>` (see Collections). Those last while their plugin is installed, so they are listed under Installed now.
 
+### `account:changed`
+
+The person signed in or out, or changed something in their account (an email address, a space, a key). Ask again for what you show.
+
+Mode: `emit`. Listening needs `account`.
+
+Listeners get `{}`.
+
 ### `agent:beforeTool`
 
 An agent is about to call one of its tools, with these arguments. chain is the agents in the call's line: the caller, and any agents whose tool call it is checking. Return { block: reason } to stop the call; the agent hears the reason.
@@ -1820,6 +1920,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `ui:transform:<plugin>` | Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
+| `account` | Call account.get, account.post, account.register, account.signin, account.start, account.load, account.came. |
 | `agents:run:<agent>` | Call agents.run. |
 | `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.unshare. |
 | `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.check. |
@@ -1849,9 +1950,9 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `network:<host>` | Call net.fetch. |
 | `notify` | Call notify.state, notify.request, notify.show. |
 | `outside` | Call outside.open, outside.close, outside.status. |
-| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
-| `plugins:manage` | Call authoring.turn, plugins.setEnabled. |
-| `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.inspect, authoring.check, plugins.app. |
+| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.choose, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
+| `plugins:manage` | Call authoring.turn, authoring.move, plugins.setEnabled. |
+| `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.arrange, authoring.layout, authoring.inspect, authoring.check, plugins.app. |
 | `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source, sync.reflect, sync.trace. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
@@ -1885,6 +1986,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 
 Reserved ids, which no plugin can take:
 
+- `account`
 - `agents`
 - `audio`
 - `authoring`
@@ -1921,7 +2023,7 @@ Reserved ids, which no plugin can take:
 - `tools`
 - `transfer`
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`, `made`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`, `made`, `moves`.
 
 ## Collections
 
@@ -1972,7 +2074,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-diagram>` | label | A Mermaid diagram: its text content is the diagram, in Mermaid's language (flowchart, sequenceDiagram, …). `label` says what it shows, for screen readers. Mermaid loads the first time one is drawn. |
 | `<ui-markdown>` | src, pages="/docs/", repo, sets-title, compact | A Markdown file in the template's folder (or below it), drawn as a page, with ```mermaid blocks as diagrams. Raw HTML in it shows as text. `pages` is a folder whose .md files are this app's screens (links to them drop .md); `repo` is where links to source go; `sets-title` makes its first heading the page's title; `compact` is for a list of contents. |
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
-| `<ui-panel>` | label, toggle | A button labelled `label` that opens a panel above the page, holding the element's content; where the button sits is up to the slot. `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-close` closes the panel as well as sending its action. |
+| `<ui-panel>` | label, toggle, reopen | A button labelled `label` that opens a panel above the page, holding the element's content; where the button sits is up to the slot. `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-close` closes the panel as well as sending its action; a new value of `reopen` opens it again. |
 | `<ui-preview>` | app="<name>", revision, label | A working copy of an app the person made in the browser (std/maker/), from /apps/<name>/, in a frame, with a link to open it in its own tab. Changing `revision` opens it again. |
 | `<ui-dictation>` | action, label, lang | A button that listens, with the browser's speech recognition, while it is pressed in. `action` is sent with { listening: true } when the microphone is on, { text, final } for what it hears (final: false while a phrase is still changing), and { listening: false, error? } when it stops. Disabled, saying why, in a browser without speech recognition. |
 | `<ui-site-preview>` | address="http://localhost:1313/…", revision, label, action | A page from a web server on the person's own device (localhost, 127.0.0.1), such as a site's `hugo server`, in a frame; any other address isn't shown. It checks the server first, and sends `action` with "up", "down" or "blocked" (the browser won't let the site reach the device). Changing `revision` checks again and reloads it. |
@@ -2146,5 +2248,6 @@ For devtools and tests, from the page: `window.__host.command(name, arg)`.
 | `user:unshare` | ({ app, id }) In a space: stops sharing a space plugin. It goes from the other members' devices and stays here as the person's own. |
 | `place:ask` | ({ app, plugin, place, target, what }) Asks the person, on a review card, to let a plugin change a place the author marked review. |
 | `place:unlock` | ({ app, plugin, place }) Lets a plugin into a place the author locked, because the person said so. |
+| `place:move` | ({ app, plugin, place, to }) Moves a plugin's place to where the person put it in arrange mode: to is { at, put, order? }, or null to put it back (src/kernel/moves.ts). |
 | `place:lock` | ({ app, plugin, place }) Takes that back. |
 | `route` | ({ method, path, query, form }) Answers a request with the plugin route for it, or null. The service worker sends these through a tab. |

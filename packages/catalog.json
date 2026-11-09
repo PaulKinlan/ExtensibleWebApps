@@ -143,6 +143,13 @@
   ],
   "services": [
     {
+      "id": "account",
+      "module": "account",
+      "description": "The person's account on this site's server, for the account app (account/app.html) and only for it.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/account/module.ts",
+      "docs": "/docs/api#account"
+    },
+    {
       "id": "agents",
       "module": "agents",
       "description": "Agents run here, and the app hears what they do.",
@@ -501,7 +508,7 @@
     {
       "id": "customize",
       "name": "Customize",
-      "description": "A Customize button that adds, turns on and off, removes and shares the person's own plugins for an app.",
+      "description": "A Customize button that adds, makes, arranges, turns on and off, removes and shares plugins for an app.",
       "href": "/std/customize.js",
       "source": "std",
       "kind": "ui",
@@ -1506,6 +1513,8 @@
         "ui",
         "data:read:items",
         "data:read:fetched",
+        "data:read:here-items",
+        "data:read:here-fetched",
         "sync"
       ],
       "provides": [],
@@ -1531,6 +1540,28 @@
       "services": [],
       "places": [],
       "runs": "server",
+      "apps": [
+        "demos/feeds"
+      ]
+    },
+    {
+      "id": "feeds-here",
+      "name": "Read feeds here",
+      "description": "Without a space, reads the feeds you follow on this device, through this site, while the app is open.",
+      "href": "/demos/feeds/read-here.js",
+      "source": "feeds",
+      "kind": "background",
+      "permissions": [
+        "network",
+        "schedule",
+        "sync",
+        "data:read:feeds"
+      ],
+      "provides": [],
+      "services": [
+        "sync"
+      ],
+      "places": [],
       "apps": [
         "demos/feeds"
       ]

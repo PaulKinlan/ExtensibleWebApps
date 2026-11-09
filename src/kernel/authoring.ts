@@ -28,6 +28,7 @@ import type { RemotePlugins, ServiceProvider } from "./remote";
 import { allowed, type Outcome, type Request } from "./review";
 import type { Store } from "./store";
 import type { UserPlugin, UserPlugins } from "./user-plugins";
+import { asMove, movable, type Moved } from "./moves";
 
 type Apps = { linkedBy(tab: string): string[] | undefined; tabsWith?(id: string): string[] };
 
@@ -62,6 +63,8 @@ export interface Saving {
   page(tab: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown>;
   /** Lets a plugin into a place the app's author locked, or locks it again, and opens the app again so it shows. */
   unlock(app: string, plugin: string, place: string, on: boolean): Promise<void>;
+  /** Moves one of a plugin's places to where the person put it, or back with null (moves.ts), and opens the app again. */
+  move(app: string, plugin: string, place: string, to: Moved | null): Promise<void>;
   /** Runs plugins:beforeAdd: a checker's { block: reason }, or nothing. */
   check?(value: { app: string; id: string; name: string; permissions: string[]; code: string; how: string; by: string }, dispatch: Dispatch): Promise<unknown>;
 }
@@ -244,6 +247,36 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         needs: "plugins:author",
         description: "Locks a part of the page again, for a plugin that was let into it.",
       },
+      move: {
+        args: "(plugin, place, to)",
+        returns: "{ ok: true } or { ok: false, error }",
+        needs: "plugins:manage",
+        description: "Moves one of a plugin's places in the caller's app to another spot on the page, for this person: to is { at, put, order? } with put before, after, prepend or append, or null to put it back where the plugin said. A place that hides, replaces, draws in every match or changes another plugin's view can't be moved. The author's locks still hold at the new spot.",
+        params: [
+          { name: "plugin", schema: { type: "string", description: "The plugin's id" } },
+          { name: "place", schema: { type: "string", description: "The name of one of its places" } },
+          { name: "to", schema: { type: "object", description: "{ at: CSS selector, put: before|after|prepend|append, order?: number }, or null" } },
+        ],
+      },
+      arrange: {
+        args: "(plugin?, place?)",
+        returns: "true",
+        needs: "plugins:read",
+        description: "Starts the page's arrange mode, where the person sees every plugin's view that can move and drags or points it somewhere else; with a plugin (and place), that one is picked to move.",
+      },
+      layout: {
+        args: "()",
+        returns: "{ slots: [{ name, plugins }], parts: [{ selector, name, mark }], elements: [{ tag, attributes, about }] }",
+        needs: "plugins:read",
+        description: "Where plugins can go on the caller's page: the page's slots and which plugins draw in each, the parts its author named (ids, data-part, landmarks) with the mark that governs adding there (open, review or locked), and the ui-* elements a view can use.",
+        params: [],
+      },
+      choose: {
+        args: "(prompt?)",
+        returns: "{ at, put, label } or null",
+        needs: "plugins:author",
+        description: "Asks the person to point at a spot on the page, and says where: a selector and before, after, prepend or append, ready for a place in a new plugin's manifest. null if they cancel.",
+      },
       inspect: {
         args: "()",
         returns: "true",
@@ -294,7 +327,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
     },
     // Reading code and checking a manifest only look, so a viewer such as std/view-source.js needs no more than plugins:read (plugins:author includes it).
-    capability: (method) => (["source", "check", "page", "packages", "inspect"].includes(method) ? "plugins:read" : method === "turn" ? "plugins:manage" : "plugins:author"),
+    capability: (method) => (["source", "check", "page", "packages", "inspect", "arrange", "layout"].includes(method) ? "plugins:read" : method === "turn" || method === "move" ? "plugins:manage" : "plugins:author"),
     call: async (instance, method, args, dispatch) => {
       /** The site's plugin registry (/packages/index.json), or none. */
       const registry = async (): Promise<Package[]> => {
@@ -388,6 +421,20 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         return { space: !!saving.shared(), ...((await saving.page(tab, "state", [], dispatch)) as object) };
       }
       if (method === "inspect") return saving.page(tab, "inspect", [], dispatch);
+      if (method === "layout") return saving.page(tab, "layout", [], dispatch);
+      if (method === "arrange") return saving.page(tab, "arrange", args.slice(0, 2).map((a) => (typeof a === "string" ? a : undefined)), dispatch);
+      if (method === "choose") return saving.page(tab, "choose", [typeof args[0] === "string" ? args[0].slice(0, 120) : undefined], dispatch);
+      if (method === "move") {
+        const [plugin, place, to] = args;
+        const app = appOf(tab);
+        const at = typeof plugin === "string" && typeof place === "string" ? remote.installed.get(plugin)?.manifest.places?.[place] : undefined;
+        if (!at || !(apps.linkedBy(tab) ?? []).concat([...(await saving.userAdded.ids(app))]).includes(plugin as string)) return { ok: false, error: `${String(plugin)} has no place ${String(place)} in this app` };
+        if (!movable(at)) return { ok: false, error: `${String(place)} hides, replaces or changes a part of the page, or draws in every match, so only its plugin can say where it goes` };
+        const move = to === null ? null : asMove(to);
+        if (move === undefined) return { ok: false, error: "to is { at, put } with put before, after, prepend or append, or null" };
+        await saving.move(app, plugin as string, place as string, move);
+        return { ok: true };
+      }
       if (method === "packages") {
         const app = saving.appIn(tab);
         const packages = await registry();
