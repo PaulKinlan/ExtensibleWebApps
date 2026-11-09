@@ -1,6 +1,9 @@
-// The agent loop. The kernel puts this after the manifest and the AGENT
-// constant it makes from an agent file (file.ts), so every agent runs the
-// same loop in its own plugin worker, held to its own manifest.
+// The standard agent loop, which an agent runs unless its file names another
+// with `runner:` (docs/guide/agents.md, "A different loop"). The page fetches
+// it next to the agent file, and the kernel puts it after the manifest and the
+// AGENT constant it makes from the file (src/kernel/agents/file.ts), so it
+// runs in the agent's own plugin worker, held to the agent's own manifest. It
+// isn't a plugin on its own: it has no manifest, and no app links it.
 //
 // Something wakes the agent: a hook it listens to, a command someone runs
 // (agents.run), a message in its inbox (bus.send), or a post to a topic it

@@ -16,6 +16,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>My app</title>
   <meta name="description" content="A list to start from.">
+  <!-- Its card in the demo gallery, if it lives in demos/ (npm run gallery adds it). -->
+  <meta name="gallery" content="slots">
+  <meta name="gallery-about" content="A list to start from.">
+  <meta name="gallery-shows" content="a first plugin.">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="main.js">
@@ -29,6 +33,6 @@
   <main>
     <slot name="main"><p>Loading…</p></slot>
   </main>
-  <slot name="debug"></slot>
+  <slot name="debug" float></slot>
 </body>
 </html>

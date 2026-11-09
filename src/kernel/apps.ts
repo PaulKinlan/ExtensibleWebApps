@@ -15,7 +15,8 @@ import { readManifest } from "./manifest";
 import type { RemotePlugins } from "./remote";
 import { record } from "./trace";
 
-type Link = { href: string; source: string };
+/** A linked file and its source; for an agent file, `runner` is the source of the loop it runs. */
+type Link = { href: string; source: string; runner?: string };
 
 export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) => Promise<boolean>) {
   /** For each plugin an app linked: the tabs that have that app open. */
@@ -55,7 +56,7 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     let manifest: ReturnType<typeof readManifest>;
     try {
       // An agent file (rel="agent") runs as the plugin the kernel makes from it.
-      source = asPlugin(href, link.source);
+      source = asPlugin(href, link.source, link.runner);
       manifest = readManifest(source);
       id = manifest.id;
     } catch (error) {
@@ -110,7 +111,7 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
       // The plugins this open will start: a server-only one isn't started here (openOne), so it provides nothing here.
       const sources = links.flatMap((link) => {
         try {
-          const source = asPlugin(link.href, link.source);
+          const source = asPlugin(link.href, link.source, link.runner);
           return readManifest(source).runs === "server" ? [] : [source];
         } catch {
           return [];

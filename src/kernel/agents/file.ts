@@ -5,8 +5,11 @@
 // Its frontmatter says who it is, what it may do and what wakes it; the
 // Markdown after it is its instructions, which become the model's system
 // prompt. The kernel turns the file into an ordinary plugin before it runs:
-// a manifest made from the frontmatter, then the agent loop (runner.js). So
-// an agent is held to its manifest by the same gate as any plugin, and the
+// a manifest made from the frontmatter, then the agent loop. The loop is a
+// file the site serves (std/agents/runner.js, or the one the frontmatter's
+// `runner:` names; src/shared/agent-runner.ts), fetched next to the agent
+// file, so a different loop needs no change to the kernel. Either way an
+// agent is held to its manifest by the same gate as any plugin, and the
 // person sees what it may do the same way.
 //
 //   ---
@@ -23,6 +26,7 @@
 //   if-unsure: block                      (block what it couldn't check)
 //   acts-as: person                       (it may act for the person, once they let it)
 //   limits: { runs-per-hour: 30, tokens-per-day: 200000 }
+//   runner: ./plan-then-act.js            (another loop; std/agents/runner.js if left out)
 //   ---
 //   You keep the reading list tidy. When a book has no genre, ...
 //
@@ -30,7 +34,9 @@
 // as `- item` lines, and maps as `{ a: 1 }` or indented lines.
 
 import { grants } from "../gate";
-import runner from "./runner.js?raw";
+import { isAgentFile } from "../../shared/agent-runner";
+
+export { isAgentFile };
 
 export class AgentFileError extends Error {}
 
@@ -63,7 +69,7 @@ export interface AgentConfig {
 /** Paul's defaults (2026-11-07): 30 runs an hour and 200,000 tokens a day; 12 model turns a run. */
 export const DEFAULT_LIMITS = { runsPerHour: 30, tokensPerDay: 200_000, steps: 12 };
 
-const KEYS = new Set(["id", "name", "description", "version", "model", "acts-as", "permissions", "on", "limits", "if-unsure"]);
+const KEYS = new Set(["id", "name", "description", "version", "model", "acts-as", "permissions", "on", "limits", "if-unsure", "runner"]);
 const LIMITS: Record<string, keyof AgentConfig["limits"]> = { "runs-per-hour": "runsPerHour", "tokens-per-day": "tokensPerDay", steps: "steps" };
 const LATER: Record<string, string> = {
   emits: "Agents emit only the agent:* events for now",
@@ -71,19 +77,23 @@ const LATER: Record<string, string> = {
 };
 const COMMAND = /^[a-z][a-z0-9-]{0,63}$/;
 
-/** True for a link the kernel reads as an agent file rather than a plugin. */
-export const isAgentFile = (href: string) => /\.agent\.md$/i.test(new URL(href, "http://x").pathname);
-
 /** Sources the kernel made from agent files, with what each one runs as: only these may call the agent methods. */
 export const made = new Map<string, AgentConfig>();
 
-/** A linked file as the plugin source to run: an agent file becomes a plugin, anything else is left as it is. */
-export function asPlugin(href: string, source: string): string {
-  return isAgentFile(href) ? fromAgentFile(source) : source;
+/**
+ * A linked file as the plugin source to run: an agent file becomes a plugin, running the loop whose source
+ * came with it (`runner`, fetched from runnerHref); anything else is left as it is.
+ */
+export function asPlugin(href: string, source: string, runner?: string): string {
+  return isAgentFile(href) ? fromAgentFile(source, runner) : source;
 }
 
-/** Turns an agent file into a plugin's source. Throws an AgentFileError that says what is wrong with the file. */
-export function fromAgentFile(text: string): string {
+/**
+ * Turns an agent file into a plugin's source, running `runner`, the agent loop's source. Throws an
+ * AgentFileError that says what is wrong with the file, or that its loop didn't come with it: an agent
+ * never falls back to another loop than the one it names.
+ */
+export function fromAgentFile(text: string, runner?: string): string {
   const { meta, body } = split(text);
   for (const key of Object.keys(meta)) {
     if (LATER[key]) throw new AgentFileError(`${LATER[key]}.`);
@@ -164,6 +174,10 @@ export function fromAgentFile(text: string): string {
     limits[field] = value;
   }
 
+  const named = meta.runner;
+  if (named !== undefined && (typeof named !== "string" || !named)) throw new AgentFileError("`runner` must be the address of the agent loop to run, such as ./my-loop.js");
+  if (!runner?.trim()) throw new AgentFileError(`Its agent loop (${typeof named === "string" ? named : "/std/agents/runner.js"}) didn't load`);
+
   const instructions = body.trim();
   if (!instructions) throw new AgentFileError("An agent needs instructions: write them after the frontmatter");
   const model = string("model");
@@ -187,7 +201,7 @@ export function fromAgentFile(text: string): string {
     description: string("description") ?? `An agent: ${instructions.split("\n")[0].slice(0, 200)}`,
     version: string("version") ?? "1.0.0",
     permissions: [...new Set(caps)],
-    // The loop calls these (runner.js), so an app with an agent fails to open on a site that doesn't run them.
+    // The standard loop calls these (std/agents/runner.js), so an app with an agent fails to open on a site that doesn't run them.
     services: ["agents", "bus", "tools"],
   };
   const source = `export const manifest = ${JSON.stringify(manifest, null, 2)};\n\nconst AGENT = ${JSON.stringify(config, null, 2)};\n\n${runner}`;

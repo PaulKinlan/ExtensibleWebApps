@@ -26,6 +26,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reading list</title>
   <meta name="description" content="Books to read, and when they're due back.">
+  <meta name="gallery" content="slots">
+  <meta name="gallery-about" content="Books to read, and when they're due back. One plugin owns the books, another lists the ones due soon, and an importer asks before it adds any.">
+  <meta name="gallery-shows" content="collections, review, screens with their own address, sharing.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
@@ -62,6 +65,6 @@
   <aside>
     <slot name="side"></slot>
   </aside>
-  <slot name="debug"></slot>
+  <slot name="debug" float></slot>
 </body>
 </html>

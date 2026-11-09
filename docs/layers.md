@@ -75,7 +75,7 @@ These are capabilities with trusted code in the kernel: an app may use them, but
 
 | Service | Files | Why it is trusted code |
 | --- | --- | --- |
-| agent files | [`agents/file.ts`](../src/kernel/agents/file.ts), [`agents/runner.js`](../src/kernel/agents/runner.js) | Turns an app's `rel="agent"` file into the plugin that runs the agent loop. The `agents` service is a module (below); these stay until the core reads links through a hook, so it needn't know about agent files |
+| agent files | [`agents/file.ts`](../src/kernel/agents/file.ts) | Turns an app's `rel="agent"` file into the plugin that runs the agent loop. The loop itself isn't core: it is a file the site serves, [`std/agents/runner.js`](../std/agents/runner.js) unless the agent's frontmatter names another with `runner:` ([`src/shared/agent-runner.ts`](../src/shared/agent-runner.ts)). The `agents` service is a module (below); `file.ts` stays until the core reads links through a hook, so it needn't know about agent files |
 | spaces | [`sync.ts`](../src/kernel/sync.ts), [`sync-device.ts`](../src/kernel/sync-device.ts), [`server-apps.ts`](../src/kernel/server-apps.ts), [`shared-plugins.ts`](../src/kernel/shared-plugins.ts), [`routes.ts`](../src/kernel/routes.ts), [`services/sync.ts`](../src/kernel/services/sync.ts), [`space-reviews.ts`](../src/kernel/space-reviews.ts) | Sync with a space, space plugins (shared to members' browsers), plugins on its server, public routes, and reviews a space's server asks members' devices to show |
 
 ### Kernel modules

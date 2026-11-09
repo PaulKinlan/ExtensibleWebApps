@@ -7,6 +7,7 @@ All of it is built, on two hosts:
 | Part | Where it is | Below |
 | --- | --- | --- |
 | **One kernel, everywhere.** The kernel's code is the same in a shared worker, a dedicated worker, a space's copy in a tab and a space's server ([where it runs](kernel.md#where-it-runs)). What differs is the environment an entry sets first ([`src/kernel/env.ts`](../src/kernel/env.ts)): [`browser.ts`](../src/kernel/browser.ts) in the browser, [`src/server/space.ts`](../src/server/space.ts) on Node, and [`src/server/cloudflare/kernel.ts`](../src/server/cloudflare/kernel.ts) on Cloudflare. The kernel keeps its folder through the `files` seam everywhere. | `src/kernel/` | [Seams](#seams) |
+| **The front door**: who may join a space, which pages may open its socket, and when a space's public routes answer, decided once for every host | `src/server/front-door.ts` | [Seams](#seams) |
 | **The Node host**: `npm run serve` | `src/server/serve.ts` | [The Node host](#the-node-host) |
 | **The Cloudflare host**: a Durable Object per space, with its kernel in a Dynamic Worker of its own | `src/server/cloudflare/` | [The Cloudflare host](#the-cloudflare-host) |
 | **Sign-in and spaces**: passkeys, OAuth providers as configuration (GitHub, Bluesky), spaces with members and invites | `src/server/auth/` | [Sign-in and spaces](#sign-in-and-spaces) |
@@ -17,6 +18,8 @@ All of it is built, on two hosts:
 ## Seams
 
 Everything a space kernel needs from the machine it runs on is a **seam**: one small interface in [`src/seams/index.ts`](../src/seams/index.ts). Plugins never see a seam. They call services through the gate, and the kernel calls the seams.
+
+The hosts share their policy too. [`src/server/front-door.ts`](../src/server/front-door.ts) takes a request's method, address, Origin, cookie and whether it asks for a WebSocket, and decides: `auth` (the accounts answer), `join` (a member's socket to the space's kernel, only from this site's own pages), `route` (a space's server plugins may answer), `asset` (the site's files, GET and HEAD only) or `refuse`, with a status. The Node host and the Cloudflare Worker each ask it and do only their own I/O, so a third host gets the same rules by calling it ([`tests/checks/front-door.mjs`](../tests/checks/front-door.mjs)).
 
 Two seams are what the kernel runs on today:
 
