@@ -36,8 +36,8 @@ export default async function ({ check, context, errors }) {
     await open.waitFor({ timeout: 8000 });
     const href = await open.getAttribute("href");
     check("survey share: the account page opens Surveys in each of your spaces", href === "/s/polls/demos/survey/", String(href));
-    const links = await page.locator("#spaces a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
-    check("account: a space links only the app you came from and the site, never a hardcoded demo", JSON.stringify(links) === JSON.stringify(["/s/polls/demos/survey/", "/s/polls/"]), JSON.stringify(links));
+    const links = await page.locator("#spaces a:not([download])").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+    check("account: a space opens only the app you came from and the site, never a hardcoded demo", JSON.stringify(links) === JSON.stringify(["/s/polls/demos/survey/", "/s/polls/"]), JSON.stringify(links));
     await open.click();
     const button = `${VIEW} .survey[key="sample-launch"] button[data-action="share"]`;
     const shown = await page.waitForSelector(button, { timeout: 15000 }).then(() => true, () => false);
