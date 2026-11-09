@@ -11,8 +11,9 @@
 //   POST /auth/signin            credential signs in
 //   GET  /auth/me                           who is signed in (401 if no one)
 //   POST /auth/signout                      ends this session
-//   POST /auth/me/email          { email }  sets the address the spaces you're in may email ("" removes it)
-//   POST /auth/me/email/test                sends that address a test message (a few a day), to see mail arrives
+//   POST /auth/me/email          { email }  sets your address ("" removes it) and mails it a link to confirm it
+//   POST /auth/me/email/confirm  { token }  confirms it (the link opens /account/?confirm=<token>, which posts here)
+//   POST /auth/me/email/test                sends your confirmed address a test message, to see mail arrives
 //   GET  /auth/providers                    the other sites you can sign in with (providers.ts)
 //   GET  /auth/oauth/<id>/start             goes to that site to sign in (or, signed in, to link it)
 //   GET  /auth/oauth/<id>/callback          where that site sends you back; signs in, then /account/
@@ -46,12 +47,16 @@ export interface User {
   name: string;
   created: number;
   /**
-   * The address a space's server plugins may email them at (std/email/module.ts sends only to
-   * its members' addresses). Typed on /account/; not confirmed yet (no link is mailed to it).
+   * The address they typed on /account/. A space's server plugins may email it (std/email/module.ts
+   * sends only to its members' addresses) once it's confirmed: a link to confirm it is mailed to it.
    */
   email?: string;
-  /** How many test messages they sent themselves today (POST /auth/me/email/test). */
-  tests?: { day: string; sent: number };
+  /** Whether they opened the link mailed to `email`, so it's theirs. */
+  emailConfirmed?: boolean;
+  /** The hash of the one link that can confirm `email` now: a new address, or none, retires the last. */
+  emailLink?: string;
+  /** How many messages the accounts sent them today (links to confirm, tests), to keep it to a few. */
+  mailed?: { day: string; sent: number };
 }
 
 interface Credential {
@@ -136,8 +141,17 @@ export interface Hooks {
   mail?(message: Parameters<Email["send"]>[0]): Promise<Awaited<ReturnType<Email["send"]>> | null>;
 }
 
-/** Test messages a person may send themselves in a day. */
-const TESTS_PER_DAY = 3;
+/** Messages the accounts send one person in a day: links to confirm an address, and tests. */
+const MAILS_PER_DAY = 5;
+/** How long a link to confirm an address works. */
+const CONFIRM_MS = 24 * 60 * 60 * 1000;
+
+/** Today's count of messages sent to someone, one more, or null when that's past the day's limit. */
+const mailCount = (user: User): { day: string; sent: number } | null => {
+  const day = new Date().toISOString().slice(0, 10);
+  const sent = user.mailed?.day === day ? user.mailed.sent : 0;
+  return sent >= MAILS_PER_DAY ? null : { day, sent: sent + 1 };
+};
 
 /** The routes, for a host to call with each request under /auth/. */
 export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks = {}) {
@@ -292,7 +306,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   const sweep = async () => {
     if (Date.now() - swept < SWEEP_MS) return;
     swept = Date.now();
-    for (const path of [...(await files.list("challenges/")), ...(await files.list("sessions/")), ...(await files.list("invites/"))]) {
+    for (const path of [...(await files.list("challenges/")), ...(await files.list("sessions/")), ...(await files.list("invites/")), ...(await files.list("email-links/"))]) {
       const found = await read<{ expires: number }>(path);
       if (!found || found.expires < Date.now()) await files.remove(path);
     }
@@ -398,7 +412,8 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       const space = await spaceOf(name);
       if (!space) return [];
       const users = await Promise.all(Object.keys(space.members).map((id) => read<User>(`users/${id}.json`)));
-      return users.flatMap((u) => (u?.email ? [u.email] : []));
+      // Only an address its owner confirmed: anyone can type someone else's.
+      return users.flatMap((u) => (u?.email && u.emailConfirmed ? [u.email] : []));
     },
 
     /** Which member of a space an agent's key (an `Authorization` header) is for: for a host to ask before an MCP request. */
@@ -539,23 +554,60 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         if (!current) return json({ error: "Not signed in" }, 401);
         const email = typeof body.email === "string" ? body.email.trim() : null;
         if (email === null || (email && !isAddress(email))) return json({ error: "That isn't an email address" }, 400);
-        const { email: _old, ...user } = current.user;
-        const updated: User = email ? { ...user, email } : user;
-        await write(`users/${user.id}.json`, updated);
-        return json({ user: updated });
+        const { email: _old, emailConfirmed: _confirmed, emailLink: _link, ...rest } = current.user;
+        if (!email) {
+          await write(`users/${rest.id}.json`, rest);
+          return json({ user: rest });
+        }
+        // The same address, already confirmed: nothing to do.
+        if (email === current.user.email && current.user.emailConfirmed) return json({ user: current.user });
+        if (!hooks.mail) return json({ error: "This server can't send email, so it can't confirm an address" }, 503);
+        const count = mailCount(current.user);
+        if (count === null) return json({ error: `The accounts send you at most ${MAILS_PER_DAY} messages a day: try again tomorrow` }, 429);
+        await sweep();
+        const token = random(32);
+        const linkHash = await hash(token);
+        const updated: User = { ...rest, email, emailConfirmed: false, emailLink: linkHash, mailed: count };
+        await write(`users/${rest.id}.json`, updated);
+        await write(`email-links/${linkHash}.json`, { user: rest.id, email, expires: Date.now() + CONFIRM_MS });
+        const host = url.host;
+        const link = `${url.origin}/account/?confirm=${token}`;
+        const sent = await hooks.mail({
+          to: [email],
+          subject: `Confirm your email for ${host}`,
+          text: `Hello ${rest.name},\n\nTo let apps in your spaces on ${host} email you here, open this link within a day:\n\n${link}\n\nIf you didn't ask for this, someone typed your address on their account. Ignore this message and nothing more will come.`,
+        });
+        if (!sent) return json({ error: "This server keeps email in an outbox and doesn't send it yet, so it can't confirm an address" }, 503);
+        if (!sent.ok) return json({ error: `The link couldn't be sent: ${sent.error}` }, 502);
+        return json({ user: updated, sent: true });
+      }
+      case "/auth/me/email/confirm": {
+        const token = typeof body.token === "string" ? body.token : "";
+        if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return json({ error: "That link isn't right" }, 400);
+        const linkHash = await hash(token);
+        const path = `email-links/${linkHash}.json`;
+        const found = await read<{ user: string; email: string; expires: number }>(path);
+        if (!found) return json({ error: "That link has been used, or isn't right" }, 400);
+        await files.remove(path);
+        const user = await read<User>(`users/${found.user}.json`);
+        // Only the last link mailed counts: one from before the address was changed or removed confirms nothing.
+        if (found.expires < Date.now() || !user || user.email !== found.email || user.emailLink !== linkHash) return json({ error: "That link is out of date: save your address again for a new one" }, 400);
+        const { emailLink: _used, ...confirmed } = user;
+        await write(`users/${user.id}.json`, { ...confirmed, emailConfirmed: true });
+        return json({ ok: true, email: user.email });
       }
       case "/auth/me/email/test": {
         const current = await session(request);
         if (!current) return json({ error: "Not signed in" }, 401);
         const { user } = current;
         if (!user.email) return json({ error: "Save an email address first" }, 400);
+        if (!user.emailConfirmed) return json({ error: "Confirm your address first: open the link mailed to it" }, 400);
         if (!hooks.mail) return json({ error: "This server can't send email" }, 503);
-        const day = new Date().toISOString().slice(0, 10);
-        const sent = user.tests?.day === day ? user.tests.sent : 0;
-        if (sent >= TESTS_PER_DAY) return json({ error: `You can send yourself ${TESTS_PER_DAY} test messages a day` }, 429);
-        await write(`users/${user.id}.json`, { ...user, tests: { day, sent: sent + 1 } });
-        const host = new URL(request.url).host;
-        const result = await hooks.mail({ to: [user.email], subject: `A test message from ${host}`, text: `Hello ${user.name},\n\nYou asked ${host} to send you a test message, and here it is: apps in your spaces can reach you at this address.\n\nIf you didn't ask for it, someone typed your address on their account. Nothing more will come unless they're in a space with you.` });
+        const count = mailCount(user);
+        if (count === null) return json({ error: `The accounts send you at most ${MAILS_PER_DAY} messages a day: try again tomorrow` }, 429);
+        await write(`users/${user.id}.json`, { ...user, mailed: count });
+        const host = url.host;
+        const result = await hooks.mail({ to: [user.email], subject: `A test message from ${host}`, text: `Hello ${user.name},\n\nYou asked ${host} to send you a test message, and here it is: apps in your spaces can reach you at this address.` });
         if (!result) return json({ error: "This server keeps email in an outbox and doesn't send it yet" }, 503);
         if (!result.ok) return json({ error: `The message couldn't be sent: ${result.error}` }, 502);
         return json({ ok: true, id: result.id });

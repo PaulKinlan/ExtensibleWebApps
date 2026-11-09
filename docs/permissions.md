@@ -80,7 +80,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `provide:llm` | Be a language model: answer the `llm` service's requests for one vendor. | What the plugins in [`/std/llm/`](../std/llm/README.md) ask for, beside their vendor's host and key. |
 | `share` | Hand something to the system's share sheet, or take what was shared to the app. | |
 | `outside` | Open the door to agents outside the app: they call this plugin's tools, as this plugin, through WebMCP in the page and MCP on a space's server. | They get exactly the plugin's other permissions, and its reviews. See [Outside agents](guide/outside-agents.md). |
-| `email` | Send an email (`email.send`), to up to 10 addresses. | Only on a space's server, and only to the space's members; refused in a browser. At most 50 a day. Written to the space's outbox, and delivered when the site sends mail. |
+| `email` | Send an email (`email.send`), to up to 10 addresses. | Only on a space's server, and only to the space's members, at an address they confirmed; refused in a browser. At most 50 a day. Written to the space's outbox, and delivered when the site sends mail. |
 
 ## Editor permissions
 
