@@ -6,7 +6,9 @@
 //
 //   platform  the host's own: plugin views and template files to sanitize or
 //             read, element files (elements.ts), the speculation rules
-//             (speculation.ts), and script addresses on this site.
+//             (speculation.ts), and script addresses on this site. Markup
+//             loses its on…= attributes first (handlers.ts), so the browser
+//             has no inline handler to report refusing.
 //   default   what the browser asks when code hands a sink a plain string. It
 //             takes script addresses on this site (Vite's `new Worker(new
 //             URL(…))`, the kernel's shared worker, vendored libraries
@@ -17,6 +19,8 @@
 //
 // Elements that draw a library's output keep a policy of their own, named in
 // the header (elements/mermaid.js).
+
+import { withoutHandlers } from "./handlers";
 
 type Policy = {
   createHTML(input: string): TrustedHTML;
@@ -40,10 +44,10 @@ function onThisSite(input: string): string {
   return url.href;
 }
 
-const identity: Policy = { createHTML: (s) => s as unknown as TrustedHTML, createScript: (s) => s as unknown as TrustedScript, createScriptURL: (s) => onThisSite(s) as unknown as TrustedScriptURL };
+const identity: Policy = { createHTML: (s) => withoutHandlers(s) as unknown as TrustedHTML, createScript: (s) => s as unknown as TrustedScript, createScriptURL: (s) => onThisSite(s) as unknown as TrustedScriptURL };
 
 /** The host's own policy. Where the browser has no Trusted Types, it passes strings through, checking addresses still. */
-export const platform: Policy = factory?.createPolicy("platform", { createHTML: (s) => s, createScript: (s) => s, createScriptURL: onThisSite }) ?? identity;
+export const platform: Policy = factory?.createPolicy("platform", { createHTML: withoutHandlers, createScript: (s) => s, createScriptURL: onThisSite }) ?? identity;
 
 /** Whether the code handing over markup is a library vendored on this site (vendor/), by the call's stack. */
 function fromVendor(): boolean {

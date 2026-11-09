@@ -8,7 +8,8 @@ The host links each app's page to `manifest.webmanifest` in its folder ([`src/ho
 
 | From the page | In the manifest |
 | --- | --- |
-| `<title>` (the part before a ` · `) | `name`, and `short_name` |
+| `<title>` (the part before a ` · `) | `name`, and `short_name` (its first word if it is over 12 characters) |
+| `<meta name="short-name">` | `short_name`, the name under the installed app's icon, when the title's first word isn't right |
 | `<meta name="description">` | `description` |
 | `<meta name="theme-color">` | `theme_color` |
 | `<link rel="icon">` | the icon (else the platform's, [`/app-icon.svg`](../../public/app-icon.svg)) |

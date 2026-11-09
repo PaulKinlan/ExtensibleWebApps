@@ -956,6 +956,14 @@ The providers the caller's app links; ready means it has its key.
 
 Apps a person makes in the browser, kept on their device and served at /apps/<name>/: their files, saved after a review, each file's earlier versions, and checks of an app as written and as it runs.
 
+#### maker.accept
+
+`maker.accept(app)` → the same as save
+
+Needs: `apps:make`, and the person's review.
+
+In a space: saves an app a member shared as a made app here, or its newer version, once the person accepts one review that shows its files.
+
 #### maker.check
 
 `maker.check(app)` → { ok, ran, problems: [{ level, file, line?, message }], plugins }
@@ -1027,6 +1035,30 @@ Writes files of a made app, or makes a new one (its first save must hold app.htm
 Needs: `apps:read`.
 
 Writes a copy of the app's files into a folder the person picks on their disk (call it right after they click), replacing files there with the same names. The copy is a plain app folder: open it again with openFolder, here or on another device, or check it in a checkout with npm run check.
+
+#### maker.share
+
+`maker.share(app)` → { ok, url } or { ok: false, error }
+
+Needs: `apps:make`, and the person's review.
+
+In a space: shares a made app with its members, once the person accepts. Each sees it in their apps and runs it once they accept its files; sharing it again sends them the new version the same way.
+
+#### maker.shared
+
+`maker.shared()` → { space, offline?, apps: [{ name, title, files, by, at, url, state }] }
+
+Needs: `apps:read`.
+
+In a space: the apps its members shared with it. state is new (not accepted here), changed (a newer version than the one accepted here), same, or clash (an app of that name here that didn't come from the space). space is false outside a space.
+
+#### maker.unshare
+
+`maker.unshare(app)` → { ok } or { ok: false, error }
+
+Needs: `apps:make`, and the person's review.
+
+In a space: stops sharing an app, once the person accepts. Members who accepted it keep their copy.
 
 #### maker.version
 
@@ -1660,6 +1692,14 @@ Mode: `emit`. Listening needs `apps:read`.
 
 Listeners get `{ app }`.
 
+### `maker:shared`
+
+In a space: the apps its members shared changed (maker.shared lists them), or this device came back online.
+
+Mode: `emit`. Listening needs `apps:read`.
+
+Listeners get `{}`.
+
 ### `members:changed`
 
 The space told this page who its members are and which one this page is signed in as, or that changed. Read sync.members().
@@ -1765,8 +1805,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `agents:run:<agent>` | Call agents.run. |
-| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder. |
-| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.check. |
+| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.unshare. |
+| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.check. |
 | `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.mix, audio.keep, audio.load, audio.forget, audio.kept, audio.playClip, audio.open, audio.save. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |
@@ -1822,7 +1862,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin's view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `theme` | Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only --bg, --bg-2, --surface, --fg, --fg-2, --border, --accent, --accent-fg, --ok, --warn, --danger, --radius-sm, --radius, --radius-lg, --shadow-1, --font, --mono, color-scheme, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md. |
-| `hooks` | Optional. Up to 20 hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook `<id>:<key>` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (1000 ms if not given, at most 5000); an agent that checks it has agentTimeoutMs (at most 30 s; without one, agents can't check it). A hook lasts while its plugin is installed. |
+| `hooks` | Optional. Up to 20 hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook `<id>:<key>` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (1000 ms if not given, at most 5000); an agent that checks it has agentTimeoutMs (at most 30 s; without one, agents can't check it). A hook lasts while its plugin is installed. These limits are the defaults; a site may change them in kernel.json's `hooks`. |
 | `services` | Optional. Up to 30 services the plugin calls that not every site runs, by name: ["llm", "bus"]. The kernel's own services (data, storage, settings and the rest) are always there and needn't be listed. A plugin that lists a service the site doesn't run isn't started, and says which one is missing, so an app that needs it fails when it opens rather than on its first call. The site lists the services it runs in kernel.json (docs/layers.md). |
 | `provides` | Optional. Up to 5 services the plugin provides, by name: { mail: { description, methods: { send: { args?, returns?, description, needs? } } } }. Each needs the permission provide:<name>, and the plugin answers its calls with ctx.provide (shared plugins only, not scope "tab"). Other plugins call it with ctx.call(name, method, ...args) and the permission <name>, or what a method's `needs` says. A name the kernel or another plugin already has is refused. See docs/layers.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, or paths in a folder beside it like plugin-editor.templates/card.js (up to four folders deep, and the first folder's name has a dot in it, so it can never be another app's folder). They are copied with it when a person adds it to an app. |

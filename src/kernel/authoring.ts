@@ -456,6 +456,17 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           return file ? ((await saving.store.readText(`user/${app}/${file}`)) ?? "") : undefined;
         };
         const changed = "It changed while the review was open (in another tab, perhaps), so nothing was done. Look again and try once more.";
+        const linkedHere = apps.linkedBy(tab) ?? [];
+        /** The app's own plugin that one of the person's with this id would replace in this app, if any. */
+        const replaces = (id: string) => (!mine.some((p) => p.id === id) && linkedHere.includes(id) ? remote.installed.get(id) : undefined);
+        /** Why the person can't add a plugin with this id here: another plugin on the page has it, and this app doesn't link it. */
+        const clash = (id: string, more = "") => (!mine.some((p) => p.id === id) && remote.installed.has(id) && !linkedHere.includes(id) ? `${id} is already a plugin on this page${more}` : undefined);
+        /** What the review says it does, and the code it shows as before: the app's own plugin's, when it replaces that. */
+        const asked = (m: { id: string; name: string }, before: string | undefined) => {
+          const app = replaces(m.id);
+          if (before === undefined && app) return { target: `your plugins: replaces ${app.manifest.name} with ${m.name}`, before: app.source };
+          return { target: `your plugins: ${before === undefined ? "adds" : "changes"} ${m.name}`, before: before ?? "" };
+        };
         /** What a checker on plugins:beforeAdd said: an error to give back if it stopped the plugin, or undefined. */
         const checked = async (m: { id: string; name: string; permissions: string[] }, code: string, how: string) => {
           const verdict = await saving.check?.({ app, id: m.id, name: m.name, permissions: m.permissions, code, how, by: caller }, dispatch);
@@ -488,13 +499,15 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           }
           const taken = takenCollection(m);
           if (taken) return { ok: false, error: taken };
-          if (!mine.some((p) => p.id === m.id) && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page` };
+          const clashAdd = clash(m.id);
+          if (clashAdd) return { ok: false, error: clashAdd };
           const manifest = m;
           return once(manifest.id, async () => {
             const stopped = await checked(manifest, fetched.source, "add");
             if (stopped) return stopped;
             const before = await current(manifest.id);
-            if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", fetched.source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
+            const review = asked(manifest, before);
+            if (!(await ask(review.target, review.before, fetched.source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
             if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
             // The files the person saw, not the site's files read again.
             const added = await saving.userAdded.add(app, fetched.files);
@@ -521,13 +534,15 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           }
           const taken = takenCollection(m);
           if (taken) return { ok: false, error: taken };
-          if (!mine.some((p) => p.id === m.id) && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page` };
+          const clashPick = clash(m.id);
+          if (clashPick) return { ok: false, error: clashPick };
           const manifest = m;
           return once(manifest.id, async () => {
             const stopped = await checked(manifest, source, "pick");
             if (stopped) return stopped;
             const before = await current(manifest.id);
-            if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
+            const review = asked(manifest, before);
+            if (!(await ask(review.target, review.before, source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
             if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
             const added = await saving.userAdded.add(app, files);
             if (!added.ok) return added;
@@ -579,23 +594,22 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         }
         const taken = takenCollection(m);
         if (taken) return { ok: false, error: taken };
-        const own = mine.find((p) => p.id === m.id);
-        // Changing one of the app's own plugins in place comes later; until then a copy needs an id of its own.
-        if (!own && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page. Give yours a new id.` };
+        // A copy of one of the app's own plugins, under its id, replaces it in this app; any other plugin's id is taken.
+        const clashSave = clash(m.id, ". Give yours a new id.");
+        if (clashSave) return { ok: false, error: clashSave };
         const manifest = m;
         return once(manifest.id, async () => {
           const stopped = await checked(manifest, code, "save");
           if (stopped) return stopped;
           const before = await current(manifest.id);
-          if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", code, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not saved" };
+          const review = asked(manifest, before);
+          if (!(await ask(review.target, review.before, code, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not saved" };
           // Replace only the version the person saw, or add one that still isn't there.
           if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
           const added = await saving.userAdded.add(app, [{ name: `${manifest.id}.js`, data: code }]);
           if (!added.ok) return added;
           await saving.userAdded.on(app, manifest.id);
-          // A running copy with other code is stopped, so opening the app again starts the new code under the same id.
-          const running = remote.installed.get(manifest.id);
-          if (running && running.source !== code) remote.uninstall(manifest.id);
+          // Opening the app again stops a running copy with other code (if only this app uses it) and starts the new code under the same id.
           await saving.turnOn([manifest.id]);
           await saving.reopen(app);
           return { ok: true, id: manifest.id };

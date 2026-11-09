@@ -1,8 +1,10 @@
 <!--
   Your apps. your-apps.js sends two views:
   make: { working, request, steps: [{ n, text, ok }], answer: { text, tone }, targets: [{ name, title, picked }] }
-  apps: { none, apps: [{ name, title, url, picked }], app: { name, title, url, revision }, files: [{ name, count, open, versions: [{ version, when, by, note, current, removed }] }], folder: { text, tone } }
+  apps: { none, apps: [{ name, title, url, picked }], app: { name, title, url, revision }, files: [{ name, count, open, versions: [{ version, when, by, note, current, removed }] }], folder: { text, tone },
+          space: { name, offline, sharedHere, waiting: [{ name, title, by, when, changed, label }] } (in a space only), sharing: { text, tone } }
   "folder" saves the picked app's files to a folder on the person's disk; "open-folder" makes an app from one.
+  In a space, "share" and "unshare" share the picked app with its members or stop; "accept" takes one a member shared, after a review.
 -->
 <style>
   .make form { display: grid; gap: var(--space-2); margin: 0; }
@@ -16,6 +18,9 @@
   .yours .files li > div { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
   .yours .versions { margin: var(--space-1) 0 0; padding-left: 1.25rem; font-size: var(--text-sm); color: var(--fg-2); }
   .yours code { font: var(--text-sm)/1.4 var(--mono); }
+  .yours .shared ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .yours .shared li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .yours .shared-note { color: var(--fg-2); font-size: var(--text-sm); }
 </style>
 <template id="make">
   <ui-card class="make">
@@ -48,6 +53,24 @@
       <button data-action="open-folder" title="Pick a folder with an app.html in it">Open from a folder</button>
     </ui-toolbar>
     <template if="folder"><ui-card tone="{{folder.tone}}"><p role="status">{{folder.text}}</p></ui-card></template>
+    <template if="sharing"><ui-card tone="{{sharing.tone}}"><p role="status">{{sharing.text}}</p></ui-card></template>
+    <template if="space">
+      <template if="space.offline"><p class="shared-note">The space can't be reached just now, so the apps its members shared aren't shown.</p></template>
+      <template if="space.waiting.length">
+        <section class="shared" aria-label="Shared in this space">
+          <h3>Shared in this space</h3>
+          <ul>
+            <template for="s of space.waiting">
+              <li key="{{s.name}}"><strong>{{s.title}}</strong> <span class="shared-note">from the space<template if="s.by">, shared by {{s.by}}</template>, {{s.when}}</span>
+                <template if="s.changed"> <ui-badge tone="warn">new version</ui-badge></template>
+                <button data-action="accept" data-value="{{s.name}}">{{s.label}}</button>
+              </li>
+            </template>
+          </ul>
+          <p class="shared-note">An app from the space runs here only once you accept its files.</p>
+        </section>
+      </template>
+    </template>
     <template if="none"><p>None yet. Describe one above, and it appears here, working, with every version of its files.</p></template>
     <template if="!none">
       <div class="list">
@@ -59,6 +82,7 @@
           <ui-spacer></ui-spacer>
           <button data-action="reload">Reload</button>
           <button data-action="folder" title="Keep a copy of its files on your disk, or take it to another device">Save to a folder</button>
+          <template if="space"><template if="!space.sharedHere"><button data-action="share" title="Each member sees it in their apps, and runs it once they accept its files">Share with the space</button></template><template if="space.sharedHere"><button data-action="share" title="Send the space this version: members accept it first">Share this version</button> <button data-action="unshare">Stop sharing</button></template></template>
           <a href="{{app.url}}">Open {{app.url}}</a>
         </ui-toolbar>
         <ui-preview app="{{app.name}}" revision="{{app.revision}}" label="{{app.title}}"></ui-preview>

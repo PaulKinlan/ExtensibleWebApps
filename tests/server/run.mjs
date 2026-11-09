@@ -81,7 +81,7 @@ const hosts = {
     async start() {
       cpSync("tests/fixtures/server-app", "dist/server-app", { recursive: true });
       const port = await freePort();
-      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries({ ...fake.env, EMAIL_FROM: FROM }).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
+      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries({ ...fake.env, EMAIL_FROM: FROM, ALLOW_PRIVATE_HOSTS: "127.0.0.1" }).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
       let log = "";
       await new Promise((ready, fail) => {
         const timer = setTimeout(() => fail(new Error(`wrangler dev didn't start: ${log.slice(-500)}`)), 60_000);
@@ -288,6 +288,79 @@ export default (ctx) => { ctx.routes.add("GET", "club-note", () => ({ text: "ran
     "space plugins: any member can remove a shared plugin, and every device hears it went",
     removed?.ok && !after?.list?.some((p) => p.id === "club-note") && mine.heard.some((m) => m.op === "plugins:changed") && theirs.heard.filter((m) => m.op === "plugins:changed").length > before,
     JSON.stringify({ removed, after }),
+  );
+  mine.close();
+  theirs.close();
+}
+
+/** Made apps (std/spaces/made-apps.ts): the space keeps the apps members share, tells every device, refuses what a made app can't be, and never runs one. */
+async function madeAppChecks(base, check, owner) {
+  const dee = await person(base).account("Dee");
+  await owner.call("/auth/spaces", { name: "makers" });
+  await dee.call("/auth/invites/accept", { token: (await owner.call("/auth/spaces/makers/invite", {})).body?.token });
+  const ownerId = (await owner.call("/auth/me")).body?.user?.id;
+  const mine = await client(base, "makers", owner.cookie);
+  const theirs = await client(base, "makers", dee.cookie);
+  let n = 0;
+  const ask = (who, request) => {
+    const id = ++n;
+    who.send({ t: "sync", op: "apps", id, ...request });
+    return new Promise((done) => {
+      const end = Date.now() + 5000;
+      const look = () => {
+        const reply = who.heard.find((m) => m.op === "apps:reply" && m.id === id);
+        if (reply || Date.now() > end) return done(reply);
+        setTimeout(look, 50);
+      };
+      look();
+    });
+  };
+  for (const who of [mine, theirs]) who.send({ t: "sync", op: "hello", since: 0 });
+  await new Promise((r) => setTimeout(r, 300));
+
+  const page = '<!doctype html><html lang="en"><head><title>Tides</title><script type="module" src="/platform/host.js"></script><link rel="plugin" href="tides.js"></head><body><main><slot name="main"></slot></main></body></html>';
+  const plugin = 'export const manifest = { id: "tides", name: "Tides", permissions: ["ui"] };\nexport default () => {};';
+  const files = [{ name: "app.html", text: page }, { name: "tides.js", text: plugin }, { name: "tides.html", text: "<template id=\"t\"></template>" }];
+  const shared = await ask(mine, { action: "share", name: "tides", files });
+  await new Promise((r) => setTimeout(r, 300));
+  const told = theirs.heard.some((m) => m.op === "apps:changed");
+  const listed = (await ask(theirs, { action: "list" }))?.list?.find((a) => a.name === "tides");
+  const got = await ask(theirs, { action: "get", name: "tides" });
+  check(
+    "space made apps: an app a member shares is kept by the space, every device hears of it, and another member gets its files, saying who shared it",
+    shared?.ok && told && listed?.title === "Tides" && listed.by === ownerId && listed.hash === shared.hash && got?.hash === shared.hash && got.files?.length === 3,
+    JSON.stringify({ shared, told, listed, got: got && { ok: got.ok, files: got.files?.map((f) => f.name) } }),
+  );
+
+  const leaner = await ask(mine, { action: "share", name: "tides", files: files.slice(0, 2) });
+  const now = await ask(theirs, { action: "get", name: "tides" });
+  check("space made apps: a new version replaces the old, leaving none of the files it no longer has, with a new hash", leaner?.ok && leaner.hash !== shared?.hash && now?.files?.length === 2, JSON.stringify(now?.files?.map((f) => f.name)));
+
+  const refusals = await Promise.all([
+    ask(mine, { action: "share", name: "../etc", files }),
+    ask(mine, { action: "share", name: "nopage", files: files.slice(1) }),
+    ask(mine, { action: "share", name: "scripted", files: [{ name: "app.html", text: page.replace("</head>", "<script>alert(1)</script></head>") }] }),
+    ask(mine, { action: "share", name: "badfile", files: [...files, { name: "../x.js", text: plugin }] }),
+    ask(mine, { action: "share", name: "notplugin", files: [files[0], { name: "tides.js", text: "export default 1;" }] }),
+    ask(mine, { action: "share", name: "huge", files: [files[0], { name: "big.css", text: "x".repeat(800_000) }] }),
+  ]);
+  check(
+    "space made apps: the space refuses a name that isn't an app's, no app.html, a page with its own script, a file a made app can't have, a plugin with no manifest, and over 700 KB",
+    refusals.every((r) => r && r.ok === false && r.error) && !(await ask(theirs, { action: "list" }))?.list?.some((a) => a.name !== "tides"),
+    JSON.stringify(refusals.map((r) => r?.error)),
+  );
+
+  const routes = await Promise.all(["/s/makers/apps/tides/", "/s/makers/apps/tides/tides.js"].map((path) => fetch(`${base}${path}`).then((r) => r.text(), () => "")));
+  check("space made apps: the space's server never serves a shared app's files", routes.every((text) => !text.includes('id: "tides"') && !text.includes("<title>Tides</title>")), routes.map((t) => t.slice(0, 60)).join(" | "));
+
+  const before = mine.heard.filter((m) => m.op === "apps:changed").length;
+  const gone = await ask(theirs, { action: "unshare", name: "tides" });
+  await new Promise((r) => setTimeout(r, 300));
+  const after = await ask(mine, { action: "list" });
+  check(
+    "space made apps: stopping sharing takes it off the space's list, and every device hears it",
+    gone?.ok && after?.ok && !after.list?.length && mine.heard.filter((m) => m.op === "apps:changed").length > before,
+    JSON.stringify({ gone, after }),
   );
   mine.close();
   theirs.close();
@@ -602,8 +675,12 @@ async function surveyChecks(base, check, owner) {
   laptop.close();
 }
 
-/** On Node, a server plugin with `network` reaches the internet but not the server's own network (src/server/network-guard.ts). */
-async function networkGuardChecks(base, check) {
+/**
+ * A server plugin with `network` reaches the internet but not the server's own network: on Node
+ * (src/server/network-guard.ts) and on Cloudflare (src/server/cloudflare/network-guard.ts), the same cases.
+ * Going around fetch is Node's alone: a Worker has no dispatcher or sockets to go around it with.
+ */
+async function networkGuardChecks(base, check, host) {
   // A server on this machine: / says hello, and /hop redirects to the same server by the name localhost.
   const local = createHttpServer((req, res) => {
     if (req.url === "/hop") return res.writeHead(302, { location: `http://localhost:${local.address().port}/` }).end();
@@ -623,7 +700,7 @@ async function networkGuardChecks(base, check) {
     allowed: await probe(`http://127.0.0.1:${port}/`),
   };
   // Around fetch: the dispatcher it uses, and an Agent the plugin makes itself, are refused where the socket connects.
-  const around = {
+  const around = host !== "node" ? {} : {
     dispatcher: await probe(`http://[::ffff:7f00:1]:${port}/`, "dispatcher"),
     agent: await probe(`http://[::ffff:7f00:1]:${port}/`, "agent"),
     metadata: await probe("http://169.254.169.254/latest/meta-data/", "agent"),
@@ -632,16 +709,17 @@ async function networkGuardChecks(base, check) {
   local.close();
   const refused = (r) => r?.ok === false && /server's own network/.test(r.error);
   check(
-    "network guard: a server plugin with network can't reach the server's own network: localhost, ::1, a mapped address, the metadata service, or a redirect inside",
+    `network guard (${host}): a server plugin with network can't reach the server's own network: localhost, ::1, a mapped address, the metadata service, or a redirect inside`,
     refused(seen.byName) && refused(seen.ipv6) && refused(seen.mapped) && refused(seen.metadata) && refused(seen.redirect) && refused(seen.redirectToIp),
     JSON.stringify(seen),
   );
-  check(
-    "network guard: going around fetch, through its dispatcher or an Agent of the plugin's own, or after replacing Set.prototype.has and other built-ins, is refused too",
-    Object.values(around).every((r) => r?.ok === false && (r.code === "EACCES" || r.code === "EPRIVATE")),
-    JSON.stringify(around),
-  );
-  check("network guard: a private host the deployment allows is reached", seen.allowed?.ok && seen.allowed.text === "hello from inside", JSON.stringify(seen.allowed));
+  if (host === "node")
+    check(
+      "network guard: going around fetch, through its dispatcher or an Agent of the plugin's own, or after replacing Set.prototype.has and other built-ins, is refused too",
+      Object.values(around).every((r) => r?.ok === false && (r.code === "EACCES" || r.code === "EPRIVATE")),
+      JSON.stringify(around),
+    );
+  check(`network guard (${host}): a private host the deployment allows is reached`, seen.allowed?.ok && seen.allowed.text === "hello from inside", JSON.stringify(seen.allowed));
 }
 
 /**
@@ -1030,6 +1108,7 @@ async function suite(name, make) {
     await oauthChecks(server.url, check);
     await blueskyChecks(server.url, check, atproto);
     await sharedPluginChecks(server.url, check, owner);
+    await madeAppChecks(server.url, check, owner);
     await syncChecks(server.url, check, owner, async () => {
       await server.stop();
       server = await host.start();
@@ -1062,8 +1141,8 @@ async function suite(name, make) {
     await mcpChecks(server.url, check, owner, stranger);
     await mcpMoreChecks(server.url, check, owner, stranger);
 
-    // Workers can't reach a private network in production; wrangler's local runtime isn't a guide to that.
-    if (name === "node") await networkGuardChecks(server.url, check);
+    // The same cases on both hosts. (On Cloudflare in production, the Worker's own egress refuses them too.)
+    await networkGuardChecks(server.url, check, name);
     if (name === "node") await feedChecks(server.url, check, owner);
 
     // Names that aren't a space are refused.

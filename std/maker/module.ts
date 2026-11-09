@@ -17,6 +17,11 @@
 //              back in (a review, as any save), so a made app can leave the
 //              device that made it: to another device, or to a checkout,
 //              where `npm run check` reads it as it reads the demos.
+//   share      in a space (/s/<space>/new/), shares an app with the
+//              space's members (std/spaces/made-apps.ts). Each sees it in
+//              their Your apps as from the space, and it runs for them only
+//              once they accept its files (accept, a review like any save);
+//              a later share of it reaches them the same way.
 //   check      the checks `npm run check` makes (checks.js), and, when the
 //              app is open (the preview on /new/ reloads it), what went
 //              wrong as it ran: plugins that didn't start, errors, refused
@@ -36,7 +41,8 @@ import { recent, record } from "../../src/kernel/trace";
 import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENTS, ELEMENT_ATTRIBUTES, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../../src/shared/html";
 import { fromAgentFile } from "../../src/kernel/agents/file";
 import { DEFAULT_RUNNER, runnerName } from "../../src/shared/agent-runner";
-import { service, type ModuleKernel } from "../../src/kernel/modules";
+import { env } from "../../src/kernel/env";
+import { service, type MadeAppsSeam, type ModuleKernel } from "../../src/kernel/modules";
 import { checkFiles, siteFiles } from "./checks.js";
 import { APP_NAME, FILE_NAME, appUrl, pageParts, pageProblems } from "../../sw/made-page.js";
 
@@ -45,6 +51,8 @@ const APPS = "made/apps";
 const HISTORY = "made/history";
 /** The names of the person's apps, as a folder can't be listed. */
 const INDEX = "made/apps.json";
+/** In a space: the version of each app shared there that this device has, by the hash the space gave it (accepted or shared from here). */
+const FROM_SPACE = "made/from-space.json";
 const MAX_FILE = 100_000;
 const MAX_FILES = 30;
 /** How many earlier versions of each file are kept. */
@@ -72,7 +80,14 @@ function checkFile(name: unknown): string {
 
 const make = (kernel: ModuleKernel): ServiceProvider => {
   const { root, store, remote, hosts, apps } = kernel;
+  /** Where a made app is served: /apps/<name>/, or inside the space this kernel keeps (sw/routes/spaces.js). */
+  const space = env().space;
+  const urlOf = (name: string) => (space ? `/s/${space}${appUrl(name)}` : appUrl(name));
+  /** Whether a plugin's address is in a made app's folder. */
+  const inApp = (href: string | undefined, name: string, f = "") => !!href && new URL(href, "http://x").pathname === `${urlOf(name)}${f}`;
+  const inFolder = (href: string | undefined, name: string) => !!href && new URL(href, "http://x").pathname.startsWith(urlOf(name));
   kernel.hook("maker:changed", { mode: "emit", needs: "apps:read", args: "{ app, files, removed? }", description: "A made app's files were saved, restored or removed (maker.save, maker.restore, maker.remove)." });
+  kernel.hook("maker:shared", { mode: "emit", needs: "apps:read", args: "{}", description: "In a space: the apps its members shared changed (maker.shared lists them), or this device came back online." });
   kernel.hook("maker:check", { mode: "emit", needs: "apps:read", args: "{ app }", description: "maker.check wants the app opened again, to see it run: a preview of it (std/maker/your-apps.js) reloads." });
 
   /**
@@ -133,7 +148,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       takenBy: (id: string) => {
         const running = remote.installed.get(id);
         // Running from this app's own folder is fine: that's this plugin.
-        if (!running || (running.href && new URL(running.href, "http://x").pathname.startsWith(`/apps/${name}/`))) return undefined;
+        if (!running || inFolder(running.href, name)) return undefined;
         return running.href ? new URL(running.href).pathname : running.manifest.name;
       },
     };
@@ -167,7 +182,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
    */
   const replaceOld = async (name: string, f: string, text: string) => {
     for (const [id, running] of [...remote.installed]) {
-      if (!running.href || new URL(running.href, "http://x").pathname !== `/apps/${name}/${f}` || running.source === text) continue;
+      if (!inApp(running.href, name, f) || running.source === text) continue;
       let same = false;
       try {
         same = text !== "" && readManifest(text).id === id;
@@ -187,7 +202,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return undefined;
   };
 
-  async function save(instance: string, name: string, files: unknown, note: unknown, dispatch: { trace?: string }, how: "save" | "restore" = "save") {
+  async function save(instance: string, name: string, files: unknown, note: unknown, dispatch: { trace?: string }, how: "save" | "restore" = "save", drop: string[] = []) {
     if (!Array.isArray(files) || !files.length) throw new Error("save() needs a list of files: [{ name, text }]");
     if (files.length > MAX_FILES) throw new Error(`An app can save at most ${MAX_FILES} files at once`);
     const wanted = new Map<string, string>();
@@ -214,12 +229,14 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const isNew = !current.has("app.html");
     if (isNew && !wanted.has("app.html")) return { ok: false, error: `There is no app called ${name} yet: save its app.html with its first files` };
     const changed = [...wanted].filter(([f, text]) => current.get(f) !== text);
-    if (!changed.length) return { ok: true, url: appUrl(name), saved: [], note: "Nothing changed" };
+    // Files this save takes away (accepting a shared version as a whole, `accept`): shown and removed with the rest.
+    const dropped = drop.filter((f) => current.has(f) && !wanted.has(f) && f !== "app.html");
+    if (!changed.length && !dropped.length) return { ok: true, url: urlOf(name), saved: [], note: "Nothing changed" };
     const title = pageParts(wanted.get("app.html") ?? current.get("app.html") ?? "").title || name;
     const target = isNew
-      ? `your apps: makes ${title}, at ${appUrl(name)}, with ${changed.map(([f]) => f).join(", ")}`
-      : `your app ${title}: ${how === "restore" ? "restores an earlier" : "changes"} ${changed.map(([f]) => f).join(", ")}`;
-    const before = changed.map(([f]) => shown(f, current.get(f))).join("\n");
+      ? `your apps: makes ${title}, at ${urlOf(name)}, with ${changed.map(([f]) => f).join(", ")}`
+      : `your app ${title}: ${[changed.length ? `${how === "restore" ? "restores an earlier" : "changes"} ${changed.map(([f]) => f).join(", ")}` : "", dropped.length ? `removes ${dropped.join(", ")}` : ""].filter(Boolean).join(", and ")}`;
+    const before = [...changed.map(([f]) => shown(f, current.get(f))), ...dropped.map((f) => shown(f, current.get(f)))].join("\n");
     const after = changed.map(([f, text]) => shown(f, text)).join("\n");
     const reason = String(note ?? "").slice(0, 300) || (isNew ? "A new app" : "A change to the app");
     const big = tooBig(before, after);
@@ -234,7 +251,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const versions: Record<string, number> = {};
     const stale = await locked(name, async () => {
       // Only what the person saw: if a file changed while the card was open, nothing is written.
-      for (const [f] of changed) if ((await read(name, f)) !== current.get(f)) return f;
+      for (const f of [...changed.map(([f]) => f), ...dropped]) if ((await read(name, f)) !== current.get(f)) return f;
+      for (const f of dropped) {
+        await store.removeFile(`${APPS}/${name}/${f}`);
+        await remember(name, f, { by, note: reason, text: current.get(f) ?? "", removed: true });
+      }
       for (const [f, text] of changed) {
         await store.writeText(`${APPS}/${name}/${f}`, text);
         versions[f] = await remember(name, f, { by, note: reason, text });
@@ -242,12 +263,12 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       return undefined;
     });
     // A running copy with other code is replaced, so every open tab runs the new code under the same id.
-    if (!stale) for (const [f, text] of changed) if (f.endsWith(".js")) await replaceOld(name, f, text);
+    if (!stale) for (const [f, text] of [...changed, ...dropped.map((f) => [f, ""] as [string, string])]) if (f.endsWith(".js")) await replaceOld(name, f, text);
     if (stale) return { ok: false, error: `${stale} changed while the review was open, so nothing was saved. Read it again and try once more.` };
     if (isNew) await indexed(name, true);
-    root.emit(dispatch, "maker:changed", { app: name, files: changed.map(([f]) => f) });
+    root.emit(dispatch, "maker:changed", { app: name, files: [...changed.map(([f]) => f), ...dropped] });
     const { problems } = await checked(name, await filesOf(name));
-    return { ok: true, url: appUrl(name), saved: changed.map(([f]) => f), versions, problems };
+    return { ok: true, url: urlOf(name), saved: changed.map(([f]) => f), ...(dropped.length ? { removed: dropped } : {}), versions, problems };
   }
 
   /** What went wrong while the app ran, once it opened again, for the plugins in it: from the moment it was asked to open, as a plugin may fail before the app has finished opening. */
@@ -338,6 +359,103 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return { ...saved, app: name, ...(skipped.length ? { skipped } : {}) };
   }
 
+  /** In a space: the apps its members shared, from the space module (std/spaces/made-apps.ts). Undefined outside a space. */
+  const sharedApps = (): MadeAppsSeam | undefined => kernel.lent()?.madeApps;
+  /** Tells Your apps when the space's list changes: listened to once the list is first asked for, as the space starts after this. */
+  const hearing = new WeakSet<MadeAppsSeam>();
+  const offered = () => root.emit({ trace: "maker-shared" }, "maker:shared", {});
+  const hear = (seam: MadeAppsSeam) => {
+    if (hearing.has(seam)) return;
+    hearing.add(seam);
+    seam.changed.add(offered);
+  };
+  kernel.cleanup(() => sharedApps()?.changed.delete(offered));
+  const notInSpace = { ok: false, error: "Only an app made in a space can be shared with it: make or open it at /s/<space>/new/" } as const;
+  const fromSpace = () => store.readJson<Record<string, string>>(FROM_SPACE, {});
+  const keepHash = (name: string, hash: string | undefined) =>
+    locked(FROM_SPACE, async () => {
+      const kept = await fromSpace();
+      if (hash) kept[name] = hash;
+      else delete kept[name];
+      await store.writeJson(FROM_SPACE, kept);
+    });
+
+  /** The apps shared in this space, each with how it stands here: new (not accepted), changed (a newer version waits), or same. */
+  async function shared() {
+    const seam = sharedApps();
+    if (!seam) return { space: false, apps: [] };
+    hear(seam);
+    const list = await seam.list();
+    if (!list) return { space, offline: true, apps: [] };
+    const kept = await fromSpace();
+    const mine = new Set(await store.readJson<string[]>(INDEX, []));
+    return {
+      space,
+      apps: list.map((a) => ({
+        name: a.name,
+        title: a.title,
+        files: a.files,
+        at: a.at,
+        ...(a.by ? { by: a.byName ?? a.by } : {}),
+        url: urlOf(a.name),
+        state: kept[a.name] === a.hash && mine.has(a.name) ? "same" : mine.has(a.name) && kept[a.name] ? "changed" : mine.has(a.name) ? "clash" : "new",
+      })),
+    };
+  }
+
+  /** Shares a made app with the space, once the person accepts a review that names its files. */
+  async function share(instance: string, name: string, dispatch: { trace?: string }) {
+    const seam = sharedApps();
+    if (!seam) return notInSpace;
+    const files = await filesOf(name);
+    if (!files.has("app.html")) return { ok: false, error: `There is no app called ${name}` };
+    const title = pageParts(files.get("app.html") ?? "").title || name;
+    // A member new to it accepts every file on one card, so the whole app must fit on one.
+    const all = [...files].map(([f, text]) => shown(f, text)).join("\n");
+    const big = tooBig("", all);
+    if (big) return { ok: false, error: `Not shared: a member taking it accepts every file on one review card, and the whole app is too big for one (${/^A line/.test(big) ? "a line is longer than 1000 characters" : "too many lines"}). Make it smaller, or split it into two apps.` };
+    try {
+      await kernel.reviewed(instance, `share:${name}`, `the space ${space}: shares your app ${title} with its members`, "", [...files].map(([f, text]) => shown(f, text)).join("\n"), "Each member sees it in their apps, and it runs for them once they accept these files", dispatch, { once: true });
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    const done = await seam.share(name, [...files].map(([f, text]) => ({ name: f, text })));
+    if (!done.ok) return done;
+    await keepHash(name, done.hash);
+    record({ kind: "lifecycle", name: "maker:share", detail: `${name} with ${space}` });
+    return { ok: true, url: urlOf(name) };
+  }
+
+  /** Takes a shared app's files from the space, and saves them here after the review every save has. */
+  async function accept(instance: string, name: string, dispatch: { trace?: string }) {
+    const seam = sharedApps();
+    if (!seam) return notInSpace;
+    const listed = (await seam.list())?.find((a) => a.name === name);
+    const got = await seam.get(name);
+    if (!got.ok) return got;
+    const by = listed?.byName ?? listed?.by;
+    // The space's version as a whole: a file it no longer has goes here too, on the same card.
+    const drop = [...(await filesOf(name)).keys()].filter((f) => !got.files.some((x) => x.name === f));
+    const saved = await save(instance, name, got.files, `From the space${by ? `, shared by ${by}` : ""}`, dispatch, "save", drop);
+    if (saved.ok) await keepHash(name, got.hash);
+    if (saved.ok) offered();
+    return saved;
+  }
+
+  /** Stops sharing an app with the space, once the person accepts. Members who accepted it keep their copy. */
+  async function unshare(instance: string, name: string, dispatch: { trace?: string }) {
+    const seam = sharedApps();
+    if (!seam) return notInSpace;
+    try {
+      await kernel.reviewed(instance, `share:${name}`, `the space ${space}: stops sharing ${name}`, "", "", "Members who accepted it keep their copy; no one else can take it", dispatch, { once: true });
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    const done = await seam.unshare(name);
+    if (done.ok) await keepHash(name, undefined);
+    return done;
+  }
+
   const fileList: Param = {
     name: "files",
     schema: {
@@ -394,6 +512,37 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         description: "Reads an app's files from a folder the person picks (call it right after they click): app.html and the plugins, templates, styles and agents beside it. Saves them as the made app named app, or after the folder, once the person accepts one review. Other files are skipped.",
         params: [{ ...app({ description: "The app to save it as; the folder's name if not given" }), optional: true }],
       },
+      shared: {
+        args: "()",
+        returns: "{ space, offline?, apps: [{ name, title, files, by, at, url, state }] }",
+        needs: "apps:read",
+        description: "In a space: the apps its members shared with it. state is new (not accepted here), changed (a newer version than the one accepted here), same, or clash (an app of that name here that didn't come from the space). space is false outside a space.",
+        params: [],
+      },
+      share: {
+        args: "(app)",
+        returns: "{ ok, url } or { ok: false, error }",
+        needs: "apps:make",
+        reviewed: true,
+        description: "In a space: shares a made app with its members, once the person accepts. Each sees it in their apps and runs it once they accept its files; sharing it again sends them the new version the same way.",
+        params: [app()],
+      },
+      accept: {
+        args: "(app)",
+        returns: "the same as save",
+        needs: "apps:make",
+        reviewed: true,
+        description: "In a space: saves an app a member shared as a made app here, or its newer version, once the person accepts one review that shows its files.",
+        params: [app()],
+      },
+      unshare: {
+        args: "(app)",
+        returns: "{ ok } or { ok: false, error }",
+        needs: "apps:make",
+        reviewed: true,
+        description: "In a space: stops sharing an app, once the person accepts. Members who accepted it keep their copy.",
+        params: [app()],
+      },
       check: {
         args: "(app)",
         returns: "{ ok, ran, problems: [{ level, file, line?, message }], plugins }",
@@ -402,7 +551,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         params: [app()],
       },
     },
-    capability: (method) => (["save", "remove", "restore", "openFolder"].includes(method) ? "apps:make" : "apps:read"),
+    capability: (method) => (["save", "remove", "restore", "openFolder", "share", "accept", "unshare"].includes(method) ? "apps:make" : "apps:read"),
     call: async (instance, method, args, dispatch) => {
       if (method === "list") {
         const out = [];
@@ -410,12 +559,16 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
           if (!APP_NAME.test(name)) continue;
           const html = await read(name, "app.html");
           if (html === undefined) continue;
-          out.push({ name, title: pageParts(html).title || name, url: appUrl(name), files: [...(await filesOf(name)).keys()] });
+          out.push({ name, title: pageParts(html).title || name, url: urlOf(name), files: [...(await filesOf(name)).keys()] });
         }
         return out;
       }
       if (method === "openFolder") return openFolder(instance, args[0], dispatch);
+      if (method === "shared") return shared();
       const name = checkName(args[0]);
+      if (method === "share") return share(instance, name, dispatch);
+      if (method === "accept") return accept(instance, name, dispatch);
+      if (method === "unshare") return unshare(instance, name, dispatch);
       if (method === "saveToFolder") return saveToFolder(instance, name, dispatch);
       if (method === "read") {
         const text = await read(name, checkFile(args[1]));
@@ -467,7 +620,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         const { problems, plugins } = await checked(name, files);
         const running = await ran(name, files, plugins, dispatch);
         const all = [...problems, ...running.problems];
-        return { ok: !all.some((p) => p.level === "error"), ran: running.ran, url: appUrl(name), problems: all, plugins, ...(running.ran ? {} : { note: "It isn't open anywhere, so only the files were checked. Open it, or its preview, to see it run." }) };
+        return { ok: !all.some((p) => p.level === "error"), ran: running.ran, url: urlOf(name), problems: all, plugins, ...(running.ran ? {} : { note: "It isn't open anywhere, so only the files were checked. Open it, or its preview, to see it run." }) };
       }
       throw new Error(`maker.${method} is not a method`);
     },

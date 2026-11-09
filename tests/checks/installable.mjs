@@ -75,6 +75,7 @@ export default async function ({ check, context, URL, errors }) {
   <title>Tally</title>
   <meta name="description" content="Counts things.">
   <meta name="theme-color" content="#225533">
+  <meta name="short-name" content="Tallies">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="tally.js">
@@ -87,8 +88,8 @@ export default async function ({ check, context, URL, errors }) {
   const tally = await open(`${URL}apps/tally/`, '[data-key="tally:count"] >> text=Tally works');
   const tallyManifest = await manifest();
   check(
-    "an app made in the browser gets a manifest made from its page",
-    tally && tallyManifest.json?.name === "Tally" && tallyManifest.json.start_url === "/apps/tally/" && tallyManifest.json.theme_color === "#225533",
+    "an app made in the browser gets a manifest made from its page, with the short name its page gives",
+    tally && tallyManifest.json?.name === "Tally" && tallyManifest.json.short_name === "Tallies" && tallyManifest.json.start_url === "/apps/tally/" && tallyManifest.json.theme_color === "#225533",
     JSON.stringify(tallyManifest).slice(0, 200),
   );
   await own.setOffline(true);
