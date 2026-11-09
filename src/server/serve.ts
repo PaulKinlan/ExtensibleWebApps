@@ -27,7 +27,7 @@ import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, too
 import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
 import { accept } from "./websocket.ts";
 import { headerRules } from "./header-rules.ts";
-import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse } from "./mcp.ts";
+import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse, mcpStream } from "./mcp.ts";
 import { feedReader } from "./feed-reader.ts";
 import { nodeGet } from "./feed-reader-node.ts";
 
@@ -282,11 +282,31 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
     const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
     const asked = await mcpRequest(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), at, auth.agent);
-    const answer = asked instanceof Response ? asked : mcpResponse(await ask(at.space, asked, MCP_TIMEOUT_MS));
+    // A GET is the client's stream, which ends when its key stops working.
+    const allowed = async () => !!(await auth.agent(headers.get("authorization"), at.space, at.plugin));
+    const answer =
+      asked instanceof Response
+        ? asked
+        : asked.method === "GET"
+          ? await mcpStream(asked, (knock) => ask(at.space, knock), { allowed })
+          : mcpResponse(await ask(at.space, asked, MCP_TIMEOUT_MS));
     // A body refused before it was read (too big, or no key) is still on the connection: close it rather than reuse it.
     if (!request.complete) answer.headers.set("connection", "close");
     response.writeHead(answer.status, Object.fromEntries(answer.headers));
-    response.end(Buffer.from(await answer.arrayBuffer()));
+    if (!answer.body || answer.headers.get("content-type") !== "text/event-stream") {
+      response.end(Buffer.from(await answer.arrayBuffer()));
+      return true;
+    }
+    // An event stream goes out as it comes, and stops when the client goes.
+    response.flushHeaders();
+    const reader = answer.body.getReader();
+    response.on("close", () => void reader.cancel().catch(() => {}));
+    for (;;) {
+      const { done, value } = await reader.read().catch(() => ({ done: true, value: undefined }));
+      if (done) break;
+      response.write(value);
+    }
+    response.end();
     return true;
   };
 
