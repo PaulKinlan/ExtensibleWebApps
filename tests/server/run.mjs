@@ -27,6 +27,7 @@ import { mcpStreamChecks } from "./mcp-stream.mjs";
 import { pagePolicyChecks } from "./page-policy.mjs";
 import { fakeAtproto } from "./fake-atproto.mjs";
 import { fakeProvider } from "./fake-oauth.mjs";
+import { feedReaderChecks } from "./feed-reader.mjs";
 
 const results = [];
 // Another site to sign in with, which both hosts are configured to use.
@@ -1147,6 +1148,7 @@ async function suite(name, make) {
     // The same cases on both hosts. (On Cloudflare in production, the Worker's own egress refuses them too.)
     await networkGuardChecks(server.url, check, name);
     if (name === "node") await feedChecks(server.url, check, owner);
+    await feedReaderChecks(server.url, check, name);
 
     // Names that aren't a space are refused.
     const refused = await new Promise((done) => {

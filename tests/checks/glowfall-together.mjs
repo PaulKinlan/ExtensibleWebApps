@@ -35,7 +35,7 @@ export default async function ({ check, context, errors, URL }) {
   // Outside a space, the lobby says where to play.
   const alone = await context.newPage();
   await alone.goto(`${URL}demos/glowfall-together/app.html`);
-  check("Glowfall together: outside a space, the lobby says how to play in one", await alone.waitForSelector(`${LOBBY} >> text=Everyone in a space plays`, { timeout: 10000 }).then(() => true, () => false));
+  check("Glowfall together: outside a space, the lobby offers Glowfall on your own first, and a space to play together", await alone.waitForSelector(`${LOBBY} >> text=Play Glowfall on your own`, { timeout: 10000 }).then(() => true, () => false));
   await alone.close();
 
   const spaces = await mkdtemp(join(tmpdir(), "glowfall-together-"));

@@ -2,6 +2,15 @@
 
 Everything so far runs in one browser: the kernel keeps the data on the device, and an app needs no server at all. A **space** is how several people share an app's data, and how a plugin keeps working when nobody has the app open. This page shows how to use one as an app author. [Servers and spaces](../server.md) describes how it is built.
 
+## Spaces and accounts
+
+Every app works on your device straight away: no sign-in, no space. Its data stays on that device. The two words below only come in when you want more than that, and they mean different things:
+
+- **Your account** is *who you are* on the site. You make one at [`/account/`](/account/) with a passkey (or GitHub or Bluesky, where the site turns them on).
+- **A space** is *what you share*: a copy of an app's data for the people you invite, or just you on your phone and laptop. You need an account to make or join one.
+
+So an app says it in one line, as an offer and never as a wall: *"To share this, or use it on another device, open it in a space."* The link goes to `/account/?app=<the app>`. The Feeds, Surveys and Household demos say it that way, and each works without a space first: Feeds reads feeds through the site's [feed reader](../server.md#the-feed-reader) until it is in a space. Glowfall together is the one that can't (it is the game for several people on one server), so it offers Glowfall on your own first.
+
 ## What a space is
 
 A space is a named group of people and their data: collections and plugins. Any app can open in one. The same reading list is your own at `/demos/reading-list/`, and the family's at `/s/family/demos/reading-list/`.

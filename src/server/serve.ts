@@ -28,6 +28,8 @@ import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
 import { accept } from "./websocket.ts";
 import { headerRules } from "./header-rules.ts";
 import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse, mcpStream } from "./mcp.ts";
+import { feedReader } from "./feed-reader.ts";
+import { nodeGet } from "./feed-reader-node.ts";
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -234,6 +236,9 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     }
   };
 
+  /** The feed reader's requests: never to this machine's network, except the hosts allowed for development. */
+  const feedGet = nodeGet(options.allowPrivate ?? []);
+
   /** The front door's view of a request (src/server/front-door.ts). */
   const knock = (request: IncomingMessage, url: URL): Knock => ({
     method: request.method ?? "GET",
@@ -314,6 +319,13 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
       return;
     }
     if (decision.door === "asset") return file(request, response);
+    if (decision.door === "feed") {
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+      const read = await feedReader(new Request(addressOf(request), { method: request.method, headers }), feedGet);
+      response.writeHead(read.status, Object.fromEntries(read.headers));
+      return void response.end(request.method === "HEAD" ? undefined : Buffer.from(await read.arrayBuffer()));
+    }
     // A join comes only on an upgrade (below), and the door refuses one over plain HTTP.
     const refused = decision.door === "refuse" ? decision : { status: 426, text: "Expected a WebSocket" };
     response.writeHead(refused.status, { "content-type": "text/plain; charset=utf-8" }).end(refused.text);
