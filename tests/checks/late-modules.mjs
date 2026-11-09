@@ -103,8 +103,19 @@ export default async (ctx) => {
     // A module started late, after the page first told the worker what to keep: debug, by its bench command.
     await first.page.evaluate(() => window.__host.command("bench", 5));
     const online = await runningIn(first.page);
-    // The page asks the kernel again 3 seconds after its first list, for files like that one.
-    await first.page.waitForTimeout(5000);
+    // The page asks the kernel again 3 seconds after its first list, for files like that one. Wait until the worker
+    // has kept everything the page and its kernel fetched, however long this machine takes.
+    const notKept = () =>
+      first.page.evaluate(async () => {
+        const kept = new Set((await (await caches.open("platform-v1")).keys()).map((r) => r.url));
+        const fetched = [location.href, ...performance.getEntriesByType("resource").map((e) => e.name), ...(await window.__host.command("fetched")).map((u) => new URL(u, location.href).href)];
+        return [...new Set(fetched)].filter((u) => u.startsWith(location.origin) && !kept.has(u) && !/\/(s|auth)\//.test(u)).map((u) => new URL(u).pathname);
+      });
+    let missing = await notKept();
+    for (let waited = 0; missing.length && waited < 30000; waited += 500) {
+      await first.page.waitForTimeout(500);
+      missing = await notKept();
+    }
     // The last tab closes, so the kernel stops: the next tab's kernel starts with no module's file in memory.
     await first.page.close({ runBeforeUnload: true });
     await visit.setOffline(true);
@@ -115,7 +126,7 @@ export default async (ctx) => {
     check(
       "offline, an app opened once at its app.html opens again and starts every kernel module it used, a late one too: their files are kept by the service worker",
       opened && bench?.n === 5 && online.length > 0 && online.every((name) => offline.includes(name)) && !failed.length,
-      `online: ${online.join(", ")}; offline: ${offline.join(", ")}${bench?.error ? `; bench: ${bench.error}` : ""}${failed.length ? `; ${failed.join("; ")}` : ""}`,
+      `online: ${online.join(", ")}; offline: ${offline.join(", ")}${missing.length ? `; never kept: ${missing.join(" ")}` : ""}${bench?.error ? `; bench: ${bench.error}` : ""}${failed.length ? `; ${failed.join("; ")}` : ""}`,
     );
   } finally {
     await visit.setOffline(false).catch(() => {});
