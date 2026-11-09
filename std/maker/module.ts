@@ -46,7 +46,6 @@ import { fromAgentFile } from "../../src/kernel/agents/file";
 import { DEFAULT_RUNNER, runnerName } from "../../src/shared/agent-runner";
 import { env } from "../../src/kernel/env";
 import { service, type MadeAppsSeam, type ModuleKernel } from "../../src/kernel/modules";
-import { checkFiles, siteFiles } from "./checks.js";
 import { APP_NAME, FILE_NAME, appUrl, pageParts, pageProblems } from "../../sw/made-page.js";
 
 /** Where made apps and their versions are kept in the data folder. `made` is one of the platform's folders (paths.ts), so no plugin can write there itself. */
@@ -159,12 +158,22 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     };
   };
 
+  // The checks are their own file, out of the kernel most pages load. It is fetched on the first call
+  // to maker (online, as the app maker opens), so the service worker keeps it for checking an app offline.
+  let checks: Promise<typeof import("./checks.js")> | undefined;
+  const loadChecks = () =>
+    (checks ??= import("./checks.js").catch((error) => {
+      checks = undefined;
+      throw error;
+    }));
+
   /**
    * The checks of a made app's files, with the files elsewhere on the site that it links read first: the
    * standard plugins and registry packages (/packages/…) it uses, so the services they provide count, and
    * a link to one that isn't there is found.
    */
   const checked = async (name: string, files: Map<string, string>) => {
+    const { checkFiles, siteFiles } = await loadChecks();
     const r = rules(name);
     const site = new Map<string, string>();
     const origin = (globalThis as { location?: Location }).location?.origin;
@@ -598,6 +607,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     },
     capability: (method) => (["save", "remove", "restore", "openFolder", "share", "accept", "unshare", "copyIn"].includes(method) ? "apps:make" : "apps:read"),
     call: async (instance, method, args, dispatch) => {
+      loadChecks().catch(() => {});
       if (method === "list") {
         const out = [];
         for (const name of await store.readJson<string[]>(INDEX, [])) {
