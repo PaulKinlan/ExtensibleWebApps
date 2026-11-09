@@ -115,7 +115,7 @@ const hosts = {
     // wrangler dev writes each message's text to a file and logs where.
     lastText: (to) => {
       const plain = printed.replace(/\x1b\[[0-9;]*m/g, "");
-      const found = [...plain.matchAll(/To: ([^\n]*)\nSubject: [^\n]*\n\nText: (\S+)/g)].filter((m) => m[1].toLowerCase().includes(to)).at(-1);
+      const found = [...plain.matchAll(/To: ([^\n]*)\n[^]*?Text: (\S+\.txt)/g)].filter((m) => m[1].toLowerCase().includes(to)).at(-1);
       return found ? readFileSync(found[2], "utf8") : undefined;
     },
     mailed: (subject, to) => new RegExp(`send_email binding called[^]*?To: ${to}[^]*?Subject: ${subject}`, "i").test(printed),
@@ -423,7 +423,12 @@ async function serverPluginChecks(base, check, owner, restart, host) {
   const shown = (await owner.call("/auth/me")).body?.user?.email;
   // Saved isn't confirmed: anyone could type someone else's address. A link is mailed to it.
   const unconfirmed = await notify({ to: "sam@example.com", subject: "Before Sam confirms", text: "x" });
-  const link = /\/account\/\?confirm=([A-Za-z0-9_-]+)/.exec(host.lastText("sam@example.com") ?? "")?.[1];
+  // The message's log line can come a moment after the answer: wait for it.
+  let link;
+  for (let i = 0; i < 50 && !link; i++) {
+    link = /\/account\/\?confirm=([A-Za-z0-9_-]+)/.exec(host.lastText("sam@example.com") ?? "")?.[1];
+    if (!link) await new Promise((r) => setTimeout(r, 200));
+  }
   const confirmAs = (token) => fetch(`${base}/auth/me/email/confirm`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ token }) }).then(async (r) => ({ status: r.status, body: await r.json() }));
   const wrongLink = await confirmAs("x".repeat(43));
   const confirmed = await confirmAs(link);
