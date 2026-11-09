@@ -104,7 +104,7 @@ export const manifest = {
           args: "(image, folder, name)",
           params: [
             { name: "image", schema: { type: "string", description: "The image token from a posts:paste or posts:drop file" } },
-            { name: "folder", schema: { type: "string", description: "Where under static/ or assets/ to put it, such as static/images/my-post" } },
+            { name: "folder", schema: { type: "string", description: "Where under static/ or assets/ to put it, such as static/images/my-post; or, for a page bundle, the folder its index.md is in" } },
             { name: "name", schema: { type: "string", description: "The file's name, without its extension" } },
           ],
           returns: "{ path } or null",
@@ -635,7 +635,9 @@ export default async function (ctx) {
       const kept = images.waiting.get(String(image));
       if (!kept) return null;
       const dir = String(folder ?? "").replace(/\/+$/, "");
-      if (!/^(static|assets)(\/[\w.-]+)*$/.test(dir) || dir.split("/").some((p) => p === "." || p === "..")) throw new Error("Images go under static/ or assets/");
+      // A page bundle's pictures may sit next to its index.md, as the bundle's own resources.
+      const bundle = open && /(^|\/)_?index\.(md|markdown)$/i.test(open.path) ? open.path.replace(/\/[^/]+$/, "") : null;
+      if ((dir !== bundle && !/^(static|assets)(\/[\w.-]+)*$/.test(dir)) || dir.split("/").some((p) => p === "." || p === "..")) throw new Error("Images go under static/ or assets/, or next to a page bundle's index.md");
       const ext = { "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "image/avif": ".avif", "image/svg+xml": ".svg" }[kept.type];
       if (!ext) throw new Error(`Not a picture this saves: ${kept.type}`);
       const base = String(name ?? "").toLowerCase().replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "image";
