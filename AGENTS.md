@@ -48,6 +48,7 @@ npm test             # builds, then opens every app in demos/ and checks each li
 npm run test:server  # after changing anything a space's server runs: the server checks on Node and wrangler dev
 npm run typecheck
 npm run reference    # after changing the kernel's API: rewrites docs/api.md (the tests check it; CI also does it for you)
+npm run packages     # after adding a plugin or changing any plugin's manifest: rewrites the registry in packages/ (the tests check it)
 ```
 
 A new app in `demos/` is picked up by the tests automatically. Put checks for what it does in a new file, `tests/demos/<app>.mjs` (copy [`tests/demos/habits.mjs`](tests/demos/habits.mjs)), and checks for a platform feature in `tests/checks/<feature>.mjs`. The runner finds both, so you never edit [`tests/platform.test.mjs`](tests/platform.test.mjs) to add a check.
