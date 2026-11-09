@@ -2,14 +2,14 @@
 // `npm create extensible-app my-app`: the npm package for the create command.
 //
 // It holds no copy of the platform. It runs the repo's own create command,
-// scripts/create-app.mjs, straight from GitHub, so a new project always gets
-// the platform as it is on main, and this package never needs a new version
-// for it:
+// scripts/create-app.mjs, straight from GitHub, so a new project always starts
+// from the platform as it is on main (as a dependency of the project, not a
+// copy), and this package never needs a new version for it:
 //
 //   npm create extensible-app packing-list                    is the same as
 //   npx github:PaulKinlan/ExtensibleWebApps packing-list
 //
-// Every argument is passed on (--name "Packing list", --no-install).
+// Every argument is passed on (--name "Packing list", --no-install, --platform <dependency>).
 // CREATE_EXTENSIBLE_APP_FROM names another source, such as a local folder or
 // tarball, for trying a change before it is on GitHub.
 //

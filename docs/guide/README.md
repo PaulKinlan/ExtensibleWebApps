@@ -1,6 +1,6 @@
 # Developer guide
 
-How to build apps on this platform, from the first page to sharing data between apps. Read it in order the first time; each page stands on the ones before it.
+How to build apps on this platform, from the first page to sharing data between apps. Read it in order the first time; each page stands on the ones before it. To start a project of your own, outside this repo, see [An app of your own](your-own-app.md).
 
 1. [How an app works](how-an-app-works.md): the page, the kernel and the plugins, and what moves between them.
 2. [Writing a plugin](writing-a-plugin.md): build the Habits app, one step at a time.
@@ -25,6 +25,7 @@ How to build apps on this platform, from the first page to sharing data between 
 21. [How the Markdown editor is built](markdown-editor.md): a whole writing app taken apart: one plugin owns the post, the others hear it through hooks and change it through a service, and an agent uses their reports as tools; with diagrams of typing, pasting, saving and quick edits.
 22. [Installing, offline, and opening files](installing-and-files.md): every app installs and opens offline with no work; an app installed from the browser as where a kind of file opens; and the policy every page is sent with (Trusted Types, no inline scripts, Permissions-Policy).
 23. [Games and sound](games-and-audio.md): a game loop whose rules are plugins (systems on `game:update` and `game:rules`, drawn smoothly on a canvas in a worker), clips rendered through effects that are plugins, the `<ui-waveform>` element, and the app maker building on both.
+24. [An app of your own](your-own-app.md): a project that is one app, its files at the top and the platform as a dependency, made with `npm create extensible-app`; served at `/` by `npm run dev`, and deployed at `/` by `npm run deploy`.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 
