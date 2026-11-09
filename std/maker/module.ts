@@ -202,7 +202,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return undefined;
   };
 
-  async function save(instance: string, name: string, files: unknown, note: unknown, dispatch: { trace?: string }, how: "save" | "restore" = "save") {
+  async function save(instance: string, name: string, files: unknown, note: unknown, dispatch: { trace?: string }, how: "save" | "restore" = "save", drop: string[] = []) {
     if (!Array.isArray(files) || !files.length) throw new Error("save() needs a list of files: [{ name, text }]");
     if (files.length > MAX_FILES) throw new Error(`An app can save at most ${MAX_FILES} files at once`);
     const wanted = new Map<string, string>();
@@ -229,12 +229,14 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const isNew = !current.has("app.html");
     if (isNew && !wanted.has("app.html")) return { ok: false, error: `There is no app called ${name} yet: save its app.html with its first files` };
     const changed = [...wanted].filter(([f, text]) => current.get(f) !== text);
-    if (!changed.length) return { ok: true, url: urlOf(name), saved: [], note: "Nothing changed" };
+    // Files this save takes away (accepting a shared version as a whole, `accept`): shown and removed with the rest.
+    const dropped = drop.filter((f) => current.has(f) && !wanted.has(f) && f !== "app.html");
+    if (!changed.length && !dropped.length) return { ok: true, url: urlOf(name), saved: [], note: "Nothing changed" };
     const title = pageParts(wanted.get("app.html") ?? current.get("app.html") ?? "").title || name;
     const target = isNew
       ? `your apps: makes ${title}, at ${urlOf(name)}, with ${changed.map(([f]) => f).join(", ")}`
-      : `your app ${title}: ${how === "restore" ? "restores an earlier" : "changes"} ${changed.map(([f]) => f).join(", ")}`;
-    const before = changed.map(([f]) => shown(f, current.get(f))).join("\n");
+      : `your app ${title}: ${[changed.length ? `${how === "restore" ? "restores an earlier" : "changes"} ${changed.map(([f]) => f).join(", ")}` : "", dropped.length ? `removes ${dropped.join(", ")}` : ""].filter(Boolean).join(", and ")}`;
+    const before = [...changed.map(([f]) => shown(f, current.get(f))), ...dropped.map((f) => shown(f, current.get(f)))].join("\n");
     const after = changed.map(([f, text]) => shown(f, text)).join("\n");
     const reason = String(note ?? "").slice(0, 300) || (isNew ? "A new app" : "A change to the app");
     const big = tooBig(before, after);
@@ -249,7 +251,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const versions: Record<string, number> = {};
     const stale = await locked(name, async () => {
       // Only what the person saw: if a file changed while the card was open, nothing is written.
-      for (const [f] of changed) if ((await read(name, f)) !== current.get(f)) return f;
+      for (const f of [...changed.map(([f]) => f), ...dropped]) if ((await read(name, f)) !== current.get(f)) return f;
+      for (const f of dropped) {
+        await store.removeFile(`${APPS}/${name}/${f}`);
+        await remember(name, f, { by, note: reason, text: current.get(f) ?? "", removed: true });
+      }
       for (const [f, text] of changed) {
         await store.writeText(`${APPS}/${name}/${f}`, text);
         versions[f] = await remember(name, f, { by, note: reason, text });
@@ -257,12 +263,12 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       return undefined;
     });
     // A running copy with other code is replaced, so every open tab runs the new code under the same id.
-    if (!stale) for (const [f, text] of changed) if (f.endsWith(".js")) await replaceOld(name, f, text);
+    if (!stale) for (const [f, text] of [...changed, ...dropped.map((f) => [f, ""] as [string, string])]) if (f.endsWith(".js")) await replaceOld(name, f, text);
     if (stale) return { ok: false, error: `${stale} changed while the review was open, so nothing was saved. Read it again and try once more.` };
     if (isNew) await indexed(name, true);
-    root.emit(dispatch, "maker:changed", { app: name, files: changed.map(([f]) => f) });
+    root.emit(dispatch, "maker:changed", { app: name, files: [...changed.map(([f]) => f), ...dropped] });
     const { problems } = await checked(name, await filesOf(name));
-    return { ok: true, url: urlOf(name), saved: changed.map(([f]) => f), versions, problems };
+    return { ok: true, url: urlOf(name), saved: changed.map(([f]) => f), ...(dropped.length ? { removed: dropped } : {}), versions, problems };
   }
 
   /** What went wrong while the app ran, once it opened again, for the plugins in it: from the moment it was asked to open, as a plugin may fail before the app has finished opening. */
@@ -404,6 +410,10 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const files = await filesOf(name);
     if (!files.has("app.html")) return { ok: false, error: `There is no app called ${name}` };
     const title = pageParts(files.get("app.html") ?? "").title || name;
+    // A member new to it accepts every file on one card, so the whole app must fit on one.
+    const all = [...files].map(([f, text]) => shown(f, text)).join("\n");
+    const big = tooBig("", all);
+    if (big) return { ok: false, error: `Not shared: a member taking it accepts every file on one review card, and the whole app is too big for one (${/^A line/.test(big) ? "a line is longer than 1000 characters" : "too many lines"}). Make it smaller, or split it into two apps.` };
     try {
       await kernel.reviewed(instance, `share:${name}`, `the space ${space}: shares your app ${title} with its members`, "", [...files].map(([f, text]) => shown(f, text)).join("\n"), "Each member sees it in their apps, and it runs for them once they accept these files", dispatch, { once: true });
     } catch (error) {
@@ -424,7 +434,9 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const got = await seam.get(name);
     if (!got.ok) return got;
     const by = listed?.byName ?? listed?.by;
-    const saved = await save(instance, name, got.files, `From the space${by ? `, shared by ${by}` : ""}`, dispatch);
+    // The space's version as a whole: a file it no longer has goes here too, on the same card.
+    const drop = [...(await filesOf(name)).keys()].filter((f) => !got.files.some((x) => x.name === f));
+    const saved = await save(instance, name, got.files, `From the space${by ? `, shared by ${by}` : ""}`, dispatch, "save", drop);
     if (saved.ok) await keepHash(name, got.hash);
     if (saved.ok) offered();
     return saved;

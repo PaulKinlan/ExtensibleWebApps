@@ -37,17 +37,17 @@ async function signUp(browser, address, name, errors) {
 }
 
 /** Writes the folder the picker hands out. */
-const folder = (page, text) =>
+const folder = (page, text, extra = []) =>
   page.evaluate(
-    async ([page, plugin]) => {
+    async ([page, plugin, extra]) => {
       const dir = await (await navigator.storage.getDirectory()).getDirectoryHandle("tides", { create: true });
-      for (const [name, body] of [["app.html", page], ["tides.js", plugin]]) {
+      for (const [name, body] of [["app.html", page], ["tides.js", plugin], ...extra]) {
         const out = await (await dir.getFileHandle(name, { create: true })).createWritable();
         await out.write(body);
         await out.close();
       }
     },
-    [PAGE, tides(text)],
+    [PAGE, tides(text), extra],
   );
 
 const shown = (page, selector, ms = 15000) => page.waitForSelector(selector, { timeout: ms }).then(() => true, () => false);
@@ -56,6 +56,11 @@ async function accept(page, what) {
   if (!(await shown(page, `${REVIEW} >> text=${what}`))) return false;
   await page.click(`${REVIEW} >> text="Accept"`);
   return true;
+}
+/** Whether a file of the app, as this device serves it in the space, comes to pass `test` within a few seconds. */
+async function becomes(page, file, test) {
+  for (let i = 0; i < 40; i++, await new Promise((r) => setTimeout(r, 250))) if (test(await served(page, file))) return true;
+  return false;
 }
 /** A file of the app as this device serves it in the space. */
 const served = (page, file) => page.evaluate((file) => fetch(`/s/home/apps/tides/${file}`).then((r) => (r.ok ? r.text() : `${r.status}`)), file);
@@ -96,11 +101,17 @@ export default async function ({ check, context, errors }) {
     check("space made apps: another member sees it in their apps, from the space and who shared it, not yet running", offered && by && before === "404", `offered ${offered}, by ${by}, served ${before.slice(0, 40)}`);
     await ben.page.click(`${YOURS} .shared button[data-action="accept"]`);
     const took = await accept(ben.page, "makes Tide times");
-    const runs = took && (await shown(ben.page, `${YOURS} button[data-action="pick"]:has-text("Tide times")`)) && /High water at noon/.test(await served(ben.page, "tides.js"));
+    const runs = took && (await shown(ben.page, `${YOURS} button[data-action="pick"]:has-text("Tide times")`)) && (await becomes(ben.page, "tides.js", (t) => /High water at noon/.test(t)));
     const preview = runs && (await ben.page.frameLocator(`${YOURS} ui-preview iframe`).locator("text=High water at noon").waitFor({ timeout: 15000 }).then(() => true, () => false));
     check("space made apps: once they accept its files on a review card, it runs for them, inside the space", runs && preview && (await ben.page.locator(`${YOURS} .shared`).count()) === 0, `took ${took}, runs ${runs}, preview ${preview}`);
 
-    // Ann shares a new version: it reaches Ben the same way.
+    // Ben adds a file of his own to his copy; the space's next version doesn't have it.
+    await folder(ben.page, "High water at noon", [["notes.css", "p { color: teal; }"]]);
+    await ben.page.click(`${YOURS} button[data-action="open-folder"]`);
+    const asked = await accept(ben.page, "your app Tide times: changes notes.css");
+    const own = asked && (await becomes(ben.page, "notes.css", (t) => /teal/.test(t)));
+
+    // Ann shares a new version: it reaches Ben the same way, as a whole.
     await folder(ann.page, "High water at one");
     await ann.page.click(`${YOURS} button[data-action="open-folder"]`);
     await accept(ann.page, "your app Tide times: changes tides.js");
@@ -110,8 +121,9 @@ export default async function ({ check, context, errors }) {
     const update = await shown(ben.page, `${YOURS} .shared >> text=new version`);
     const unchanged = /High water at noon/.test(await served(ben.page, "tides.js"));
     await ben.page.click(`${YOURS} .shared button[data-action="accept"]`).catch(() => {});
-    const changed = (await accept(ben.page, "your app Tide times: changes tides.js")) && (await shown(ben.page, `${YOURS} button[data-action="pick"]`)) && /High water at one/.test(await served(ben.page, "tides.js"));
-    check("space made apps: a new version arrives the same way, to accept before it runs", update && unchanged && changed, `offered ${update}, unchanged ${unchanged}, changed ${changed}`);
+    const changed = (await accept(ben.page, "your app Tide times: changes tides.js, and removes notes.css")) && (await becomes(ben.page, "tides.js", (t) => /High water at one/.test(t)));
+    const whole = await becomes(ben.page, "notes.css", (t) => t === "404");
+    check("space made apps: a new version arrives the same way, to accept before it runs, and replaces the app as a whole", own && update && unchanged && changed && whole, `asked ${asked}, own ${own}, offered ${update}, unchanged ${unchanged}, changed ${changed}, whole ${whole}`);
 
     // Ann stops sharing it: it leaves the space's list, and Ben keeps his copy.
     await ann.page.click(`${YOURS} button[data-action="unshare"]`);

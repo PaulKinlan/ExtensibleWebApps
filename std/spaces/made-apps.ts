@@ -90,14 +90,18 @@ export function spaceMadeApps(store: Store, hosts: Hosts, tell: (message: SyncTo
     if (typeof m.name !== "string" || !APP_NAME.test(m.name)) return { ok: false, error: "That isn't an app's name" };
     const name = m.name;
     if (m.action === "get") {
-      const kept = index[name];
-      if (!kept) return { ok: false, error: "The space has no such app" };
-      const files: File[] = [];
-      for (const f of kept.files) {
-        const text = await store.readText(`${FOLDER}/${name}/${f}`);
-        if (text !== undefined) files.push({ name: f, text });
-      }
-      return { ok: true, files, hash: kept.hash };
+      // In the queue with shares, so the files and the hash are one version.
+      return serially(async () => {
+        const kept = index[name];
+        if (!kept) return { ok: false, error: "The space has no such app" };
+        const files: File[] = [];
+        for (const f of kept.files) {
+          const text = await store.readText(`${FOLDER}/${name}/${f}`);
+          if (text === undefined) return { ok: false, error: `The space is missing ${f} of ${name}` };
+          files.push({ name: f, text });
+        }
+        return { ok: true, files, hash: kept.hash };
+      });
     }
     if (m.action === "unshare") {
       return serially(async () => {
