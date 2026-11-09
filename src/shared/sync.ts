@@ -33,7 +33,8 @@ export interface Accepted {
 /** What the space says to each change in a push, in the same order. */
 export type Verdict =
   | { ok: true; seq: number }
-  | { ok: false; stale: true; version: number; record: SyncRecord | null }
+  /** Stale: the space has a newer version, made by `by` (when the space knows who), so the device can say who won without having heard it first. */
+  | { ok: false; stale: true; version: number; record: SyncRecord | null; by?: string }
   /** Refused for another reason; when the change named a record, the record as the space has it, so the device can put it back. */
   | { ok: false; error: string; version?: number; record?: SyncRecord | null };
 
