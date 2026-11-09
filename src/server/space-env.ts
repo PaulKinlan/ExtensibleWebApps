@@ -7,7 +7,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parentPort, workerData } from "node:worker_threads";
 import { setEnv } from "../kernel/env";
+import type { Email, Message } from "../seams/index.ts";
 import { nodeFiles } from "../seams/node.ts";
+
+type DeliverResult = Awaited<ReturnType<Email["send"]>>;
 import { nodeIsolates } from "../seams/node-isolates.ts";
 
 const { dir, origin, allowPrivate } = workerData as { dir: string; origin: string; allowPrivate?: string[] };
@@ -16,7 +19,7 @@ const { dir, origin, allowPrivate } = workerData as { dir: string; origin: strin
 let asked = 0;
 
 /** Asks serve.ts something only it knows (the accounts, which the space's thread can't read): `t` names it, and the answer comes back as `value`. */
-function askServer<T>(t: string, fallback: T): Promise<T> {
+function askServer<T>(t: string, fallback: T, payload: Record<string, unknown> = {}): Promise<T> {
   const id = ++asked;
   return new Promise<T>((done) => {
     const answer = (m: { t?: string; id?: number; value?: T }) => {
@@ -25,7 +28,7 @@ function askServer<T>(t: string, fallback: T): Promise<T> {
       done(m.value ?? fallback);
     };
     parentPort!.on("message", answer);
-    parentPort!.postMessage({ t, id });
+    parentPort!.postMessage({ ...payload, t, id });
   });
 }
 
@@ -47,6 +50,8 @@ setEnv({
   },
   addresses: () => askServer<string[]>("addresses", []),
   members: () => askServer<{ id: string; name: string }[]>("members", []),
+  // serve.ts delivers mail when the deployment has SMTP (src/server/smtp.ts); without it, it stays in the outbox.
+  ...(workerData.email ? { deliver: (message: Message) => askServer<DeliverResult>("deliver", { ok: false, error: "The server didn't answer" }, { message }) } : {}),
   serve(answer) {
     // A public route's request, which serve.ts passes on (src/server/routes.ts).
     parentPort!.on("message", async (message: { t?: string; id?: number; request?: Parameters<typeof answer>[0] }) => {

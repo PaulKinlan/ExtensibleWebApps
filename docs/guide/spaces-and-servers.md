@@ -82,7 +82,7 @@ What a server plugin can do that a browser plugin can't:
 | --- | --- | --- |
 | `routes` | Answer public requests at `/s/<space>/<its folder>/<path>` | Anyone may call one, from any site, and the plugin isn't told who. A request wakes the space if it was asleep. The answers are the same as in a browser ([Routes](routes.md)). |
 | `schedule` | Run a job every so often (repeating at most once a second), or once at a given time | Jobs outlive a restart, and one that came due while the space was stopped runs once when it starts. In a browser a job runs only while the kernel does. |
-| `email` | Send a message to up to 10 addresses | At most 50 a day per plugin. Until the site sets up delivery, each message is written to the space's outbox, not sent. |
+| `email` | Send a message to up to 10 addresses | Only to the space's members. At most 50 a day per plugin. Delivered by Cloudflare Email Service or SMTP when the site sets one up ([Sending email](../server.md#sending-email)); otherwise it waits in the space's outbox. |
 | `hook:intercept:data:beforeWrite:<collection>` | Check every change any member's device sends, and stop it | It hears which member sent it. For a collection it doesn't own, it also needs `data:read:<collection>`. |
 | `network` | Fetch from the internet | Never the server's own network: loopback, private and metadata addresses are refused where the connection is made. |
 
@@ -111,7 +111,7 @@ On `/account/`, the owner of a space can **Download a copy** of it and **Load a 
 ## What isn't there yet
 
 - **Only collections sync.** A person's own plugins for an app, and an app's other files, stay on each device.
-- **Email isn't delivered** yet; it waits in the outbox.
+- **Members' email addresses aren't confirmed.** A plugin mails the address a member typed on their account page, without a link to prove it's theirs.
 - **Keys the site provides**, so a person needn't bring their own API key, aren't there yet. A server plugin with `secret:<name>` has no one to ask for a key.
 - **The debugger can't see a space's server kernel.** Opened inside a space (`/s/<space>/demos/debugger/`), it sees that space's kernel in your browser; opened outside, your own.
 
