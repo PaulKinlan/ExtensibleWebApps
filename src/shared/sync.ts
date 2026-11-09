@@ -75,10 +75,17 @@ export type ReviewToSpace =
   | { t: "sync"; op: "review"; action: "answer"; id: string; outcome: "allowed-once" | "allowed-always" | "rejected" }
   | { t: "sync"; op: "review"; action: "waiting" };
 
+/**
+ * A member's debugger asks the space's own kernel what runs in it (std/spaces/reflect.ts): one of the reflect
+ * service's read-only methods. It gets a `reflect:reply` with the same id.
+ */
+export type ReflectRequest = { t: "sync"; op: "reflect"; id: number; method: string; args?: unknown[] };
+
 // device -> space
 export type SyncToSpace =
   | PluginRequest
   | ReviewToSpace
+  | ReflectRequest
   /** Start hearing changes, with every one after `since` first. */
   | { t: "sync"; op: "hello"; since: number }
   | { t: "sync"; op: "push"; id: number; changes: Outgoing[] }
@@ -102,4 +109,6 @@ export type SyncToDevice =
   | { t: "sync"; op: "again" }
   /** A change the space's server wants reviewed, for a device to show; `done` once anyone answered it, or it ended. */
   | { t: "sync"; op: "review"; action: "ask"; id: string; review: SpaceReview }
-  | { t: "sync"; op: "review"; action: "done"; id: string };
+  | { t: "sync"; op: "review"; action: "done"; id: string }
+  /** The answer to a ReflectRequest: what the space's reflect service returned, or why it couldn't. */
+  | { t: "sync"; op: "reflect:reply"; id: number; ok: boolean; value?: unknown; error?: string };

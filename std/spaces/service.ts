@@ -11,11 +11,16 @@
 // to give only to a plugin that does it when the person asks.
 //
 // In a kernel that keeps no space, state() says so and there's nothing to do.
+//
+// reflect() is for debuggers (demos/debugger/space.js): it asks the space's
+// own kernel, on its server, what reflect.<method>() says there (reflect.ts).
+// It needs reflect:read, as the reflect service does in this kernel.
 
 import { env } from "../../src/kernel/env";
 import type { ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
 import { thisDevice } from "./device";
+import { askSpace, READS } from "./reflect";
 
 export default ({ root, collections, hook, cleanup }: ModuleKernel): ServiceProvider => {
   hook("sync:changed", {
@@ -100,6 +105,16 @@ export default ({ root, collections, hook, cleanup }: ModuleKernel): ServiceProv
         params: [{ name: "ref", schema: { type: "string", description: "The draft's ref, from state()" } }],
         description: "Makes a draft the record again, with no review, as a new change sent to the space. data:beforeWrite listeners can still stop it.",
       },
+      reflect: {
+        args: "(method, id?)",
+        returns: "what the space's reflect.<method>() returns",
+        needs: "reflect:read",
+        params: [
+          { name: "method", schema: { type: "string", enum: READS, description: "One of the reflect service's methods: snapshot, plugins, hooks, workers, tabs or source" } },
+          { name: "id", schema: { type: "string", description: "For source: the plugin's id" } },
+        ],
+        description: "For debuggers: asks the space's own kernel, on its server, what its reflect service says (its server plugins, their permissions, hooks and workers, and the members' devices connected, each with its member). Read only, like reflect. Fails outside a space, or while this page can't reach it.",
+      },
       dismiss: {
         args: "(ref)",
         returns: "{ ok }",
@@ -108,10 +123,15 @@ export default ({ root, collections, hook, cleanup }: ModuleKernel): ServiceProv
         description: "Lets a draft go: the record stays as the space has it.",
       },
     },
-    capability: (method) => (method === "members" ? "members" : "sync"),
+    capability: (method) => (method === "members" ? "members" : method === "reflect" ? "reflect:read" : "sync"),
     call: async (_instance, method, args, dispatch) => {
       if (method === "state") return state();
       if (method === "members") return members();
+      if (method === "reflect") {
+        const device = thisDevice.sync;
+        if (!device) throw new Error("This page isn't in a space: open the debugger at /s/<space>/… to look inside its server");
+        return askSpace(device, String(args?.[0] ?? ""), (args ?? []).slice(1));
+      }
       const device = thisDevice.sync;
       const ref = String(args?.[0] ?? "");
       if (method === "keep") return device ? device.keep(ref, dispatch) : { ok: false, error: "This page isn't in a space" };

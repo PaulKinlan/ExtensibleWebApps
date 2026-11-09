@@ -13,9 +13,11 @@
 //   - server-apps.ts starts the server plugins of the apps members open
 //   - plugins.ts keeps the plugins members share, and never runs them
 //   - reviews.ts sends its review cards to members' devices
+//   - reflect.ts answers a member's debugger: what runs in this kernel
 //
 // Everywhere, it gives the `sync` service (service.ts): how a page stands
-// with its space, its drafts, and the space's members.
+// with its space, its drafts, the space's members, and (for a debugger)
+// what runs in the space's own kernel.
 //
 // The core never names it: it lends the core what a space adds through
 // kernel.space() and answers `sync` messages through kernel.message(). Like
@@ -27,6 +29,7 @@ import { syncDevice } from "./device";
 import { syncHub } from "./hub";
 import { devicePlugins, spacePlugins } from "./plugins";
 import { deviceReviews, relayReviews } from "./reviews";
+import { spaceReflect } from "./reflect";
 import { serverApps } from "./server-apps";
 import service from "./service";
 
@@ -49,6 +52,8 @@ export default {
       const hub = syncHub(root, store, records, hosts, (app) => onServer?.use(app), draining.get(store));
       // A space keeps the plugins its members share with each other, and never runs them.
       hub.plugins = spacePlugins(userAdded, store, hosts, (message) => hub.tell(message)).handle;
+      // A member's debugger may ask what runs here, from the kernel's own reflect service (reflect.ts).
+      hub.reflect = spaceReflect(remote, hosts);
       // A space's server has no screen: its reviews are shown on members' devices.
       kernel.cleanup(relayReviews(reviews, hub, (host, message) => hosts.send(host, message)));
       kernel.message("sync", (host, message) => hub.handle(host, message));
@@ -57,6 +62,7 @@ export default {
       kernel.cleanup(() => {
         hub.plugins = undefined;
         hub.reviews = undefined;
+        hub.reflect = undefined;
         draining.set(store, hub.stop());
       });
       return;
