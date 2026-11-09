@@ -43,11 +43,18 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   const { root, store, remote } = kernel;
   const jobs = new Map<string, Job>();
   const timers = memorySchedule(jobs, (name, error) => record({ kind: "error", name: "schedule:failed", detail: `${name}: ${error instanceof Error ? error.message : error}` }));
-  // When the module stops, so do its timers; the jobs stay saved for when it starts again.
-  kernel.cleanup(() => timers.stop());
+  // When the module stops, so do its timers; the jobs stay saved for when it starts again. A job already
+  // under way, or the first read of the file, finishes without saving or running anything: the module
+  // that starts next owns the file, and this one's copy of the jobs may be out of date by then.
+  let stopped = false;
+  kernel.cleanup(() => {
+    stopped = true;
+    timers.stop();
+  });
 
   /** Tells the host when to wake the space next, and keeps the jobs. */
   const saved = async () => {
+    if (stopped) return;
     await store.writeJson(FILE, [...jobs.values()]);
     const next = [...jobs.values()].reduce<number | undefined>((soonest, job) => (soonest === undefined || job.at < soonest ? job.at : soonest), undefined);
     env().wake?.(next);
@@ -55,6 +62,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
 
   // Read once the folder is open; jobs that came due meanwhile run now.
   const loaded = store.readJson<Job[]>(FILE, []).then((list) => {
+    if (stopped) return;
     for (const job of Array.isArray(list) ? list : []) if (job && typeof job.name === "string" && typeof job.at === "number") jobs.set(job.name, job);
     timers.onDue(due);
     env().wake?.([...jobs.values()].reduce<number | undefined>((s, j) => (s === undefined || j.at < s ? j.at : s), undefined));
@@ -66,6 +74,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const listening = () => [...remote.live.values()].some((live) => base(live.instance) === plugin && live.heard.includes(hook));
     // A space just started may still be installing its plugins: wait for this one before deciding anything.
     for (let waited = 0; !listening() && waited < WAIT_FOR_PLUGIN; waited += 250) await new Promise((r) => setTimeout(r, 250));
+    if (stopped) return;
     // Its plugin is gone: so is the job.
     if (!listening() && !remote.installed.has(plugin)) {
       jobs.delete(name);
