@@ -8,7 +8,7 @@ Everything an app does goes through the kernel, so the kernel can tell you about
 | Hook tracer, [`std/hook-tracer.js`](../../std/hook-tracer.js) | Inside one app | Each action as a list of steps: the hooks it ran, in order, and what every listener said. |
 | View source, [`std/view-source.js`](../../std/view-source.js) | Inside one app | Each plugin's code, and what its permissions mean in words. |
 | Inspect mode | Any app, from Customize | Which plugin drew the part of the page you point at; hide it or add to it. |
-| [The debugger](../../demos/debugger/app.html) | An app of its own | Every tab and app open on the site, and for each: plugins, manifests, permissions asked for, granted and refused, hooks and listeners, events, workers. |
+| [The debugger](../../demos/debugger/app.html) | An app of its own | Every tab and app open on the site, and for each: plugins, manifests, permissions asked for, granted and refused, hooks and listeners, events, workers. In a space, the kernel on the space's server too. |
 
 ## The debugger
 
@@ -19,9 +19,15 @@ Open [`/demos/debugger/`](../../demos/debugger/app.html) in one tab and the app 
 - **Events**: the trace, as it happens. Filter it by kind or text, pause it, or pick an event's trace id to follow one action through every worker it touched.
 - **Workers**: every plugin worker, by the tab that started it. Shared plugins run once, in the spawner tab; tab plugins run once per tab whose app links them.
 
-It sees the kernel of the address it is opened at: open it at `/s/<space>/demos/debugger/` to look at a space's kernel in this browser. It can't yet see a space's kernel on the server, where server plugins run; their routes, jobs and errors aren't in its panels.
+- **Space server**: in a space, the kernel on the space's server, where plugins with `runs: "server"` run. It lists the plugins there (running, or kept for members without running), what each was granted, the routes it answers and the hooks it listens to, its secrets (set or not), its code, and which members' devices are connected now.
 
-The debugger is five plugins in [`demos/debugger/`](../../demos/debugger/), one per panel. The panels agree on which tab to look at through the bus topic `debugger-focus`. Take one out, or add your own panel, as with any app.
+It sees the kernel of the address it is opened at: open it at `/s/<space>/demos/debugger/app.html`, signed in as a member of that space, to look at the space in this browser, and at the kernel on its server in the Space server panel. The other panels show this browser's kernel; the server's events and errors aren't streamed to the debugger yet.
+
+### Looking inside a space's server
+
+A page in a space already keeps a socket open to the space's kernel, and only a member of the space can open one. The Space server panel asks over that socket with `ctx.call("sync", "reflect", method, id?)`, which needs `reflect:read`, the same permission as `reflect` itself. The space's kernel answers from its own `reflect` service, with the same read-only methods (`snapshot`, `plugins`, `hooks`, `workers`, `tabs`, `source`), so any panel that reads `reflect` can read the server too ([`std/spaces/reflect.ts`](../../std/spaces/reflect.ts)). Outside a space, or while the page can't reach it, the call fails and says why.
+
+The debugger is six plugins in [`demos/debugger/`](../../demos/debugger/), one per panel. The panels agree on which tab to look at through the bus topic `debugger-focus`. Take one out, or add your own panel, as with any app.
 
 ## The `reflect` service
 
