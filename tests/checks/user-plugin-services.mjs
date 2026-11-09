@@ -55,11 +55,19 @@ export default async function ({ check, openTab, URL }) {
     // The app maker's checks: a service the app's own plugin provides is there for its other plugins.
     const problems = await page.evaluate(async () => {
       const { checkFiles } = await import("/std/maker/checks.js");
-      const manifestOf = (source) => new Function(`return ${/export const manifest = (\{[\s\S]*?\n\});/.exec(source)[1]}`)();
+      // Each plugin's manifest as an object, and its source written from it (the page's policy allows no eval to read it back).
+      const tick = { id: "clocks-tick", name: "Tick", permissions: [], provides: { tick: { description: "The time.", methods: { now: { args: "()", returns: "string", description: "Now." } } } } };
+      const face = { id: "clocks-face", name: "Face", permissions: ["tick"], services: ["tick"] };
+      const sources = {
+        tick: `export const manifest = ${JSON.stringify(tick, null, 2)};\nexport default (ctx) => ctx.provide("tick", { now: () => "" });`,
+        face: `export const manifest = ${JSON.stringify(face, null, 2)};\nexport default async (ctx) => { await ctx.call("tick", "now"); };`,
+      };
+      const manifests = new Map([[sources.tick, tick], [sources.face, face]]);
+      const manifestOf = (source) => manifests.get(source) ?? {};
       const files = new Map([
         ["app.html", '<!doctype html><html lang="en"><head><title>Clocks</title><link rel="plugin" href="tick.js"><link rel="plugin" href="face.js"></head><body><main></main></body></html>'],
-        ["tick.js", 'export const manifest = {\n  id: "clocks-tick", name: "Tick", permissions: [],\n  provides: { tick: { description: "The time.", methods: { now: { args: "()", returns: "string", description: "Now." } } } },\n};\nexport default (ctx) => ctx.provide("tick", { now: () => "" });'],
-        ["face.js", 'export const manifest = {\n  id: "clocks-face", name: "Face", permissions: ["tick"], services: ["tick"],\n};\nexport default async (ctx) => { await ctx.call("tick", "now"); };'],
+        ["tick.js", sources.tick],
+        ["face.js", sources.face],
       ]);
       const rules = {
         readManifest: (s) => ({ permissions: [], ...manifestOf(s) }),
