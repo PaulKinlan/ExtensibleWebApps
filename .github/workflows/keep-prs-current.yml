@@ -87,7 +87,7 @@ jobs:
               if [ "$conflicts" = "$GENERATED" ]; then
                 git checkout --theirs -- "$GENERATED"
                 if [ -z "$tools_ready" ]; then
-                  npm ci && npm i --no-save playwright && npx playwright install --with-deps chromium && tools_ready=1
+                  npm ci && npm i --no-save playwright@1.65.0 && npx playwright install --with-deps chromium && tools_ready=1
                 fi
                 if npm run reference; then
                   git add "$GENERATED"

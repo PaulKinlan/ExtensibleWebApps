@@ -723,8 +723,9 @@ installable();
 const traces: TraceEvent[] = [];
 function showTrace(events: TraceEvent[]) {
   traces.push(...events);
-  // Kept generously: the tests look back to events from the first seconds after a long run.
-  if (traces.length > 5000) traces.splice(0, traces.length - 5000);
+  // The first 2,000 events (what each plugin did as it started: the gate, its policy) and the last 5,000 are
+  // kept, so a look back after a long run still finds how things began; the ones between go.
+  if (traces.length > 7000) traces.splice(2000, traces.length - 7000);
   bench?.trace(events);
 }
 

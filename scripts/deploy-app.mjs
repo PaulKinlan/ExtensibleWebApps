@@ -4,6 +4,7 @@
 //
 //   npm run deploy:app -- demos/habits                   builds, then deploys to https://habits.<you>.workers.dev
 //   npm run deploy:app -- demos/habits --name my-habits  the Worker's name, and so its address
+//   npm run deploy:app -- demos/habits --replace         deploys even over a Worker by that name that isn't this app's
 //   npm run deploy:app -- demos/habits --no-deploy       builds and writes the config, deploys nothing
 //   npm run deploy:app -- demos/habits --dev             runs it on this machine with `wrangler dev`
 //
@@ -13,13 +14,22 @@
 //                    pages (everything in site/, plus demos/, docs/ and starter/),
 //                    the app's folder at the same path it has
 //                    here, the folders its app.html links with ../, and an
-//                    index.html that sends / to the app
+//                    index.html that is the app's page, so / is the app
 //   wrangler.jsonc   the root wrangler.jsonc with a new name and site/ as its
 //                    assets: the same Worker code, Durable Objects (spaces,
-//                    accounts) and Dynamic Workers (server plugins)
+//                    accounts) and Dynamic Workers (server plugins), and the
+//                    app's path as the variable EXTENSIBLE_APP
 //
-// The app keeps its path (/demos/habits/), so nothing in it is rewritten and
-// its relative links work as they do here.
+// The app's files keep their path (/demos/habits/), so nothing in them is
+// rewritten. The Worker's front page is the app's own page with a <base>
+// naming that folder, as the service worker serves an app's screens
+// (sw/routes/apps.js): its relative links resolve as they do here, and the
+// address people open and share is the Worker's own, with no /demos/habits/.
+//
+// Before deploying it checks the account (scripts/deploy-guard.mjs): a Worker
+// with the same name is replaced only if this script deployed it, for this
+// app. Any other Worker by that name is left alone, and the deploy refused,
+// unless --replace says to replace it.
 //
 // Every origin is a world of its own: its own service worker, shared-worker
 // kernel and browser storage, its own accounts and passkeys (a passkey is
@@ -30,6 +40,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { APP_VAR, checkName } from "./deploy-guard.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -104,14 +115,6 @@ export function layoutApp(app, { name, dist = join(ROOT, "dist"), out } = {}) {
     if (!existsSync(join(site, onSite(linked)))) copyFolder(dirname(linked), its);
   }
 
-  // The front page sends people to the app. A plain page, not a Worker route, so the Worker's code stays
-  // the platform's own, and it works under any static host too.
-  const title = /<title>([^<]*)<\/title>/i.exec(html)?.[1]?.trim() || worker;
-  writeFileSync(
-    join(site, "index.html"),
-    `<!doctype html>\n<!-- This Worker serves one app: /${path}/ (scripts/deploy-app.mjs). -->\n<html lang="en">\n<head>\n  <meta charset="utf-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1">\n  <title>${title}</title>\n  <meta http-equiv="refresh" content="0; url=/${escapeHtml(path)}/">\n  <script>location.replace(${JSON.stringify(`/${path}/`)} + location.search + location.hash);</script>\n</head>\n<body>\n  <p><a href="/${escapeHtml(path)}/">Open ${title}</a></p>\n</body>\n</html>\n`,
-  );
-
   // The main site's navigation (<nav class="site">: Home, All demos, Docs, Workbench) points at pages this
   // Worker doesn't have, so the deployed copy of app.html leaves it out. The app's own files are untouched.
   // A <nav> whose class attribute has the token `site` (not site-tools, not data-class="site").
@@ -121,6 +124,13 @@ export function layoutApp(app, { name, dist = join(ROOT, "dist"), out } = {}) {
     return tokens.includes("site") ? "" : whole;
   });
   if (served !== html) writeFileSync(join(site, path, "app.html"), served);
+
+  // The front page is the app: its page, with a <base> naming its folder, so its relative links (plugins,
+  // templates, screens) resolve there. A plain file, not a Worker route, so the Worker's code stays the
+  // platform's own, and it works under any static host too.
+  const baseTag = `<!-- This Worker serves one app, /${escapeHtml(path)}/, here at / too (scripts/deploy-app.mjs). -->\n  <base href="/${escapeHtml(path)}/">`;
+  const front = /<head\b[^>]*>/i.test(served) ? served.replace(/<head\b[^>]*>/i, (head) => `${head}\n  ${baseTag}`) : `${baseTag}${served}`;
+  writeFileSync(join(site, "index.html"), front);
 
   // Links in the deployed app.html to pages this Worker won't have.
   const warnings = [];
@@ -139,6 +149,8 @@ export function layoutApp(app, { name, dist = join(ROOT, "dist"), out } = {}) {
     name: worker,
     main: rel(join(ROOT, config.main)),
     assets: { ...config.assets, directory: "./site" },
+    // Which app this Worker serves, so a later deploy can tell it from a Worker that isn't this app's (deploy-guard.mjs).
+    vars: { ...config.vars, [APP_VAR]: path },
   };
   writeFileSync(
     join(target, "wrangler.jsonc"),
@@ -161,11 +173,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.error("--name needs the Worker's name after it");
     process.exit(2);
   }
+  const replace = flag("--replace");
   const noBuild = flag("--no-build");
   const noDeploy = flag("--no-deploy");
   const dev = flag("--dev");
   if (args.length !== 1) {
-    console.error("Usage: npm run deploy:app -- <app folder> [--name worker-name] [--no-build] [--no-deploy] [--dev]");
+    console.error("Usage: npm run deploy:app -- <app folder> [--name worker-name] [--replace] [--no-build] [--no-deploy] [--dev]");
     process.exit(2);
   }
   if (!noBuild) run("npm", ["run", "build"]);
@@ -182,7 +195,15 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   if (dev) run("npx", ["wrangler", "dev", "-c", config]);
   else if (noDeploy) console.log(`Deploy it with: npx wrangler deploy -c ${config}`);
   else {
+    // Never over a Worker that isn't this app's, unless asked to.
+    try {
+      const said = await checkName(laid.worker, laid.path, { replace });
+      console.log(said);
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
     run("npx", ["wrangler", "deploy", "-c", config]);
-    console.log(`Open https://${laid.worker}.<your workers.dev subdomain>/ (it goes straight to /${laid.path}/)`);
+    console.log(`Open https://${laid.worker}.<your workers.dev subdomain>/ (the app is at / and at /${laid.path}/)`);
   }
 }

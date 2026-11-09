@@ -1,7 +1,7 @@
 // `npm run deploy:app` (scripts/deploy-app.mjs): one app laid out as a Worker
 // of its own. Its site has the platform and that app, none of this site's
-// own pages, the folders the app links with ../, and a front page that sends
-// people to the app; its config is the site's Worker under a new name.
+// own pages, the folders the app links with ../, and a front page that is the
+// app; its config is the site's Worker under a new name, marked with the app.
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -18,11 +18,12 @@ export default async function ({ check }) {
     check("an app's Worker serves the platform", ["platform/host.js", "platform/host.css", "sw.js", "404.html", "_headers", "std/debug-console.js", "account/index.html"].every(has));
     check("an app's Worker serves the app at the path it has here", path === "demos/habits" && has("demos/habits/app.html") && worker === "habits");
     check("an app's Worker leaves out this site's own pages", !has("docs") && !has("workbench") && !has("home") && !has("demos/reading-list") && !has("demos/index.html"));
-    check("an app's front page sends people to the app", /location\.replace\("\/demos\/habits\/"/.test(readFileSync(join(site, "index.html"), "utf8")));
+    const front = readFileSync(join(site, "index.html"), "utf8");
+    check("an app's Worker serves the app at / too: its front page is the app's page, with a <base> naming the app's folder", /<head>\s*<!--[^>]*-->\s*<base href="\/demos\/habits\/">/.test(front) && /<link rel="plugin" href="habits.js">/.test(front) && !/class="site"/.test(front), front.slice(0, 300));
     const config = JSON.parse(readFileSync(join(out, "wrangler.jsonc"), "utf8").replace(/^\/\/.*$/gm, ""));
     check(
       "an app's Worker is the site's Worker under the app's name",
-      config.name === "habits" && config.assets.directory === "./site" && existsSync(resolve(out, config.main)) && config.durable_objects.bindings.length >= 2 && config.worker_loaders?.length === 1,
+      config.name === "habits" && config.assets.directory === "./site" && existsSync(resolve(out, config.main)) && config.durable_objects.bindings.length >= 2 && config.worker_loaders?.length === 1 && config.vars?.EXTENSIBLE_APP === "demos/habits",
       JSON.stringify(config),
     );
     const deployed = readFileSync(join(site, "demos/habits/app.html"), "utf8");

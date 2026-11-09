@@ -1,7 +1,8 @@
 // Makes every app installable. An app's folder may hold its own
 // manifest.webmanifest (demos/reading-list/ does, to be a share target); an
 // app that has none gets one made from its page here: its <title>, its
-// <meta name="description"> and "theme-color", and its <link rel="icon">,
+// <meta name="description">, "theme-color" and "short-name" (the name under
+// its icon, when the title is too long for one), and its <link rel="icon">,
 // opening at the app's folder. The host links each app page to
 // manifest.webmanifest in its folder (src/host/install.ts), so the browser
 // can offer to install any app, including one made in the browser
@@ -68,9 +69,11 @@ export function manifestFor(html, folder) {
   const icon = /<link\b(?=[^>]*\brel=["']?icon\b)[^>]*\bhref=(?:"([^"]*)"|'([^']*)')/i.exec(html)?.slice(1).find((v) => v !== undefined);
   const theme = meta(html, "theme-color");
   const description = meta(html, "description");
+  // The name under an installed app's icon: the page's own choice, or else the name if it is short, or its first word.
+  const short = meta(html, "short-name");
   return {
     name,
-    short_name: name.length > 12 ? name.split(" ")[0] : name,
+    short_name: short || (name.length > 12 ? name.split(" ")[0] : name),
     ...(description ? { description } : {}),
     id: folder,
     start_url: folder,

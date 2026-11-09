@@ -343,13 +343,14 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts
       // The space checked it, but this device may have a plugin of its own that the files would overwrite.
       const wrong = await problem(userAdded, s.app, got.files);
       let error = wrong;
+      // Kept by its hash either way, so a plugin that can't go here isn't fetched again and again. Known before its
+      // files are written, so a list made as they land already says it is the space's (not, for a moment, the person's own).
+      state.known[k] = s.hash;
       if (!wrong) {
         if (await wasOn(s.app, s.id)) restart.add(s.app);
         const added = await put(userAdded, s.app, got.files);
         if (!added.ok) error = added.error;
       }
-      // Kept by its hash either way, so a plugin that can't go here isn't fetched again and again.
-      state.known[k] = s.hash;
       if (error) trace({ kind: "error", name: "shared-plugin:take", plugin: s.id, detail: `${s.app}: ${error}` });
     }
     // Shared once, and removed from the space since by someone.
