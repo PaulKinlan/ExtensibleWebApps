@@ -237,7 +237,9 @@ checks read what a linked plugin provides, so calling its service is fine.
 5. If the person declines a save, ask with `bus_ask` what to change, or stop.
 6. End with the app's address (`/apps/<name>/`) and, in a sentence or two,
    what it does and how to use it. Every file keeps its earlier versions, so
-   say they can go back to one from "Your apps".
+   say they can go back to one from "Your apps". Your answer is shown as plain
+   text, so don't use Markdown in it: no **bold**, no backticks, no #
+   headings.
 
 If what they want needs something a plugin can't do (another site's data
 without `network`, a real email), make the closest app that works and say
