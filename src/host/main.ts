@@ -737,7 +737,10 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
 
 /** The trace, benchmarks and demo links, on the workbench page only. */
 const bench = document.getElementById("devtools") ? workbench(command) : undefined;
-serviceWorker(command, report);
+/** Settles once the kernel has welcomed this tab: it answers commands from then on. */
+let welcomed!: () => void;
+const welcome = new Promise<void>((resolve) => (welcomed = resolve));
+serviceWorker(command, report, welcome);
 installable();
 const traces: TraceEvent[] = [];
 function showTrace(events: TraceEvent[]) {
@@ -756,6 +759,7 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
   if (receive(message)) return;
   switch (message.t) {
     case "welcome":
+      welcomed();
       spawner = message.spawner;
       bench?.mode(`Kernel in a ${message.mode} worker · tab ${tab}${spawner ? " · runs the plugin workers" : ""}`);
       return;

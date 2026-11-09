@@ -146,7 +146,7 @@ const space = () => seams.space.current;
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
 /** Each tab's address as it last sent it, for a module that starts later (loadModules' onLate). */
-const addresses = new Map<string, { path: unknown; query: unknown }>();
+const addresses = new Map<string, { path: unknown; query: unknown; at: number }>();
 /** Tabs whose app is still opening: their address waits for it (see the `url` message). */
 const opening = new Map<string, Promise<void>>();
 // The authoring service is what Customize works through (authoring.ts). Its code is fetched when it is first
@@ -247,6 +247,20 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
       if (!id || running?.origin !== "app" || (running.source === asPlugin(link.href, link.source, link.runner) && running.href === link.href)) continue;
       if (apps.tabsWith(id).every((tab) => tab === host.tab || openApps.get(tab)?.app === app)) remote.uninstall(id);
     }
+  }
+  // Every kernel module the app's plugins say they use (their manifests' `services`) is running before the first
+  // plugin starts: a module that keeps what happens (history's undo list) misses nothing an earlier plugin did.
+  const wanted = new Set(linked.flatMap((link) => {
+    try {
+      return readManifest(asPlugin(link.href, link.source, link.runner)).services ?? [];
+    } catch {
+      return [];
+    }
+  }));
+  const starting = [...wanted].filter((name) => Object.hasOwn(services, name) && services[name].load);
+  if (starting.length) {
+    await Promise.all(starting.map((name) => services[name].load?.().catch(() => undefined)));
+    if (!hosts.list.includes(host)) return void openApps.delete(host.tab);
   }
   const describe = (o: Opened): Opened => {
     if (!o.id) return o;
@@ -363,7 +377,7 @@ const kernelModules = loadModules(modules, parts, services, commands, doors, (na
   onLate: () => {
     for (const host of hosts.list) {
       const at = addresses.get(host.tab);
-      if (at) root.emit("internal/url", host, at.path, at.query, openApps.get(host.tab)?.app);
+      if (at) root.emit("internal/url", host, at.path, at.query, openApps.get(host.tab)?.app, at.at);
     }
   },
 });
@@ -465,7 +479,7 @@ hosts.onMessage = async (host, message) => {
     }
     case "url":
       await opening.get(host.tab);
-      if (hosts.list.includes(host)) addresses.set(host.tab, { path: message.path, query: message.query });
+      if (hosts.list.includes(host)) addresses.set(host.tab, { path: message.path, query: message.query, at: Date.now() });
       // The router module, if the site runs it, keeps the screen with the tab and tells plugins (std/router/module.ts).
       return void root.emit("internal/url", host, message.path, message.query, openApps.get(host.tab)?.app);
     case "report":
