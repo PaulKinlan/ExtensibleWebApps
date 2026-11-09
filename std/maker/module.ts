@@ -173,12 +173,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
    * a link to one that isn't there is found.
    */
   const checked = async (name: string, files: Map<string, string>) => {
-<<<<<<< HEAD
-    const r = await rules(name);
-=======
     const { checkFiles, siteFiles } = await loadChecks();
-    const r = rules(name);
->>>>>>> origin/main
+    const r = await rules(name);
     const site = new Map<string, string>();
     const origin = (globalThis as { location?: Location }).location?.origin;
     if (origin) {
