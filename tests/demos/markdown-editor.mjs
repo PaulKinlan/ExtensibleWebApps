@@ -102,7 +102,7 @@ export default async function (page, { check, proof }) {
   proof.written = await page.evaluate(async () => {
     let dir = await navigator.storage.getDirectory();
     // Each app has a private folder of its own (std/folder/module.ts), named after the app's folder.
-    for (const part of [".folders", "demos--markdown-editor", "content", "posts"]) dir = await dir.getDirectoryHandle(part);
+    for (const part of [".folders", "demos~markdown-editor", "content", "posts"]) dir = await dir.getDirectoryHandle(part);
     return (await (await dir.getFileHandle("welcome.md")).getFile()).text();
   }).then((t) => t.includes("Three more words.") && t.includes("pasted words") && t.includes("Last words."), () => false);
   check("the saved file has what was typed and pasted, up to the last keystroke before Save", proof.written);
@@ -195,7 +195,7 @@ async function batch3(page, { check, proof, text, until, editor }) {
   proof.image2 = await until(() => (document.querySelector("ui-editor")?.value ?? "").includes("(/images/welcome/screen-shot-2.png)"));
   proof.imageFile = await page.evaluate(async () => {
     let dir = await navigator.storage.getDirectory();
-    for (const part of [".folders", "demos--markdown-editor", "static", "images", "welcome"]) dir = await dir.getDirectoryHandle(part);
+    for (const part of [".folders", "demos~markdown-editor", "static", "images", "welcome"]) dir = await dir.getDirectoryHandle(part);
     const file = await (await dir.getFileHandle("screen-shot.png")).getFile();
     return file.size === 70 && (await dir.getFileHandle("screen-shot-2.png").then(() => true));
   }).catch(() => false);

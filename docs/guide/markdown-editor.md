@@ -382,10 +382,12 @@ can't reach from its worker.
   "comma" into `,` and "new paragraph" into a blank line, capitalises
   sentences, and puts the phrase in with `document.insert`, so Undo takes it
   out.
-- **Images.** `images.js` intercepts `posts:paste` and `posts:drop`. An image
-  in the paste comes as a data URL; the plugin writes it to
-  `static/images/<post>/` with `folder.writeData` (never over a file that is
-  there: a second `image.png` is `image-2.png`) and answers with the Markdown
+- **Images.** `images.js` intercepts `posts:paste` and `posts:drop`. A
+  picture in the paste reaches the hook as a token, not its bytes (a hook's
+  value is limited to 1 MB). The plugin hands the token to
+  `document.saveImage`, and `posts.js` writes the picture to
+  `static/images/<post>/` (one at a time, never over a file that is there: a
+  second `image.png` is `image-2.png`). The plugin answers with the Markdown
   link to put in instead.
 - **Spell check.** `spell-check.js` calls `document.setOption("spellcheck",
   true)`, which turns the browser's own checker on in the `<ui-editor>`, and
@@ -451,7 +453,7 @@ services it uses.
 | [`front-matter`](../../demos/markdown-editor/front-matter.js) | A form over the front matter | open, change, save, close | `document.setFrontMatter` | Show or hide the form |
 | [`dictation`](../../demos/markdown-editor/dictation.js) | Dictate button; "● Listening…" | open, close | `document.insert` | |
 | [`spell-check`](../../demos/markdown-editor/spell-check.js) | Spelling on/off | open, save | `document.setOption`, `document.list`, `folder.read` | Turn spell check on or off |
-| [`images`](../../demos/markdown-editor/images.js) | (pasted and dropped images) | paste, drop (intercepts) | `folder.writeData`, `folder.exists` | |
+| [`images`](../../demos/markdown-editor/images.js) | (pasted and dropped images) | paste, drop (intercepts) | `document.saveImage` | |
 | [`hugo-preview`](../../demos/markdown-editor/hugo-preview.js) | The post from your `hugo server` | open, save, close | `document.read`, `folder.about` | Show or hide the Hugo preview |
 | [`editor-agents`](../../demos/markdown-editor/editor-agents.js) | (the writer's tools on WebMCP) | | `outside` | |
 | [`writer.agent.md`](../../demos/markdown-editor/writer.agent.md) | Replies in the chat | messages on the bus | `document`, `commands`, `folder.read` | |
@@ -503,7 +505,7 @@ flowchart LR
     seo[seo-check]
   end
   subgraph write["document:write"]
-    em[emoji]
+    em[emoji, images]
     sn[snippets]
     tg[tag-suggester]
     au[autosave]
@@ -512,14 +514,13 @@ flowchart LR
   end
   subgraph files["folder"]
     po[posts: read, write, choose]
-    im[images: write]
     others[style-guide, data-checker,<br/>link-checker, snippets: read]
   end
   net[link-checker: network]
 ```
 
-- Only `posts` writes files, and `images` the pictures you paste or drop.
-  Another plugin that wants a file changed would ask with `folder.propose`,
+- Only `posts` writes files (including the pictures `images` asks it to
+  save, only under `static/` or `assets/`). Another plugin that wants a file changed would ask with `folder.propose`,
   which shows you a diff to allow.
 - Only `link-checker` may use the network, to see whether external links
   answer.

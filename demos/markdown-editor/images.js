@@ -5,6 +5,9 @@
 // replaced: a pasted screenshot (always image.png) gets -2, -3, … instead.
 // It listens to the posts plugin's paste and drop hooks, and answers with the
 // text to put in, so a paste with no image goes in as it would without it.
+// The picture's bytes never cross the hook: it carries a token, and the
+// posts plugin saves the picture for it (document.saveImage), so a large
+// screenshot fits and two pastes at once can't pick the same name.
 
 export const manifest = {
   id: "images",
@@ -12,11 +15,9 @@ export const manifest = {
   description: "Saves images you paste or drop on a post in the site's static/images/ folder, and puts a link to each in the post.",
   version: "1.0.0",
   order: 120,
-  permissions: ["document:read", "folder:read", "folder:write", "hook:intercept:posts:paste", "hook:intercept:posts:drop"],
-  services: ["document", "folder"],
+  permissions: ["document:read", "document:write", "hook:intercept:posts:paste", "hook:intercept:posts:drop"],
+  services: ["document"],
 };
-
-const TYPES = { "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "image/avif": ".avif", "image/svg+xml": ".svg" };
 
 export const slugify = (text) =>
   String(text)
@@ -38,7 +39,7 @@ export function folderFor(post) {
 export default function (ctx) {
   /** Saves the images among a paste's or drop's files, and answers with the Markdown for them; nothing when there are none. */
   const take = async ({ files, from, to }) => {
-    const images = (Array.isArray(files) ? files : []).filter((f) => typeof f?.dataUrl === "string" && TYPES[f.type]);
+    const images = (Array.isArray(files) ? files : []).filter((f) => typeof f?.image === "string");
     if (!images.length) return undefined;
     const post = await ctx.call("document", "read");
     if (!post) return undefined;
@@ -46,12 +47,11 @@ export default function (ctx) {
     const links = [];
     for (const file of images) {
       const base = slugify(String(file.name ?? "").replace(/\.[^.]+$/, "")) || "image";
-      const ext = TYPES[file.type];
-      let url = `/${dir}/${base}${ext}`;
-      for (let n = 2; await ctx.call("folder", "exists", `static${url}`); n++) url = `/${dir}/${base}-${n}${ext}`;
-      await ctx.call("folder", "writeData", `static${url}`, file.dataUrl);
-      links.push(`![${base.replace(/-/g, " ")}](${url})`);
+      // posts.js keeps the bytes and picks a free name, one picture at a time: never over another file.
+      const saved = await ctx.call("document", "saveImage", file.image, `static/${dir}`, base);
+      if (saved) links.push(`![${base.replace(/-/g, " ")}](${saved.path.replace(/^static/, "")})`);
     }
+    if (!links.length) return undefined;
     // Each image a paragraph of its own: blank lines around it unless the paste is already at a line's start or end.
     const before = post.text.slice(0, from).slice(-2);
     const after = post.text.slice(to, to + 2);

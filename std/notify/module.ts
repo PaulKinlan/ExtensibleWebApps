@@ -93,8 +93,15 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
           const now = Date.now();
           const recent = (shown.get(plugin) ?? []).filter((at) => now - at < 60_000);
           if (recent.length >= PER_MINUTE) return false;
-          const ok = (await hosts.bridge("notify", "show", [{ title: note.title.slice(0, MAX_TITLE), body: typeof note.body === "string" ? note.body.slice(0, MAX_BODY) : undefined, tag: typeof note.tag === "string" ? `${plugin}:${note.tag.slice(0, 60)}` : undefined }], dispatch, host)) === true;
-          if (ok) shown.set(plugin, [...recent, now]);
+          // The slot is taken before asking the tab, so calls made at once can't all get past the limit.
+          recent.push(now);
+          shown.set(plugin, recent);
+          const ok = (await hosts.bridge("notify", "show", [{ title: note.title.slice(0, MAX_TITLE), body: typeof note.body === "string" ? note.body.slice(0, MAX_BODY) : undefined, tag: typeof note.tag === "string" ? `${plugin}:${note.tag.slice(0, 60)}` : undefined }], dispatch, host).catch(() => false)) === true;
+          if (!ok) {
+            const slots = shown.get(plugin) ?? [];
+            const at = slots.indexOf(now);
+            if (at >= 0) slots.splice(at, 1);
+          }
           return ok;
         }
       }

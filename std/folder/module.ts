@@ -41,7 +41,9 @@ const PRIVATE = ".folders";
 /** The private folder from before folders were per app: the app that took it over still uses it. */
 const OLD_PRIVATE = ".folder";
 /** What a plugin no app links (one the workbench installed) uses as its app. */
-const NO_APP = "workbench";
+const NO_APP = "~workbench";
+/** An app's private folder's name: its folder, with ~ for / (an app folder's parts are letters, digits, _ and -, so no two apps share one). */
+const privateName = (app: string) => app.replace(/\//g, "~");
 const MAX_FILE = 5_000_000;
 const MAX_LISTED = 5000;
 /** Folders a listing never goes into: version control, dependencies and builds, which a site has plenty of. */
@@ -92,20 +94,41 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
    */
   const ownerOfOld = (app: string) =>
     (oldOwner ??= (async () => {
-      const known = (await idb("readonly", (s) => s.get(OLD_OWNER)).catch(() => undefined)) as string | undefined;
-      if (typeof known === "string") return known;
-      const handle = (await idb("readonly", (s) => s.get(OLD_KEY)).catch(() => undefined)) as Handle | undefined;
       const files = await (await navigator.storage.getDirectory()).getDirectoryHandle(OLD_PRIVATE).then(
         () => true,
         () => false,
       );
-      const owner = handle || files ? app : "";
-      if (handle) {
-        await idb("readwrite", (s) => s.put(handle, KEY + app));
-        await idb("readwrite", (s) => s.delete(OLD_KEY));
-      }
-      await idb("readwrite", (s) => s.put(owner, OLD_OWNER));
-      return owner;
+      // One readwrite transaction: IndexedDB runs them one at a time across every kernel on this
+      // origin (a tab's own, a space's), so only one app ever takes the old folder over.
+      return new Promise<string>((resolve, reject) => {
+        const open = indexedDB.open(DB, 1);
+        open.onupgradeneeded = () => open.result.createObjectStore("handles");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const tx = open.result.transaction("handles", "readwrite");
+          const store = tx.objectStore("handles");
+          let owner = "";
+          const known = store.get(OLD_OWNER);
+          known.onsuccess = () => {
+            if (typeof known.result === "string") {
+              owner = known.result;
+              return;
+            }
+            const old = store.get(OLD_KEY);
+            old.onsuccess = () => {
+              const handle = old.result as Handle | undefined;
+              owner = handle || files ? app : "";
+              if (handle) {
+                store.put(handle, KEY + app);
+                store.delete(OLD_KEY);
+              }
+              store.put(owner, OLD_OWNER);
+            };
+          };
+          tx.oncomplete = () => (open.result.close(), resolve(owner));
+          tx.onerror = () => (open.result.close(), reject(tx.error));
+        };
+      });
     })().catch((error) => {
       // Asked again next time, rather than remembering the failure.
       oldOwner = undefined;
@@ -123,7 +146,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   const privateFolder = async (app: string) => {
     const storage = await navigator.storage.getDirectory();
     if ((await ownerOfOld(app)) === app) return storage.getDirectoryHandle(OLD_PRIVATE, { create: true });
-    return (await storage.getDirectoryHandle(PRIVATE, { create: true })).getDirectoryHandle(app.replace(/\//g, "--"), { create: true });
+    return (await storage.getDirectoryHandle(PRIVATE, { create: true })).getDirectoryHandle(privateName(app), { create: true });
   };
 
   /** The app folder to use: the one picked, once the browser lets us, or the private one. */

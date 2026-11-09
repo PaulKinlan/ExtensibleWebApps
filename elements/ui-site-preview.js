@@ -56,7 +56,7 @@ export default class UiSitePreview extends HTMLElement {
     this.#shown = key;
     const check = ++this.#checks;
     where.textContent = url?.href ?? "";
-    if (!url || !onDevice(url)) {
+    if (!url || !onDevice(url) || url.origin === location.origin) {
       frame.hidden = link.hidden = true;
       frame.removeAttribute("src");
       none.hidden = false;
