@@ -14,6 +14,25 @@ vendor's models. Link one or more from an app's `app.html`:
 | [`gemini.js`](gemini.js) | Gemini: best is Argon (or Pro), balanced Flash, fast Flash-Lite | A Gemini API key, sent only to generativelanguage.googleapis.com |
 | [`openai-compatible.js`](openai-compatible.js) | Ollama on this computer as written; copy it for any other OpenAI-style API | None for Ollama |
 
+## A person adding one
+
+A person can add a model to any app, without its developer linking one. The site's plugin registry
+(`/packages/`) offers these four, so they're in Customize's Add a plugin. And a plugin that needs a
+model can offer them itself: `llm.choices()` lists the registry's packages that ask for
+`provide:llm`, and `llm.add(id)` adds the one the person picks as their own plugin for the app,
+once they accept its review card, and turns it on. [Ask the page](../ask-the-page.js) and the
+[plugin maker](../plugin-maker.js) do this when the page has no model.
+
+```js
+if (!(await ctx.call("llm", "providers")).length) {
+  const choices = await ctx.call("llm", "choices"); // [{ id, name, description, added, linked }]
+  // ...show them; when the person picks one:
+  const { ok, error } = await ctx.call("llm", "add", choices[0].id);
+}
+```
+
+Either way, the key is the person's own: the model asks for it the first time it's asked something.
+
 ## Which model
 
 Each provider's `model` setting, and a request's `model`, is a model's id or a tier: `best` (the

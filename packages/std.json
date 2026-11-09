@@ -10,6 +10,7 @@
     "llm/openai",
     "llm/openai-compatible",
     "plugin-editor",
+    "plugin-maker",
     "reset",
     "switchboard",
     "sync",

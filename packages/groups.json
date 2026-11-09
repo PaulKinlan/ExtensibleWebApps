@@ -3,7 +3,7 @@
   "groups": {
     "Language models": ["llm-anthropic", "llm-gemini", "llm-openai", "llm-openai-compatible"],
     "Examples": ["clock", "world-clock"],
-    "Building plugins": ["ask-the-page", "plugin-editor"],
+    "Building plugins": ["ask-the-page", "plugin-editor", "plugin-maker"],
     "Your data": ["import-export", "sync-status", "undo"],
     "Turning plugins on and off": ["reset", "switchboard"],
     "Looking inside": ["debug-console", "hook-tracer", "view-source"],
