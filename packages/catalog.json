@@ -2198,7 +2198,7 @@
     {
       "id": "images",
       "name": "Images",
-      "description": "Saves images you paste or drop on a post in the site's static/images/ folder, and puts a link to each in the post.",
+      "description": "Saves images you paste or drop on a post next to it (a page bundle) or in static/images/, and puts a Markdown image or Hugo figure for each in the post.",
       "href": "/demos/markdown-editor/images.js",
       "source": "markdown-editor",
       "kind": "background",
