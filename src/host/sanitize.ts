@@ -61,36 +61,26 @@ function allowedAttribute(tag: string, name: string): boolean {
   return GLOBAL_ATTRIBUTES.includes(name) || (ELEMENT_ATTRIBUTES[tag] ?? []).includes(name);
 }
 
-/**
- * A file in the template's folder or below it (`<ui-markdown src="guide.md">`) is the plugin's own.
- * Anything that climbs out of the template's folder or leaves the site doesn't count.
- */
-function ownFile(value: string, base: string | undefined): string | undefined {
-  if (!base || /^[a-z][\w+.-]*:/i.test(value.trim()) || value.trim().startsWith("//")) return undefined;
-  const url = new URL(value.trim(), base);
-  const folder = new URL(".", base);
-  return url.origin === folder.origin && url.pathname.startsWith(folder.pathname) && !url.search ? url.href : undefined;
-}
-
 /** Files an <img> may show from this site without the network permission: pictures, by their extension. */
 const IMAGE_FILE = /\.(png|jpe?g|gif|webp|avif|svg|ico)$/i;
 
 /**
- * An image file on this site (`../images/tram.png`, `/icons/bus.svg`): a picture, with no query, so it is a
- * plain file and not a request to the site's server. A relative address needs the template's address to
- * resolve against; an HTML view drawn from code has none, so it may use a path from the site's root.
+ * A file on this site that a view may load without the network permission, with no ?query, so it is a plain
+ * file and not a request to the site's server. A picture may be anywhere on the site (`../images/tram.png`,
+ * `/icons/bus.svg`); any other file (a Markdown file a ui-markdown draws) must be in the template's folder or
+ * below it. A relative address needs the template's address; an HTML view drawn from code has none, so only a
+ * picture from the site's root is allowed there.
  */
-function siteImage(value: string, base: string | undefined): string | undefined {
+function siteFile(value: string, base: string | undefined, picture: boolean): string | undefined {
   const v = value.trim();
-  if (/^[a-z][\w+.-]*:/i.test(v) || v.startsWith("//") || v.includes("\\")) return undefined;
-  if (!base && !v.startsWith("/")) return undefined;
-  let url: URL;
+  if (/^([a-z][\w+.-]*:|\/\/)|\\/i.test(v) || (!base && !(picture && v.startsWith("/")))) return undefined;
   try {
-    url = new URL(v, base ?? location.href);
+    const url = new URL(v, base ?? location.href);
+    const inFolder = picture ? IMAGE_FILE.test(url.pathname) : url.pathname.startsWith(new URL(".", base).pathname);
+    return url.origin === location.origin && !url.search && inFolder ? url.href : undefined;
   } catch {
     return undefined;
   }
-  return url.origin === location.origin && !url.search && IMAGE_FILE.test(url.pathname) ? url.href : undefined;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -137,7 +127,7 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       // An https image is a request: only plugins allowed on the network may make one. A picture on this site is not.
       if (name === "src" && !(remote ? SAFE_SRC : DATA_SRC).test(value.trim())) {
         // A Markdown file a ui-markdown draws is fetched from the template's folder and shown as text.
-        const own = tag === "img" ? siteImage(value, base) : tag === "ui-markdown" ? ownFile(value, base) : undefined;
+        const own = tag === "img" || tag === "ui-markdown" ? siteFile(value, base, tag === "img") : undefined;
         if (own) out.setAttribute("src", own);
         continue;
       }

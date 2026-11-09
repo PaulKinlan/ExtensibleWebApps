@@ -72,8 +72,8 @@ export const ELEMENTS: Record<string, string> = {
   meter: "",
   time: "",
   abbr: "",
-  svg: "A drawing: see SVG in views",
-  canvas: "Drawn on by the plugin's worker: ctx.ui.onCanvas(id, …)",
+  svg: "", // what it is for: ELEMENT_NOTES in svg-docs.ts, kept out of the page script
+  canvas: "",
   slot: "A room in this view that other plugins fill: `<slot name=\"<your plugin id>.<room>\" data-id=\"…\">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md",
 };
 

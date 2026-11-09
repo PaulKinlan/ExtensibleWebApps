@@ -19,3 +19,9 @@ const ABOUT: Record<string, string> = {
 
 /** SVG elements, and what each is for. */
 export const SVG_ELEMENTS: Record<string, string> = Object.fromEntries(SVG_TAGS.map((tag) => [tag, ABOUT[tag] ?? ""]));
+
+/** What <svg> and <canvas> are for, in the API reference's table of plain elements (html.ts leaves them blank). */
+export const ELEMENT_NOTES: Record<string, string> = {
+  svg: "A drawing: see SVG in views",
+  canvas: "Drawn on by the plugin's worker: ctx.ui.onCanvas(id, (canvas, theme) => …). With `pointer`, taps and drags arrive as canvas:pointer events. Needs scope \"tab\"",
+};

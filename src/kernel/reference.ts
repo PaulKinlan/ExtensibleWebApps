@@ -14,7 +14,7 @@ import type { Command, Slot, View } from "../shared/protocol";
 import { capabilityFor, hookOwners, hooks, type Mode } from "./hooks";
 import { ACTIONS, COMPONENTS, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, HTML_MAX, INPUT_TYPES } from "../shared/html";
 import { SVG_ATTRIBUTES } from "../shared/svg";
-import { SVG_ELEMENTS } from "../shared/svg-docs";
+import { ELEMENT_NOTES, SVG_ELEMENTS } from "../shared/svg-docs";
 import { MANIFEST_FIELDS, RESERVED } from "./manifest";
 import { RECORD_FIELDS } from "./records";
 import { SCHEMA_KEYWORDS } from "./schema";
@@ -259,7 +259,7 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
     views: Object.entries(VIEWS).map(([type, about]) => ({ type, about })),
     html: {
       maxLength: HTML_MAX,
-      elements: Object.entries(ELEMENTS).map(([tag, about]) => ({ tag, attributes: ELEMENT_ATTRIBUTES[tag] ?? [], about })),
+      elements: Object.entries(ELEMENTS).map(([tag, about]) => ({ tag, attributes: ELEMENT_ATTRIBUTES[tag] ?? [], about: about || ELEMENT_NOTES[tag] || "" })),
       globalAttributes: GLOBAL_ATTRIBUTES,
       inputTypes: INPUT_TYPES,
       components: Object.entries(COMPONENTS).map(([tag, c]) => ({ tag, ...c })),

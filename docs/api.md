@@ -2037,7 +2037,7 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<time>` | `datetime` |  |
 | `<abbr>` |  |  |
 | `<svg>` | `viewBox`, `preserveAspectRatio`, `width`, `height`, `focusable` | A drawing: see SVG in views |
-| `<canvas>` | `id`, `width`, `height`, `pointer` | Drawn on by the plugin's worker: ctx.ui.onCanvas(id, …) |
+| `<canvas>` | `id`, `width`, `height`, `pointer` | Drawn on by the plugin's worker: ctx.ui.onCanvas(id, (canvas, theme) => …). With `pointer`, taps and drags arrive as canvas:pointer events. Needs scope "tab" |
 | `<slot>` | `name` | A room in this view that other plugins fill: `<slot name="<your plugin id>.<room>" data-id="…">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md |
 
 ### SVG in views

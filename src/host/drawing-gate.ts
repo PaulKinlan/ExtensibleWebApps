@@ -18,10 +18,8 @@ export function needsDrawing(view: View): boolean {
   if (settled) return false;
   if (view.type === "canvas") return true;
   if (view.type === "html") return DRAWS.test(view.html);
-  if (view.type === "template") {
-    const template = [...(loadedFile(view.src)?.querySelectorAll("template") ?? [])].find((t) => t.id === view.id);
-    return !!template && DRAWS.test(template.innerHTML);
-  }
+  // Any template in the file: a file that draws in one view usually draws in the next.
+  if (view.type === "template") return DRAWS.test(loadedFile(view.src)?.documentElement.innerHTML ?? "");
   if (view.type === "stack") return view.children.some(needsDrawing);
   return false;
 }
