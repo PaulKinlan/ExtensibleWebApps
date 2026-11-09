@@ -7,7 +7,7 @@
 // supports. It's kept, as a JWK, with the sign-in's other state for the few
 // minutes the sign-in takes, then thrown away with it.
 
-import { b64url } from "../webauthn.ts";
+import { b64url } from "../../webauthn.ts";
 import { capped } from "./resolve.ts";
 
 /** An EC key as a JWK: the public point (x, y), and with `d`, the private part. */

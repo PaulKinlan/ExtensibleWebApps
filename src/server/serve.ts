@@ -20,6 +20,7 @@ import { nodeFiles } from "../seams/node.ts";
 import { smtpFromEnv } from "./smtp.ts";
 import { accounts } from "./auth/accounts.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
+import { providerModules } from "./auth/providers/index.ts";
 import { signed } from "./signed.ts";
 import { type Accounts, type Decision, frontDoor, type Knock, SPACE, unrouted } from "./front-door.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "./routes.ts";
@@ -425,7 +426,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     spaces: arg("spaces", ".spaces"),
     site: arg("site", "dist"),
     kernel: arg("kernel", ".build/server/space.js"),
-    providers: providersFrom(process.env),
+    providers: providersFrom(process.env, providerModules),
     origin: arg("origin", process.env.PUBLIC_ORIGIN ?? "") || undefined,
     allowPrivate: arg("allow-private", process.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean),
     email: smtpFromEnv(process.env),

@@ -26,7 +26,7 @@
 import { guardedFetch } from "./guarded-fetch.ts";
 import { checkedHandle, DID, issuerOf, resolveHandle, account, safeUrl, serverMeta, type Settings } from "./resolve.ts";
 import { newKey, post, type Jwk } from "./dpop.ts";
-import type { Flow } from "../providers.ts";
+import type { Flow } from "../../providers.ts";
 
 interface Kept {
   key: Jwk;

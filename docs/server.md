@@ -120,7 +120,7 @@ A space's owner can move it from one host to another, say from Cloudflare to a N
 
 ### Signing in with another site
 
-People can also sign in with an account they have elsewhere, over OAuth 2 with PKCE. A provider is configuration, not code: [`src/server/auth/providers.ts`](../src/server/auth/providers.ts) has GitHub as a preset, and another provider that speaks plain OAuth 2 is a few URLs. A host turns providers on from its environment (Node's `process.env`, or a Worker's vars and secrets):
+People can also sign in with an account they have elsewhere, over OAuth 2 with PKCE. A provider that speaks plain OAuth 2 is configuration, not code: a few URLs ([`src/server/auth/providers.ts`](../src/server/auth/providers.ts)). One that needs code is a **provider module** in [`src/server/auth/providers/`](../src/server/auth/providers/): [`github.ts`](../src/server/auth/providers/github.ts) fills in GitHub's URLs, and [`bluesky/`](../src/server/auth/providers/bluesky/) has sign-in steps of its own. [`providers/index.ts`](../src/server/auth/providers/index.ts) lists the modules a site's servers build in, and each host passes that list on, so the accounts never name a provider: adding one is a file and a line there, and taking one off the list leaves it out. A host turns providers on from its environment (Node's `process.env`, or a Worker's vars and secrets):
 
 | Setting | What it holds |
 | --- | --- |
@@ -140,7 +140,7 @@ The server keeps only who the person is at the provider (an id that never change
 
 ### Signing in with Bluesky
 
-Bluesky (the AT Protocol) signs in with OAuth too, but its own way, so it's a module of its own, [`src/server/auth/bluesky/`](../src/server/auth/bluesky/). Turn it on with `{ "id": "bluesky" }` in `AUTH_PROVIDERS`. It needs no client id, no secret and nothing registered anywhere. `/account/` shows a field for the person's handle beside its button.
+Bluesky (the AT Protocol) signs in with OAuth too, but its own way, so it's a module of its own, [`src/server/auth/providers/bluesky/`](../src/server/auth/providers/bluesky/). Turn it on with `{ "id": "bluesky" }` in `AUTH_PROVIDERS`. It needs no client id, no secret and nothing registered anywhere. `/account/` shows a field for the person's handle beside its button.
 
 ```mermaid
 sequenceDiagram
@@ -165,8 +165,8 @@ sequenceDiagram
 What's different from GitHub, and how each part is checked:
 
 - **The client id is a URL.** On HTTPS it's `https://<host>/auth/oauth/bluesky/client-metadata.json`, which this server publishes and the person's server reads. On `http://127.0.0.1` it's atproto's loopback client id, so it works in development with no setup. A sign-in started at `localhost` moves to `127.0.0.1` first, because the loopback client has to come back there.
-- **It finds the person's server** from what they type ([`resolve.ts`](../src/server/auth/bluesky/resolve.ts)): a handle (by DNS TXT `_atproto.<handle>`, or `https://<handle>/.well-known/atproto-did`), a DID, or a server's address such as `https://bsky.social`. A handle counts only if the DID's document names it back. Every URL it fetches came from someone's input or a document someone else wrote, so it only asks public HTTPS servers, not IP addresses or local names. It follows no redirects, and each fetch has a time limit and a size limit. On Node, the connection itself looks each name up and refuses unless every address is public ([`guarded-fetch.ts`](../src/server/auth/bluesky/guarded-fetch.ts)), so a public-looking name that points at the machine's own network, or changes its answer between check and connection, gets nowhere. A Worker's fetch only reaches the public internet anyway.
-- **Requests carry DPoP proofs** ([`dpop.ts`](../src/server/auth/bluesky/dpop.ts)). Each sign-in gets a new ES256 key, kept with the sign-in's state for its five minutes and then thrown away. When the server asks for its nonce, the request goes again with it.
+- **It finds the person's server** from what they type ([`resolve.ts`](../src/server/auth/providers/bluesky/resolve.ts)): a handle (by DNS TXT `_atproto.<handle>`, or `https://<handle>/.well-known/atproto-did`), a DID, or a server's address such as `https://bsky.social`. A handle counts only if the DID's document names it back. Every URL it fetches came from someone's input or a document someone else wrote, so it only asks public HTTPS servers, not IP addresses or local names. It follows no redirects, and each fetch has a time limit and a size limit. On Node, the connection itself looks each name up and refuses unless every address is public ([`guarded-fetch.ts`](../src/server/auth/providers/bluesky/guarded-fetch.ts)), so a public-looking name that points at the machine's own network, or changes its answer between check and connection, gets nowhere. A Worker's fetch only reaches the public internet anyway.
+- **Requests carry DPoP proofs** ([`dpop.ts`](../src/server/auth/providers/bluesky/dpop.ts)). Each sign-in gets a new ES256 key, kept with the sign-in's state for its five minutes and then thrown away. When the server asks for its nonce, the request goes again with it.
 - **Who signed in is believed only if it adds up.** The callback's `iss` must be the server the sign-in went to. The token's `sub` (their DID) must be the account they typed, or, when they typed a server's address, that DID's own document must name the same sign-in server. Otherwise any server could say it's anyone.
 
 The identity is the DID, which never changes even when the handle does. A new account is named by its handle. As with GitHub, the tokens are thrown away: this is sign-in only, not posting to Bluesky for the person.

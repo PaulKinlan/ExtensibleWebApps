@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serve } from "../../src/server/serve.ts";
 import { providersFrom } from "../../src/server/auth/providers.ts";
+import { providerModules } from "../../src/server/auth/providers/index.ts";
 import { smtpMailer } from "../../src/server/smtp.ts";
 import { fakeSmtp } from "./fake-smtp.mjs";
 import { authenticator } from "./authenticator.mjs";
@@ -63,7 +64,7 @@ const hosts = {
     async start() {
       site ??= await siteWithFixtures();
       // 127.0.0.1, as written, is the one private host server plugins may reach here (the network guard's checks use it).
-      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env), allowPrivate: ["127.0.0.1"], email: smtpMailer({ url: `smtp://127.0.0.1:${mailbox.port}`, from: FROM }) });
+      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env, providerModules), allowPrivate: ["127.0.0.1"], email: smtpMailer({ url: `smtp://127.0.0.1:${mailbox.port}`, from: FROM }) });
     },
     /** Whether a message with this subject went out to `to`, with these words. */
     /** The text of the last message sent to an address. */
@@ -802,7 +803,7 @@ async function oauthChecks(base, check) {
     JSON.stringify({ late, notLinked, invited }),
   );
 
-  const parsed = providersFrom({ AUTH_PROVIDERS: JSON.stringify([null, { id: "constructor", clientId: "c", authorize: "https://a.example/a", token: "https://a.example/t", user: "https://a.example/u" }]), CONSTRUCTOR_CLIENT_SECRET: "s" });
+  const parsed = providersFrom({ AUTH_PROVIDERS: JSON.stringify([null, { id: "constructor", clientId: "c", authorize: "https://a.example/a", token: "https://a.example/t", user: "https://a.example/u" }]), CONSTRUCTOR_CLIENT_SECRET: "s" }, providerModules);
   check("other sites: a configuration entry that isn't an object is skipped, and any id without a preset uses its own URLs", parsed.length === 1 && parsed[0].authorize === "https://a.example/a", JSON.stringify(parsed.map((p) => p.authorize)));
 }
 

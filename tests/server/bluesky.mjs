@@ -1,9 +1,9 @@
-// Checks for signing in with Bluesky (src/server/auth/bluesky/), against the
+// Checks for signing in with Bluesky (src/server/auth/providers/bluesky/), against the
 // small AT Protocol network in fake-atproto.mjs. tests/server/run.mjs runs
 // them on each host: the redirects a browser follows, one by one.
-import { bluesky } from "../../src/server/auth/bluesky/index.ts";
-import { safeUrl } from "../../src/server/auth/bluesky/resolve.ts";
-import { isPublicAddress } from "../../src/server/auth/bluesky/guarded-fetch.ts";
+import { bluesky } from "../../src/server/auth/providers/bluesky/index.ts";
+import { safeUrl } from "../../src/server/auth/providers/bluesky/resolve.ts";
+import { isPublicAddress } from "../../src/server/auth/providers/bluesky/guarded-fetch.ts";
 
 export async function blueskyChecks(base, check, net) {
   const jar = new Map();

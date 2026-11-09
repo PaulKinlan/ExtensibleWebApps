@@ -29,6 +29,7 @@ import { durableFiles, type Sql } from "../../seams/durable.ts";
 import type { Message } from "../../seams/index.ts";
 import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
+import { providerModules } from "../auth/providers/index.ts";
 import { type Decision, frontDoor, unrouted } from "../front-door.ts";
 import { mcpAddress, mcpRequest, mcpResponse } from "../mcp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
@@ -264,7 +265,7 @@ export class Space extends DurableObject<Env> {
 /** Every account, their passkeys and sessions: one object, so a passkey is only ever registered once. */
 export class Accounts extends DurableObject<Env> {
   // Other sites to sign in with come from the Worker's vars (AUTH_PROVIDERS) and secrets (<ID>_CLIENT_SECRET).
-  private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql), providersFrom(this.env as unknown as Record<string, unknown>), {
+  private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql), providersFrom(this.env as unknown as Record<string, unknown>, providerModules), {
     left: (space, user) => this.env.SPACE.getByName(space).revoke(user),
     mail: (message) => send(this.env, message),
   });
