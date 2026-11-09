@@ -18,6 +18,8 @@
 // content for each item; `if="path"` keeps its content when the value is
 // truthy. There are no other expressions, so there is no code in a template.
 
+import { html } from "./trusted";
+
 const files = new Map<string, Promise<Document>>();
 const ready = new Map<string, Document>();
 
@@ -48,7 +50,7 @@ export function loadFile(src: string): Promise<Document> {
     pending = controlled(src).then(() => fetch(src, { credentials: "same-origin" })).then(async (response) => {
       if (new URL(response.url).origin !== location.origin) throw new Error(`${src} redirected to another origin`);
       if (!response.ok) throw new Error(`${src} answered ${response.status}`);
-      const file = new DOMParser().parseFromString(await response.text(), "text/html");
+      const file = new DOMParser().parseFromString(html(await response.text()), "text/html");
       ready.set(src, file);
       return file;
     });

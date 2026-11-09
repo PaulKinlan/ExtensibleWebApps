@@ -8,6 +8,12 @@
   "background_color": "#ffffff",
   "theme_color": "#3355cc",
   "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }],
+  "file_handlers": [
+    {
+      "action": "open",
+      "accept": { "application/pdf": [".pdf"], "application/epub+zip": [".epub"] }
+    }
+  ],
   "share_target": {
     "action": "share",
     "method": "GET",

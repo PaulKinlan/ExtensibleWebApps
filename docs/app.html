@@ -48,20 +48,7 @@
         <summary>Contents</summary>
         <slot name="contents"><p><a href="./">Start here</a></p></slot>
       </details>
-      <script>
-        // On a narrow screen the contents start folded, so the page comes first.
-        // Following a link there folds them again.
-        const narrow = matchMedia("(max-width: 800px)");
-        const contents = document.querySelector(".contents details");
-        if (narrow.matches) contents.open = false;
-        // On a wide screen they can't be folded (the summary is hidden), so widening opens them again.
-        narrow.addEventListener("change", () => {
-          if (!narrow.matches) contents.open = true;
-        });
-        contents.addEventListener("click", (event) => {
-          if (narrow.matches && event.composedPath().some((el) => el instanceof HTMLAnchorElement)) contents.open = false;
-        });
-      </script>
+      <script src="contents.js"></script>
     </nav>
     <main class="page">
       <slot name="page"><p>Loading the page…</p></slot>

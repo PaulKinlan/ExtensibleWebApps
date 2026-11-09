@@ -20,7 +20,7 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.space.json && npm run -s build:cloudflare -- --logLevel warn && tsc --noEmit -p tsconfig.cloudflare.json",
     "test:seams": "node --no-warnings tests/seams/run.mjs",
     "test:server": "npm run build && npm run build:server && node --no-warnings tests/server/run.mjs",
-    "test": "npm run build && node tests/platform.test.mjs",
+    "test": "npm run build && npm run build:server && node tests/platform.test.mjs",
     "reference": "vite build && node scripts/reference.mjs",
     "packages": "node scripts/packages.mjs",
     "gallery": "node scripts/gallery.mjs"

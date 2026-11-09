@@ -33,7 +33,7 @@ export default async function ({ a, check, openTab, URL, traceHas }) {
     const form = document.createElement("form");
     form.method = "post";
     form.action = action;
-    form.innerHTML = '<input name="title" value="Forged">';
+    form.append(Object.assign(document.createElement("input"), { name: "title", value: "Forged" }));
     document.body.append(form);
     form.submit();
   }, `${URL}demos/reading-list/add-book`);

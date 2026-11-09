@@ -52,6 +52,14 @@ export default async function ({ check, context, URL, errors }) {
     .waitForFunction((s) => [...document.querySelectorAll(s)].filter((a) => a.textContent.includes("Switchboard called plugins.setEnabled")).length >= 2, `${inspect} ${tracer} .action`, { timeout: 3000 })
     .catch(() => {});
 
+  // Turning note-stats back on starts it, and its start runs hooks of its own a moment later: Clear
+  // once the tracer has stopped changing, or those arrive after it and the check reads them as kept.
+  await page.waitForFunction((sel) => {
+    const text = document.querySelector(sel)?.textContent ?? "";
+    const now = performance.now();
+    if (text !== window.__tracerText) [window.__tracerText, window.__tracerSince] = [text, now];
+    return now - window.__tracerSince > 1000;
+  }, `${inspect} ${tracer}`, { timeout: 10000, polling: 100 }).catch(() => {});
   await page.click(`${inspect} ${tracer} button[data-action="clear"]`);
   check("Clear empties the hook tracer", await page.waitForSelector(`${inspect} ${tracer} .action`, { state: "detached", timeout: 3000 }).then(() => true, () => false));
   await own.close();

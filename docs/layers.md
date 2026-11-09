@@ -94,6 +94,7 @@ Most services have moved out of the core into **kernel modules**. A module is a 
     "folder",
     "game",
     "history",
+    "launch",
     "llm",
     "maker",
     "outside",
@@ -124,6 +125,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `folder` | [`std/folder/module.ts`](../std/folder/module.ts) | The `folder` service: a folder of files the person works on (a Hugo site), picked on their disk or private in the browser; plugins other than its keeper propose writes, which the person reviews |
 | `game` | [`std/game/module.ts`](../std/game/module.ts) | The `game` service: a game loop whose rules are plugins (`game:update`, `game:rules`, `game:frame` hooks each tick); see [Games and audio](guide/games-and-audio.md) |
 | `history` | [`std/history/module.ts`](../std/history/module.ts) | The `history` service: undo and redo across every plugin's writes |
+| `launch` | [`std/launch/module.ts`](../std/launch/module.ts) | The `launch` service: files opened with an app installed from the browser (its manifest's `file_handlers`), handed to a plugin of that app once |
 | `llm` | [`std/llm/module.ts`](../std/llm/module.ts) | The `llm` service: the one interface to every model; the vendors are std plugins beside it ([`std/llm/`](../std/llm/)) |
 | `maker` | [`std/maker/module.ts`](../std/maker/module.ts) | The `maker` service: apps a person makes in the browser (by describing them to the app maker agent), kept on their device and served at /apps/<name>/, saved after a review, with each file's versions and checks |
 | `outside` | [`std/outside/module.ts`](../std/outside/module.ts) | The `outside` service: agents outside the app use a plugin's tools, as WebMCP tools in the page (the host's [`webmcp` bridge](../src/host/bridges/webmcp.ts)) and as an MCP server on a space's server. Uses `tools` |

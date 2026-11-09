@@ -10,6 +10,8 @@ import type { Opened } from "../../shared/protocol";
 import type { places } from "../places";
 
 export interface BridgeHost {
+  /** This tab's id, as the kernel knows it. */
+  tab: string;
   /** The plugin workers this tab runs, by plugin id. */
   workers: Map<string, Worker>;
   /** Where plugins' views can go on this page. */

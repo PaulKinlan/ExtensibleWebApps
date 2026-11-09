@@ -23,7 +23,8 @@ How to build apps on this platform, from the first page to sharing data between 
 19. [Outside agents: WebMCP and MCP](outside-agents.md): letting agents that aren't part of the app (the browser's own, Claude Code) use it, as WebMCP tools in the page and an MCP server on a space's server, with a plugin's permissions and the person's reviews.
 20. [Editors, and a folder of files](editors.md): a text box's selection, pastes and drops sent to its plugin, the `<ui-editor>` Markdown element, and the `folder` service for files on the person's disk.
 21. [How the Markdown editor is built](markdown-editor.md): a whole writing app taken apart: one plugin owns the post, the others hear it through hooks and change it through a service, and an agent uses their reports as tools; with diagrams of typing, pasting, saving and quick edits.
-22. [Games and sound](games-and-audio.md): a game loop whose rules are plugins (systems on `game:update` and `game:rules`, drawn smoothly on a canvas in a worker), clips rendered through effects that are plugins, the `<ui-waveform>` element, and the app maker building on both.
+22. [Installing, offline, and opening files](installing-and-files.md): every app installs and opens offline with no work; an app installed from the browser as where a kind of file opens; and the policy every page is sent with (Trusted Types, no inline scripts, Permissions-Policy).
+23. [Games and sound](games-and-audio.md): a game loop whose rules are plugins (systems on `game:update` and `game:rules`, drawn smoothly on a canvas in a worker), clips rendered through effects that are plugins, the `<ui-waveform>` element, and the app maker building on both.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 
