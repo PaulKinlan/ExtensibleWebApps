@@ -191,8 +191,11 @@ export function places(host: PlacesHost) {
 
   async function apply(a: Applied) {
     const unlocked = a.unlocked;
-    // The page's own <slot> of that name wins (the host renders there first), so the place is neither drawn nor reported.
-    if (!a.place.in && pageHasSlot(a.name)) {
+    // The page's own <slot> of that name wins (the host renders there first), so the place gets no container and
+    // isn't reported. What it matches is still kept, for page.matches. A `hide` place draws nothing, so it still applies.
+    if (!a.place.in && a.place.put !== "hide" && pageHasSlot(a.name)) {
+      const found = find(a.place);
+      a.targets = Array.isArray(found) ? found : [];
       a.state = "slot";
       return;
     }

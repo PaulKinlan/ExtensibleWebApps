@@ -84,13 +84,21 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     if (!data.has(name)) {
       data.set(
         name,
-        ready.then(() => carryOver(store, name, registry.get(name)?.owner)).catch(() => undefined).then(async (old) => {
-          if (old) return old;
-          const saved = await store.readJson<unknown>(`collections/${name}.json`, {});
-          const out = new Map<string, StoredRecord>();
-          if (saved && typeof saved === "object" && !Array.isArray(saved)) for (const [id, r] of Object.entries(saved)) if (r && typeof r === "object") out.set(id, r as StoredRecord);
-          return out;
-        }),
+        ready
+          .then(() => carryOver(store, name, registry.get(name)?.owner, MAX_BYTES))
+          .then(async (old) => {
+            if (old) return old;
+            const saved = await store.readJson<unknown>(`collections/${name}.json`, {});
+            const out = new Map<string, StoredRecord>();
+            if (saved && typeof saved === "object" && !Array.isArray(saved)) for (const [id, r] of Object.entries(saved)) if (r && typeof r === "object") out.set(id, r as StoredRecord);
+            return out;
+          })
+          .catch((error) => {
+            // Not loaded (carrying old data over failed to write, say): the next call tries again, rather than an
+            // empty collection being kept that a first write would then save over what was to come over.
+            data.delete(name);
+            throw error;
+          }),
       );
     }
     return data.get(name)!;

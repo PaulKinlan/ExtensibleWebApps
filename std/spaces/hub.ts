@@ -102,10 +102,16 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     return undefined;
   }
 
-  /** Who made the change numbered `seq`, from the log, as `{ by }`: nothing for a version the log doesn't name anyone for. */
+  /**
+   * Who made each change numbered but not in the log yet (an earlier change in the same push, or a server plugin's
+   * write while a hook ran), by number. Taken out once the log has it.
+   */
+  const unlogged = new Map<number, string | undefined>();
+
+  /** Who made the change numbered `seq`, as `{ by }`: nothing for a version no one is named for. Never waits for the log. */
   async function madeBy(seq: number): Promise<{ by?: string }> {
     if (!seq) return {};
-    const by = (await readChunk(chunkOf(seq)).catch(() => [] as Accepted[])).find((c) => c.seq === seq)?.by;
+    const by = unlogged.has(seq) ? unlogged.get(seq) : (await readChunk(chunkOf(seq)).catch(() => [] as Accepted[])).find((c) => c.seq === seq)?.by;
     return by ? { by } : {};
   }
 
@@ -148,6 +154,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after, ...(by ? { by } : {}), at };
     head.seq = accepted.seq;
     head.versions[key(change.collection, change.id)] = accepted.seq;
+    unlogged.set(accepted.seq, by);
     try {
       await records.apply(change.collection, change.id, after as StoredRecord | null, dispatch, by);
     } catch (error) {
@@ -167,6 +174,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       await store.writeJson(chunkFile(chunk), [...(await readChunk(chunk)).filter((c) => !mine.has(c.seq)), ...list].sort((a, b) => a.seq - b.seq));
     }
     await store.writeJson(HEAD, head);
+    for (const a of accepted) unlogged.delete(a.seq);
   }
 
   // On the server, a write the space's own plugins make (server-apps.ts) is a change like a device's:
@@ -179,6 +187,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after: (change.after as SyncRecord | undefined) ?? null, by: `plugin:${instance}`, at: new Date().toISOString() };
       head.seq = accepted.seq;
       head.versions[key(change.collection, change.id)] = accepted.seq;
+      unlogged.set(accepted.seq, accepted.by);
       return accepted;
     };
     const now = headLoaded ? number() : undefined;
