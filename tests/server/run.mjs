@@ -296,6 +296,8 @@ async function syncChecks(base, check, owner, restart) {
   check("sync: a device can't say it is another member: the server says who it is", byBea?.by === ids.bea, JSON.stringify(byBea));
   const told = (d) => d.heard.find((m) => m.op === "changes")?.member;
   check("sync: the space's answer to hello tells each device which member it is", told(phone) === ids.owner && told(laptop) === ids.bea, JSON.stringify({ phone: told(phone), laptop: told(laptop) }));
+  const names = phone.heard.find((m) => m.op === "changes")?.members;
+  check("sync: the space's answer to hello names its members, by the names on their accounts", names?.[ids.owner] === "Owner" && names?.[ids.bea] === "Bea" && Object.keys(names).length === 2, JSON.stringify(names));
   const stamped = laptop.changes().find((c) => c.seq === 1)?.after;
   check("sync: a record sent without timestamps is stored with them, as every record has", typeof stamped?.createdAt === "string" && typeof stamped?.updatedAt === "string", JSON.stringify(stamped));
 

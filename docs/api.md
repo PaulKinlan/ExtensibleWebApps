@@ -904,13 +904,21 @@ Needs: `sync`.
 
 Makes a draft the record again, with no review, as a new change sent to the space. data:beforeWrite listeners can still stop it.
 
+#### sync.members
+
+`sync.members()` → { space, you?, members: [{ id, name }] }
+
+Needs: `members`.
+
+The space's members, each with the name on their account, and which of them this page is signed in as (`you`). A change's `by` and data:changed's `by` are a member's id: show the name from here. Outside a space, `space` is null and the list is empty.
+
 #### sync.state
 
-`sync.state()` → { space: null } or { space, member?, connected, pending, drafts }
+`sync.state()` → { space: null } or { space, member?, members, connected, pending, drafts }
 
 Needs: `sync`.
 
-Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
+Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), each member's name by id (`members`), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
 
 ### tools
 
@@ -1116,6 +1124,14 @@ Mode: `waterfall`, 2000 ms per listener, fails open. Listening needs `provide:ll
 
 Listeners get `{ providers: [{ id, name, model?, ready }] }`.
 
+### `members:changed`
+
+The space told this page who its members are and which one this page is signed in as, or that changed. Read sync.members().
+
+Mode: `emit`. Listening needs `members`.
+
+Listeners get `{}`.
+
 ### `plugins:changed`
 
 A plugin was installed, removed, or turned on or off (`change` is install, uninstall, enable or disable, and `id` is the plugin), or a tab opened its app (`change` is open, and `id` is the tab), so plugins.app() may answer differently.
@@ -1196,6 +1212,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `files:<folder>` | Call files.read, files.write. |
 | `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
+| `members` | Call sync.members. |
 | `network:<host>` | Call net.fetch. |
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file. |
 | `plugins:manage` | Call plugins.setEnabled. |

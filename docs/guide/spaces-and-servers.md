@@ -32,6 +32,8 @@ flowchart LR
 
 Nothing in the app changes. A plugin reads and writes its collections as before, and `data:changed:<collection>` fires for changes from other people's devices too, with `by`: the member's id, or `plugin:<id>` for a server plugin. A live view follows them like any write.
 
+To show who that was, ask for the names: `await ctx.call("sync", "members")` gives `{ space, you, members: [{ id, name }] }`, each member with the name on their account and `you` the member this page is signed in as (it needs the `members` permission). The space sends the names when a page connects, and the page keeps them for when it's offline; `members:changed` says when they arrive or change. A plugin that stamps a record with who did something should use `you` rather than a name the person types: the space vouches for it. [`demos/household`](../../demos/household/) works this way.
+
 To show people whether their copy is in step, link the standard sync plugin and give it a slot:
 
 ```html

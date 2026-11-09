@@ -5,15 +5,16 @@
   each person's phone keeps a copy, works offline, and syncs. Opened at
   /demos/household/ it works the same, for one person in this browser.
 
-  housemates.js  owns the `housemates` collection (everyone's name), and
-                 asks who is using this device; it posts the answer on the
-                 bus topic `household-me`, which stays on this device
+  housemates.js  shows who lives here: in a space, its members, by the
+                 names on their accounts, and which of them this phone is
+                 signed in as (sync.members); it also says, once, whether
+                 the household is new, on the bus topic `household-new`
   groceries.js   owns `groceries`: what to buy, who added it and who got it
   chores.js      owns `chores`: what needs doing, how often, and who did it last
 
-  groceries.js and chores.js read the `household-me` topic to sign what the
-  person does here. The space records who sent each change too, but plugins
-  can't read that yet, so the app keeps its own names on its records.
+  groceries.js and chores.js stamp what the person does with their member
+  id, which the space vouches for, and show it as that member's name.
+  Nobody types a name, so nobody can sign as someone else.
 
   Two standard plugins: std/sync.js says whether the page is in step with the
   space and lists the drafts it kept (when two people changed the same thing

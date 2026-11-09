@@ -137,6 +137,11 @@ class PluginHost extends RpcTarget {
     return this.env.ACCOUNTS.getByName("accounts").addresses(this.space);
   }
 
+  /** The space's members, with the names on their accounts (sync.ts tells each device, to show who changed what). */
+  members(): Promise<{ id: string; name: string }[]> {
+    return this.env.ACCOUNTS.getByName("accounts").members(this.space);
+  }
+
   site(url: string): Promise<Response> {
     const { pathname, search } = new URL(url);
     return this.env.ASSETS.fetch(new Request(`https://assets${pathname}${search}`));
@@ -232,6 +237,11 @@ export class Accounts extends DurableObject<Env> {
   /** The email addresses a space's members gave: the only ones its server plugins may email. */
   async addresses(space: string): Promise<string[]> {
     return this.auth.addresses(space);
+  }
+
+  /** A space's members, with the names on their accounts. */
+  async members(space: string): Promise<{ id: string; name: string }[]> {
+    return this.auth.members(space);
   }
 
   /** Which member of a space the session in a cookie header is, if it's one. */

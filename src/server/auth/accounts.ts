@@ -388,6 +388,14 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       return users.flatMap((u) => (u?.email ? [u.email] : []));
     },
 
+    /** A space's members, each with the name on their account: what a page shows for a change's `by`. */
+    async members(name: string): Promise<{ id: string; name: string }[]> {
+      const space = await spaceOf(name);
+      if (!space) return [];
+      const users = await Promise.all(Object.keys(space.members).map((id) => read<User>(`users/${id}.json`)));
+      return users.flatMap((u) => (u ? [{ id: u.id, name: u.name }] : []));
+    },
+
     /** Whether a space by this name exists: for a host to ask before waking it for a public route. */
     async exists(name: string): Promise<boolean> {
       return (await spaceOf(name)) !== null;

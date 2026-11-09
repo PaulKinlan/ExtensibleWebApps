@@ -1,8 +1,8 @@
 // The household demo (demos/household/) shared by two people, in a real
 // browser: Ann makes a space and invites Ben, and each opens the app at
-// /s/<space>/demos/household/ on a device of their own. Each says who they
-// are, and what one adds, gets or does shows on the other's phone with their
-// name. Then the server goes away: both keep working, both get the bread,
+// /s/<space>/demos/household/ on a device of their own. Each is shown by
+// the name on their account (nobody types one), and what one adds, gets or
+// does shows on the other's phone with their name. Then the server goes away: both keep working, both get the bread,
 // and when it's back the phones agree, with the version the space didn't
 // take kept as a draft that std/sync.js shows. The platform's own sync checks
 // are tests/checks/space-sync.mjs; this one is about an app made to share.
@@ -44,11 +44,6 @@ async function open(page, base) {
   await page.waitForSelector(`${LIST} form`, { timeout: 15000 });
 }
 
-const join_ = async (page, name) => {
-  await page.fill(`${WHO} input[name="name"]`, name);
-  await page.click(`${WHO} form button[type="submit"]`);
-  await page.waitForSelector(`${WHO} >> text=You're ${name}`, { timeout: 8000 });
-};
 const row = (page, view, text) => page.locator(`${view} li`, { hasText: text }).first();
 const shows = (page, view, text, timeout = 20000) => row(page, view, text).waitFor({ timeout }).then(() => true, () => false);
 const rows = (page, view) => page.locator(`${view} li`).allTextContents().then((t) => t.map((s) => s.replace(/\s+/g, " ").trim()), () => []);
@@ -82,13 +77,12 @@ export default async function ({ check, context, errors }) {
     const ben = await signUp(browser, link, "Ben", errors);
     phones.push(ben.context);
 
-    // Each says who they are. Ann's name reaches Ben's phone before he says who he is.
+    // Each is shown by the name on their account, and sees the other.
     await open(ann.page, server.url);
-    await join_(ann.page, "Ann");
     await open(ben.page, server.url);
-    const offered = await ben.page.locator(`${WHO} button`, { hasText: "Ann" }).first().waitFor({ timeout: 20000 }).then(() => true, () => false);
-    await join_(ben.page, "Ben");
-    check("household: in a space, a housemate who joined on one phone is offered on another", offered);
+    const annSees = await ann.page.waitForSelector(`${WHO} >> text=You're Ann · also here: Ben`, { timeout: 20000 }).then(() => true, () => false);
+    const benSees = await ben.page.waitForSelector(`${WHO} >> text=You're Ben · also here: Ann`, { timeout: 20000 }).then(() => true, () => false);
+    check("household: in a space, each phone shows who it's signed in as and who else lives there, by their account names, with no name to type", annSees && benSees && !(await ben.page.locator(`${WHO} input`).count()), JSON.stringify({ ann: await ann.page.locator(WHO).textContent().catch(() => ""), ben: await ben.page.locator(WHO).textContent().catch(() => "") }));
 
     // The sample items went in once, though both phones started the list.
     const milk = (await rows(ben.page, LIST)).filter((t) => /^Milk\b/.test(t)).length;

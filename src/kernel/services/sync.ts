@@ -12,6 +12,7 @@
 //
 // In a kernel that keeps no space, state() says so and there's nothing to do.
 
+import { env } from "../env";
 import { defineHook } from "../hooks";
 import type { Kernel } from "./index";
 import type { ServiceProvider } from "../remote";
@@ -24,12 +25,29 @@ defineHook("sync:changed", {
   description: "This page's sync with its space changed: it connected or lost the server, sent what it had, or kept or let go of a draft. Read sync.state().",
 });
 
+defineHook("members:changed", {
+  mode: "emit",
+  needs: "members",
+  args: "{}",
+  description: "The space told this page who its members are and which one this page is signed in as, or that changed. Read sync.members().",
+});
+
 export default ({ root, collections }: Kernel): ServiceProvider => {
   // Many changes at once (a whole push answered) are told once, just after the last.
   let soon: ReturnType<typeof setTimeout> | undefined;
+  /** The members as last told, to tell members:changed only when they change. */
+  let told = "";
   thisDevice.changed.add(() => {
     clearTimeout(soon);
-    soon = setTimeout(() => root.emit({}, "sync:changed", {}), 50);
+    soon = setTimeout(async () => {
+      root.emit({}, "sync:changed", {});
+      const s = await thisDevice.sync?.state();
+      const now = JSON.stringify([s?.member ?? null, s?.members ?? {}]);
+      if (now !== told) {
+        told = now;
+        root.emit({}, "members:changed", {});
+      }
+    }, 50);
   });
 
   async function state() {
@@ -42,7 +60,18 @@ export default ({ root, collections }: Kernel): ServiceProvider => {
       const title = collections.registry.get(d.collection)?.title ?? d.collection;
       return { ref: d.ref, collection: d.collection, title, id: d.id, ...(label ? { label } : {}), mine: d.mine, why: d.why, at: d.at };
     });
-    return { space: s.space, ...(s.member ? { member: s.member } : {}), connected: s.connected, pending: s.pending, drafts };
+    return { space: s.space, ...(s.member ? { member: s.member } : {}), members: s.members, connected: s.connected, pending: s.pending, drafts };
+  }
+
+  /** The space's members by name, and which one this page is signed in as: from the device's copy, or on the space's server from its accounts. */
+  async function members() {
+    const device = thisDevice.sync;
+    if (device) {
+      const s = await device.state();
+      return { space: s.space, ...(s.member ? { you: s.member } : {}), members: Object.entries(s.members).map(([id, name]) => ({ id, name })) };
+    }
+    if (env().kind === "server" && env().members) return { space: true, members: await env().members!() };
+    return { space: null, members: [] };
   }
 
   return {
@@ -50,10 +79,17 @@ export default ({ root, collections }: Kernel): ServiceProvider => {
     methods: {
       state: {
         args: "()",
-        returns: "{ space: null } or { space, member?, connected, pending, drafts }",
+        returns: "{ space: null } or { space, member?, members, connected, pending, drafts }",
         needs: "sync",
         params: [],
-        description: "Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).",
+        description: "Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), each member's name by id (`members`), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).",
+      },
+      members: {
+        args: "()",
+        returns: "{ space, you?, members: [{ id, name }] }",
+        needs: "members",
+        params: [],
+        description: "The space's members, each with the name on their account, and which of them this page is signed in as (`you`). A change's `by` and data:changed's `by` are a member's id: show the name from here. Outside a space, `space` is null and the list is empty.",
       },
       keep: {
         args: "(ref)",
@@ -70,9 +106,10 @@ export default ({ root, collections }: Kernel): ServiceProvider => {
         description: "Lets a draft go: the record stays as the space has it.",
       },
     },
-    capability: () => "sync",
+    capability: (method) => (method === "members" ? "members" : "sync"),
     call: async (_instance, method, args, dispatch) => {
       if (method === "state") return state();
+      if (method === "members") return members();
       const device = thisDevice.sync;
       const ref = String(args?.[0] ?? "");
       if (method === "keep") return device ? device.keep(ref, dispatch) : { ok: false, error: "This page isn't in a space" };

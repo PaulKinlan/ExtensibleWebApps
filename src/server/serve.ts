@@ -75,12 +75,14 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
         const worker = new Worker(resolve(options.kernel), { workerData: { dir: join(resolve(options.spaces), name), origin: url, allowPrivate: options.allowPrivate ?? [] } });
         worker.on("message", (m) => {
           if (m?.t === "ready") ready(worker);
-          // The kernel asks for its members' email addresses, the only ones its plugins may email.
-          if (m?.t === "addresses")
-            void auth.addresses(name).then(
-              (addresses) => worker.postMessage({ t: "addresses", id: m.id, addresses }),
-              () => worker.postMessage({ t: "addresses", id: m.id, addresses: [] }),
+          // The kernel asks about its members: their email addresses (the only ones its plugins may email) and names.
+          if (m?.t === "addresses" || m?.t === "members") {
+            const asked: Promise<unknown> = m.t === "addresses" ? auth.addresses(name) : auth.members(name);
+            void asked.then(
+              (value) => worker.postMessage({ t: m.t, id: m.id, value }),
+              () => worker.postMessage({ t: m.t, id: m.id, value: [] }),
             );
+          }
         });
         worker.on("error", (error) => {
           console.error(`Space ${name}:`, error);
