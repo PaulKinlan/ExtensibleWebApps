@@ -64,6 +64,8 @@ export interface MethodDoc {
   description: string;
   /** Its arguments, described for tools. A method without them isn't offered as a tool. */
   params?: Param[];
+  /** Called many times a second (sync.live): a call that works isn't traced; one that fails still is. */
+  quiet?: boolean;
 }
 
 export interface ServiceProvider {
@@ -847,7 +849,7 @@ export async function callService(services: Record<string, ServiceProvider>, ins
   const started = performance.now();
   try {
     const value = await provider.call(instance, method, args, dispatch);
-    record({ kind: "call", name: `${service}.${method}`, plugin: instance, trace: dispatch.trace, ms: ms(started) });
+    if (!provider.methods[method].quiet) record({ kind: "call", name: `${service}.${method}`, plugin: instance, trace: dispatch.trace, ms: ms(started) });
     return value;
   } catch (error) {
     const message = String(error instanceof Error ? error.message : error);

@@ -52,7 +52,15 @@ function processorsOf(first: Record<string, unknown>): string[] {
 const make = (kernel: ModuleKernel): ServiceProvider => {
   const { hosts, store } = kernel;
   /** Where a plugin's kept clips are, in the data folder: each its own. */
-  const keptPath = (plugin: string, name?: string) => `audio/${base(plugin)}${name ? `/${name}.json` : ""}`;
+  // Under plugin-data, which a plugin's file permissions never reach (src/kernel/paths.ts), so one plugin can't read another's.
+  const keptPath = (plugin: string, name?: string) => `plugin-data/audio/${base(plugin)}${name ? `/${name}.json` : ""}`;
+  /** One keep at a time for each plugin, so two at once can't both pass the count. */
+  const keeping = new Map<string, Promise<unknown>>();
+  const oneAtATime = <T>(plugin: string, work: () => Promise<T>): Promise<T> => {
+    const next = (keeping.get(base(plugin)) ?? Promise.resolve()).then(work, work);
+    keeping.set(base(plugin), next.catch(() => {}));
+    return next;
+  };
   const keptName = (name: unknown) => {
     if (typeof name !== "string" || !KEPT.test(name)) throw new Error("A kept clip's name is lowercase letters, digits and dashes, up to 64");
     return name;
@@ -137,11 +145,13 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       if (method === "keep") {
         const name = keptName(first?.name);
         checkClip(first?.clip);
+        return oneAtATime(plugin, async () => {
         const names = await store.listFiles(keptPath(plugin)).catch(() => [] as string[]);
         if (!names.includes(`${name}.json`) && names.filter((n) => n.endsWith(".json")).length >= MAX_KEPT) throw new Error(`A plugin keeps at most ${MAX_KEPT} clips: forget one first`);
         const { rate, pcm, channels } = first!.clip as { rate: number; pcm: string; channels?: number };
         await store.writeText(keptPath(plugin, name), JSON.stringify({ rate, pcm, ...(channels === 2 ? { channels } : {}) }));
         return { kept: name, seconds: Math.round(((pcm.length * 3) / 4 / 2 / (channels === 2 ? 2 : 1) / rate) * 100) / 100 };
+        });
       }
       if (method === "load") {
         const text = await store.readText(keptPath(plugin, keptName(first?.name)));

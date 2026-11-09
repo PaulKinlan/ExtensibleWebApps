@@ -73,11 +73,17 @@ export default async function (ctx) {
     }, 150);
   };
 
-  ctx.on("sync:trace", ({ events: batch, first }) => {
+  ctx.on("sync:trace", ({ events: batch, first, error }) => {
+    if (error) {
+      listening = false;
+      problem = error;
+      return draw();
+    }
     if (paused && !first) return;
-    // The first batch is the space's latest events, from before: it starts the list again. So does a space's
-    // kernel that started again, which counts its events from 1.
-    if (first || (batch[0] && batch[0].seq < lastSeq)) {
+    // The first batch is the space's latest events, from before: it starts the list again (after a reconnection
+    // too, when the space's kernel may have started again and counts from 1). A later batch can repeat a few of
+    // the first's, still waiting to be sent when it was made: only the ones after the last seen are new.
+    if (first) {
       events = [];
       lastSeq = 0;
     }

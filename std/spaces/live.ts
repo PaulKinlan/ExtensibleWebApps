@@ -23,7 +23,9 @@
 //
 // Only members open a space's socket (src/server/front-door.ts), so only
 // members' devices are heard, and each message says which member and
-// device it came from: a device can't speak for another. Messages are small
+// device it came from: a device can't speak for another. The device is an
+// id the space gives each connection, not one the device chose, so one
+// can't take another's place by naming it. Messages are small
 // (a device's at most 4 KB, the server's at most 64 KB) and a device may send
 // at most 60 a second; more are dropped.
 
@@ -57,6 +59,9 @@ export function checkTopic(topic: unknown): string {
 export function liveSpace(root: { emit(dispatch: Dispatch, name: string, value: unknown): void }, hosts: Hosts) {
   const topics = new Map<Host, Set<string>>();
   const sent = new Map<Host, { second: number; count: number }>();
+  /** Each connection's id, made here: what a device says in its hello is its own to choose, so it isn't used. */
+  const ids = new WeakMap<Host, string>();
+  const idOf = (host: Host) => ids.get(host) ?? ids.set(host, `d-${crypto.randomUUID()}`).get(host)!;
   let dropped = 0;
   return {
     /** A device said something. */
@@ -79,7 +84,7 @@ export function liveSpace(root: { emit(dispatch: Dispatch, name: string, value: 
       const mine = topics.get(host) ?? topics.set(host, new Set()).get(host)!;
       if (!mine.has(topic) && mine.size >= MAX_TOPICS) return;
       mine.add(topic);
-      root.emit({ trace: `live-${topic}` }, "sync:live", { topic, value: message.value ?? null, ...(host.member ? { member: host.member } : {}), device: host.tab });
+      root.emit({ trace: `live-${topic}` }, "sync:live", { topic, value: message.value ?? null, ...(host.member ? { member: host.member } : {}), device: idOf(host) });
     },
     /** A server plugin speaks: to every device on the topic, or to one. Whether any device heard it. */
     say(topic: string, value: unknown, device?: string): number {
@@ -88,7 +93,7 @@ export function liveSpace(root: { emit(dispatch: Dispatch, name: string, value: 
       const message: SyncToDevice = { t: "sync", op: "live", topic, value: value ?? null };
       let reached = 0;
       for (const [host, mine] of topics) {
-        if (!mine.has(topic) || (device !== undefined && host.tab !== device)) continue;
+        if (!mine.has(topic) || (device !== undefined && idOf(host) !== device)) continue;
         hosts.send(host, message);
         reached++;
       }
@@ -99,7 +104,7 @@ export function liveSpace(root: { emit(dispatch: Dispatch, name: string, value: 
       const mine = topics.get(host);
       topics.delete(host);
       sent.delete(host);
-      for (const topic of mine ?? []) root.emit({ trace: `live-${topic}` }, "sync:live", { topic, value: null, gone: true, ...(host.member ? { member: host.member } : {}), device: host.tab });
+      for (const topic of mine ?? []) root.emit({ trace: `live-${topic}` }, "sync:live", { topic, value: null, gone: true, ...(host.member ? { member: host.member } : {}), device: idOf(host) });
     },
     stop() {
       topics.clear();

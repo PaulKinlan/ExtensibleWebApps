@@ -35,8 +35,8 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
     mode: "emit",
     quiet: true,
     needs: "reflect:read",
-    args: "{ events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], first? }",
-    description: "New events in the trace of the space's own kernel, on its server, for a debugger that asked with sync.trace(true): first is the batch from before it asked. They name every server plugin and what it did, so listening needs reflect:read.",
+    args: "{ events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], first?, error? }",
+    description: "New events in the trace of the space's own kernel, on its server, for a debugger that asked with sync.trace(true): first is the batch from before it asked (again after each reconnection), and error says the space stopped sending. They name every server plugin and what it did, so listening needs reflect:read.",
   });
   /** The devices this service listens to for live messages and the space's trace, once a plugin has used either. */
   const attached = new WeakSet<object>();
@@ -50,10 +50,24 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
       if (m.op !== "trace") return;
       for (const w of [...watchers]) if (!remote.live.has(w)) watchers.delete(w);
       if (!watchers.size) return void (m.on !== false && device.send({ t: "sync", op: "trace", on: false }));
+      // The space said no (too many debuggers watching): the watchers hear why, and stop.
+      if (m.on === false && m.error) {
+        watchers.clear();
+        return void root.emit({}, "sync:trace", { events: [], error: m.error });
+      }
       if (m.events?.length) root.emit({}, "sync:trace", { events: m.events, ...(m.on ? { first: true } : {}) });
     };
+    // A new connection is a new socket the space knows nothing of: ask for the trace again, if anyone still listens.
+    const again = () => {
+      for (const w of [...watchers]) if (!remote.live.has(w)) watchers.delete(w);
+      if (watchers.size) device.send({ t: "sync", op: "trace", on: true });
+    };
     device.heard.add(listen);
-    cleanup(() => device.heard.delete(listen));
+    device.caughtUp.add(again);
+    cleanup(() => {
+      device.heard.delete(listen);
+      device.caughtUp.delete(again);
+    });
   };
   hook("sync:changed", {
     mode: "emit",
@@ -151,6 +165,7 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
         args: "(topic, value, device?)",
         returns: "{ sent } (on a server, { sent, reached })",
         needs: "live",
+        quiet: true,
         params: [
           { name: "topic", schema: { type: "string", description: "What it's about: lowercase letters, digits and dashes, such as a game's name" } },
           { name: "value", schema: { description: "Anything JSON: a move, a frame. A device's is at most 4,000 characters of JSON, the space's 64,000" } },

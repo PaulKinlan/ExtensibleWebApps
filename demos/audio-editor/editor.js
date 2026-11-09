@@ -233,12 +233,12 @@ export default async function (ctx) {
     if (pcm.length > INLINE) {
       kept = clip.kept ?? `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       await ctx.call("audio", "keep", { name: kept, clip: { rate, pcm, ...(channels === 2 ? { channels } : {}) } });
-    } else if (clip.kept) {
-      await ctx.call("audio", "forget", { name: clip.kept }).catch(() => {});
     }
     const record = { ...(id ? { id } : {}), name, rate, ...(kept ? { kept } : { pcm }), ...(channels === 2 ? { channels } : {}), seconds };
     const result = await ctx.call("data", "put", "sound-clips", record);
     if (!result?.ok) throw new Error(`The clip wasn't kept: ${JSON.stringify(result?.errors ?? result)}`);
+    // A clip that got short enough to go in its record: the kept samples go only once the record holds them.
+    if (!kept && clip.kept) await ctx.call("audio", "forget", { name: clip.kept }).catch(() => {});
     clip.id = result.id;
     clip.kept = kept;
   };

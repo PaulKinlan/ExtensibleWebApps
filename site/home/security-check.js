@@ -45,8 +45,10 @@ export default function (ctx) {
     const online = permissions.some((p) => p === "network" || p.startsWith("network:"));
     let reason = "";
     if (reads.length && online) reason = `${name} may read your ${reads.join(" and ")} records and also reach the internet, so it could send them away`;
-    else if (BUILDS_CODE.test(code.replace(/\/\/.*$/gm, ""))) reason = `${name} builds code from text (eval, new Function or import()), so what runs may not be what you read`;
-    await ctx.call("data", "put", "security-reviews", { name, verdict: reason ? "blocked" : "allowed", ...(reason ? { reason } : {}), at: new Date().toISOString() });
+    // The whole source, comments and strings too: a check that strips comments can be fooled by a "//" in a string.
+    else if (BUILDS_CODE.test(code)) reason = `${name} builds code from text (eval, new Function or import()), so what runs may not be what you read`;
+    // The verdict stands even if its note can't be written (a full collection, say): the hook fails open.
+    await ctx.call("data", "put", "security-reviews", { name, verdict: reason ? "blocked" : "allowed", ...(reason ? { reason } : {}), at: new Date().toISOString() }).catch(() => {});
     return reason ? { block: reason } : undefined;
   });
 }

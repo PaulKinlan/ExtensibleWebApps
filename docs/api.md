@@ -1666,11 +1666,11 @@ Listeners get `{ topic, value, member?, device?, gone?, from? }`.
 
 ### `sync:trace`
 
-New events in the trace of the space's own kernel, on its server, for a debugger that asked with sync.trace(true): first is the batch from before it asked. They name every server plugin and what it did, so listening needs reflect:read.
+New events in the trace of the space's own kernel, on its server, for a debugger that asked with sync.trace(true): first is the batch from before it asked (again after each reconnection), and error says the space stopped sending. They name every server plugin and what it did, so listening needs reflect:read.
 
 Mode: `emit`. Listening needs `reflect:read`.
 
-Listeners get `{ events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], first? }`.
+Listeners get `{ events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], first?, error? }`.
 
 ### `transfer:changed`
 

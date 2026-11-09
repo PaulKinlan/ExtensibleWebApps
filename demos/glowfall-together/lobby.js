@@ -9,7 +9,7 @@ export const manifest = {
   name: "Lobby",
   description: "Joins the game on the space's server, starts it, and shows who is playing and the scores.",
   version: "1.0.0",
-  permissions: ["ui", "live", "members", "hook:listen:sync:live", "hook:listen:members:changed"],
+  permissions: ["ui", "live", "members", "sync", "hook:listen:sync:live", "hook:listen:members:changed", "hook:listen:sync:changed"],
   services: ["sync"],
   scope: "tab",
   order: 20,
@@ -71,6 +71,24 @@ export default async function (ctx) {
   ctx.on("members:changed", async () => {
     names = new Map(((await ctx.call("sync", "members").catch(() => null))?.members ?? []).map((m) => [m.id, m.name]));
     draw();
+  });
+
+  // A dropped connection loses this device's seat: the space gives a new connection a new id, and it hears the
+  // game only once it says something again. So it joins again when it's back.
+  let connected = true;
+  ctx.on("sync:changed", async () => {
+    const state = await ctx.call("sync", "state").catch(() => null);
+    const now = !!state?.connected;
+    if (now === connected) return;
+    connected = now;
+    if (!now) {
+      joined = false;
+      note = "Lost the space's server: joining again when it's back.";
+      draw();
+    } else if (inSpace && !joined && (await join())) {
+      note = "";
+      draw();
+    }
   });
 
   ctx.ui.onEvent(async (action) => {
