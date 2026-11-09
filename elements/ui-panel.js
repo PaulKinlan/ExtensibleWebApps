@@ -5,7 +5,7 @@
 // the plugin that drew it (std/customize.js is one).
 
 export default class UiPanel extends HTMLElement {
-  static observedAttributes = ["label"];
+  static observedAttributes = ["label", "reopen"];
   /** @type {HTMLTemplateElement | undefined} set by the host from ui-panel.html */
   static template;
 
@@ -55,16 +55,22 @@ export default class UiPanel extends HTMLElement {
       const button = /** @type {Element} */ (e.target).closest("[data-close]");
       if (button && this.contains(button)) panel.hidePopover();
     });
-    this.attributeChangedCallback();
+    this.attributeChangedCallback("label", null, this.getAttribute("label"));
   }
 
   disconnectedCallback() {
     if (this.outside) document.removeEventListener("pointerdown", this.outside);
   }
 
-  attributeChangedCallback() {
+  attributeChangedCallback(/** @type {string} */ name, /** @type {string | null} */ before, /** @type {string | null} */ after) {
     const root = this.shadowRoot;
     if (!root) return;
+    // A new value of `reopen` opens the panel again: the plugin's way back after an action that closed it (data-close).
+    if (name === "reopen") {
+      const panel = /** @type {HTMLElement} */ (root.querySelector("#panel"));
+      if (after && after !== before && !panel.matches(":popover-open")) panel.showPopover();
+      return;
+    }
     const label = this.getAttribute("label") || "Open";
     /** @type {HTMLElement} */ (root.querySelector(".launch")).textContent = label;
     /** @type {HTMLElement} */ (root.querySelector("#title")).textContent = label;
