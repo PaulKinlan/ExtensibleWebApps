@@ -1,12 +1,39 @@
-// The plugin registry (packages/, docs/guide/plugin-registry.md): its index is
-// current, Customize lists it, and adding a package from there adds the
-// packages that provide the services it needs, so it starts.
+// The plugin registry (packages/, docs/guide/plugin-registry.md): its index,
+// catalogue and page are current, the page lists every plugin the site ships
+// and filters them, Customize lists the index, and adding a package from there
+// adds the packages that provide the services it needs, so it starts.
 import { readFileSync } from "node:fs";
-import { buildIndex, render } from "../../scripts/packages.mjs";
+import { expected } from "../../scripts/packages.mjs";
 
 export default async function ({ check, openTab, URL }) {
-  const written = readFileSync(new globalThis.URL("../../packages/index.json", import.meta.url), "utf8");
-  check("packages/index.json is what the packages' manifests say (run npm run packages)", written === render(await buildIndex()));
+  const want = await expected();
+  for (const [name, text] of Object.entries(want)) {
+    const written = readFileSync(new globalThis.URL(`../../packages/${name}`, import.meta.url), "utf8");
+    check(`packages/${name} is what the plugins' manifests say (run npm run packages)`, written === text);
+  }
+  const { packages } = JSON.parse(want["index.json"]);
+  const catalog = JSON.parse(want["catalog.json"]);
+  check("the registry offers the language models, so a plugin that needs llm can get one", ["llm-anthropic", "llm-gemini", "llm-openai", "llm-openai-compatible"].every((id) => packages.some((p) => p.id === id && p.kind === "service")));
+  check("Ask the page says which plugins can answer the llm it needs", packages.find((p) => p.id === "ask-the-page")?.needsOneOf?.llm?.length === 4);
+  check("every offered plugin has a kind and a group", packages.every((p) => ["service", "ui", "background"].includes(p.kind) && p.group));
+  check("the catalogue has every std plugin, every demo's plugins and the built-in services", catalog.plugins.some((p) => p.href === "/std/customize.js") && catalog.plugins.some((p) => p.href === "/demos/reading-list/library.js") && catalog.services.some((s) => s.id === "llm"));
+
+  // The page: every plugin, the search narrows it, and the filters show one kind.
+  const listing = await openTab(`${URL}packages/`);
+  try {
+    const all = await listing.locator("li.card").count();
+    check("/packages/ shows every plugin and built-in service", all === catalog.plugins.length + catalog.services.length, `${all}`);
+    await listing.fill("#find", "language model");
+    await listing.waitForFunction(() => /^\d+ of /.test(document.querySelector(".shown")?.textContent ?? ""));
+    const found = await listing.evaluate(() => [...document.querySelectorAll("li.card:not([hidden]) h4")].map((h) => h.firstChild.textContent.trim()));
+    check("searching /packages/ finds the language models", found.includes("Claude (Anthropic)") && found.length < all, found.join(", "));
+    await listing.fill("#find", "");
+    await listing.click('[data-filter="service"]');
+    const kinds = await listing.evaluate(() => [...new Set([...document.querySelectorAll("li.card:not([hidden])")].map((c) => c.dataset.kind))]);
+    check("the Services filter shows only services", kinds.join() === "service", kinds.join());
+  } finally {
+    await listing.close();
+  }
 
   const app = "demos/contacts";
   const page = await openTab(`${URL}${app}/app.html`);
