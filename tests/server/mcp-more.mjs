@@ -143,7 +143,8 @@ export async function mcpMoreChecks(base, check, owner, stranger) {
 
   const ended = await fetch(address, { method: "DELETE", headers: { authorization: `Bearer ${key}`, "mcp-session-id": session ?? "" } });
   const afterEnd = await rpc("ping", undefined, { session });
-  const getStream = await fetch(address, { headers: { authorization: `Bearer ${key}`, accept: "text/event-stream" } });
-  check("mcp: a client ends its session with DELETE, after which it is unknown; there is no GET stream", ended.status === 200 && afterEnd.status === 404 && getStream.status === 405, JSON.stringify([ended.status, afterEnd.status, getStream.status]));
+  // Its stream too (tests/server/mcp-stream.mjs): the session is over.
+  const getStream = await fetch(address, { headers: { authorization: `Bearer ${key}`, accept: "text/event-stream", "mcp-session-id": session ?? "" } });
+  check("mcp: a client ends its session with DELETE, after which it is unknown, and can't open a stream for it", ended.status === 200 && afterEnd.status === 404 && getStream.status === 404, JSON.stringify([ended.status, afterEnd.status, getStream.status]));
   phone.close();
 }
