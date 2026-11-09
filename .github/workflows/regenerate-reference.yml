@@ -1,0 +1,58 @@
+# Keeps docs/api.md matching the code, so no one has to run
+# `npm run reference` by hand or merge the file.
+#
+# docs/api.md is generated: the kernel prints its own reference. Whenever a
+# PR branch in this repo or main changes, this runs `npm run reference` on it
+# and, if the file comes out different, commits the new one to that branch.
+# So when docs/api.md conflicts, take either side, finish the merge and push:
+# the right version follows a minute later.
+#
+# It only adds a commit when the file changed (never rebases or force-pushes),
+# so anyone working on the branch just pulls before pushing again. Commits made
+# with this workflow's token don't start other workflows, so it can't loop.
+
+name: Regenerate API reference
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: regenerate-reference-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reference:
+    # A fork's branch can't be pushed to with this token.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci && npm i --no-save playwright && npx playwright install --with-deps chromium
+
+      - name: Run npm run reference
+        run: npm run reference
+
+      - name: Commit docs/api.md if it changed
+        run: |
+          if git diff --quiet -- docs/api.md; then echo "docs/api.md is current"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/api.md
+          git commit -q -m "Regenerate docs/api.md"
+          # If the branch moved on while this ran, the run for the newer commit does the work.
+          git push -q origin "HEAD:${{ github.head_ref || github.ref_name }}" || echo "::notice::Branch moved on; the next run regenerates it."
