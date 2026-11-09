@@ -16,9 +16,11 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { setEnv } from "../../kernel/env";
+import type { Files } from "../../seams/index.ts";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { type IsolateHost, remoteIsolates } from "../../seams/remote-isolates.ts";
 import type { RouteRequest, RouteResponse } from "../routes.ts";
+import { exportSpace, importSpace, type SpaceCopy } from "../space-copy.ts";
 import { signed } from "../signed.ts";
 
 type Send = (text: string) => void | Promise<void>;
@@ -29,6 +31,8 @@ export interface SpaceHost extends IsolateHost {
   site(url: string): Promise<Response>;
   /** The space's members' email addresses (the email service mails only these). */
   addresses(): Promise<string[]>;
+  /** The space's members, with the names on their accounts. */
+  members(): Promise<{ id: string; name: string }[]>;
   /** Sets the space's alarm for the earliest scheduled job, or clears it. */
   wake(at: number | undefined): Promise<void>;
 }
@@ -94,6 +98,7 @@ export class SpaceKernel extends DurableObject {
           isolates: remoteIsolates(host, (name, error) => console.error(`Plugin ${name}:`, error)),
           site: (url: string) => host.site(url),
           addresses: () => host.addresses(),
+          members: () => host.members(),
         }),
         onError: (report) => {
           addEventListener("error", (e) => report("kernel:error", String((e as ErrorEvent).message ?? e)));
@@ -135,6 +140,23 @@ export class SpaceKernel extends DurableObject {
   async tick(origin: string, host?: SpaceHost): Promise<void> {
     await this.start(origin, host);
     boot?.();
+  }
+
+  /** The space's folder, as a copy to move it to another host (src/server/transfer.ts). */
+  async dump(space: string): Promise<SpaceCopy> {
+    // One statement, so the copy is the folder at one moment even while the kernel runs.
+    const files = new Map<string, Uint8Array>();
+    const sql = this.ctx.storage.sql as unknown as Sql;
+    durableFiles(sql);
+    for (const row of sql.exec("SELECT path, data FROM files ORDER BY path").toArray()) files.set(String(row.path), new Uint8Array(row.data as ArrayBuffer));
+    const snapshot: Pick<Files, "list" | "read"> = { list: async () => [...files.keys()], read: async (path) => files.get(path) ?? null };
+    return exportSpace(snapshot as Files, space);
+  }
+
+  /** Loads a copy into the space's folder, which must be empty, before the kernel has started on it. */
+  async load(copy: SpaceCopy): Promise<{ files: number }> {
+    if (this.started) throw new Error("The space is already running: make a new space for the copy");
+    return importSpace(durableFiles(this.ctx.storage.sql as unknown as Sql), copy);
   }
 
   async deliver(client: string, text: string): Promise<void> {
