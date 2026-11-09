@@ -2,6 +2,8 @@
 
 The words these docs use, in alphabetical order, each with where to read more.
 
+**Account.** Who you are on a site that runs the platform's server: you sign in to it at `/account/` with a passkey (or GitHub or Bluesky, where the site turns them on). You need one only to make or join a [space](#space); every app works on your device without one. See [Spaces](guide/spaces-and-servers.md#spaces-and-accounts).
+
 **Action.** What a view sends back when the person clicks a control with `data-action`, or submits a form that has one. It goes only to the plugin that drew the view, through `ctx.ui.onEvent`. See [Views and templates](guide/views-and-templates.md#actions).
 
 **Agent.** A Markdown file an app links with `<link rel="agent">`, run as a plugin. It wakes on hooks, commands, messages or topics, asks a language model, and calls the tools its permissions allow. See [Agents](guide/agents.md).
@@ -66,7 +68,7 @@ The words these docs use, in alphabetical order, each with where to read more.
 
 **Slot.** A `<slot name>` element in an app's page, where plugins draw views by name. What's inside it shows until a plugin draws there.
 
-**Space.** A named group of people and their data, which any app can open in at `/s/<space>/<app>/`. Each member's device keeps a copy and syncs it with the space's server. See [Spaces, and plugins on a server](guide/spaces-and-servers.md).
+**Space.** A shared copy of an app's data, for the people you invite (or just you, on each of your devices), at `/s/<space>/<app>/`. Making or joining one needs an [account](#account); nothing else does. Each member's device keeps a copy and syncs it with the space's server, which can also run the app's server plugins with no one's browser open. See [Spaces, and plugins on a server](guide/spaces-and-servers.md).
 
 **Spawner.** The tab that creates the plugin workers, since a shared worker can't. If it closes, another tab takes over. See [Architecture](architecture.md#opening-a-page).
 

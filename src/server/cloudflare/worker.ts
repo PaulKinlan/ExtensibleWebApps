@@ -35,6 +35,8 @@ import { mcpAddress, mcpRequest, mcpResponse } from "../mcp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
 import { transferRoute } from "../transfer.ts";
+import { feedReader } from "../feed-reader.ts";
+import { isOwnNetwork } from "./network-guard.ts";
 // Server plugins' way out to the network: an entrypoint of this Worker, so it is exported here.
 export { NetworkGuard } from "./network-guard.ts";
 
@@ -357,6 +359,9 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
+/** The private hosts the deployment lets through anyway (ALLOW_PRIVATE_HOSTS), for tests under wrangler dev. */
+const allowedPrivate = (env: Env) => new Set((env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase().replace(/^\[|\]$/g, "")).filter(Boolean));
+
 async function answer(request: Request, env: Env, decision: Decision): Promise<Response> {
   switch (decision.door) {
     case "auth": {
@@ -375,6 +380,12 @@ async function answer(request: Request, env: Env, decision: Decision): Promise<R
     }
     case "route":
       return (await mcp(request, env)) ?? (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
+    case "feed":
+      return feedReader(request, (url, signal) => {
+        // Cloudflare's egress reaches only the public internet; a host written as a private address is refused here too.
+        if (!allowedPrivate(env).has(url.hostname.toLowerCase().replace(/^\[|\]$/g, "")) && isOwnNetwork(url.hostname)) throw new Error(`The feed reader can't reach ${url.host}: it is on the server's own network`);
+        return fetch(url, { redirect: "manual", signal, headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5" } });
+      });
     case "asset":
       return env.ASSETS.fetch(request);
     case "refuse":

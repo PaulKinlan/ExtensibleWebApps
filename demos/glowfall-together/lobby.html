@@ -25,8 +25,8 @@
   <section class="lobby" aria-label="Players">
     <h2>Together</h2>
     <template if="away">
-      <p class="muted">Everyone in a space plays the same game, on the space's server. Make a space on <a href="/account/">your account</a>, invite someone, and open this game at <code>/s/&lt;space&gt;/demos/glowfall-together/</code>.</p>
-      <p class="muted">On your own, play <a href="../glowfall/app.html">Glowfall</a>.</p>
+      <p><a class="button primary start" href="../glowfall/app.html">Play Glowfall on your own</a></p>
+      <p class="muted">This is the game for several people at once, so it runs on a shared server. To play together, <a href="/account/?app=/demos/glowfall-together/">open it in a space</a> and invite someone.</p>
     </template>
     <template if="waiting"><p class="muted" role="status">Joining the game on the space's server…</p></template>
     <template if="joined">
