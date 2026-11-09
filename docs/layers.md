@@ -19,11 +19,23 @@ flowchart TB
 | --- | --- | --- | --- |
 | Apps | `demos/`, `site/`, your own folder | The page, plus its plugins' workers | The app's author (`app.html`), and the person (Customize) |
 | std plugins | [`std/`](../std/) | A sandboxed worker each | Each app, with `<link rel="plugin">` |
-| Kernel services | [`src/kernel/services/`](../src/kernel/services/) and beside it, and kernel modules in `std/<name>/module.ts` | Inside the kernel, trusted | Modules: the site, in [`kernel.json`](../kernel.json). The rest: nobody yet, every one is built into every kernel ([being changed](#where-this-is-going)) |
+| Kernel services | Kernel modules in `std/<name>/module.ts`, and spaces in [`src/kernel/`](../src/kernel/) | Inside the kernel, trusted | Modules: the site, in [`kernel.json`](../kernel.json). Spaces: built into every kernel for now ([where this is going](#where-this-is-going)) |
 | Kernel core | [`src/kernel/`](../src/kernel/) | Inside the kernel, trusted | Always there |
 | Cordis | `node_modules/cordis` ([cordiverse/cordis](https://github.com/cordiverse/cordis)) | Inside the kernel | Pinned in `package.json` |
 
 The shape is close to [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness)'s: a small framework (Cordis), a harness on top of it with the services every extension can count on, and extensions that are everything else. Our harness is bigger than Cordis on purpose, because it also runs untrusted code safely, and the rest of this page says exactly what that adds.
+
+### Where an app's plugins come from
+
+The plugins in the top two layers reach an app at three levels. The level says who added a plugin, where it runs and who has it, never what it may do: every plugin, at every level, runs sandboxed with only the permissions its manifest asks for.
+
+| Level | Who adds it | Where it runs | Who has it |
+| --- | --- | --- | --- |
+| **Developer plugins** | The app's author, linked from `app.html` (std plugins or the app's own) | Browsers, and a space's server for `runs: "server"` or `"both"` | Everyone who opens the app |
+| **Space plugins** | A member, sharing one of their own with a space | Browsers only, never the server | Every member of that space, turned off until each turns it on |
+| **User plugins** | A person, in Customize, or their agent ([the registry](guide/plugin-registry.md) is one place to find them) | Their browser only | Them, on that device |
+
+Customize keeps user plugins ([`user-plugins.ts`](../src/kernel/user-plugins.ts)), and a space keeps its space plugins ([`shared-plugins.ts`](../src/kernel/shared-plugins.ts)). [Servers and spaces](server.md#space-plugins) says how a plugin is shared, turned on and removed.
 
 ## Cordis
 
@@ -59,30 +71,33 @@ And the services every plugin relies on: `kernel`, `settings`, `plugins`, `stora
 
 ## Kernel services
 
-These are capabilities with trusted code in the kernel: an app may use them, but not every app does. Most are still a file in [`src/kernel/services/`](../src/kernel/services/) (some with helpers beside it), and **each of those is built into every kernel**, in the browser and on a server, whether an app uses it or not, and nobody can leave one out. Each is also made when the kernel starts, not when first called: most only define their hooks then, but some start work of their own: `sync` listens for this device's changes. A site that leaves a service out will skip that start-up work as well.
+These are capabilities with trusted code in the kernel: an app may use them, but not every app does. Most are now kernel modules (below), which a site picks. What is left here is still **built into every kernel**, in the browser and on a server, whether an app uses it or not: the agent file reader, and spaces. Spaces are core-adjacent (sync is wired into the store and the data layer), so they move last, once the core reads them through hooks.
 
 | Service | Files | Why it is trusted code |
 | --- | --- | --- |
 | agent files | [`agents/file.ts`](../src/kernel/agents/file.ts), [`agents/runner.js`](../src/kernel/agents/runner.js) | Turns an app's `rel="agent"` file into the plugin that runs the agent loop. The `agents` service is a module (below); these stay until the core reads links through a hook, so it needn't know about agent files |
-| `history` | [`services/history.ts`](../src/kernel/services/history.ts) | Undo across every plugin's writes |
-| `commands` | [`services/commands.ts`](../src/kernel/services/commands.ts) | Commands from any plugin, run from a palette or a key |
-| `router`, `share`, `audio`, `page` | [`services/router.ts`](../src/kernel/services/router.ts), [`services/share.ts`](../src/kernel/services/share.ts), [`services/audio.ts`](../src/kernel/services/audio.ts), [`services/page.ts`](../src/kernel/services/page.ts) | Bridges to what only a page can do |
-| `reflect` | [`services/reflect.ts`](../src/kernel/services/reflect.ts) | A read-only view of the whole kernel, for debuggers |
 | spaces | [`sync.ts`](../src/kernel/sync.ts), [`sync-device.ts`](../src/kernel/sync-device.ts), [`server-apps.ts`](../src/kernel/server-apps.ts), [`shared-plugins.ts`](../src/kernel/shared-plugins.ts), [`routes.ts`](../src/kernel/routes.ts), [`services/sync.ts`](../src/kernel/services/sync.ts) | Sync with a space, space plugins (shared to members' browsers), plugins on its server, public routes |
 
 ### Kernel modules
 
-The first services have moved out of the core into **kernel modules**. A module is a Cordis plugin in `std/<name>/module.ts`, and the site lists the ones it runs in [`kernel.json`](../kernel.json), one per line:
+Most services have moved out of the core into **kernel modules**. A module is a Cordis plugin in `std/<name>/module.ts`, and the site lists the ones it runs in [`kernel.json`](../kernel.json), one per line:
 
 ```json
 {
   "modules": [
     "agents",
+    "audio",
     "bus",
+    "commands",
     "debug",
     "email",
+    "history",
     "llm",
+    "page",
+    "reflect",
+    "router",
     "schedule",
+    "share",
     "tools",
     "transfer"
   ]
@@ -91,16 +106,23 @@ The first services have moved out of the core into **kernel modules**. A module 
 
 Only the listed modules are built into the kernel, in the browser and on the site's servers ([`vite.kernel-modules.ts`](../vite.kernel-modules.ts)). A name with no `module.ts` stops the build, and a module that `uses` another the site doesn't list stops the kernel: neither quietly goes without. [`src/kernel/modules.ts`](../src/kernel/modules.ts) says how to write one.
 
-A module keeps the promise any Cordis plugin keeps. Everything it adds goes through the `kernel` it is given (`provide`, `command`, `hook`, `cleanup`), and each is a Cordis effect on the module's own context. So stopping a module takes back its service, commands and hooks, and ends whatever waits on it. The modules that use it stop first, and they start again when it does. The page command `restart-module` does this to one module, and [`tests/checks/module-restart.mjs`](../tests/checks/module-restart.mjs) restarts each one the site runs and checks the kernel looks the same afterwards. A module that calls `defineHook` itself, whose hook would outlive it, fails the layer check.
+A module keeps the promise any Cordis plugin keeps. Everything it adds goes through the `kernel` it is given (`provide`, `command`, `hook`, `cleanup`, and `kernel.root`, which is the module's own Cordis context), and each is a Cordis effect on that context. What the core tells modules (a tab's address, a plugin instance stopping) it emits as `internal/*` events, which only trusted code hears, so a module's listeners go with it too. So stopping a module takes back its service, commands and hooks, and ends whatever waits on it. The modules that use it stop first, and they start again when it does. The page command `restart-module` does this to one module, and [`tests/checks/module-restart.mjs`](../tests/checks/module-restart.mjs) restarts each one the site runs and checks the kernel looks the same afterwards. A module that calls `defineHook` itself, or sets one of the core's callbacks (`remote.onDispose = …`), fails the layer check, since either would outlive it.
 
 | Module | File | What it adds |
 | --- | --- | --- |
 | `agents` | [`std/agents/module.ts`](../std/agents/module.ts) | The `agents` service: counts each agent's runs and tokens, so an agent can't misreport its own use, and tells the app what agents do (`agent:*` hooks). Uses `tools` |
+| `audio` | [`std/audio/module.ts`](../std/audio/module.ts) | The `audio` service: sound for plugins, played by the tab that runs their workers |
 | `bus` | [`std/bus/module.ts`](../std/bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person, with replies and topics |
+| `commands` | [`std/commands/module.ts`](../std/commands/module.ts) | The `commands` service: commands from any plugin, run from a palette, a key or an agent (the palette is [`std/commands/palette.js`](../std/commands/palette.js)) |
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
 | `email` | [`std/email/module.ts`](../std/email/module.ts) | The `email` service: mail from a space's server to its members, with daily limits |
+| `history` | [`std/history/module.ts`](../std/history/module.ts) | The `history` service: undo and redo across every plugin's writes |
 | `llm` | [`std/llm/module.ts`](../std/llm/module.ts) | The `llm` service: the one interface to every model; the vendors are std plugins beside it ([`std/llm/`](../std/llm/)) |
+| `page` | [`std/page/module.ts`](../std/page/module.ts) | The `page` service: the app's own page, as far as a plugin's places reach into it, and the slots plugins declare |
+| `reflect` | [`std/reflect/module.ts`](../std/reflect/module.ts) | The `reflect` service: a read-only view of the whole kernel, for debuggers |
+| `router` | [`std/router/module.ts`](../std/router/module.ts) | The `router` service: a screen for every address, from the tab's address (the core passes it on as `internal/url`) |
 | `schedule` | [`std/schedule/module.ts`](../std/schedule/module.ts) | The `schedule` service behind `ctx.schedule`: keeps plugins' jobs and wakes them, even a sleeping space |
+| `share` | [`std/share/module.ts`](../std/share/module.ts) | The `share` service: sharing out with the system's share sheet, and sharing in to an app installed as a share target |
 | `tools` | [`std/tools/module.ts`](../std/tools/module.ts) | The `tools` service: reads the whole API reference to offer a plugin's service methods to a model as tools |
 | `transfer` | [`std/transfer/module.ts`](../std/transfer/module.ts), [`std/transfer/csv.ts`](../std/transfer/csv.ts) | The `transfer` service: import and export, reviewed once for the whole file |
 
@@ -123,7 +145,7 @@ The kernel's own services (`data`, `storage`, `settings` and the rest above) are
 
 The plan, being reviewed now, splits this layer out of the core:
 
-1. Each of the services above becomes a kernel module, as `agents`, `bus`, `debug`, `email`, `llm`, `schedule`, `tools` and `transfer` have, naming the modules it `uses`. This repo's `kernel.json` lists them all, so no demo changes.
+1. Every optional service is a kernel module except spaces and the agent file reader, which need the core to read them through hooks first. This repo's `kernel.json` lists every module, so no demo changes.
 2. A smaller site lists fewer, and has less built in.
 3. Services that don't need trusted code become std plugins that provide them (below), such as email delivery.
 

@@ -712,7 +712,7 @@ export class Remote {
   }
 
   /**
-   * A command the plugin answers, from ctx.commands.add (services/commands.ts
+   * A command the plugin answers, from ctx.commands.add (std/commands/module.ts
    * keeps its title and keys). The hook is named after this instance, so no
    * other plugin can answer for it, and a tab's own instance answers a run
    * from that tab.
