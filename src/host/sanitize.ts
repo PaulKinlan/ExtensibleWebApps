@@ -122,9 +122,13 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
   }
 }
 
+let inert: Document | undefined;
+
 /** A plugin's HTML as a fragment of allowed DOM. */
 export function sanitize(html: string, owner: string, { remote = false, base }: { remote?: boolean; base?: string } = {}): DocumentFragment {
-  const template = document.createElement("template");
+  // Parsed in a document of its own, with no window: an onclick= in the plugin's HTML never becomes a
+  // handler on the page, so the page's policy (no inline handlers) isn't even asked before it is dropped.
+  const template = (inert ??= document.implementation.createHTMLDocument("")).createElement("template");
   template.innerHTML = trusted(html);
   const out = document.createDocumentFragment();
   copy(template.content, out, owner, remote, base);

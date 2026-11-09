@@ -686,7 +686,7 @@ async function feedChecks(base, check, owner) {
   const latest = (collection, id) => phone.changes().filter((c) => c.collection === collection && c.id === id).at(-1)?.after;
   let items = [];
   let atomItems = [];
-  for (let i = 0; i < 60 && !(items.length >= 2 && atomItems.length >= 2 && latest("fetched", "plain") && latest("fetched", "away")); i++) {
+  for (let i = 0; i < 60 && !(items.length >= 2 && atomItems.length >= 2 && latest("fetched", "local") && latest("fetched", LONG) && latest("fetched", "plain") && latest("fetched", "away")); i++) {
     await new Promise((r) => setTimeout(r, 250));
     await phone.settle();
     items = phone.changes().filter((c) => c.collection === "items" && c.after?.feed === "local");
