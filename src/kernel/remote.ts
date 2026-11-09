@@ -29,7 +29,7 @@ import { providedService, serviceHook, SERVICE_TIMEOUT_MS } from "./provided";
 
 /**
  * One argument of a service method, so a model can call it as a tool
- * (services/tools.ts). The order of a method's params is the order of its
+ * (the tools module, std/tools/module.ts). The order of a method's params is the order of its
  * arguments.
  */
 export interface Param {
@@ -826,7 +826,7 @@ export const scheduleHook = (plugin: string, name: string) => `schedule:${plugin
  * Calls a service method for a plugin instance, through the gate: the method
  * must be listed, and the plugin must hold the capability it needs. Every
  * plugin call comes through here, and so does every tool call
- * (services/tools.ts), so a tool can never do more than its plugin could.
+ * (std/tools/module.ts), so a tool can never do more than its plugin could.
  */
 export async function callService(services: Record<string, ServiceProvider>, instance: string, caps: Set<string>, service: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown> {
   // Own entries only: `toString` or `__proto__` would find the object's prototype instead.

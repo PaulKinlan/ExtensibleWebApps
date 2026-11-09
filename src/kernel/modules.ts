@@ -13,6 +13,13 @@
 //
 //   export default { name: "debug", uses: ["llm"], apply(ctx, kernel) { kernel.provide("debug", …); } };
 //
+// Everything a module adds goes through `kernel` (provide, command, hook,
+// cleanup), and each is a Cordis effect on the module's own context. So, as
+// with any Cordis plugin, disposing a module takes back all it added, and the
+// modules that `use` it (Cordis `inject`) stop with it and start again when it
+// comes back. A module never calls defineHook itself: tests/checks/kernel-layers.mjs
+// fails if one does.
+//
 // The build reads kernel.json and hands the kernel the modules it lists
 // (vite.kernel-modules.ts), so the core never names one. A module listed
 // there with no std/<name>/module.ts, or one that `uses` a module the site
@@ -21,6 +28,11 @@
 import type { Kernel } from "./services/index";
 import type { ServiceProvider } from "./remote";
 import { RESERVED } from "./manifest";
+import { defineHook, type HookSpec } from "./hooks";
+import { record } from "./trace";
+
+/** The Cordis service a module's service is also registered as, so other modules can `inject` it. */
+const cordisName = (name: string) => `kernel.${name}`;
 
 /** What a module is given: the kernel's parts, and ways to add to it. */
 export interface ModuleKernel extends Kernel {
@@ -28,6 +40,10 @@ export interface ModuleKernel extends Kernel {
   provide(name: string, provider: ServiceProvider): void;
   /** Adds a command the page can run (window.__host.command(name, arg)), for tests and developer tools. */
   command(name: string, run: (arg: unknown) => unknown): void;
+  /** Defines a hook plugins can listen to. Taken back when the module stops. */
+  hook(name: string, spec: HookSpec): void;
+  /** Runs when the module stops: clear its timers, end what waits on it. */
+  cleanup(fn: () => void): void;
 }
 
 /** A module: a Cordis plugin the kernel runs with its parts as the config. */
@@ -51,7 +67,8 @@ export function service(name: string, make: (kernel: ModuleKernel) => ServicePro
 
 /**
  * Runs each module as a Cordis plugin on the kernel's root context, in the order kernel.json lists them.
- * Services and commands they add go into the kernel's tables, and come out again if a module is disposed.
+ * Services, commands and hooks they add go into the kernel's tables as Cordis effects, so they come out
+ * again when the module is disposed. Returns `restart(name)`, which disposes a module and runs it again.
  */
 export function loadModules(
   modules: KernelModule[],
@@ -66,30 +83,73 @@ export function loadModules(
     const missing = (module.uses ?? []).filter((name) => !names.has(name));
     if (missing.length) throw new Error(`The ${module.name} module needs ${missing.join(", ")}, which kernel.json doesn't list`);
   }
-  for (const module of modules) {
-    kernel.root.plugin(
+  const plugins = new Map(
+    modules.map((module) => [
+      module.name,
       {
         name: `module:${module.name}`,
+        // Cordis starts it once the modules it uses are running, and stops it whenever one of them stops.
+        inject: (module.uses ?? []).map(cordisName),
         apply(ctx: any) {
           const own: ModuleKernel = {
             ...kernel,
             provide(name, provider) {
               if (Object.hasOwn(services, name)) throw new Error(`The ${module.name} module can't provide ${name}: the kernel already has a service by that name`);
-              services[name] = provider;
               RESERVED.add(name);
-              ctx.on("dispose", () => void delete services[name]);
+              ctx.effect(() => {
+                services[name] = provider;
+                return () => void delete services[name];
+              }, `service ${name}`);
+              ctx.provide(cordisName(name), provider);
             },
             command(name, run) {
               if (coreCommand(name)) throw new Error(`The ${module.name} module can't add the command ${name}: it is the kernel's`);
               if (commands.has(name)) throw new Error(`The ${module.name} module can't add the command ${name}: it is taken`);
-              commands.set(name, run);
-              ctx.on("dispose", () => void commands.delete(name));
+              ctx.effect(() => {
+                commands.set(name, run);
+                return () => void commands.delete(name);
+              }, `command ${name}`);
+            },
+            hook(name, spec) {
+              ctx.effect(() => defineHook(name, spec), `hook ${name}`);
+            },
+            cleanup(fn) {
+              ctx.effect(() => fn, "cleanup");
             },
           };
+          // The first effect, so it is the last undone: "stop" is traced once all the module added is gone.
+          ctx.effect(() => {
+            record({ kind: "lifecycle", name: "module:start", plugin: module.name });
+            return () => record({ kind: "lifecycle", name: "module:stop", plugin: module.name });
+          }, "trace");
           // Cordis waits on whatever apply returns, and a context is thenable: return nothing.
           module.apply(ctx, own);
         },
       },
-    );
-  }
+    ]),
+  );
+  const fibers = new Map<string, any>();
+  for (const [name, plugin] of plugins) fibers.set(name, kernel.root.plugin(plugin));
+  // Cordis applies a plugin after this call returns, and one that injects others once they're running.
+  // A module that fails to start is an error in the trace, and the services it would give are missing.
+  const ready = Promise.all(
+    modules.map((m) =>
+      Promise.resolve(fibers.get(m.name)).catch((error: unknown) => {
+        record({ kind: "error", name: "module:failed", plugin: m.name, detail: error instanceof Error ? error.message : String(error) });
+      }),
+    ),
+  ).then(() => {});
+  return {
+    /** Settles once every module has started or failed. */
+    ready,
+    /** Stops a module, and the modules that use it, then starts it again; they start again with it. */
+    async restart(name: string) {
+      const plugin = plugins.get(name);
+      if (!plugin) throw new Error(`No module ${name}`);
+      await fibers.get(name).dispose();
+      fibers.set(name, kernel.root.plugin(plugin));
+      // The modules that use it start again too: wait for every module to be running.
+      await Promise.all(fibers.values());
+    },
+  };
 }

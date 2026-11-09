@@ -52,9 +52,7 @@ const SERVICES = [
   "csv.ts",
   "routes.ts",
   "server-apps.ts",
-  "services/agents.ts",
   "services/audio.ts",
-  "services/bus.ts",
   "services/commands.ts",
   "services/email.ts",
   "services/history.ts",
@@ -65,7 +63,6 @@ const SERVICES = [
   "services/schedule.ts",
   "services/share.ts",
   "services/sync.ts",
-  "services/tools.ts",
   "services/transfer.ts",
   "shared-plugins.ts",
   "sync-device.ts",
@@ -94,4 +91,8 @@ export default async function ({ check }) {
   check("kernel.json lists its modules one per line, sorted", JSON.stringify([...modules].sort()) === JSON.stringify(modules), modules.join(", "));
   const unnamed = modules.filter((name) => !page.includes(`std/${name}/module.ts`));
   check("docs/layers.md names every kernel module", !unnamed.length, unnamed.join(", "));
+  // A module adds hooks with kernel.hook and cleans up with kernel.cleanup, so all it adds goes when it stops.
+  // defineHook would outlive it, and Cordis never fires ctx.on("dispose").
+  const unscoped = modules.filter((name) => /\bdefineHook\b|\bhooks\.set\(|on\(\s*["']dispose["']/.test(readFileSync(new URL(`../../std/${name}/module.ts`, import.meta.url), "utf8")));
+  check("kernel modules add hooks and clean up only through their kernel, so stopping one takes it all back", !unscoped.length, unscoped.join(", "));
 }

@@ -20,12 +20,12 @@
 // `ctx.call`, with the same reviews, so a tool can never do more than the
 // plugin holding it.
 //
-// Found by name: this file is src/kernel/services/tools.ts, so it is `ctx.call("tools", …)`.
+// A kernel module (docs/layers.md): a site that lists `tools` in kernel.json has it, as `ctx.call("tools", …)`.
 
-import { grants } from "../gate";
-import { callService, type MethodDoc, type Param, type ServiceProvider } from "../remote";
-import { validate, type Schema } from "../schema";
-import type { Kernel } from "./index";
+import { grants } from "../../src/kernel/gate";
+import { callService, type MethodDoc, type Param, type ServiceProvider } from "../../src/kernel/remote";
+import { validate, type Schema } from "../../src/kernel/schema";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
 
 /** A tool, in the shape `llm.complete` takes, plus where it goes. */
 export interface Tool {
@@ -60,7 +60,7 @@ function mayNeed(caps: Set<string>, needs: string): boolean {
   return false;
 }
 
-export default ({ remote }: Kernel): ServiceProvider => {
+const make = ({ remote }: ModuleKernel): ServiceProvider => {
   /**
    * The names a `names` argument may take for this caller, by the gate's own
    * prefix rules; null when a wildcard covers the whole prefix. For `data:`
@@ -181,3 +181,5 @@ export default ({ remote }: Kernel): ServiceProvider => {
     },
   };
 };
+
+export default service("tools", make);
