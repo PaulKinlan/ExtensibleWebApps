@@ -63,6 +63,7 @@ The core is what every app and every space server needs to run any plugin at all
 | Which plugins run | [`apps.ts`](../src/kernel/apps.ts), [`catalog.ts`](../src/kernel/catalog.ts), [`switches.ts`](../src/kernel/switches.ts) | An app's linked plugins, installed plugins, and their on/off switches |
 | Plugins' routes | [`routes.ts`](../src/kernel/routes.ts) | Requests for the routes plugins add: the site's, which the service worker passes on, and a space's public ones on its server |
 | The person's own plugins | [`user-plugins.ts`](../src/kernel/user-plugins.ts), [`authoring.ts`](../src/kernel/authoring.ts) | Plugins a person (or their agent) adds to an app, and the help to write them |
+| Where the person moved things | [`moves.ts`](../src/kernel/moves.ts) | The spots a person moved plugins' views to in an app (Customize's Arrange), used in place of the manifest's |
 | Describing itself | [`reference.ts`](../src/kernel/reference.ts) | The [API reference](api.md), built from the tables the kernel enforces |
 | Wiring | [`kernel.ts`](../src/kernel/kernel.ts) | Puts the pieces together |
 | Kernel modules | [`modules.ts`](../src/kernel/modules.ts), [`kernel-modules.d.ts`](../src/kernel/kernel-modules.d.ts) | Runs the modules the site lists in `kernel.json` (below) |

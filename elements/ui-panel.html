@@ -3,8 +3,9 @@
   What the view puts inside the element is the panel's content.
   Attributes: label (the button's text and the panel's title), toggle (an
   action sent with true or false when the panel opens or closes, so the
-  plugin can draw what it shows only while someone is looking). A button
-  inside with data-close closes the panel when clicked.
+  plugin can draw what it shows only while someone is looking), reopen (each
+  new value opens the panel again, after something on the page that closed
+  it). A button inside with data-close closes the panel when clicked.
 
   It doesn't place itself: the slot its view is drawn in decides where it
   sits (the platform pins the "customize" slot to a corner, see styles.css).

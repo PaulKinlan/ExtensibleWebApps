@@ -50,9 +50,9 @@ interface Applied {
 }
 
 /** Elements a place may never match: plugins' views, other places, and the platform's own panels. */
-const OFF_LIMITS = ".place, [data-plugin], #review, #notice, #inspect";
+const OFF_LIMITS = ".place, [data-plugin], #review, #notice, #inspect, #arrange";
 /** The platform's own panels, which a transform can't reach either. */
-const PLATFORM = "#review, #notice, #inspect";
+const PLATFORM = "#review, #notice, #inspect, #arrange";
 const MAX_MATCHES = 200;
 const STRICTNESS = ["open", "review", "locked"];
 
@@ -70,6 +70,21 @@ export interface PlacesHost {
  * same element; it shows again only when the last of them lets go, and only if it was showing before.
  */
 const hiders = new Map<Element, { by: Set<object>; was: boolean }>();
+
+/** Where each container was put, so views placed at the same spot keep the order the person gave them (Place.order). */
+const anchors = new WeakMap<Element, { el: Element; put: Place["put"]; order: number }>();
+
+/** Moves a container among the others put at the same spot, lower `order` first. Equal orders stay as they were put. */
+function settle(container: HTMLElement) {
+  const me = anchors.get(container);
+  if (!me) return;
+  const peer = (n: Element | null) => {
+    const a = n ? anchors.get(n) : undefined;
+    return a && a.el === me.el && a.put === me.put ? a : undefined;
+  };
+  for (let prev = container.previousElementSibling; prev && (peer(prev)?.order ?? -Infinity) > me.order; prev = container.previousElementSibling) prev.before(container);
+  for (let next = container.nextElementSibling; next && (peer(next)?.order ?? Infinity) < me.order; next = container.nextElementSibling) next.after(container);
+}
 
 export function places(host: PlacesHost) {
   const applied = new Map<string, Applied>();
@@ -176,6 +191,8 @@ export function places(host: PlacesHost) {
       else if (a.place.put === "after") el.after(container);
       else if (a.place.put === "prepend") el.prepend(container);
       else el.append(container);
+      anchors.set(container, { el, put: a.place.put, order: a.place.order ?? 0 });
+      settle(container);
       a.containers.push(container);
     }
     const seen = JSON.stringify(a.targets.map((el) => [ownText(el), (el as HTMLElement).dataset]));
@@ -333,8 +350,13 @@ export function places(host: PlacesHost) {
     },
 
     /** Every place and how it went, for the Customize panel. */
-    status(): { plugin: string; name: string; at: string; put: string; each: boolean; in?: string; state: PlaceState; matches: number }[] {
-      return [...applied.values()].map((a) => ({ plugin: a.plugin, name: a.name, at: a.place.at, put: a.place.put, each: !!a.place.each, ...(a.place.in && { in: a.place.in }), state: a.state, matches: a.targets.length }));
+    status(): { plugin: string; name: string; at: string; put: string; each: boolean; in?: string; order?: number; state: PlaceState; matches: number }[] {
+      return [...applied.values()].map((a) => ({ plugin: a.plugin, name: a.name, at: a.place.at, put: a.place.put, each: !!a.place.each, ...(a.place.in && { in: a.place.in }), ...(a.place.order !== undefined && { order: a.place.order }), state: a.state, matches: a.targets.length }));
+    },
+
+    /** The containers one place drew, in page order: arrange mode (arrange.ts) outlines and moves them. */
+    drawn(plugin: string, name: string): HTMLElement[] {
+      return [...(applied.get(key(plugin, name))?.containers ?? [])];
     },
   };
 }
