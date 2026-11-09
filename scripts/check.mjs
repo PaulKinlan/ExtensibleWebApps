@@ -29,7 +29,6 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { checkApp } from "../std/maker/checks.js";
-import { hookLimits } from "../vite.kernel-modules.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -39,6 +38,8 @@ async function loadKernelRules() {
   const entry = [
     'export { readManifest, RESERVED } from "./src/kernel/manifest.ts";',
     'export { PLUGIN_HOOKS } from "./src/kernel/hooks.ts";',
+    // Through this bundle, not an import: Node won't strip a .ts file's types inside node_modules, where a project's copy of this script is.
+    'export { hookLimits } from "./vite.kernel-modules.ts";',
     'export { capabilities, grants } from "./src/kernel/gate.ts";',
     'export * from "./src/shared/html.ts";',
     'export { SVG_ATTRIBUTES } from "./src/shared/svg.ts";',
@@ -51,10 +52,10 @@ async function loadKernelRules() {
     b.onResolve({ filter: /\?raw$/ }, (a) => ({ path: resolve(a.resolveDir, a.path.slice(0, -4)), namespace: "raw" }));
     b.onLoad({ filter: /.*/, namespace: "raw" }, (a) => ({ contents: readFileSync(a.path, "utf8"), loader: "text" }));
   } };
-  const out = await build({ stdin: { contents: entry, resolveDir: ROOT, loader: "ts" }, bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent", plugins: [raw] });
+  const out = await build({ stdin: { contents: entry, resolveDir: ROOT, loader: "ts" }, bundle: true, write: false, format: "esm", platform: "neutral", external: ["node:*"], logLevel: "silent", plugins: [raw] });
   const rules = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
   // The hook limits the site set in kernel.json, as the kernel uses them.
-  Object.assign(rules.PLUGIN_HOOKS, hookLimits(ROOT));
+  Object.assign(rules.PLUGIN_HOOKS, rules.hookLimits(ROOT));
   // The kernel reserves each service's name when it loads src/kernel/services/,
   // so reserve the same names here, read from the same folder.
   for (const name of serviceFiles()) rules.RESERVED.add(name);
@@ -86,9 +87,11 @@ function loadReference() {
 }
 
 /** A path as a link or ctx.ui.views gives it: from the site's root if it starts with /, else next to `from`; no query or fragment. */
-const local = (path, from) => {
+const local = (path, from, root) => {
   const clean = path.replace(/[?#].*$/, "");
   if (!clean.startsWith("/")) return join(dirname(from), clean);
+  // A project of its own (scripts/extensible-app.mjs) serves its files at the root, beside the platform's.
+  if (root && existsSync(join(root, clean))) return join(root, clean);
   // The site's own pages are in site/, served at the root (vite.config.ts): /workbench/plugins/x.js is site/workbench/plugins/x.js.
   const top = join(ROOT, clean);
   const site = join(ROOT, "site", clean);
@@ -96,11 +99,12 @@ const local = (path, from) => {
 };
 const rel = (file) => relative(ROOT, file) || ".";
 
-export async function checkApps(targets) {
+/** @param {string[]} targets @param {{ root?: string }} [options] root: a project whose files are served at the site's root */
+export async function checkApps(targets, { root } = {}) {
   const rules = await loadKernelRules();
   const reference = loadReference();
   const apps = targets.length ? targets.map(appFile) : demoApps();
-  return apps.map((file) => checkAppFile(file, rules, reference));
+  return apps.map((file) => checkAppFile(file, rules, reference, root));
 }
 
 function demoApps() {
@@ -117,14 +121,14 @@ function appFile(target) {
 }
 
 /** One app on disk, read by the checks every app gets (std/maker/checks.js), with the kernel's rules and the reference. */
-function checkAppFile(file, rules, reference) {
+function checkAppFile(file, rules, reference, root) {
   // Every service a call may name: the kernel's files and modules, and each one the reference documents.
   const services = new Set([...serviceFiles(), ...[...reference.methods.keys()].map((k) => k.split(".")[0])]);
   const { problems, plugins } = checkApp(
     {
       page: file,
       read: (key) => (existsSync(key) && statSync(key).isFile() ? readFileSync(key, "utf8") : undefined),
-      resolve: (href, from) => (/^[a-z][\w+.-]*:/i.test(href) ? undefined : local(href, from)),
+      resolve: (href, from) => (/^[a-z][\w+.-]*:/i.test(href) ? undefined : local(href, from, root)),
       label: rel,
       own: () => true,
     },
