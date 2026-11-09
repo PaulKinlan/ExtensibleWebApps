@@ -154,7 +154,7 @@ Draws what the function returns, like `ui.render`, and draws it again whenever a
 
 Needs: nothing.
 
-Receives the OffscreenCanvas for a canvas view the plugin rendered, with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope "tab" for plugins that draw. A canvas view rendered with `pointer: true` sends taps and drags on it as the event `canvas:pointer` (hear it with ui.onEvent): `{ canvas, type, x, y, id, kind }`, type down, move, up or cancel, x and y in the canvas's own pixels.
+Receives the OffscreenCanvas for a canvas view the plugin rendered, or a `<canvas id>` in its HTML view or template (by that id), with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope "tab" for plugins that draw. A canvas view rendered with `pointer: true` sends taps and drags on it as the event `canvas:pointer` (hear it with ui.onEvent): `{ canvas, type, x, y, id, kind }`, type down, move, up or cancel, x and y in the canvas's own pixels.
 
 ### ctx.ui.onEvent
 
@@ -2068,7 +2068,7 @@ Views bind to a collection with `<ui-table collection="…">` and `<ui-form coll
 
 ## HTML views
 
-Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it inertly and keeps only what is listed here: no script, no frames, no event attributes, and a `style` attribute keeps only custom properties set to numbers (`style="--pct: 40"`, for sizes from data). Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app; `class` is for a template file's own `<style>`, which reaches only that plugin's views. Images load from https: only for plugins with the `network` capability; others can use data: images.
+Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it inertly and keeps only what is listed here: no script, no frames, no event attributes, and a `style` attribute keeps only custom properties set to numbers (`style="--pct: 40"`, for sizes from data). Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app; `class` is for a template file's own `<style>`, which reaches only that plugin's views. Images load from https: only for plugins with the `network` capability; any plugin can use data: images and pictures on this site (by extension, with no ?query). An `<svg>` keeps the elements listed under SVG in views, and a `<canvas id>` is handed to the plugin's worker (ctx.ui.onCanvas).
 
 ### Components
 
@@ -2133,7 +2133,7 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<hr>` |  |  |
 | `<blockquote>` |  |  |
 | `<a>` | `href` | A link; opens in a new tab. href must be https:, http:, mailto:, # or relative. A relative one (book/42, ./) stays on this site and opens in the same tab: a link to a screen of the app moves to it without loading the page (see the router service) |
-| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: (with the network permission), a data: image, or a file next to the plugin's template file |
+| `<img>` | `src`, `alt`, `width`, `height`, `loading` | An image; src must be https: (with the network permission), a data: image, or a picture on this site with no ?query |
 | `<figure>` |  |  |
 | `<figcaption>` |  |  |
 | `<ul>` |  | Lists |
@@ -2171,7 +2171,50 @@ Allowed on every element: `title`, `role`, `hidden`, `lang`, `dir`, `tabindex`, 
 | `<meter>` | `value`, `min`, `max`, `low`, `high`, `optimum` |  |
 | `<time>` | `datetime` |  |
 | `<abbr>` |  |  |
+| `<svg>` | `viewBox`, `preserveAspectRatio`, `width`, `height`, `focusable` | A drawing: see SVG in views |
+| `<canvas>` | `id`, `width`, `height`, `pointer` | Drawn on by the plugin's worker: ctx.ui.onCanvas(id, (canvas, theme) => …). With `pointer`, taps and drags arrive as canvas:pointer events. Needs scope "tab" |
 | `<slot>` | `name` | A room in this view that other plugins fill: `<slot name="<your plugin id>.<room>" data-id="…">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md |
+
+### SVG in views
+
+An `<svg>` keeps these elements and drops anything else with its content (no script, foreignObject, image, a or animation). Inside it, `<template for>` and `<template if>` work as elsewhere, so shapes can come from data. Attributes allowed on them, besides the ones allowed on every element: `viewBox`, `preserveAspectRatio`, `width`, `height`, `x`, `y`, `x1`, `y1`, `x2`, `y2`, `cx`, `cy`, `r`, `rx`, `ry`, `fx`, `fy`, `fr`, `d`, `points`, `pathLength`, `transform`, `dx`, `dy`, `rotate`, `textLength`, `lengthAdjust`, `startOffset`, `side`, `method`, `spacing`, `fill`, `fill-opacity`, `fill-rule`, `stroke`, `stroke-width`, `stroke-linecap`, `stroke-linejoin`, `stroke-miterlimit`, `stroke-dasharray`, `stroke-dashoffset`, `stroke-opacity`, `opacity`, `color`, `paint-order`, `vector-effect`, `shape-rendering`, `visibility`, `display`, `clip-path`, `clip-rule`, `mask`, `filter`, `marker-start`, `marker-mid`, `marker-end`, `overflow`, `font-family`, `font-size`, `font-weight`, `font-style`, `text-anchor`, `dominant-baseline`, `alignment-baseline`, `letter-spacing`, `word-spacing`, `text-decoration`, `offset`, `stop-color`, `stop-opacity`, `gradientUnits`, `gradientTransform`, `spreadMethod`, `patternUnits`, `patternContentUnits`, `patternTransform`, `clipPathUnits`, `maskUnits`, `maskContentUnits`, `markerWidth`, `markerHeight`, `markerUnits`, `refX`, `refY`, `orient`, `filterUnits`, `primitiveUnits`, `in`, `in2`, `result`, `stdDeviation`, `edgeMode`, `mode`, `type`, `values`, `operator`, `k1`, `k2`, `k3`, `k4`, `flood-color`, `flood-opacity`, `color-interpolation-filters`, `href`, `focusable`. `href` (on use and textPath) and `url()` (in fill, stroke, clip-path, mask, filter and markers) may only name an `#id` in the same view.
+
+| Element | Notes |
+| --- | --- |
+| `<svg>` | The drawing; give it a viewBox, and role="img" with aria-label (or a <title>) when it means something |
+| `<g>` | A group, to move, style or label shapes together |
+| `<path>` | Shapes: path (d=), rect, circle, ellipse, line, polyline and polygon (points=) |
+| `<rect>` |  |
+| `<circle>` |  |
+| `<ellipse>` |  |
+| `<line>` |  |
+| `<polyline>` |  |
+| `<polygon>` |  |
+| `<text>` | Text, and runs of it |
+| `<tspan>` |  |
+| `<textPath>` | Text along a path: href="#<path id>" |
+| `<title>` | What it shows, for screen readers and as a tooltip |
+| `<desc>` |  |
+| `<defs>` | Things used by reference: gradients, clips, masks, markers, patterns, symbols, filters |
+| `<symbol>` |  |
+| `<use>` | A copy of something in this view: href="#<id>" |
+| `<linearGradient>` | Gradients, used as fill="url(#<id>)" |
+| `<radialGradient>` |  |
+| `<stop>` |  |
+| `<pattern>` |  |
+| `<clipPath>` |  |
+| `<mask>` |  |
+| `<marker>` |  |
+| `<filter>` | Simple filters: blur, offset, shadow, colour matrix, flood, blend, composite and merge |
+| `<feGaussianBlur>` |  |
+| `<feOffset>` |  |
+| `<feDropShadow>` |  |
+| `<feColorMatrix>` |  |
+| `<feFlood>` |  |
+| `<feBlend>` |  |
+| `<feComposite>` |  |
+| `<feMerge>` |  |
+| `<feMergeNode>` |  |
 
 ## Views and slots
 
