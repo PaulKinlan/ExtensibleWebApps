@@ -117,13 +117,23 @@
     },
     {
       "path": "docs",
-      "title": "Extensible Web Apps docs",
+      "title": "Docs",
       "href": "/docs/app.html"
+    },
+    {
+      "path": "home",
+      "title": "Home page",
+      "href": "/"
     },
     {
       "path": "site/new",
       "title": "Make an app",
       "href": "/new/"
+    },
+    {
+      "path": "workbench",
+      "title": "Workbench",
+      "href": "/workbench/"
     }
   ],
   "services": [
@@ -333,10 +343,17 @@
       "kind": "agent",
       "permissions": [
         "commands",
-        "bus:ask"
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
       ],
       "provides": [],
-      "services": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
       "places": [],
       "apps": [
         "demos/assistant"
@@ -351,14 +368,22 @@
       "kind": "agent",
       "permissions": [
         "plugins:author",
-        "bus:ask"
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
       ],
       "provides": [],
-      "services": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
       "places": [],
       "apps": [
         "demos/assistant",
-        "demos/markdown-editor"
+        "demos/markdown-editor",
+        "home"
       ]
     },
     {
@@ -380,7 +405,8 @@
       "places": [],
       "apps": [
         "demos/assistant",
-        "demos/markdown-editor"
+        "demos/markdown-editor",
+        "home"
       ]
     },
     {
@@ -404,7 +430,9 @@
       "places": [
         "append main"
       ],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "board",
@@ -510,6 +538,7 @@
         "demos/reading-list",
         "demos/recipes",
         "demos/spending",
+        "home",
         "site/new"
       ]
     },
@@ -532,7 +561,9 @@
       "places": [
         "append main"
       ],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "import-export",
@@ -584,6 +615,7 @@
         "demos/librarian",
         "demos/markdown-editor",
         "demos/security",
+        "home",
         "site/new"
       ]
     },
@@ -609,6 +641,7 @@
       ],
       "places": [],
       "apps": [
+        "home",
         "site/new"
       ]
     },
@@ -656,6 +689,7 @@
       ],
       "places": [],
       "apps": [
+        "home",
         "site/new"
       ]
     },
@@ -669,10 +703,17 @@
       "permissions": [
         "apps:make",
         "apps:read",
-        "bus:ask"
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
       ],
       "provides": [],
-      "services": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
       "places": [],
       "apps": [
         "site/new"
@@ -722,7 +763,9 @@
       "places": [
         "append main"
       ],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "plugin-maker",
@@ -766,7 +809,9 @@
       "places": [
         "append main"
       ],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "switchboard",
@@ -788,6 +833,7 @@
         "append main"
       ],
       "apps": [
+        "home",
         "site/new"
       ]
     },
@@ -860,7 +906,9 @@
       "places": [
         "append main"
       ],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "effect-crusher",
@@ -1919,10 +1967,17 @@
       "source": "librarian",
       "kind": "agent",
       "permissions": [
-        "bus:ask"
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
       ],
       "provides": [],
-      "services": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
       "places": [],
       "apps": [
         "demos/librarian",
@@ -1939,10 +1994,16 @@
       "permissions": [
         "data:read:library",
         "data:write:library",
-        "bus:send:bibliographer"
+        "bus:send:bibliographer",
+        "llm",
+        "agent"
       ],
       "provides": [],
-      "services": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
       "places": [],
       "apps": [
         "demos/librarian",
@@ -2506,10 +2567,17 @@
         "document:read",
         "document:write",
         "folder:read",
-        "bus:ask"
+        "bus:ask",
+        "llm",
+        "agent",
+        "bus:inbox"
       ],
       "provides": [],
-      "services": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
       "places": [],
       "apps": [
         "demos/markdown-editor"
@@ -2805,10 +2873,18 @@
       "source": "security",
       "kind": "agent",
       "permissions": [
-        "data:read:library"
+        "data:read:library",
+        "llm",
+        "agent",
+        "hook:intercept:data:beforeWrite:library",
+        "hook:intercept:agent:beforeTool"
       ],
       "provides": [],
-      "services": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
       "places": [],
       "apps": [
         "demos/security"
@@ -3060,6 +3136,582 @@
       "services": [],
       "places": [],
       "apps": []
+    },
+    {
+      "id": "chapter-1-core",
+      "name": "Chapter 1: A tiny core",
+      "description": "Explains the kernel, and can turn every plugin on this page off.",
+      "href": "/home/chapter-1-core.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-10-your-app",
+      "name": "Chapter 10: An app of your own",
+      "description": "Explains how to make a customizable app of your own with one command, run it, and put it online by itself.",
+      "href": "/home/chapter-10-your-app.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-11-agent",
+      "name": "Chapter 11: Let an agent change the page",
+      "description": "Explains how an agent writes a plugin for the page, with a recorded run you can replay without a key.",
+      "href": "/home/chapter-11-agent.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:author"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-12-security",
+      "name": "Chapter 12: A second pair of eyes",
+      "description": "Explains the checks a plugin goes through before its review card, and tries one that should be stopped.",
+      "href": "/home/chapter-12-security.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:author",
+        "data:read:security-reviews"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-2-plugins",
+      "name": "Chapter 2: Everything is a plugin",
+      "description": "Explains what a plugin is, with Note stats as the example and a switch for it.",
+      "href": "/home/chapter-2-plugins.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-3-hooks",
+      "name": "Chapter 3: Hooks",
+      "description": "Explains hooks, with Quiet please as the example and a switch for it.",
+      "href": "/home/chapter-3-hooks.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-4-make",
+      "name": "Chapter 4: Make your own",
+      "description": "Explains how to write a plugin for this page, with the plugin editor below it.",
+      "href": "/home/chapter-4-make.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-5-inspect",
+      "name": "Chapter 5: Look inside",
+      "description": "Explains how to see any plugin's code and follow the hooks an action runs, above view source and the hook tracer.",
+      "href": "/home/chapter-5-inspect.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-6-models",
+      "name": "Chapter 6: Ask a model",
+      "description": "Explains how a plugin asks a language model without ever holding a key, above Ask the page.",
+      "href": "/home/chapter-6-models.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-7-permissions",
+      "name": "Chapter 7: What a plugin may do",
+      "description": "Explains permissions and the gate, and lets you watch the gate refuse this chapter.",
+      "href": "/home/chapter-7-permissions.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-8-data",
+      "name": "Chapter 8: Your data",
+      "description": "Explains collections, schemas and review, and asks you to accept a note it wants to add.",
+      "href": "/home/chapter-8-data.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:write:learning"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "chapter-9-views",
+      "name": "Chapter 9: Views are HTML",
+      "description": "Explains how plugins draw, and draws any HTML you type so you can see what the page keeps.",
+      "href": "/home/chapter-9-views.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "learning-notes",
+      "name": "Learning notes",
+      "description": "Your notes as you learn how the page works, kept in this browser.",
+      "href": "/home/learning-notes.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "note-stats",
+      "name": "Note stats",
+      "description": "Counts your learning notes and their words. It reads the notes; it doesn't own them.",
+      "href": "/home/note-stats.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:learning"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "quiet-please",
+      "name": "Quiet please",
+      "description": "Stops a note written all in capitals, by listening on the hook that runs before each write.",
+      "href": "/home/quiet-please.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "data:read:learning",
+        "hook:intercept:data:beforeWrite:learning"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "security-check",
+      "name": "Security check",
+      "description": "Stops a plugin of your own that could send your data away, or runs code you can't read, before its review card.",
+      "href": "/home/security-check.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:plugins:beforeAdd"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "security-agent",
+      "name": "Security agent",
+      "description": "Reads a plugin of your own before you review it, and stops one that would do something it doesn't say.",
+      "href": "/home/security.agent.md",
+      "source": "site",
+      "kind": "agent",
+      "permissions": [
+        "llm",
+        "agent",
+        "hook:intercept:plugins:beforeAdd"
+      ],
+      "provides": [],
+      "services": [
+        "agents",
+        "bus",
+        "tools"
+      ],
+      "places": [],
+      "apps": []
+    },
+    {
+      "id": "story-view",
+      "name": "Story view",
+      "description": "Switches the page between the guided view and one scrolling story.",
+      "href": "/home/story-view.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "x-ray",
+      "name": "X-ray",
+      "description": "Outlines every part of the page and labels it with the plugin that drew it.",
+      "href": "/home/x-ray.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
+    },
+    {
+      "id": "bars",
+      "name": "Note lengths",
+      "description": "Bars for the length of each note, drawn on a canvas in a worker.",
+      "href": "/workbench/plugins/bars.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "data:read:notes"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "edit-times",
+      "name": "Edit and save times",
+      "description": "Shows when you last edited and last saved the note.",
+      "href": "/workbench/plugins/edit-times.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "hook:listen:notes:open",
+        "hook:listen:notes:change",
+        "hook:listen:notes:save",
+        "hook:listen:notes:close"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "fetcher",
+      "name": "Fetcher",
+      "description": "",
+      "href": "/workbench/plugins/fetcher.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "network"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "no-shouting",
+      "name": "No shouting",
+      "description": "Stops a note from being saved when it is all capitals.",
+      "href": "/workbench/plugins/no-shouting.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "data:read:notes",
+        "hook:intercept:data:beforeWrite:notes"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "notes",
+      "name": "Notes",
+      "description": "Notes you can open, edit and save. Other plugins hear what you do through its hooks.",
+      "href": "/workbench/plugins/notes.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "offline",
+      "name": "Offline",
+      "description": "",
+      "href": "/workbench/plugins/offline.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "pinger",
+      "name": "Pinger",
+      "description": "",
+      "href": "/workbench/plugins/pinger.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:bench:ping"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "sneaky",
+      "name": "Sneaky",
+      "description": "",
+      "href": "/workbench/plugins/sneaky.js",
+      "source": "site",
+      "kind": "background",
+      "permissions": [
+        "data:read:notes",
+        "files:*"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "tidy",
+      "name": "Tidy",
+      "description": "Tidies the open note's spacing and exports it as Markdown, to show change review.",
+      "href": "/workbench/plugins/tidy.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "hook:listen:notes:open",
+        "hook:listen:notes:save",
+        "hook:listen:notes:close",
+        "data:write:notes",
+        "files:exports"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "tone",
+      "name": "Tone",
+      "description": "A button that plays a tone, to prove audio runs with no plugin code on the main thread.",
+      "href": "/workbench/plugins/tone.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "audio"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "word-count",
+      "name": "Word count",
+      "description": "Shows the note's word count and reading time in the status bar.",
+      "href": "/workbench/plugins/word-count.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "hook:listen:notes:open",
+        "hook:listen:notes:change",
+        "hook:listen:notes:save",
+        "hook:listen:notes:close"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "workbench"
+      ]
+    },
+    {
+      "id": "docs",
+      "name": "Docs",
+      "description": "Draws a page of the docs, from the Markdown file its address names, beside the list of pages.",
+      "href": "/docs/docs.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "router"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "docs"
+      ]
+    },
+    {
+      "id": "docs-panel",
+      "name": "Docs panel",
+      "description": "Opens the docs beside the page, at the page about what you're reading.",
+      "href": "/docs/panel.js",
+      "source": "site",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "home"
+      ]
     }
   ]
 }

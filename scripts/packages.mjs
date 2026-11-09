@@ -34,7 +34,7 @@ export const KINDS = {
 async function kernel() {
   const out = await build({
     stdin: {
-      contents: 'export { readManifest } from "./src/kernel/manifest.ts";\nexport { PLUGIN_HOOKS } from "./src/kernel/hooks.ts";\nexport { explain } from "./src/kernel/authoring.ts";',
+      contents: 'export { readManifest } from "./src/kernel/manifest.ts";\nexport { PLUGIN_HOOKS } from "./src/kernel/hooks.ts";\nexport { explain } from "./src/kernel/authoring.ts";\nexport { fromAgentFile } from "./src/kernel/agents/file.ts";',
       resolveDir: fileURLToPath(SITE),
       loader: "ts",
     },
@@ -68,28 +68,47 @@ const placesOf = (m) => Object.values(m.places ?? {}).map((at) => `${at.put}${at
 
 const strip = (html) => html.replace(/<!--[\s\S]*?-->/g, "");
 
-/** Every app the site serves, with the absolute address of each plugin and agent it links. */
+/** Names for the site's own pages, whose <title> is the site's name. */
+const PAGE_TITLES = { home: "Home page", workbench: "Workbench", docs: "Docs" };
+
+/** Where the site serves a file in the repo: site/ is served at the root (site/home/ is /home/). */
+const served = (file) => `/${file.replace(/^site\//, "")}`;
+
+/** Every app and page the site serves that links plugins, with the absolute address of each plugin and agent it links. */
 export function scanApps() {
   const apps = [];
-  const folders = [
+  const pages = [
     ...readdirSync(new URL("demos/", SITE), { withFileTypes: true })
-      .filter((e) => e.isDirectory())
-      .map((e) => `demos/${e.name}/`),
-    "site/new/",
-    "docs/",
+      .filter((e) => e.isDirectory() && existsSync(new URL(`demos/${e.name}/app.html`, SITE)))
+      .map((e) => `demos/${e.name}/app.html`),
+    ...htmlFiles("site/"),
+    ...htmlFiles("docs/"),
   ];
-  for (const folder of folders.sort()) {
-    const file = new URL(`${folder}app.html`, SITE);
-    if (!existsSync(file)) continue;
-    const html = strip(read(file));
-    const path = `/${folder}app.html`;
-    const title = html.match(/<meta name="gallery-title" content="([^"]*)"/)?.[1] ?? html.match(/<title>([^<]*)<\/title>/)?.[1] ?? folder;
-    const links = (rel) => [...html.matchAll(new RegExp(`<link rel="${rel}" href="([^"]+)"`, "g"))].map((m) => new URL(m[1], `https://site${path}`).pathname);
-    // Where the site serves it: an app in site/new/ is at /new/, and docs/app.html at /docs/app.html.
-    const href = folder === "site/new/" ? "/new/" : path;
-    apps.push({ path: folder.replace(/\/$/, ""), title: title.trim(), href, plugins: links("plugin"), agents: links("agent") });
+  for (const file of [...new Set(pages)].sort()) {
+    const html = strip(read(new URL(file, SITE)));
+    // Every demo, even one that links no plugins (the trip, whose samples a person adds); any other page only if it links some.
+    if (!file.startsWith("demos/") && !/<link rel="(plugin|agent)"/.test(html)) continue;
+    // An app.html is known by its folder (demos/trip); any other page by its file (home/chapter-1-core).
+    const path = file.endsWith("/app.html") ? file.slice(0, -"/app.html".length) : file.replace(/^site\//, "").replace(/(^|\/)index\.html$/, "").replace(/\.html$/, "") || "home";
+    const href = served(file).replace(/(^|\/)index\.html$/, "$1").replace(/^\/new\/app\.html$/, "/new/");
+    const title = PAGE_TITLES[path] ?? html.match(/<meta name="gallery-title" content="([^"]*)"/)?.[1] ?? html.match(/<title>([^<]*)<\/title>/)?.[1] ?? path;
+    const links = (rel) => [...html.matchAll(new RegExp(`<link rel="${rel}" href="([^"]+)"`, "g"))].map((m) => new URL(m[1], `https://site${served(file)}`).pathname);
+    apps.push({ path, title: title.trim(), href, plugins: links("plugin"), agents: links("agent") });
   }
   return apps;
+}
+
+/** The .html files in a folder and the folders inside it. */
+function htmlFiles(folder) {
+  const out = [];
+  const walk = (rel) => {
+    for (const e of readdirSync(new URL(rel, SITE), { withFileTypes: true })) {
+      if (e.isDirectory() && !e.name.startsWith(".")) walk(`${rel}${e.name}/`);
+      else if (e.name.endsWith(".html")) out.push(`${rel}${e.name}`);
+    }
+  };
+  walk(folder);
+  return out;
 }
 
 // ---------------------------------------------------------------------------------------------------
@@ -182,21 +201,6 @@ function pluginFiles(folder) {
   return out;
 }
 
-/** An agent file's front matter: the fields the catalogue shows. */
-function agentManifest(text, file) {
-  const front = text.match(/^---\n([\s\S]*?)\n---/)?.[1];
-  if (!front) throw new Error(`${file}: an agent file starts with front matter`);
-  const field = (name) => front.match(new RegExp(`^${name}:\\s*(.*)$`, "m"))?.[1]?.trim() ?? "";
-  const permissions = field("permissions")
-    .replace(/^\[|\]$/g, "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const id = field("id");
-  if (!ID.test(id)) throw new Error(`${file}: its front matter needs an id`);
-  return { id, name: field("name") || id, description: field("description"), permissions };
-}
-
 /** The first comment paragraph of a file, as one line: what a module says it is. */
 const summary = (text) =>
   text
@@ -233,10 +237,11 @@ export async function buildCatalog(k, index) {
 
   const plugins = [];
   const add = (file, source) => {
-    const href = `/${file}`;
+    const href = served(file);
     const text = read(new URL(file, SITE));
     const agent = file.endsWith(".agent.md");
-    const m = agent ? agentManifest(text, file) : k.readManifest(text);
+    // An agent's manifest as the kernel makes it from the file, with what its loop needs added (llm, agents).
+    const m = k.readManifest(agent ? k.fromAgentFile(text, "// The loop, which the manifest doesn't depend on.") : text);
     const linked = apps.filter((a) => (agent ? a.agents : a.plugins).includes(href)).map((a) => a.path);
     const pkg = offered.get(href);
     plugins.push({
@@ -248,9 +253,9 @@ export async function buildCatalog(k, index) {
       kind: agent ? "agent" : kindOf(m),
       ...(pkg ? { offered: true, group: pkg.group } : {}),
       permissions: m.permissions,
-      provides: agent ? [] : providesOf(m),
+      provides: providesOf(m),
       services: sorted(m.services ?? []),
-      places: agent ? [] : placesOf(m),
+      places: placesOf(m),
       ...(m.runs ? { runs: m.runs } : {}),
       apps: linked,
     });
@@ -258,6 +263,9 @@ export async function buildCatalog(k, index) {
   for (const file of pluginFiles("packages/")) add(file, "registry");
   for (const file of pluginFiles("std/")) add(file, "std");
   for (const file of pluginFiles("demos/")) add(file, file.split("/")[1]);
+  // The site's own pages: the homepage's chapters, the workbench, the docs.
+  for (const file of pluginFiles("site/")) add(file, "site");
+  for (const file of pluginFiles("docs/")) add(file, "site");
   for (const p of index.packages) if (!plugins.some((c) => c.href === p.href)) throw new Error(`${p.href} is offered but the catalogue didn't find it`);
   return {
     apps: apps.map(({ path, title, href }) => ({ path, title, href })),
@@ -315,7 +323,7 @@ export function renderPage(index, catalog, k) {
     facts.push(`<li><b>In</b> ${p.apps.length ? appLinks(p.apps) : "no app yet: add it to one"}</li>`);
     const asks = p.permissions.length ? p.permissions.map((perm) => `<li><code>${escape(perm)}</code> ${escape(words(perm))}</li>`).join("") : "<li>Nothing: it can't draw, read or change anything.</li>";
     const search = [p.name, p.id, p.description, p.group ?? "", KINDS[p.kind].title, ...p.permissions, ...p.provides, ...p.services, ...p.apps.map((a) => title.get(a)?.title ?? a)].join(" ").toLowerCase();
-    const tag = p.kind === "agent" ? `&lt;link rel="agent" href="${escape(p.href)}"&gt;` : `&lt;link rel="plugin" href="${escape(p.href)}"&gt;`;
+    const tag = escape(`<link rel="${p.kind === "agent" ? "agent" : "plugin"}" href="${p.href}">`);
     return `        <li class="card" id="${escape(offered ? p.id : `${p.source}-${p.id}`)}" data-kind="${p.kind}" data-search="${escape(search)}">
           <h4>${escape(p.name)} <span class="tags">${tags.map((t) => `<span class="tag ${p.kind}">${escape(t)}</span>`).join("")}</span></h4>
           <p>${escape(p.description)}</p>
@@ -431,7 +439,8 @@ ${list(own)}
       <a href="#add">Add to any app <span class="count">${offered.length}</span></a>
       <a href="#built-in">Built into this site <span class="count">${catalog.services.length}</span></a>
       <a href="#std">For app authors <span class="count">${std.length}</span></a>
-      <a href="#demos">From the demos <span class="count">${catalog.plugins.filter((p) => p.source.match(/^[a-z]/) && p.source !== "std" && p.source !== "registry").length}</span></a>
+      <a href="#demos">From the demos <span class="count">${catalog.plugins.filter((p) => !["std", "registry", "site"].includes(p.source)).length}</span></a>
+      <a href="#site">This site's pages <span class="count">${catalog.plugins.filter((p) => p.source === "site").length}</span></a>
     </nav>
 
     <section id="add" data-section>
@@ -458,6 +467,12 @@ ${list(std)}
       <h2>From the demos</h2>
       <p class="about">Each demo's own plugins, and the samples it suggests. Most use their app's data or hooks, so they belong with that app, but each is an ordinary plugin to read and copy. Paste one's address into Customize's <strong>Add from URL</strong> to try it.</p>
 ${demos}
+    </section>
+
+    <section id="site" data-section>
+      <h2>This site's pages</h2>
+      <p class="about">The home page, the workbench and the docs are made of plugins too: each chapter of the home page's story, the workbench's examples, and the docs' panel.</p>
+${list(catalog.plugins.filter((p) => p.source === "site").sort(byName))}
     </section>
     <p class="none" hidden>Nothing matches. Try fewer words, or <button type="button" class="clear">show everything</button>.</p>
   </main>
