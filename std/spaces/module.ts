@@ -30,6 +30,12 @@ import { deviceReviews, relayReviews } from "./reviews";
 import { serverApps } from "./server-apps";
 import service from "./service";
 
+/**
+ * Each space's hub that stopped, by the space's store, and the work it still had queued: a hub started
+ * again for that space waits for it (a server can keep many spaces, so it isn't one per module).
+ */
+const draining = new WeakMap<object, Promise<unknown>>();
+
 export default {
   name: "spaces",
   apply(_ctx, kernel) {
@@ -40,7 +46,7 @@ export default {
     if (hosts.mode === "server") {
       /** The apps opened in the space, whose server plugins it runs: only on a server that runs plugins. */
       const onServer = where.isolates ? serverApps(remote, store, where.origin, where.site) : undefined;
-      const hub = syncHub(root, store, records, hosts, (app) => onServer?.use(app));
+      const hub = syncHub(root, store, records, hosts, (app) => onServer?.use(app), draining.get(store));
       // A space keeps the plugins its members share with each other, and never runs them.
       hub.plugins = spacePlugins(userAdded, store, hosts, (message) => hub.tell(message)).handle;
       // A space's server has no screen: its reviews are shown on members' devices.
@@ -51,6 +57,7 @@ export default {
       kernel.cleanup(() => {
         hub.plugins = undefined;
         hub.reviews = undefined;
+        draining.set(store, hub.stop());
       });
       return;
     }
@@ -60,11 +67,12 @@ export default {
     kernel.message("sync", (host) => hosts.send(host, { t: "sync", op: "refused", error: "Only a space's kernel answers sync" }));
     let device: ReturnType<typeof syncDevice> | undefined;
     let shared: ReturnType<typeof devicePlugins> | undefined;
+    let stopReviews: (() => void) | undefined;
     const begin = () => {
       if (!where.space || device) return;
       device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
       shared = devicePlugins(userAdded, store, hosts, device, reopen);
-      deviceReviews(reviews, device);
+      stopReviews = deviceReviews(reviews, device);
     };
     if (kernel.started()) begin();
     else root.on("internal/started", begin);
@@ -77,9 +85,10 @@ export default {
     });
     kernel.command("sync", () => (device ? device.state() : { space: false }));
     kernel.cleanup(() => {
+      stopReviews?.();
       shared?.stop();
       device?.stop();
-      device = shared = undefined;
+      device = shared = stopReviews = undefined;
     });
   },
 } satisfies KernelModule;

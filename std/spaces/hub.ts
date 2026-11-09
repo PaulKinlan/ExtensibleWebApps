@@ -29,13 +29,16 @@ const chunkOf = (seq: number) => Math.floor((seq - 1) / CHUNK);
 const chunkFile = (chunk: number) => `sync/log/${String(chunk).padStart(8, "0")}.json`;
 const key = (collection: string, id: string) => `${collection}/${id}`;
 
-/** `onApp` hears each app a device opens in the space (server-apps.ts). */
-export function syncHub(root: any, store: Store, records: Collections, hosts: Hosts, onApp?: (app: string) => unknown) {
+/**
+ * `onApp` hears each app a device opens in the space (server-apps.ts). `after` is the work a stopped hub
+ * of this space still had queued (its `stop()`): this one reads the log once that is written.
+ */
+export function syncHub(root: any, store: Store, records: Collections, hosts: Hosts, onApp?: (app: string) => unknown, after?: Promise<unknown>) {
   /** The devices that said hello, and so hear every change. */
   const listening = new Set<Host>();
   let head: { seq: number; versions: Record<string, number> } = { seq: 0, versions: {} };
   let headLoaded = false;
-  const loaded = store.readJson<unknown>(HEAD, null).then((saved) => {
+  const loaded = Promise.resolve(after).then(() => store.readJson<unknown>(HEAD, null)).then((saved) => {
     const s = saved as typeof head | null;
     if (s && typeof s.seq === "number" && s.versions && typeof s.versions === "object") head = { seq: s.seq, versions: { ...s.versions } };
     headLoaded = true;
@@ -161,25 +164,31 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
 
   // On the server, a write the space's own plugins make (server-apps.ts) is a change like a device's:
   // it takes the next number, goes in the log, and reaches every device.
-  if (hosts.mode === "server") {
-    // Its number is taken as it is written (this is heard right after the write), not when the log is next
-    // free: a device's push waiting on a hook must see it, and come after it.
-    records.written.add((change, instance) => {
-      const number = () => {
-        const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after: (change.after as SyncRecord | undefined) ?? null, by: `plugin:${instance}`, at: new Date().toISOString() };
-        head.seq = accepted.seq;
-        head.versions[key(change.collection, change.id)] = accepted.seq;
-        return accepted;
-      };
-      const now = headLoaded ? number() : undefined;
-      void serially(async () => {
-        await loaded;
-        const accepted = now ?? number();
-        await record([accepted]);
-        announce(accepted.seq, accepted);
-      }).catch((error) => trace({ kind: "error", name: "sync:server-write", detail: String(error) }));
-    });
-  }
+  // Its number is taken as it is written (this is heard right after the write), not when the log is next
+  // free: a device's push waiting on a hook must see it, and come after it.
+  type Written = Parameters<Collections["written"]["add"]>[0];
+  const written: Written = (change, instance) => {
+    const number = () => {
+      const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after: (change.after as SyncRecord | undefined) ?? null, by: `plugin:${instance}`, at: new Date().toISOString() };
+      head.seq = accepted.seq;
+      head.versions[key(change.collection, change.id)] = accepted.seq;
+      return accepted;
+    };
+    const now = headLoaded ? number() : undefined;
+    void serially(async () => {
+      await loaded;
+      const accepted = now ?? number();
+      await record([accepted]);
+      announce(accepted.seq, accepted);
+    }).catch((error) => trace({ kind: "error", name: "sync:server-write", detail: String(error) }));
+  };
+  if (hosts.mode === "server") records.written.add(written);
+
+  // Started again after a stopped hub (the spaces module restarted): the devices already connected said
+  // hello to that one, so each is asked to say it again here, and catches up from the log it left.
+  if (after) void loaded.then(() => {
+    for (const host of hosts.list) hosts.send(host, { t: "sync", op: "again" });
+  });
 
   /** The space's members' names by id, from the host's accounts; undefined where the host can't say. */
   async function names(): Promise<Record<string, string> | undefined> {
@@ -247,6 +256,15 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     hostLeft: (host: Host) => void listening.delete(host),
     /** The latest sequence number and the accepted changes after `n`, for checks and tools. */
     since,
+    /**
+     * Stops hearing the space's own writes and sending changes. Returns the work still queued, which the
+     * next hub waits for: it reads the log once that is written, so no number is taken twice.
+     */
+    stop(): Promise<unknown> {
+      records.written.delete(written);
+      listening.clear();
+      return queue;
+    },
   };
   return api;
 }

@@ -139,8 +139,15 @@ export default (ctx) => { ctx.on('data:changed:library', (change) => ctx.log('bo
     // The page that lost hears whose version won.
     const winner = final.ann[0]?.includes("by Ann") ? "ann" : "ben";
     const lost = winner === "ann" ? ben.page : ann.page;
-    const heard = await lost.evaluate(() => window.__host.traces.filter((e) => e.plugin?.startsWith("book-watcher") && e.detail?.startsWith("book Middlemarch, by")).map((e) => e.detail));
-    check("a space: the device whose edit lost hears who made the version that won", heard.includes(`book Middlemarch, by ${winner === "ann" ? "Ann" : "Ben"} by ${who[winner]}`), JSON.stringify({ heard, who, winner }));
+    // The page hears the plugin's log a moment after the change is put back, so it is given a few seconds.
+    const expected = `book Middlemarch, by ${winner === "ann" ? "Ann" : "Ben"} by ${who[winner]}`;
+    const logged = () => lost.evaluate(() => window.__host.traces.filter((e) => e.plugin?.startsWith("book-watcher") && e.detail?.startsWith("book Middlemarch, by")).map((e) => e.detail));
+    let heard = await logged();
+    for (let i = 0; i < 20 && !heard.includes(expected); i++) {
+      await lost.waitForTimeout(250);
+      heard = await logged();
+    }
+    check("a space: the device whose edit lost hears who made the version that won", heard.includes(expected), JSON.stringify({ heard, who, winner }));
     for (const page of [ann.page, ben.page]) await page.evaluate(() => window.__host.command("uninstall", "book-watcher")).catch(() => {});
 
     // The page that lost shows its draft (std/sync.js); "Use mine" makes it the record again, everywhere.

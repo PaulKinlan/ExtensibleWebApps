@@ -241,6 +241,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       }
     } else if (m.op === "pushed") await pushed(m.id, m.results);
     else if (m.op === "refused") trace({ kind: "error", name: "sync:refused", detail: m.error });
+    else if (m.op === "again") ws.send(JSON.stringify({ t: "sync", op: "hello", since: state.seq }));
     else for (const listener of heard) listener(m);
   }
 

@@ -351,6 +351,30 @@ async function syncChecks(base, check, owner, restart) {
   phone.close();
   laptop.close();
 
+  // The spaces module stopped and started again on the space's server (restart-module): the devices still
+  // connected are asked to say hello again, catch up, and keep hearing each other; numbers go on from the log.
+  await owner.call("/auth/spaces", { name: "again" });
+  const one = await device(base, "again", owner.cookie);
+  const other = await device(base, "again", owner.cookie);
+  await one.hello(0);
+  await other.hello(0);
+  const before = await one.push([{ collection: "books", id: "a", base: 0, after: { id: "a", title: "A" } }]);
+  const admin = await client(base, "again", owner.cookie);
+  const restarted = await admin.command("restart-module", "spaces");
+  await other.settle();
+  const asked = [one, other].every((d) => d.heard.some((m) => m.op === "again"));
+  await one.hello(1);
+  await other.hello(1);
+  const after = await one.push([{ collection: "books", id: "b", base: 0, after: { id: "b", title: "B" } }]);
+  await other.settle();
+  const reached = other.changes().find((c) => c.id === "b");
+  check(
+    "sync: when the spaces module restarts on a space's server, connected devices are asked to say hello again, and changes go on reaching them with the next number",
+    before?.[0]?.seq === 1 && restarted?.ok && asked && after?.[0]?.ok && after[0].seq === 2 && reached?.seq === 2,
+    JSON.stringify({ before, restarted, asked, after, reached }),
+  );
+  for (const d of [one, other, admin]) d.close();
+
   // A device that was away catches up from the last number it saw, after the space has restarted too.
   const url = await restart();
   const away = await device(url, "shared", bea.cookie);

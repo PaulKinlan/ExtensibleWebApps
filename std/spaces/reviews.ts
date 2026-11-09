@@ -43,14 +43,14 @@ export function relayReviews(reviews: Reviews, sync: ReturnType<typeof syncHub>,
   };
 }
 
-/** On a member's device in a space: shows the space's reviews here, and sends the answer back. */
+/** On a member's device in a space: shows the space's reviews here, and sends the answer back. Returns how to stop. */
 export function deviceReviews(reviews: Reviews, device: ReturnType<typeof syncDevice>) {
   /** The space's reviews shown here, which the space has since settled. */
   const done = new Set<string>();
   /** The space's reviews on screen here now: asked again after a reconnect, one is shown once. */
   const showing = new Set<string>();
   const instance = (id: string) => `space-review:${id}`;
-  device.heard.add((message) => {
+  const hear = (message: SyncToDevice) => {
     if (message.op !== "review") return;
     if (message.action === "done") {
       done.add(message.id);
@@ -85,6 +85,18 @@ export function deviceReviews(reviews: Reviews, device: ReturnType<typeof syncDe
         if (done.has(id) || (outcome !== "allowed-once" && outcome !== "allowed-always" && outcome !== "rejected")) return;
         device.send({ t: "sync", op: "review", action: "answer", id, outcome } as never);
       });
-  });
-  device.caughtUp.add(() => device.send({ t: "sync", op: "review", action: "waiting" } as never));
+  };
+  const caughtUp = () => device.send({ t: "sync", op: "review", action: "waiting" } as never);
+  device.heard.add(hear);
+  device.caughtUp.add(caughtUp);
+  return () => {
+    device.heard.delete(hear);
+    device.caughtUp.delete(caughtUp);
+    // Its cards go with it: the next device asks for the space's waiting reviews and shows them again.
+    for (const id of showing) {
+      done.add(id);
+      reviews.cancelInstance(instance(id));
+    }
+    showing.clear();
+  };
 }

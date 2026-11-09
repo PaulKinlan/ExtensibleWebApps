@@ -98,6 +98,8 @@ export type SyncToDevice =
   | { t: "sync"; op: "plugins:reply"; id: number; ok: boolean; error?: string; list?: SharedSummary[]; files?: SharedFile[]; hash?: string }
   /** A member shared, changed or removed a plugin: each device asks for the list again. */
   | { t: "sync"; op: "plugins:changed" }
+  /** The space's kernel started its sync again (the spaces module restarted): each device says hello again, to catch up and keep hearing changes. */
+  | { t: "sync"; op: "again" }
   /** A change the space's server wants reviewed, for a device to show; `done` once anyone answered it, or it ended. */
   | { t: "sync"; op: "review"; action: "ask"; id: string; review: SpaceReview }
   | { t: "sync"; op: "review"; action: "done"; id: string };
