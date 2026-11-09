@@ -1,8 +1,10 @@
 <!doctype html>
 <!--
   Every demo app, in one list. It's a plain page with no plugins: each card
-  links to an app, and each app's header links back here. To add a demo, add
-  a card (and a row in README.md).
+  links to an app, and each app's header links back here. The cards come from
+  the apps: each app.html names its section and card text in <meta> tags, and
+  `npm run gallery` (scripts/gallery.mjs) writes them into the lists below. To
+  add a demo, add its folder with those tags and run it; don't edit the lists.
 -->
 <html lang="en">
 <head>
@@ -37,41 +39,41 @@
 
     <h2>Showcase apps</h2>
     <p class="intro">Apps built to see how far the platform's UI goes: rich layouts and plugins that add to each other's views, still drawn from plain HTML templates with no style attributes.</p>
-    <ul class="apps">
-      <li><a href="/demos/board/app.html">Studio board</a><p>A project board with covers, labels and people. Due dates, checklists and limits are separate plugins that add to the board's cards and columns, and each card has its own screen.</p><p class="shows">Shows: slots in a view, transforms, screens, commands, a theme.</p></li>
+    <ul class="apps" data-gallery="showcase">
       <li><a href="/demos/beats/app.html">Beat pad</a><p>A sixteen-step drum machine with glowing pads, every sound synthesised in an AudioWorklet. A Euclidean rhythm menu and a radar on a canvas are separate plugins, kept in time through shared data.</p><p class="shows">Shows: audio, a canvas in a worker, fast redraws, commands with keys.</p></li>
-      <li><a href="/demos/survey/app.html">Surveys</a><p>Build a survey and share a link anyone can answer. Open it in a space and the space's server serves the form, keeps the answers and emails a daily digest, with no one's browser open.</p><p class="shows">Shows: a server plugin, public routes, a schedule, email.</p></li>
       <li><a href="/demos/feeds/app.html">Feeds</a><p>Follow RSS and Atom feeds. Open it in a space and the space's server reads them every half hour, over https only, and every member gets the stories, to read offline too.</p><p class="shows">Shows: a server plugin with the network, a schedule, a hook on another plugin's data.</p></li>
+      <li><a href="/demos/board/app.html">Studio board</a><p>A project board with covers, labels and people. Due dates, checklists and limits are separate plugins that add to the board's cards and columns, and each card has its own screen.</p><p class="shows">Shows: slots in a view, transforms, screens, commands, a theme.</p></li>
+      <li><a href="/demos/survey/app.html">Surveys</a><p>Build a survey and share a link anyone can answer. Open it in a space and the space's server serves the form, keeps the answers and emails a daily digest, with no one's browser open.</p><p class="shows">Shows: a server plugin, public routes, a schedule, email.</p></li>
       <li><a href="/demos/trails/app.html">Trails</a><p>A training log: a year of activity as a heatmap, twelve weeks on a canvas chart, personal bests, and a feed of cards with route maps.</p><p class="shows">Shows: data-driven visuals with no style attributes, images from a plugin's folder, a transform that changes units.</p></li>
     </ul>
 
     <h2>Apps with slots for plugins</h2>
-    <ul class="apps">
-      <li><a href="/demos/reading-list/app.html">Reading list</a><p>Books to read, and when they're due back. One plugin owns the books, another lists the ones due soon, and an importer asks before it adds any.</p><p class="shows">Shows: collections, review, screens with their own address, sharing.</p></li>
-      <li><a href="/demos/habits/app.html">Habits</a><p>Habits to keep, ticked off each day. The app the developer guide builds, one step at a time.</p><p class="shows">Shows: a first plugin, live views.</p></li>
-      <li><a href="/demos/spending/app.html">Spending</a><p>What you spent, against a budget, by category. Undo takes back any change, and a spreadsheet can come in or go out.</p><p class="shows">Shows: plugins reading one collection, undo, import and export.</p></li>
-      <li><a href="/demos/recipes/app.html">Recipes</a><p>Recipes that scale, and a shopping list filled from them.</p><p class="shows">Shows: two collections, views drawn in code.</p></li>
-      <li><a href="/demos/contacts/app.html">Contacts</a><p>People, with a live search and their birthdays. A vCard importer asks before it adds anyone.</p><p class="shows">Shows: live search, review.</p></li>
-      <li><a href="/demos/household/app.html">Household</a><p>A shopping list and the chores, shared by everyone in the house. Open it in a space and each phone keeps a copy, works offline, and says who added, got or did what.</p><p class="shows">Shows: a space shared by several people, sync, offline edits, drafts when two people change the same thing.</p></li>
+    <ul class="apps" data-gallery="slots">
       <li><a href="/demos/calendar/app.html">Calendar</a><p>A month grid, and an agenda that includes birthdays from the contacts app.</p><p class="shows">Shows: nested templates, reading another app's data.</p></li>
+      <li><a href="/demos/contacts/app.html">Contacts</a><p>People, with a live search and their birthdays. A vCard importer asks before it adds anyone.</p><p class="shows">Shows: live search, review.</p></li>
+      <li><a href="/demos/habits/app.html">Habits</a><p>Habits to keep, ticked off each day. The app the developer guide builds, one step at a time.</p><p class="shows">Shows: a first plugin, live views.</p></li>
+      <li><a href="/demos/household/app.html">Household</a><p>A shopping list and the chores, shared by everyone in the house. Open it in a space and each phone keeps a copy, works offline, and says who added, got or did what.</p><p class="shows">Shows: a space shared by several people, sync, offline edits, drafts when two people change the same thing.</p></li>
+      <li><a href="/demos/reading-list/app.html">Reading list</a><p>Books to read, and when they're due back. One plugin owns the books, another lists the ones due soon, and an importer asks before it adds any.</p><p class="shows">Shows: collections, review, screens with their own address, sharing.</p></li>
+      <li><a href="/demos/recipes/app.html">Recipes</a><p>Recipes that scale, and a shopping list filled from them.</p><p class="shows">Shows: two collections, views drawn in code.</p></li>
+      <li><a href="/demos/spending/app.html">Spending</a><p>What you spent, against a budget, by category. Undo takes back any change, and a spreadsheet can come in or go out.</p><p class="shows">Shows: plugins reading one collection, undo, import and export.</p></li>
     </ul>
 
     <h2>Pages with no slots</h2>
     <p class="intro">Ordinary pages whose author left no room for plugins. Customize can still add to them, and the author decides which parts are open, reviewed or locked.</p>
-    <ul class="apps">
-      <li><a href="/demos/trip/app.html">Trip</a><p>A plain itinerary. Add a countdown after its heading, and a packing list to its footer.</p><p class="shows">Shows: places.</p></li>
-      <li><a href="/demos/menu/app.html">Menu</a><p>A café menu. Add a plugin that changes every price's currency, or hides the newsletter box.</p><p class="shows">Shows: replacing and hiding parts of a page.</p></li>
+    <ul class="apps" data-gallery="pages">
       <li><a href="/demos/invoice/app.html">Invoice</a><p>An invoice with parts marked for review, and one locked until you unlock it.</p><p class="shows">Shows: the author's open, review and locked marks.</p></li>
+      <li><a href="/demos/menu/app.html">Menu</a><p>A café menu. Add a plugin that changes every price's currency, or hides the newsletter box.</p><p class="shows">Shows: replacing and hiding parts of a page.</p></li>
+      <li><a href="/demos/trip/app.html">Trip</a><p>A plain itinerary. Add a countdown after its heading, and a packing list to its footer.</p><p class="shows">Shows: places.</p></li>
     </ul>
 
     <h2>Agents</h2>
-    <ul class="apps">
+    <ul class="apps" data-gallery="agents">
+      <li><a href="/demos/assistant/app.html">Assistant</a><p>The reading list with the standard assistant and builder agents, and a chat to write to them. The assistant uses the app's own commands; the builder writes a plugin from what you describe.</p><p class="shows">Shows: standard agents, acting for you. Needs a model key.</p></li>
       <li><a href="/demos/librarian/app.html">Librarian</a><p>The reading list, with two AI agents that fill in each new book's details, through review, and ask you when they aren't sure.</p><p class="shows">Shows: agents, the board. Needs a model key.</p></li>
       <li><a href="/demos/security/app.html">Security</a><p>The librarian's agents, with a third that checks books and tool calls first, and blocks what looks like a card number.</p><p class="shows">Shows: an agent guarding others. Needs a model key.</p></li>
-      <li><a href="/demos/assistant/app.html">Assistant</a><p>The reading list with the standard assistant and builder agents, and a chat to write to them. The assistant uses the app's own commands; the builder writes a plugin from what you describe.</p><p class="shows">Shows: standard agents, acting for you. Needs a model key.</p></li>
     </ul>
     <h2>Developer tools</h2>
-    <ul class="apps">
+    <ul class="apps" data-gallery="tools">
       <li><a href="/demos/debugger/app.html">Debugger</a><p>Look inside any app open on this site: every plugin's manifest, the permissions it asked for, was granted and was refused, every hook and who listens, events as they fire, and the workers in each tab.</p><p class="shows">Shows: an app built from plugins that inspects other apps, through the read-only reflect service.</p></li>
     </ul>
   </main>

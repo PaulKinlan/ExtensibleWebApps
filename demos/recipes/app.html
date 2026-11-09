@@ -19,6 +19,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Recipes</title>
   <meta name="description" content="Recipes, scaled to fit, and a shopping list.">
+  <meta name="gallery" content="slots">
+  <meta name="gallery-about" content="Recipes that scale, and a shopping list filled from them.">
+  <meta name="gallery-shows" content="two collections, views drawn in code.">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="cookbook.js">
@@ -44,6 +47,6 @@
   <aside>
     <slot name="side"></slot>
   </aside>
-  <slot name="debug"></slot>
+  <slot name="debug" float></slot>
 </body>
 </html>

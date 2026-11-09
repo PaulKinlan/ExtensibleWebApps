@@ -1,0 +1,17 @@
+<!doctype html>
+<!--
+  Agents that name their own loop (`runner:` in the frontmatter): one next to
+  it, which `npm run check` reads; and one whose loop isn't there, which fails
+  rather than running the standard loop instead (tests/checks/agent-runner.mjs).
+-->
+<html lang="en">
+<head>
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="agent" href="planner.agent.md">
+  <link rel="agent" href="lost.agent.md">
+</head>
+<body>
+  <slot name="main"></slot>
+</body>
+</html>

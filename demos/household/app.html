@@ -28,6 +28,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Household</title>
   <meta name="description" content="A shopping list and the chores, shared by everyone in the house.">
+  <meta name="gallery" content="slots">
+  <meta name="gallery-about" content="A shopping list and the chores, shared by everyone in the house. Open it in a space and each phone keeps a copy, works offline, and says who added, got or did what.">
+  <meta name="gallery-shows" content="a space shared by several people, sync, offline edits, drafts when two people change the same thing.">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="housemates.js">
@@ -61,8 +64,8 @@
       <section aria-label="Shopping list"><slot name="groceries"><p>Loading the shopping list…</p></slot></section>
       <section aria-label="Chores"><slot name="chores"><p>Loading the chores…</p></slot></section>
     </div>
-    <p class="share">To share it, make a space on <a href="/account/">your account</a>, invite the people you live with, and open <code>/s/&lt;space&gt;/demos/household/</code>. Each phone keeps a copy and works offline.</p>
+    <p class="share">To share it, make a space on <a href="/account/?app=/demos/household/">your account</a>, invite the people you live with, and open <code>/s/&lt;space&gt;/demos/household/</code>. Each phone keeps a copy and works offline.</p>
   </main>
-  <slot name="debug"></slot>
+  <slot name="debug" float></slot>
 </body>
 </html>
