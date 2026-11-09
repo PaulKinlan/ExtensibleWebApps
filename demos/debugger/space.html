@@ -1,0 +1,98 @@
+<!--
+  The space server panel. space.js sends { away } outside a space; in one,
+  { inSpace, space, problem } when the space couldn't answer, or { ok, space,
+  mode, since, plugins, none, count, hooks, workers, devices, people }. Each
+  plugin is { id, name, description, off, running, stopped, server, granted,
+  routes, heard, secrets: [{ name, state }], showing, pressed, code, rev };
+  each device is { tab, who, you, what }; each of shared (the plugins
+  members share, which the space keeps and never runs) is { id, app, by,
+  showing, pressed, code, rev }, and sharing is how many.
+
+  "code:<id>" shows or hides a plugin's code; "refresh" asks the space again.
+-->
+<style>
+  .space { display: grid; gap: var(--space-3); }
+  .space h2 { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin: 0; }
+  .muted { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
+  .devices, .plugins { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .devices li { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); align-items: center; }
+  .plugin { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); display: grid; gap: var(--space-2); }
+  .plugin header { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .plugin header strong { margin-right: auto; }
+  .chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .chips code { display: inline-block; padding: 1px 6px; border-radius: 6px; background: var(--bg-2); overflow-wrap: anywhere; }
+  .facts { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 2px var(--space-3); font-size: var(--text-sm); }
+  .facts dt { color: var(--fg-2); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .plugin pre { max-height: 22rem; overflow: auto; margin: 0; font-size: var(--text-sm); }
+</style>
+<template id="space">
+  <ui-card class="space" aria-label="Space server">
+    <template if="away">
+      <h2>Space server</h2>
+      <p class="muted">A space also runs a kernel on its server, for the plugins that keep working with no app open. To look inside it, open this debugger in a space you're a member of: <code>/s/&lt;space&gt;/demos/debugger/app.html</code>.</p>
+    </template>
+    <template if="inSpace">
+      <h2>Space server <ui-badge tone="accent">{{space}}</ui-badge></h2>
+      <ui-toolbar><button type="button" data-action="refresh">Ask the space again</button></ui-toolbar>
+      <template if="problem"><p class="muted">The space didn't answer: {{problem}}</p></template>
+      <template if="ok">
+        <p class="muted">The kernel on the space's server, started {{since}}: {{count}} plugins, {{hooks}} hooks, {{workers}} workers. It runs the plugins that say <code>runs: "server"</code> for the apps opened in the space, and keeps the plugins members share without running them.</p>
+        <section aria-label="Devices connected">
+          <h3>Connected now <ui-badge>{{people}}</ui-badge></h3>
+          <ul class="devices">
+            <template for="d of devices">
+              <li key="{{d.tab}}"><strong>{{d.who}}</strong> <template if="d.you"><ui-badge>you</ui-badge></template> <span class="muted">{{d.what}}</span></li>
+            </template>
+          </ul>
+        </section>
+        <section aria-label="Plugins on the server">
+          <h3>Plugins <ui-badge>{{count}}</ui-badge></h3>
+          <template if="none"><p class="muted">None yet. A server plugin starts when someone opens its app in the space.</p></template>
+          <ul class="plugins">
+            <template for="p of plugins">
+              <li class="plugin" key="{{p.id}}">
+                <header>
+                  <strong>{{p.name}}</strong>
+                  <template if="p.server"><ui-badge tone="accent">runs here</ui-badge></template>
+                  <template if="p.running"><ui-badge tone="ok">running</ui-badge></template>
+                  <template if="p.stopped"><ui-badge>kept, not running</ui-badge></template>
+                  <template if="p.off"><ui-badge tone="warn">off</ui-badge></template>
+                  <button type="button" data-action="code:{{p.id}}" aria-pressed="{{p.pressed}}">Code</button>
+                </header>
+                <p class="muted">{{p.description}}</p>
+                <dl class="facts">
+                  <dt>id</dt><dd><code>{{p.id}}</code></dd>
+                  <dt>Granted</dt><dd><ul class="chips"><template for="g of p.granted"><li><code>{{g}}</code></li></template></ul></dd>
+                  <template if="p.routes.length"><dt>Routes</dt><dd><ul class="chips"><template for="r of p.routes"><li><code>{{r}}</code></li></template></ul></dd></template>
+                  <template if="p.heard.length"><dt>Listens to</dt><dd><ul class="chips"><template for="h of p.heard"><li><code>{{h}}</code></li></template></ul></dd></template>
+                  <template if="p.secrets.length"><dt>Secrets</dt><dd><ul class="chips"><template for="s of p.secrets"><li><code>{{s.name}}: {{s.state}}</code></li></template></ul></dd></template>
+                </dl>
+                <template if="p.showing"><ui-code readonly label="Code of {{p.name}}" rows="18" revision="{{p.rev}}">{{p.code}}</ui-code></template>
+              </li>
+            </template>
+          </ul>
+        </section>
+        <template if="sharing">
+          <section aria-label="Plugins members share">
+            <h3>Shared by members <ui-badge>{{sharing}}</ui-badge></h3>
+            <p class="muted">The space keeps these for its members' devices, where they arrive switched off. It never runs them.</p>
+            <ul class="plugins">
+              <template for="p of shared">
+                <li class="plugin" key="{{p.id}}">
+                  <header>
+                    <strong><code>{{p.id}}</code></strong>
+                    <ui-badge>kept, not run</ui-badge>
+                    <button type="button" data-action="code:{{p.id}}" aria-pressed="{{p.pressed}}">Code</button>
+                  </header>
+                  <p class="muted">For <code>{{p.app}}</code>, shared by {{p.by}}.</p>
+                  <template if="p.showing"><ui-code readonly label="Code of {{p.id}}" rows="18" revision="{{p.rev}}">{{p.code}}</ui-code></template>
+                </li>
+              </template>
+            </ul>
+          </section>
+        </template>
+      </template>
+    </template>
+  </ui-card>
+</template>

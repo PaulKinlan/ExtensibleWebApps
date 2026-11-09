@@ -15,6 +15,9 @@
   events.js   the trace as it happens: hooks fired, answers, calls,
               refusals and errors, with filters and "follow one action"
   workers.js  every plugin worker, by the tab that started it
+  space.js    in a space (/s/<space>/…), the kernel on the space's server:
+              its plugins, permissions, hooks, routes, workers and the
+              members connected, asked through sync.reflect
 
   They read the kernel through the `reflect` service (`reflect:read`, which
   sees every app open in this kernel) and the trace (`debug:read`). None of
@@ -36,6 +39,7 @@
   <link rel="plugin" href="hooks.js">
   <link rel="plugin" href="events.js">
   <link rel="plugin" href="workers.js">
+  <link rel="plugin" href="space.js">
   <style>
     .panels { display: grid; gap: var(--space-5, 24px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
     .wide { grid-column: 1 / -1; }
@@ -60,6 +64,7 @@
       <slot name="hooks"></slot>
       <div class="wide"><slot name="events"></slot></div>
       <div class="wide"><slot name="workers"></slot></div>
+      <div class="wide"><slot name="space"></slot></div>
     </div>
   </main>
 </body>
