@@ -1,4 +1,4 @@
-// The account page's email field (account/index.html): someone signed in gives
+// The account page's email field (account/email.js): someone signed in gives
 // the address their spaces' apps may email them at, gets a link to confirm it,
 // opens it, sends themselves a test message, and can take the address away. The
 // email service mails only confirmed addresses (tests/server/run.mjs checks that).
@@ -24,24 +24,24 @@ export default async function ({ check, context, errors }) {
       options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
     });
     await page.goto(`${server.url}/account/`);
-    await page.fill("#name", "Robin");
-    await page.click('#register button[type="submit"]');
-    await page.waitForSelector("#in:not([hidden])", { timeout: 8000 });
-    const status = (text) => page.locator("#status").filter({ hasText: text }).waitFor({ timeout: 8000 }).then(() => true, () => false);
+    await page.fill('form[data-action="register"] input[name="name"]', "Robin");
+    await page.click('form[data-action="register"] button[type="submit"]');
+    await page.waitForSelector(".signed-in", { timeout: 8000 });
+    const status = (text) => page.locator('[role="status"]').filter({ hasText: text }).first().waitFor({ timeout: 8000 }).then(() => true, () => false);
 
-    await page.fill("#email-address", "robin@example.com");
-    await page.click('#email button[type="submit"]');
+    await page.fill('form[data-action="save"] input[name="email"]', "robin@example.com");
+    await page.click('form[data-action="save"] button[type="submit"]');
     const asked = await status("link to confirm");
-    await page.waitForFunction(() => document.querySelector("#email-state")?.textContent?.startsWith("Not confirmed"), null, { timeout: 5000 }).catch(() => {});
-    const waiting = await page.textContent("#email-state");
-    const testHidden = await page.isHidden("#email-test");
+    await page.waitForFunction(() => document.querySelector(".email .state")?.textContent?.startsWith("Not confirmed"), null, { timeout: 5000 }).catch(() => {});
+    const waiting = await page.textContent(".email .state");
+    const testHidden = await page.isHidden('[data-action="test"]');
     const link = /https?:\/\/\S+\/account\/\?confirm=\S+/.exec(mailbox.received.at(-1)?.text ?? "")?.[0];
 
     await page.goto(link ?? `${server.url}/account/`);
     const confirmed = await status("confirmed");
-    await page.waitForFunction(() => document.querySelector("#email-state")?.textContent?.startsWith("Confirmed"), null, { timeout: 5000 }).catch(() => {});
-    const state = await page.textContent("#email-state");
-    await page.click("#email-test");
+    await page.waitForFunction(() => document.querySelector(".email .state")?.textContent?.startsWith("Confirmed"), null, { timeout: 5000 }).catch(() => {});
+    const state = await page.textContent(".email .state");
+    await page.click('[data-action="test"]');
     const tested = await status("on its way");
     const arrived = mailbox.received.some((m) => m.subject.startsWith("A test message") && m.to.includes("robin@example.com"));
     check(
@@ -62,8 +62,8 @@ export default async function ({ check, context, errors }) {
     const fresh = await post("/auth/me/email/confirm", { token: second });
     check("account email: a link mailed before the address was removed and saved again confirms nothing; the newest does", first !== second && stale === 400 && fresh === 200, JSON.stringify({ stale, fresh }));
 
-    await page.fill("#email-address", "");
-    await page.click('#email button[type="submit"]');
+    await page.fill('form[data-action="save"] input[name="email"]', "");
+    await page.click('form[data-action="save"] button[type="submit"]');
     await status("removed");
     const me = await page.evaluate(() => fetch("/auth/me").then((r) => r.json()));
     check("account email: an empty address takes it away", me.user && !("email" in me.user) && !("emailConfirmed" in me.user), JSON.stringify(me));
