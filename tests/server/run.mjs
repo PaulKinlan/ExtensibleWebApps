@@ -1141,7 +1141,7 @@ async function suite(name, make) {
     const stranger = await person(server.url).account("Stranger");
     await mcpChecks(server.url, check, owner, stranger);
     await mcpMoreChecks(server.url, check, owner, stranger);
-    await mcpStreamChecks(server.url, check, owner);
+    await mcpStreamChecks(server.url, check, owner, stranger);
 
     // The same cases on both hosts. (On Cloudflare in production, the Worker's own egress refuses them too.)
     await networkGuardChecks(server.url, check, name);

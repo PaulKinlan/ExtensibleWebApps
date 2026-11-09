@@ -133,9 +133,9 @@ const randomHex = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) 
 export async function mcpStream(
   asked: RouteRequest,
   ask: (request: RouteRequest) => Promise<RouteResponse | null>,
-  timing: { poll?: number; life?: number } = {},
+  timing: { poll?: number; life?: number; allowed?: () => Promise<boolean> } = {},
 ): Promise<Response> {
-  const { poll = STREAM_POLL_MS, life = STREAM_MS } = timing;
+  const { poll = STREAM_POLL_MS, life = STREAM_MS, allowed = async () => true } = timing;
   const knock = (first: boolean) => ask({ ...asked, query: { ...asked.query, ...(first ? { first: "1" } : {}) } }).catch(() => null);
   const opened = await knock(true);
   if (!opened || opened.status !== 200) return mcpResponse(opened);
@@ -168,6 +168,9 @@ export async function mcpStream(
         (timer = setTimeout(async () => {
           if (over) return;
           if (Date.now() >= until) return end();
+          // The key is checked again each time: revoked, renewed, run out, or the member gone, and the stream ends.
+          if (!(await allowed().catch(() => false))) return end();
+          if (over) return;
           const result = await knock(false);
           if (over) return;
           // The session ended, a newer stream took over, or the space didn't answer: the client opens another if it still wants one.

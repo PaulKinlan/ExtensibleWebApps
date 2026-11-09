@@ -349,6 +349,8 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     delete space.members[user];
     await write(`spaces/${space.name}.json`, space);
     await files.remove(`memberships/${user}/${space.name}.json`);
+    // Their agents' keys for it end too (and so a signed-in agent's refreshing): joining again starts afresh.
+    await keys.revokeSpace(user, space.name);
     await Promise.resolve(hooks.left?.(space.name, user)).catch((error) => console.error("Closing a member's connections:", error));
   };
 

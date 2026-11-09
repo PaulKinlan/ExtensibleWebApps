@@ -84,6 +84,11 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
       return { key, made };
     },
 
+    /** Ends every key a user has for a space: they left it, so coming back doesn't bring the keys back. */
+    async revokeSpace(user: string, space: string): Promise<void> {
+      for (const key of await this.list(user)) if (key.space === space) await this.revoke(user, key.id);
+    },
+
     async revoke(user: string, id: string): Promise<boolean> {
       const index = await indexOf(user);
       const h = index[id];
@@ -123,6 +128,9 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
       const h = await hash(token);
       const kept = await read<Kept>(`agent-keys/${h}.json`);
       if (!kept || kept.space !== space || (kept.plugin && kept.plugin !== plugin) || (kept.expires && kept.expires < Date.now()) || !(await accounts.isMember(space, kept.user))) return null;
+      // Only the key the member's list points at now: a renewed or revoked key's file can be written back by a
+      // check that was under way when it changed (the "last used" below), and must not count.
+      if ((await indexOf(kept.user))[kept.id] !== h) return null;
       if (!kept.used || Date.now() - kept.used > USED_EVERY_MS) await files.write(`agent-keys/${h}.json`, JSON.stringify({ ...kept, used: Date.now() }));
       return { user: kept.user, key: kept.id };
     },

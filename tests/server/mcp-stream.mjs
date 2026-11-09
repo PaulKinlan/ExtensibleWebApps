@@ -65,7 +65,7 @@ async function fakeSignIn(base, query) {
   return { status: back.status, location: back.headers.get("location") };
 }
 
-export async function mcpStreamChecks(base, check, owner) {
+export async function mcpStreamChecks(base, check, owner, stranger) {
   await owner.call("/auth/spaces", { name: "pinboard" });
   const address = `${base}/s/pinboard/mcp/jots-door`;
   const back = "http://127.0.0.1:33419/callback";
@@ -170,7 +170,28 @@ export async function mcpStreamChecks(base, check, owner) {
   check("mcp stream: a session has one stream, the newest, and ending the session closes it", tookOver && endedToo, JSON.stringify({ tookOver, endedToo }));
   heard.stop();
   newer.stop();
+
+  // The key is checked again while the stream is open: revoked, and the stream ends.
+  const later = (await connect()).body.access_token;
+  const init = await fetch(address, { method: "POST", headers: { "content-type": "application/json", accept: "application/json, text/event-stream", authorization: `Bearer ${later}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} }) });
+  const watched = listen(await fetch(address, { headers: { accept: "text/event-stream", authorization: `Bearer ${later}`, "mcp-session-id": init.headers.get("mcp-session-id") ?? "" } }));
+  await until(() => watched.retry !== undefined, 5000);
+  await owner.call("/auth/keys/revoke", { id: (await ours())[0]?.id });
+  const cut = await until(() => watched.ended, 30_000);
+  check("mcp stream: revoking the key ends a stream that's open", watched.retry > 0 && cut, JSON.stringify({ retry: watched.retry, cut }));
+  watched.stop();
   phone.close();
+
+  // Leaving the space ends a member's keys for it, so joining again doesn't bring them back.
+  const invite = async () => (await owner.call("/auth/spaces/pinboard/invite", {})).body?.token;
+  await stranger.call("/auth/invites/accept", { token: await invite() });
+  const theirs = (await stranger.call("/auth/keys", { space: "pinboard", name: "Their agent" })).body?.key;
+  const before = (await ping(theirs)).status;
+  await stranger.call("/auth/spaces/pinboard/leave", {});
+  await stranger.call("/auth/invites/accept", { token: await invite() });
+  const rejoined = (await ping(theirs)).status;
+  const kept = ((await stranger.call("/auth/keys")).body?.keys ?? []).filter((k) => k.space === "pinboard");
+  check("agent keys: leaving a space ends the member's keys for it, and joining again doesn't bring them back", before === 200 && rejoined === 401 && kept.length === 0, JSON.stringify({ before, rejoined, kept }));
 
   // Signed out on the page that asks: sign in right there, or with another site that brings you back.
   const asked = `${base}/auth/mcp/authorize?${await params()}`;
@@ -183,6 +204,8 @@ export async function mcpStreamChecks(base, check, owner) {
     /id="passkey"/.test(html) &&
       /src="\/auth\/mcp\/signin\.js"/.test(html) &&
       /script-src 'self'/.test(page.headers.get("content-security-policy") ?? "") &&
+      // Another site's sign-in starts on this site and redirects there, which Chromium holds to form-action too.
+      /form-action 'self' https: http:/.test(page.headers.get("content-security-policy") ?? "") &&
       /action="\/auth\/oauth\/fake\/start"/.test(html) &&
       returnTo?.startsWith("/auth/mcp/authorize?") &&
       script.status === 200 &&

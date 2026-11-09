@@ -283,7 +283,8 @@ ${sites ? `<div class="buttons">${sites}</div>` : ""}
 <p id="said" role="status"></p>
 <p>New here? <a href="/account/" target="_blank" rel="noopener">Make an account</a> in another tab. This page carries on by itself once you're signed in, or <a href="${escape(again)}">look again</a>.</p>`,
       200,
-      "'self'",
+      // Another site's sign-in starts here and redirects there, and Chromium holds a form's redirects to form-action too.
+      sites ? "'self' https: http:" : "'self'",
       "/auth/mcp/signin.js",
     );
   }

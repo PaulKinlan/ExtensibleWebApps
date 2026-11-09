@@ -328,7 +328,10 @@ async function mcp(request: Request, env: Env): Promise<Response | undefined> {
   if (asked instanceof Response) return asked;
   const space = env.SPACE.getByName(at.space);
   // A client's GET stream stays open in the Worker, which asks the space's object now and then; the object isn't held open.
-  if (asked.method === "GET") return mcpStream(asked, (knock) => space.route(at.space, url.origin, knock));
+  if (asked.method === "GET") {
+    const authorization = request.headers.get("authorization");
+    return mcpStream(asked, (knock) => space.route(at.space, url.origin, knock), { allowed: async () => !!(await accounts.agent(authorization, at.space, at.plugin)) });
+  }
   return mcpResponse(await space.route(at.space, url.origin, asked));
 }
 

@@ -277,8 +277,14 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
     const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
     const asked = await mcpRequest(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), at, auth.agent);
+    // A GET is the client's stream, which ends when its key stops working.
+    const allowed = async () => !!(await auth.agent(headers.get("authorization"), at.space, at.plugin));
     const answer =
-      asked instanceof Response ? asked : asked.method === "GET" ? await mcpStream(asked, (knock) => ask(at.space, knock)) : mcpResponse(await ask(at.space, asked, MCP_TIMEOUT_MS));
+      asked instanceof Response
+        ? asked
+        : asked.method === "GET"
+          ? await mcpStream(asked, (knock) => ask(at.space, knock), { allowed })
+          : mcpResponse(await ask(at.space, asked, MCP_TIMEOUT_MS));
     // A body refused before it was read (too big, or no key) is still on the connection: close it rather than reuse it.
     if (!request.complete) answer.headers.set("connection", "close");
     response.writeHead(answer.status, Object.fromEntries(answer.headers));
