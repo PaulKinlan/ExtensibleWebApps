@@ -45,7 +45,8 @@ const proof = {};
 
 async function openTab(url = WORKBENCH) {
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  // Which page, so an error that comes now and then can be traced to its app.
+  page.on("pageerror", (e) => errors.push(`${e.message} (at ${new globalThis.URL(page.url()).pathname}${e.stack?.split("\n")[1] ? `, ${e.stack.split("\n")[1].trim()}` : ""})`));
   await page.goto(url);
   await page.waitForFunction(() => window.__host);
   return page;
