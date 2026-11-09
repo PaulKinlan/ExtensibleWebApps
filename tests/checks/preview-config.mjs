@@ -14,6 +14,9 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const jsonc = (text) => JSON.parse(text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1"));
 
+// The sign-in providers that need no client id or secret (src/server/auth/providers/): the only ones a preview can list.
+const NO_SECRET = new Set(["bluesky"]);
+
 // The site's bindings a preview goes without on purpose (wrangler.jsonc says why beside `previews`).
 const LEFT_OUT = new Set(["EMAIL"]);
 
@@ -43,14 +46,15 @@ export default async function ({ check }) {
   const extra = [...preview.keys()].filter((name) => !site.has(name));
   check("a preview's bindings are the site's own, none changed and none added", changed.length === 0 && extra.length === 0, `changed: ${changed.join(", ") || "none"}; only in previews: ${extra.join(", ") || "none"}`);
 
-  // A provider with a client id needs <ID>_CLIENT_SECRET, which previews haven't got: the accounts would refuse to start.
+  // Plain OAuth 2 providers need <ID>_CLIENT_SECRET, which previews haven't got: the accounts would refuse to start.
   let providers;
   try {
     providers = JSON.parse(config.previews?.vars?.AUTH_PROVIDERS ?? "null");
   } catch {
     providers = null;
   }
-  const needSecret = Array.isArray(providers) ? providers.filter((p) => "clientId" in p).map((p) => p.id) : [];
+  // Any provider but these needs a client id and a secret, whether or not its entry gives the id.
+  const needSecret = Array.isArray(providers) ? providers.filter((p) => !NO_SECRET.has(p?.id)).map((p) => String(p?.id)) : [];
   check("a preview lists its sign-in providers, and none that needs a secret", Array.isArray(providers) && needSecret.length === 0, `AUTH_PROVIDERS under previews: ${JSON.stringify(providers)}`);
 
   // The site's own list is untouched by this: it still names GitHub, whose secret is the Worker's.
