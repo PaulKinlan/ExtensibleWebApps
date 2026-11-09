@@ -28,7 +28,7 @@ The top of the repo is the platform; everything else has a folder that says what
 | [`elements/`](elements/README.md) | The `ui-*` custom elements views are built from (`ui-card`, `ui-table`, `ui-form`…), one file each, served at `/elements/` |
 | [`std/`](std/README.md) | Standard plugins any app can link: the debug console, undo, import and export, sync, model providers, agents… |
 | [`sw/`](sw/) and [`sw.js`](sw.js) | The service worker, one file per job |
-| [`account/`](account/index.html) | The sign-in and spaces page every deployment serves at `/account/` |
+| [`account/`](account/app.html) | The sign-in and spaces app every deployment serves at `/account/` |
 | [`vendor/`](vendor/) | Third-party code served as is (Mermaid, for `ui-diagram`) |
 | **Learning from it** | |
 | [`demos/`](demos/README.md) | Apps written to show the programming model, one folder per app |

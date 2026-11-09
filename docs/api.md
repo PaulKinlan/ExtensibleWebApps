@@ -192,6 +192,66 @@ The `<template id>` elements in an .html file next to the plugin (only for plugi
 
 Called with `ctx.call(service, method, ...args)`. A method not listed here doesn't exist. Reviewed methods show the person a diff with the plugin's reason first; they accept once, allow that plugin in that place from then on, or decline.
 
+### account
+
+The person's account on this site's server, for the account app's own plugins: who is signed in, passkeys, other sites to sign in with, their email address, spaces and agent keys.
+
+#### account.came
+
+`account.came()` → { path, title } | { error } | null
+
+Needs: `account`.
+
+The app the person came here from, to open in a space: the one named in ?app=/demos/x/, or the app page that linked here. null if neither. It fails, saying so, while the tab is still opening; ask again then.
+
+#### account.get
+
+`account.get(path)` → { status, site, ...answer }
+
+Needs: `account`.
+
+Asks the server's accounts (src/server/auth/) for something, as the person signed in on this device; `site` is the site's own address, for links to it. A 401 comes back as { status: 401 }, not an error; /auth/me answers { status: 404, unavailable: true } when the site has no server.
+
+#### account.load
+
+`account.load(space)` → { status } | null
+
+Needs: `account`.
+
+Asks the person for a copy of a space (a .space.json file, from the server's Download a copy), right after they click, and loads it into `space`. null if they pick nothing.
+
+#### account.post
+
+`account.post(path, body)` → { status, ...answer }
+
+Needs: `account`.
+
+Sends something to the server's accounts as the person, and raises account:changed when it works.
+
+#### account.register
+
+`account.register(name?)` → { status }
+
+Needs: `account`.
+
+Makes a passkey in this tab (the browser asks the person) and gives it to the server: a new account called `name`, or another passkey for the account signed in.
+
+#### account.signin
+
+`account.signin()` → { status, error? }
+
+Needs: `account`.
+
+Signs in with a passkey the browser has for this site (it asks the person which). { status: 401, error } if the server didn't know it.
+
+#### account.start
+
+`account.start(provider, fields?)` → true
+
+Needs: `account`.
+
+Goes to another site to sign in (or, signed in, to link that account): the tab leaves the app, and comes back to /account/.
+
 ### agents
 
 Agents: Markdown files an app links with rel="agent", each run by the kernel as a plugin that asks a model and calls tools. Lists them, starts their commands, and is how an agent reaches its model and tools, so its limits hold and the app hears the agent:* events.
@@ -1476,6 +1536,14 @@ Asks the person for a CSV or JSON file and adds its rows to the collection, afte
 
 The kernel's own hooks. A plugin defines more in its manifest's `hooks`, named `<plugin>:<key>`, which only it runs (with `ctx.hooks`), and each collection has `data:beforeWrite:<collection>` and `data:changed:<collection>` (see Collections). Those last while their plugin is installed, so they are listed under Installed now.
 
+### `account:changed`
+
+The person signed in or out, or changed something in their account (an email address, a space, a key). Ask again for what you show.
+
+Mode: `emit`. Listening needs `account`.
+
+Listeners get `{}`.
+
 ### `agent:beforeTool`
 
 An agent is about to call one of its tools, with these arguments. chain is the agents in the call's line: the caller, and any agents whose tool call it is checking. Return { block: reason } to stop the call; the agent hears the reason.
@@ -1804,6 +1872,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `ui:transform:<plugin>` | Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
+| `account` | Call account.get, account.post, account.register, account.signin, account.start, account.load, account.came. |
 | `agents:run:<agent>` | Call agents.run. |
 | `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.unshare. |
 | `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.check. |
@@ -1869,6 +1938,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 
 Reserved ids, which no plugin can take:
 
+- `account`
 - `agents`
 - `audio`
 - `authoring`

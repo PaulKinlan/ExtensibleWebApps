@@ -28,9 +28,9 @@ async function signUp(browser, address, name, errors) {
   page.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
   await withAuthenticator(context, page);
   await page.goto(address);
-  await page.fill("#name", name);
-  await page.click('#register button[type="submit"]');
-  await page.waitForSelector("#in:not([hidden])", { timeout: 8000 });
+  await page.fill('form[data-action="register"] input[name="name"]', name);
+  await page.click('form[data-action="register"] button[type="submit"]');
+  await page.waitForSelector(".signed-in", { timeout: 8000 });
   return { context, page };
 }
 
@@ -68,12 +68,12 @@ export default async function ({ check, context, errors }) {
     // Ann makes the space and invites Ben; each has a device of their own.
     const ann = await signUp(browser, `${server.url}/account/`, "Ann", errors);
     devices.push(ann.context);
-    await ann.page.fill("#space-name", "home");
-    await ann.page.click('#new-space button[type="submit"]');
-    await ann.page.waitForSelector('#spaces button:has-text("Invite someone")', { timeout: 8000 });
-    await ann.page.click('#spaces button:has-text("Invite someone")');
-    await ann.page.waitForSelector("#invite-link:not([hidden])", { timeout: 8000 });
-    const link = await ann.page.inputValue("#invite-url");
+    await ann.page.fill('form[data-action="make"] input[name="name"]', "home");
+    await ann.page.click('form[data-action="make"] button[type="submit"]');
+    await ann.page.waitForSelector('.space-list button:has-text("Invite someone")', { timeout: 8000 });
+    await ann.page.click('.space-list button:has-text("Invite someone")');
+    await ann.page.waitForSelector(".invite input", { timeout: 8000 });
+    const link = await ann.page.inputValue(".invite input");
     const ben = await signUp(browser, link, "Ben", errors);
     devices.push(ben.context);
 
