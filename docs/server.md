@@ -129,7 +129,7 @@ People can also sign in with an account they have elsewhere, over OAuth 2 with P
 
 If `AUTH_PROVIDERS` is set up wrong (not JSON, an entry missing its client id or secret, an id this host has no module or URLs for, or one listed twice), the server doesn't start, and its error names each wrong entry. Nothing is quietly left out.
 
-At the provider, register the callback URL `https://<your host>/auth/oauth/<id>/callback`. On Cloudflare, `AUTH_PROVIDERS` is a var and the secret is a Worker secret (`npx wrangler secret put GITHUB_CLIENT_SECRET`).
+At the provider, register the callback URL `https://<your host>/auth/oauth/<id>/callback`. On Cloudflare, `AUTH_PROVIDERS` is a var and the secret is a Worker secret (`npx wrangler secret put GITHUB_CLIENT_SECRET`). The site's own list (GitHub and Bluesky) is under `vars` in [`wrangler.jsonc`](../wrangler.jsonc), so it is in Git and a deploy keeps it; a deploy leaves secrets alone. `npx wrangler dev` reads [`.dev.vars`](../.dev.vars) instead, which turns the list off on this machine (passkeys only), since it hasn't the secret; and a Worker for one app ([`scripts/deploy-app.mjs`](../scripts/deploy-app.mjs)) leaves the list out.
 
 | Route | What it does |
 | --- | --- |
