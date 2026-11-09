@@ -21,7 +21,8 @@
 //              space's members (std/spaces/made-apps.ts). Each sees it in
 //              their Your apps as from the space, and it runs for them only
 //              once they accept its files (accept, a review like any save);
-//              a later share of it reaches them the same way.
+//              a later share of it reaches them the same way. copyIn
+//              brings in one the person made outside the space (/new/).
 //   check      the checks `npm run check` makes (checks.js), and, when the
 //              app is open (the preview on /new/ reloads it), what went
 //              wrong as it ran: plugins that didn't start, errors, refused
@@ -442,6 +443,23 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return saved;
   }
 
+  /** In a space: the apps the person made outside it, on this device (/new/), to copy one in. */
+  async function ownApps(instance: string, dispatch: { trace?: string }) {
+    if (!space) return [];
+    const got = ((await hosts.bridge("maker", "own", [undefined, MAX_FILE], dispatch, tabOf(instance))) ?? []) as { name: string; page?: string }[];
+    const here = new Set(await store.readJson<string[]>(INDEX, []));
+    return got.filter((a) => APP_NAME.test(a.name)).map((a) => ({ name: a.name, title: pageParts(a.page ?? "").title || a.name, here: here.has(a.name) })).sort((a, b) => a.title.localeCompare(b.title));
+  }
+
+  /** In a space: copies one of the person's own apps in, as a made app here, once they accept one review (as any save). */
+  async function copyIn(instance: string, name: string, dispatch: { trace?: string }) {
+    if (!space) return notInSpace;
+    const got = ((await hosts.bridge("maker", "own", [name, MAX_FILE], dispatch, tabOf(instance))) ?? []) as { name: string; text?: string }[];
+    const files = got.filter((f): f is { name: string; text: string } => FILE_NAME.test(f.name) && typeof f.text === "string").slice(0, MAX_FILES);
+    if (!files.some((f) => f.name === "app.html")) return { ok: false, error: `You have no app called ${name} outside this space` };
+    return save(instance, name, files, "Copied from your own apps on this device", dispatch);
+  }
+
   /** Stops sharing an app with the space, once the person accepts. Members who accepted it keep their copy. */
   async function unshare(instance: string, name: string, dispatch: { trace?: string }) {
     const seam = sharedApps();
@@ -535,6 +553,21 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         description: "In a space: saves an app a member shared as a made app here, or its newer version, once the person accepts one review that shows its files.",
         params: [app()],
       },
+      ownApps: {
+        args: "()",
+        returns: "[{ name, title, here }]",
+        needs: "apps:read",
+        description: "In a space: the apps the person made outside it on this device (at /new/), to copy one in. here is true when an app of that name is in the space already. Empty outside a space.",
+        params: [],
+      },
+      copyIn: {
+        args: "(app)",
+        returns: "the same as save",
+        needs: "apps:make",
+        reviewed: true,
+        description: "In a space: copies one of the person's own apps (made outside it, on this device) in, as a made app in the space, once they accept one review. It can then be shared with the space's members.",
+        params: [app()],
+      },
       unshare: {
         args: "(app)",
         returns: "{ ok } or { ok: false, error }",
@@ -551,7 +584,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         params: [app()],
       },
     },
-    capability: (method) => (["save", "remove", "restore", "openFolder", "share", "accept", "unshare"].includes(method) ? "apps:make" : "apps:read"),
+    capability: (method) => (["save", "remove", "restore", "openFolder", "share", "accept", "unshare", "copyIn"].includes(method) ? "apps:make" : "apps:read"),
     call: async (instance, method, args, dispatch) => {
       if (method === "list") {
         const out = [];
@@ -565,10 +598,12 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       }
       if (method === "openFolder") return openFolder(instance, args[0], dispatch);
       if (method === "shared") return shared();
+      if (method === "ownApps") return ownApps(instance, dispatch);
       const name = checkName(args[0]);
       if (method === "share") return share(instance, name, dispatch);
       if (method === "accept") return accept(instance, name, dispatch);
       if (method === "unshare") return unshare(instance, name, dispatch);
+      if (method === "copyIn") return copyIn(instance, name, dispatch);
       if (method === "saveToFolder") return saveToFolder(instance, name, dispatch);
       if (method === "read") {
         const text = await read(name, checkFile(args[1]));

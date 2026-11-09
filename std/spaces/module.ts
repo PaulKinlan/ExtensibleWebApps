@@ -1,12 +1,13 @@
 // The spaces module: what lets an app open in a space (/s/<space>/…) and be
 // shared by its members. Without it in kernel.json, a site keeps no spaces.
 //
-// In a browser kernel for a space, once it has its data folder:
+// In a browser kernel for a space, once it has its data folder, it loads
+// on-device.ts (a kernel that keeps no space never does), which starts:
 //   - device.ts syncs this device's copy with the space's kernel
-//   - plugins.ts sends the person's shared plugins to the space, and puts
-//     other members' here, turned off
+//   - device-plugins.ts sends the person's shared plugins to the space, and
+//     puts other members' here, turned off
 //   - reviews.ts shows here the review cards the space's server asks
-//   - made-apps.ts asks the space for the apps members made and shared,
+//   - device-made-apps.ts asks the space for the apps members made and shared,
 //     for Your apps (std/maker), where each runs once the person accepts it
 //
 // In a space's kernel on a server:
@@ -30,12 +31,13 @@
 // every module, all it adds goes when it stops (tests/checks/module-restart.mjs).
 
 import { env } from "../../src/kernel/env";
+import { record as trace } from "../../src/kernel/trace";
 import type { KernelModule } from "../../src/kernel/modules";
-import { syncDevice } from "./device";
 import { syncHub } from "./hub";
-import { deviceMadeApps, spaceMadeApps } from "./made-apps";
-import { devicePlugins, spacePlugins } from "./plugins";
-import { deviceReviews, relayReviews } from "./reviews";
+import { spaceMadeApps } from "./made-apps";
+import type { startDevice } from "./on-device";
+import { spacePlugins } from "./plugins";
+import { relayReviews } from "./reviews";
 import { spaceReflect } from "./reflect";
 import { liveSpace, type LiveSpace } from "./live";
 import { spaceTrace } from "./trace";
@@ -104,37 +106,47 @@ export default {
     // In a browser: a page at /s/<space>/… keeps a copy of the space, once the kernel has its data folder.
     // Any other kernel refuses sync, as it always has: only a space's kernel orders changes.
     kernel.message("sync", (host) => hosts.send(host, { t: "sync", op: "refused", error: "Only a space's kernel answers sync" }));
-    let device: ReturnType<typeof syncDevice> | undefined;
-    let shared: ReturnType<typeof devicePlugins> | undefined;
-    let made: ReturnType<typeof deviceMadeApps> | undefined;
-    let stopReviews: (() => void) | undefined;
+    // The device's side (on-device.ts) is loaded only here, in a kernel for a space.
+    let on: ReturnType<typeof startDevice> | undefined;
+    let loading: Promise<void> | undefined;
+    let stopped = false;
+    const using = new Set<string>();
     const begin = () => {
-      if (!where.space || device) return;
-      device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
-      shared = devicePlugins(userAdded, store, hosts, device, reopen);
-      stopReviews = deviceReviews(reviews, device);
-      const sync = device;
-      made = deviceMadeApps(device, async () => (await sync.state()).members);
+      if (!where.space || loading) return;
+      loading = import("./on-device")
+        .then(({ startDevice }) => {
+          if (stopped) return;
+          on = startDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts, userAdded, reviews, reopen);
+          for (const app of using) on.device.use(app);
+        })
+        .catch((error) => trace({ kind: "error", name: "sync:load", detail: error instanceof Error ? error.message : String(error) }));
     };
     if (kernel.started()) begin();
     else root.on("internal/started", begin);
     kernel.space({
-      ready: async () => device?.ready,
-      use: (app) => device?.use(app),
+      ready: async () => {
+        await loading;
+        await on?.device.ready;
+      },
+      use: (app) => {
+        using.add(app);
+        on?.device.use(app);
+      },
       get sharing() {
-        return shared;
+        return on?.shared;
       },
       get madeApps() {
-        return made;
+        return on?.made;
       },
     });
-    kernel.command("sync", () => (device ? device.state() : { space: false }));
+    kernel.command("sync", async () => {
+      await loading;
+      return on ? on.device.state() : { space: false };
+    });
     kernel.cleanup(() => {
-      stopReviews?.();
-      shared?.stop();
-      made?.stop();
-      device?.stop();
-      device = shared = made = stopReviews = undefined;
+      stopped = true;
+      on?.stop();
+      on = undefined;
     });
   },
 } satisfies KernelModule;
