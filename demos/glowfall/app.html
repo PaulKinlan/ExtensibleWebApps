@@ -70,7 +70,7 @@
       body { grid-template-columns: minmax(0, 1fr); }
       body > header nav.site { margin-left: 0; width: 100%; }
       body > main { padding: 8px; }
-      [data-plugin="glowfall-meadow"] canvas { width: min(100%, calc((100dvh - 430px) * 0.75)); }
+      [data-plugin="glowfall-meadow"] canvas { width: max(min(100%, 200px), min(100%, calc((100dvh - 430px) * 0.75))); }
     }
   </style>
 </head>

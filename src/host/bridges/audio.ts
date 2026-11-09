@@ -20,13 +20,27 @@ let tap: AnalyserNode | undefined;
 
 /** Keeps the processors a sound brought with it (std/audio/module.ts sends their sources), unless this tab has them. */
 function learn(sources: Record<string, string> | undefined): void {
-  for (const [name, source] of Object.entries(sources ?? {})) if (!processors.has(name)) processors.set(name, { source });
+  for (const [name, source] of Object.entries(sources ?? {})) keep(name, source);
+}
+
+/**
+ * Keeps a processor's latest source, for the contexts it is added to from now on (each render's offline context).
+ * The live context keeps the copy it already added: an AudioWorklet can't take a name twice.
+ */
+function keep(name: string, source: string): void {
+  const entry = processors.get(name);
+  if (entry?.source !== source) processors.set(name, { source, added: entry?.added });
+}
+
+/** Adds a processor's source to a context's worklet, and lets go of the blob URL once it has loaded (or failed). */
+function addModule(context: BaseAudioContext, source: string): Promise<void> {
+  const url = URL.createObjectURL(new Blob([source], { type: "text/javascript" }));
+  return context.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url));
 }
 
 export default (_host: BridgeHost) => ({
   registerProcessor(name: string, source: string) {
-    // A processor already added to the audio context keeps its first source: the worklet can't take a name twice.
-    if (!processors.get(name)?.added) processors.set(name, { source });
+    keep(name, source);
     return true;
   },
   /**
@@ -41,7 +55,7 @@ export default (_host: BridgeHost) => ({
     if (!entry) throw new Error(`No audio processor named ${processor}`);
     audio ??= new AudioContext();
     if (audio.state === "suspended") await audio.resume();
-    entry.added ??= audio.audioWorklet.addModule(URL.createObjectURL(new Blob([entry.source], { type: "text/javascript" })));
+    entry.added ??= addModule(audio, entry.source);
     await entry.added;
     const now = audio.currentTime;
     const start = typeof at === "number" && Number.isFinite(at) ? Math.max(now, contextTime(audio, at)) : now;
@@ -89,7 +103,9 @@ export default (_host: BridgeHost) => ({
     const r = clip?.rate ?? (Number(rate) || RATE);
     if (!input && !source) throw new Error("render needs a clip, or a source to make one");
     const seconds = (input ? input.length / r : Math.min(Number(source!.ms) || 1000, 30_000) / 1000) + Math.min(Math.max(Number(tail) || 0, 0), 10_000) / 1000;
-    const offline = new OfflineAudioContext(1, Math.max(1, Math.ceil(seconds * r)), r);
+    const length = Math.max(1, Math.ceil(seconds * r));
+    if (length > MAX_SAMPLES) throw new Error(`That would render ${(length / r).toFixed(1)} s, over the ${(MAX_SAMPLES / r).toFixed(1)} s a clip at ${r} samples a second can hold`);
+    const offline = new OfflineAudioContext(1, length, r);
     await addTo(offline, [...(source ? [source.processor] : []), ...chain.map((link) => link.processor)]);
     let node: AudioNode;
     if (input) {
@@ -99,7 +115,11 @@ export default (_host: BridgeHost) => ({
       player.start();
       node = player;
     } else {
-      node = new AudioWorkletNode(offline, source!.processor, { numberOfInputs: 0, outputChannelCount: [1], processorOptions: { ...source!.options, start: 0 } });
+      // A source plays for `ms`, then falls silent (a tail is for the chain to ring into), whatever the processor does.
+      const maker = new AudioWorkletNode(offline, source!.processor, { numberOfInputs: 0, outputChannelCount: [1], processorOptions: { ...source!.options, start: 0 } });
+      const gate = new GainNode(offline, { gain: 1 });
+      gate.gain.setValueAtTime(0, Math.min(Number(source!.ms) || 1000, 30_000) / 1000);
+      node = maker.connect(gate);
     }
     for (const link of chain) node = node.connect(new AudioWorkletNode(offline, link.processor, { outputChannelCount: [1], processorOptions: { ...link.options, start: 0 } }));
     node.connect(offline.destination);
@@ -122,10 +142,13 @@ export default (_host: BridgeHost) => ({
     const player = new AudioBufferSourceNode(audio, { buffer });
     let node: AudioNode = player;
     for (const link of chain) node = node.connect(new AudioWorkletNode(audio, link.processor, { outputChannelCount: [1], processorOptions: { ...link.options, start } }));
-    node.connect(audio.destination);
+    // A chain's processors run from now; a gain keeps them quiet until the clip starts, as play() does.
+    const gate = new GainNode(audio, { gain: start > now ? 0 : 1 });
+    if (start > now) gate.gain.setValueAtTime(1, start);
+    node.connect(gate).connect(audio.destination);
     if (audioProbe.listening) {
       tap ??= probe(audio);
-      node.connect(tap);
+      gate.connect(tap);
     }
     player.start(start, begin, end - begin);
     const ms = (end - begin) * 1000;
@@ -140,6 +163,7 @@ export default (_host: BridgeHost) => ({
         } catch {}
         player.disconnect();
         node.disconnect();
+        gate.disconnect();
       },
     };
     // A chain may ring on after the clip (an echo): give it a second.
@@ -153,7 +177,7 @@ export default (_host: BridgeHost) => ({
   open({ rate = RATE, maxSeconds = 15 }: { rate?: number; maxSeconds?: number } = {}): Promise<{ name: string; clip: Clip; seconds: number } | null> {
     if (navigator.userActivation && !navigator.userActivation.isActive) return Promise.reject(new Error("A file can be chosen only right after the person clicks"));
     const r = Math.min(Math.max(Number(rate) || RATE, 3000), 96_000);
-    const most = Math.min(Math.max(Number(maxSeconds) || 15, 1), 30);
+    const most = Math.min(Math.max(Number(maxSeconds) || 15, 1), 30, MAX_SAMPLES / r);
     return new Promise((resolve, reject) => {
       const input = Object.assign(document.createElement("input"), { type: "file", accept: "audio/*,.wav,.mp3,.ogg,.m4a,.flac", hidden: true });
       const done = () => input.remove();
@@ -203,6 +227,8 @@ type Clip = { rate: number; pcm: string };
 type Link = { processor: string; options?: Record<string, unknown> };
 /** A clip's rate when nothing says: enough for a voice or a drum, at half the size of CD quality. */
 const RATE = 22_050;
+/** The most samples a clip holds: std/audio/module.ts takes clips of up to 2,000,000 characters of base64, 2 bytes a sample. */
+const MAX_SAMPLES = 750_000;
 
 /** Adds the named processors to a context (each context has its own worklet scope), once each. */
 const added = new WeakMap<BaseAudioContext, Map<string, Promise<void>>>();
@@ -212,8 +238,8 @@ async function addTo(context: BaseAudioContext, names: string[]): Promise<void> 
     const entry = processors.get(name);
     if (!entry) throw new Error(`No audio processor named ${name}`);
     // The live context shares play()'s copy, so a processor is never added to it twice.
-    if (context === audio) entry.added ??= context.audioWorklet.addModule(URL.createObjectURL(new Blob([entry.source], { type: "text/javascript" })));
-    const adding = context === audio ? entry.added! : mine.get(name) ?? mine.set(name, context.audioWorklet.addModule(URL.createObjectURL(new Blob([entry.source], { type: "text/javascript" })))).get(name)!;
+    if (context === audio) entry.added ??= addModule(context, entry.source);
+    const adding = context === audio ? entry.added! : mine.get(name) ?? mine.set(name, addModule(context, entry.source)).get(name)!;
     await adding;
   }
 }

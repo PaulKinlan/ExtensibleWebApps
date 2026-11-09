@@ -201,7 +201,7 @@ export default async function (ctx) {
           out[start + i] += 0.8 * Math.sin(2 * Math.PI * (50 + 90 * Math.exp(-t * 30)) * t) * Math.exp(-t * 9);
           if (b % 2) out[start + i] += 0.35 * (Math.random() * 2 - 1) * Math.exp(-t * 20);
         }
-        for (let i = 0; i < RATE * 0.05; i++) out[start + beat / 2 + i] += 0.15 * (Math.random() * 2 - 1) * Math.exp(-(i / RATE) * 80);
+        for (let i = 0, off = Math.round(start + beat / 2); i < RATE * 0.05; i++) out[off + i] += 0.15 * (Math.random() * 2 - 1) * Math.exp(-(i / RATE) * 80);
       }
       return out;
     },
@@ -215,8 +215,9 @@ export default async function (ctx) {
 
   // The edits.
   const edits = {
-    cut: () => (picked() ? [concat(samples.subarray(0, at(sel.from)), samples.subarray(at(sel.to))), "Cut"] : null),
-    trim: () => (picked() ? [samples.slice(at(sel.from), at(sel.to)), "Trimmed to the part picked"] : null),
+    // Neither leaves an empty clip: there would be nothing to keep, or to pick from.
+    cut: () => (picked() && at(sel.to) - at(sel.from) < samples.length ? [concat(samples.subarray(0, at(sel.from)), samples.subarray(at(sel.to))), "Cut"] : null),
+    trim: () => (picked() && at(sel.to) > at(sel.from) ? [samples.slice(at(sel.from), at(sel.to)), "Trimmed to the part picked"] : null),
     silence: () => change((part) => part.fill(0), "Silenced"),
     reverse: () => change((part) => part.reverse(), "Reversed"),
     fadein: () => change((part) => part.forEach((v, i) => (part[i] = v * (i / part.length))), "Faded in"),
@@ -245,7 +246,7 @@ export default async function (ctx) {
   const edit = async (name) => {
     if (!clip) return "No clip";
     const done = edits[name]?.();
-    if (!done) return "Pick a part first";
+    if (!done) return name === "cut" && picked() ? "That's the whole clip: make a new one instead" : "Pick a part first";
     await save(done[0], done[1]);
     if (name === "cut" || name === "trim") sel = { from: name === "cut" ? sel.from : 0, to: name === "cut" ? sel.from : 0 };
     await draw();
@@ -258,14 +259,19 @@ export default async function (ctx) {
     if (!clip || !effect) return "No such effect";
     const [a, b] = range();
     const whole = a === 0 && b === samples.length;
+    // What it applies to is fixed now: a pick made while it renders doesn't move where the result goes.
+    const note = `${effect.name}${whole ? "" : `: ${sel.from.toFixed(2)} to ${sel.to.toFixed(2)} s`}`;
+    const before = samples;
     status = `Applying ${effect.name}…`;
     await draw();
     const part = { rate: rate(), pcm: encode(samples.subarray(a, b)) };
     const out = decode((await ctx.call("audio", "render", { clip: part, chain: [{ processor: effect.processor, options: effect.options }], tail: whole ? effect.tail : 0 })).pcm);
+    // Edits run one at a time (serial), so nothing else changed the clip meanwhile; this is a check that stays true.
+    if (samples !== before) return "The clip changed while the effect ran";
     // The whole clip may grow, for an echo's tail; a part keeps its length, so what follows stays in time.
     const next = whole ? out : samples.slice();
     if (!whole) next.set(out.subarray(0, b - a), a);
-    await save(next, `${effect.name}${whole ? "" : `: ${sel.from.toFixed(2)} to ${sel.to.toFixed(2)} s`}`);
+    await save(next, note);
     await draw();
     return status;
   };
@@ -304,7 +310,16 @@ export default async function (ctx) {
     return note;
   };
 
-  ctx.ui.onEvent(async (action, value) => {
+  /**
+   * Whatever changes the clip runs one at a time, in the order asked: an effect still rendering when the person
+   * undoes, or opens another clip, finishes first, so its result never lands on the wrong clip or over a newer edit.
+   */
+  let queue = Promise.resolve();
+  const serial = (work) => (queue = queue.then(work, work));
+  const CHANGES = /^(undo|redo|new:|open-clip|open-file|rename|edit:|effect:)/;
+
+  ctx.ui.onEvent(async (action, value) => (CHANGES.test(action) ? serial(() => handle(action, value)) : handle(action, value)));
+  async function handle(action, value) {
     if (action === "select") {
       sel = { from: Number(value?.from) || 0, to: Number(value?.to) || 0 };
       return draw();
@@ -342,16 +357,16 @@ export default async function (ctx) {
     }
     if (action.startsWith("edit:")) return edit(action.slice(5));
     if (action.startsWith("effect:")) return apply(action.slice(7));
-  });
+  }
 
   ctx.commands.add({ id: "play", title: "Play or stop", group: "Sound", keys: ["Space"] }, async () => (await (playing ? stop() : play())) ?? "Stopped");
-  ctx.commands.add({ id: "undo", title: "Undo the last edit", group: "Sound", keys: ["Mod+Z"] }, () => back(undo, redo, "Undone"));
-  ctx.commands.add({ id: "redo", title: "Redo", group: "Sound", keys: ["Mod+Shift+Z"] }, () => back(redo, undo, "Redone"));
-  ctx.commands.add({ id: "cut", title: "Cut the part picked", group: "Sound", keys: ["Mod+X"] }, () => edit("cut"));
-  ctx.commands.add({ id: "trim", title: "Trim to the part picked", group: "Sound", keys: ["Mod+T"] }, () => edit("trim"));
-  ctx.commands.add({ id: "reverse", title: "Reverse", group: "Sound" }, () => edit("reverse"));
-  ctx.commands.add({ id: "normalize", title: "Normalise", group: "Sound" }, () => edit("normalize"));
-  ctx.commands.add({ id: "apply-effect", title: "Apply an effect", group: "Sound", args: { type: "object", properties: { effect: { type: "string", description: "The effect's id, as sound-editor:effects lists it" } }, required: ["effect"] } }, ({ effect }) => apply(effect));
+  ctx.commands.add({ id: "undo", title: "Undo the last edit", group: "Sound", keys: ["Mod+Z"] }, () => serial(() => back(undo, redo, "Undone")));
+  ctx.commands.add({ id: "redo", title: "Redo", group: "Sound", keys: ["Mod+Shift+Z"] }, () => serial(() => back(redo, undo, "Redone")));
+  ctx.commands.add({ id: "cut", title: "Cut the part picked", group: "Sound", keys: ["Mod+X"] }, () => serial(() => edit("cut")));
+  ctx.commands.add({ id: "trim", title: "Trim to the part picked", group: "Sound", keys: ["Mod+T"] }, () => serial(() => edit("trim")));
+  ctx.commands.add({ id: "reverse", title: "Reverse", group: "Sound" }, () => serial(() => edit("reverse")));
+  ctx.commands.add({ id: "normalize", title: "Normalise", group: "Sound" }, () => serial(() => edit("normalize")));
+  ctx.commands.add({ id: "apply-effect", title: "Apply an effect", group: "Sound", args: { type: "object", properties: { effect: { type: "string", description: "The effect's id, as sound-editor:effects lists it" } }, required: ["effect"] } }, ({ effect }) => serial(() => apply(effect)));
 
   // An effect plugin turned on or added later is offered once it has started, which takes a moment after it is
   // installed; so are the app's own effects that started after this one.

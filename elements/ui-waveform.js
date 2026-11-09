@@ -24,6 +24,20 @@ export default class UiWaveform extends HTMLElement {
   frame;
   /** @type {number | undefined} where a drag started, in seconds */
   anchor;
+  /**
+   * The keyboard's ends of the pick: Shift and an arrow move `keyCursor` and leave `keyAnchor` where it is, on
+   * whichever side of it the cursor goes. Unset until a key moves them, and again after a drag or a new `select`.
+   * @type {number | undefined}
+   */
+  keyAnchor;
+  /** @type {number | undefined} */
+  keyCursor;
+  /**
+   * The picks sent lately, newest last. The plugin echoes each back as `select`, and an echo of an older one can
+   * come after a newer pick (keys pressed fast); it is ignored rather than moving the pick back.
+   * @type {{ from: number, to: number, at: number }[]}
+   */
+  sent = [];
 
   /** The focusable part inside, which carries the slider's role and values. */
   get surface() {
@@ -45,6 +59,7 @@ export default class UiWaveform extends HTMLElement {
       if (!this.duration) return;
       this.surface?.focus({ preventScroll: true });
       this.setPointerCapture(e.pointerId);
+      this.keyAnchor = this.keyCursor = undefined;
       this.anchor = this.at(e.clientX);
       this.pick(this.anchor, this.anchor, false);
     });
@@ -62,16 +77,20 @@ export default class UiWaveform extends HTMLElement {
     this.addEventListener("pointercancel", release);
     this.addEventListener("keydown", (e) => {
       if (!this.duration) return;
-      const cursor = this.to;
+      const cursor = this.keyCursor ?? this.to;
+      const anchor = this.keyAnchor ?? (cursor === this.to ? this.from : this.to);
       let next;
       if (e.key === "ArrowLeft") next = cursor - STEP;
       else if (e.key === "ArrowRight") next = cursor + STEP;
       else if (e.key === "Home") next = 0;
       else if (e.key === "End") next = this.duration;
-      else if (e.key === "Escape") return void (e.preventDefault(), this.pick(0, 0, true));
+      else if (e.key === "Escape") return void (e.preventDefault(), (this.keyAnchor = this.keyCursor = undefined), this.pick(0, 0, true));
       else return;
       e.preventDefault();
-      this.pick(e.shiftKey ? this.from : next, next, true);
+      next = this.clamp(next);
+      this.keyAnchor = e.shiftKey ? anchor : next;
+      this.keyCursor = next;
+      this.pick(this.keyAnchor, next, true);
     });
     this.attributeChangedCallback();
   }
@@ -89,8 +108,18 @@ export default class UiWaveform extends HTMLElement {
     // The plugin's selection, unless the person is dragging one now.
     if (this.anchor === undefined) {
       const [from = 0, to = from] = (this.getAttribute("select") ?? "").split(",").map(Number);
-      this.from = this.clamp(from);
-      this.to = this.clamp(to);
+      const [a, b] = [this.clamp(from), this.clamp(to)];
+      const near = (/** @type {{ from: number, to: number }} */ p) => Math.abs(p.from - a) < 0.001 && Math.abs(p.to - b) < 0.001;
+      this.sent = this.sent.filter((p) => Date.now() - p.at < 2000);
+      const latest = this.sent.length > 0 && near(this.sent[this.sent.length - 1]);
+      const stale = !latest && this.sent.some(near);
+      if (latest) this.sent = [];
+      if (!stale) {
+        // A pick the plugin made itself (not the echo of the person's) starts the keyboard afresh.
+        if (Math.abs(a - this.from) > 0.001 || Math.abs(b - this.to) > 0.001) this.keyAnchor = this.keyCursor = undefined;
+        this.from = a;
+        this.to = b;
+      }
     }
     const [at, from, to] = (this.getAttribute("playing") ?? "").split(",").map(Number);
     this.playing = Number.isFinite(at) && Number.isFinite(from) && Number.isFinite(to) ? { at, from, to } : undefined;
@@ -129,7 +158,9 @@ export default class UiWaveform extends HTMLElement {
     this.surface?.setAttribute("aria-valuetext", this.describe());
     const action = this.getAttribute("action");
     const round = (/** @type {number} */ s) => Math.round(s * 1000) / 1000;
-    if (action) this.dispatchEvent(new CustomEvent("ui-action", { bubbles: true, composed: true, detail: { action, value: { from: round(this.from), to: round(this.to) } } }));
+    if (!action) return;
+    this.sent = [...this.sent.slice(-15), { from: round(this.from), to: round(this.to), at: Date.now() }];
+    this.dispatchEvent(new CustomEvent("ui-action", { bubbles: true, composed: true, detail: { action, value: { from: round(this.from), to: round(this.to) } } }));
   }
 
   describe() {

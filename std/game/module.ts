@@ -118,10 +118,10 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
 
   /** One tick: update, rules, frame. */
   async function tick(game: Game) {
+    // The plugin that runs the game went (its tab closed, it was turned off): so does the game, paused or not.
+    if (!remote.live.has(game.owner)) return end(game, "its plugin stopped");
     if (game.paused) return;
     if (game.busy) return void game.late++;
-    // The plugin that runs the game went (its tab closed, it was turned off): so does the game.
-    if (!remote.live.has(game.owner)) return end(game, "its plugin stopped");
     game.busy = true;
     try {
       const dt = 1 / game.hz;
