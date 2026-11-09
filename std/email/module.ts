@@ -105,7 +105,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const outside = mail.to.filter((address) => !members.has(address.toLowerCase()));
     if (!outside.length) return;
     record({ kind: "denied", name: "email:not-a-member", plugin, trace, detail: `${outside.length} address${outside.length === 1 ? "" : "es"}` });
-    throw new Error(`Email goes only to the space's members, at the address they gave on their account page: ${outside.join(", ")} isn't one`);
+    throw new Error(`Email goes only to the space's members, at the address they gave and confirmed on their account page: ${outside.join(", ")} isn't one`);
   }
 
   return {

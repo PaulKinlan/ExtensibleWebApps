@@ -66,6 +66,8 @@ const hosts = {
       return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env), allowPrivate: ["127.0.0.1"], email: smtpMailer({ url: `smtp://127.0.0.1:${mailbox.port}`, from: FROM }) });
     },
     /** Whether a message with this subject went out to `to`, with these words. */
+    /** The text of the last message sent to an address. */
+    lastText: (to) => mailbox.received.filter((m) => m.to.some((t) => t.toLowerCase() === to)).at(-1)?.text,
     mailed: (subject, to, text) => mailbox.received.some((m) => m.subject === subject && m.to.some((t) => t.toLowerCase() === to) && (text === undefined || m.text === text) && m.from === "spaces@example.com"),
     wrote: (space) => existsSync(join(spaces, space, "files", "user", "demos", "contacts", "hello-space.js")),
   }),
@@ -110,6 +112,12 @@ const hosts = {
     },
     // A Durable Object's database is the space's folder, so what was written shows in the space, after a restart.
     wrote: () => true,
+    // wrangler dev writes each message's text to a file and logs where.
+    lastText: (to) => {
+      const plain = printed.replace(/\x1b\[[0-9;]*m/g, "");
+      const found = [...plain.matchAll(/To: ([^\n]*)\nSubject: [^\n]*\n\nText: (\S+)/g)].filter((m) => m[1].toLowerCase().includes(to)).at(-1);
+      return found ? readFileSync(found[2], "utf8") : undefined;
+    },
     mailed: (subject, to) => new RegExp(`send_email binding called[^]*?To: ${to}[^]*?Subject: ${subject}`, "i").test(printed),
     };
   },
@@ -356,7 +364,7 @@ async function syncChecks(base, check, owner, restart) {
 }
 
 /** Server plugins (src/kernel/server-apps.ts): an app's plugin that runs on the space's server, in an isolate. */
-async function serverPluginChecks(base, check, owner, restart) {
+async function serverPluginChecks(base, check, owner, restart, host) {
   await owner.call("/auth/spaces", { name: "guarded" });
   const phone = await device(base, "guarded", owner.cookie);
   await phone.hello(0);
@@ -413,6 +421,19 @@ async function serverPluginChecks(base, check, owner, restart) {
   const pathEmail = await owner.call("/auth/me/email", { email: "sam@example.com/path" });
   const setEmail = await owner.call("/auth/me/email", { email: "sam@example.com" });
   const shown = (await owner.call("/auth/me")).body?.user?.email;
+  // Saved isn't confirmed: anyone could type someone else's address. A link is mailed to it.
+  const unconfirmed = await notify({ to: "sam@example.com", subject: "Before Sam confirms", text: "x" });
+  const link = /\/account\/\?confirm=([A-Za-z0-9_-]+)/.exec(host.lastText("sam@example.com") ?? "")?.[1];
+  const confirmAs = (token) => fetch(`${base}/auth/me/email/confirm`, { method: "POST", headers: { "content-type": "application/json", origin: base }, body: JSON.stringify({ token }) }).then(async (r) => ({ status: r.status, body: await r.json() }));
+  const wrongLink = await confirmAs("x".repeat(43));
+  const confirmed = await confirmAs(link);
+  const used = await confirmAs(link);
+  const nowConfirmed = (await owner.call("/auth/me")).body?.user?.emailConfirmed;
+  check(
+    "accounts: a saved address gets a link to confirm it, and isn't mailed until it's opened (with no sign-in needed, once); a wrong or used link confirms nothing",
+    setEmail.body?.sent === true && /only to the space's members/.test(unconfirmed?.error ?? "") && !!link && wrongLink.status === 400 && confirmed.status === 200 && used.status === 400 && nowConfirmed === true,
+    JSON.stringify({ setEmail: setEmail.body, unconfirmed, link: !!link, wrongLink, confirmed, used, nowConfirmed }),
+  );
   const mailed = await notify({ to: "Sam@Example.com", subject: "3 new answers", text: "See them in the space." });
   const mixed = await notify({ to: ["sam@example.com", "someone@elsewhere.example"], subject: "x", text: "x" });
   check(
@@ -965,7 +986,7 @@ async function suite(name, make) {
       server = await host.start();
       owner.base = server.url;
       return server.url;
-    });
+    }, host);
     check(
       "email: a server plugin's message to a member is delivered: over SMTP on Node, through Cloudflare Email Service on Cloudflare",
       host.mailed("3 new answers", "sam@example.com", "See them in the space."),
@@ -973,11 +994,12 @@ async function suite(name, make) {
     );
     // A person can send their saved address a test message, a few a day, to see mail reaches them.
     const tests = [];
-    for (let i = 0; i < 4; i++) tests.push(await owner.call("/auth/me/email/test", {}));
+    // Five a day from the accounts, and the link to confirm the address was one.
+    for (let i = 0; i < 5; i++) tests.push(await owner.call("/auth/me/email/test", {}));
     const subject = `A test message from ${new URL(server.url).host}`;
     check(
-      "email: a signed-in person can send their own address a test message (3 a day), and it's delivered on this host",
-      tests.slice(0, 3).every((t) => t.status === 200 && t.body?.ok) && tests[3].status === 429 && host.mailed(subject, "sam@example.com"),
+      "email: a signed-in person can send their own confirmed address a test message (the accounts send 5 a day), and it's delivered on this host",
+      tests.slice(0, 4).every((t) => t.status === 200 && t.body?.ok) && tests[4].status === 429 && host.mailed(subject, "sam@example.com"),
       JSON.stringify(tests.map((t) => [t.status, t.body])),
     );
     await surveyChecks(server.url, check, owner);

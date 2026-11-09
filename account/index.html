@@ -54,13 +54,14 @@
         <div class="providers" data-link></div>
 
         <h2>Your email</h2>
-        <p>Apps in your spaces can email you here, such as a survey's daily digest. They can only email the people in the space.</p>
+        <p>Apps in your spaces can email you here, such as a survey's daily digest, once you open the link we mail to it. They can only email the people in the space.</p>
         <form id="email">
           <label for="email-address" class="visually-hidden">Your email address</label>
           <input id="email-address" name="email" type="email" autocomplete="email" placeholder="you@example.com" maxlength="254" />
           <button type="submit">Save</button>
-          <button type="button" id="email-test">Send me a test message</button>
+          <button type="button" id="email-test" hidden>Send me a test message</button>
         </form>
+        <p id="email-state"></p>
 
         <h2>Your spaces</h2>
         <p>A space holds people and their data, and any app can open in it. One with just you in it is your own.</p>
@@ -184,6 +185,8 @@
         $("out").hidden = !!user;
         $("who").textContent = user?.name ?? "";
         $("email-address").value = user?.email ?? "";
+        $("email-state").textContent = !user?.email ? "" : user.emailConfirmed ? "Confirmed: apps in your spaces can email you here." : "Not confirmed yet: open the link we mailed to it. Until then, nothing else is sent to it.";
+        $("email-test").hidden = !user?.emailConfirmed;
         // An invite made before signing out isn't for whoever signs in next.
         if (!user) {
           $("invite-link").hidden = true;
@@ -252,8 +255,8 @@
         say("");
         if (passkey && !window.PublicKeyCredential?.parseCreationOptionsFromJSON) return say("This browser can't use passkeys yet.");
         try {
-          await task();
-          say(done);
+          const said = await task();
+          say(typeof said === "string" ? said : done);
           if (event?.target instanceof HTMLFormElement) event.target.reset();
         } catch (error) {
           // Closing the passkey prompt isn't an error worth more than a line.
@@ -273,7 +276,9 @@
       $("email").addEventListener("submit", run(async () => {
         const answer = await call("/auth/me/email", { email: $("email-address").value.trim() });
         if (answer.status === 401) throw new Error("You're signed out: sign in again, then save it");
-      }, "Your email is saved.", false));
+        if (answer.sent) return "Look in your inbox (and spam) for a link to confirm your address.";
+        if (answer.user?.emailConfirmed) return "That address is already confirmed.";
+      }, "Your email is removed.", false));
       $("email-test").addEventListener("click", run(async () => {
         const answer = await call("/auth/me/email/test", {});
         if (answer.status !== 200) throw new Error(answer.error ?? "The test message couldn't be sent");
@@ -286,6 +291,14 @@
       if (error) {
         say(error);
         history.replaceState(null, "", location.pathname);
+      }
+      // Back from the link mailed to an address: confirm it, once. It needs no sign-in: having the link is the proof.
+      const confirm = new URLSearchParams(location.search).get("confirm");
+      if (confirm) {
+        history.replaceState(null, "", location.pathname);
+        run(async () => {
+          await call("/auth/me/email/confirm", { token: confirm });
+        }, "Your email is confirmed.", false)();
       }
       providers();
       show();
