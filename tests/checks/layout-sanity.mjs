@@ -6,6 +6,7 @@
 //   - two controls in the same view are drawn over each other;
 //   - a control is drawn but squeezed to nothing;
 //   - a panel over the page (the docs, Customize) holds more than fits and can't scroll;
+//   - the page is scrolled to its end and a floating button still covers something;
 //   - a long word in a view (an address, a file path) pushes the page wider than
 //     the window (the Markdown editor's side panels once ran off the screen).
 // The rules are DESIGN.md's, measured: see "What the layout check holds every page to".
@@ -113,6 +114,29 @@ export function stretch() {
   return [`a long word in a view pushes the page to ${doc.scrollWidth}px wide in a ${doc.clientWidth}px window (${wide.slice(0, 4).join(", ") || "outside any view"})`];
 }
 
+// Runs in the page, scrolled to its end. Floating chrome (the Customize button, the debug button) sits over the page on
+// purpose, but once the page is scrolled to its end nothing a person reads or presses may still be under it.
+export function covered() {
+  scrollTo(0, document.documentElement.scrollHeight);
+  // A column that scrolls by itself (the homepage's playground) is taken to its end too.
+  for (const box of document.querySelectorAll("main, aside, main *")) if (box.scrollHeight > box.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(box).overflowY)) box.scrollTop = box.scrollHeight;
+  const chrome = [...document.querySelectorAll("slot[pinned] > [data-plugin], slot[float] > [data-plugin]")].filter((el) => getComputedStyle(el).position === "fixed" && el.getBoundingClientRect().width > 0);
+  const found = [];
+  for (const el of chrome) {
+    const c = el.getBoundingClientRect();
+    const under = [...document.querySelectorAll("main p, main li, main td, main th, main h2, main h3, main label, main a, main button, main input, main select, main textarea, aside p, aside li, aside button, aside a")].find((other) => {
+      if (el.contains(other) || !other.checkVisibility() || chrome.some((x) => x.contains(other))) return false;
+      const r = other.getBoundingClientRect();
+      const left = Math.max(r.left, c.left), right = Math.min(r.right, c.right), top = Math.max(r.top, c.top), bottom = Math.min(r.bottom, c.bottom);
+      // Really under it there, not scrolled out of sight inside a box of its own.
+      return right - left > 4 && bottom - top > 4 && document.elementsFromPoint((left + right) / 2, (top + bottom) / 2).includes(other);
+    });
+    if (under) found.push(`with the page scrolled to its end, ${el.dataset.plugin.split("@")[0]}'s floating button still covers ${under.tagName.toLowerCase()} "${(under.textContent || under.placeholder || "").trim().slice(0, 30)}"`);
+  }
+  scrollTo(0, 0);
+  return found;
+}
+
 export default async function ({ check, context, URL, errors }) {
   const demos = new globalThis.URL("../../demos/", import.meta.url);
   const apps = readdirSync(demos, { withFileTypes: true }).filter((e) => e.isDirectory() && existsSync(new globalThis.URL(`${e.name}/app.html`, demos))).map((e) => `demos/${e.name}/app.html`);
@@ -120,6 +144,7 @@ export default async function ({ check, context, URL, errors }) {
   const broken = [];
   const look = async (page, label, size) => {
     const findings = await page.evaluate(measure, TALLEST_CONTROL).catch((e) => [`couldn't be measured: ${e.message}`]);
+    findings.push(...(await page.evaluate(covered).catch(() => [])));
     if (!findings.some((f) => f.includes("scrolls sideways"))) findings.push(...(await page.evaluate(stretch).catch(() => [])));
     for (const finding of findings) {
       const line = `${label} ${size}: ${finding}`;

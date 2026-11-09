@@ -53,6 +53,7 @@ Three levels, lowest first: the platform (`@layer platform`), each plugin's own 
 - the page scrolls sideways, as it is or once a long unbroken word is put in each view;
 - two controls in the same view are drawn over each other;
 - a control is drawn but squeezed to almost nothing.
+- the page is scrolled to its end and a floating button (Customize, the debug button) still covers something to read or press;
 - a panel that opens over the page (the homepage's docs, Customize) holds more than fits and can't be scrolled.
 
 A new app in `demos/` is checked without being listed. A page that needs something signed in or filled in before most of it draws should be opened in that state there, as the account page is. If a page must break a rule, add it to `ALLOWED` in that file with the reason.
