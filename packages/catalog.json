@@ -138,6 +138,13 @@
   ],
   "services": [
     {
+      "id": "account",
+      "module": "account",
+      "description": "The person's account on this site's server, for the account app (account/app.html) and only for it.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/account/module.ts",
+      "docs": "/docs/api#account"
+    },
+    {
       "id": "agents",
       "module": "agents",
       "description": "Agents run here, and the app hears what they do.",
@@ -496,7 +503,7 @@
     {
       "id": "customize",
       "name": "Customize",
-      "description": "A Customize button that adds, turns on and off, removes and shares the person's own plugins for an app.",
+      "description": "A Customize button that adds, makes, arranges, turns on and off, removes and shares plugins for an app.",
       "href": "/std/customize.js",
       "source": "std",
       "kind": "ui",
