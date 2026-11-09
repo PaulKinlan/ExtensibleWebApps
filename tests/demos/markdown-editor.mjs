@@ -4,6 +4,8 @@
 // underlines, the outline, the emoji picker, the tag suggester and a paste
 // hook. The runner (tests/platform.test.mjs) opens demos/markdown-editor/app.html,
 // checks every plugin it links draws, then calls this with that page.
+import lastPieces from "./markdown-editor/last-pieces.mjs";
+
 export default async function (page, { check, proof }) {
   const editor = "ui-editor";
   const footer = () => page.textContent("footer");
@@ -108,6 +110,7 @@ export default async function (page, { check, proof }) {
   check("the saved file has what was typed and pasted, up to the last keystroke before Save", proof.written);
 
   await batch3(page, { check, proof, text, until, editor });
+  await lastPieces(page, { check, proof, text, until, editor });
 }
 
 /**

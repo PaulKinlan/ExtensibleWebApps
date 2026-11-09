@@ -19,6 +19,12 @@
   scripts (Hugo's live reload), but it has an origin of its own that reaches
   nothing of this one's, and it can't move the page it sits in.
 
+  It shows only the address it was given. When the frame goes anywhere
+  else (a link clicked in it, or the page sending it on), the frame is
+  hidden, with a button to show the address again, and `action` is sent
+  with "left". A reload just after a new revision, which is a live-reloading
+  server catching up with the save, isn't counted as leaving.
+
   The behaviour is in ui-site-preview.js, linked below.
 -->
 <template>
@@ -34,10 +40,13 @@
     iframe[hidden] { display: none; }
     iframe:not([hidden]) { display: block; width: 100%; height: var(--preview-height, 32rem); border: 0; background: white; }
     .none { padding: var(--space-3, 16px); margin: 0; color: var(--fg-2); }
+    .back { margin: 0 var(--space-3, 16px) var(--space-3, 16px); font: inherit; }
+    .back[hidden] { display: none; }
   </style>
   <div class="frame" part="frame">
     <div class="bar"><span class="dot" aria-hidden="true"></span><span class="where"></span><a target="_blank" rel="noopener" hidden>Open in its own tab</a></div>
     <p class="none" hidden></p>
+    <button type="button" class="back" hidden>Show it again</button>
     <iframe title="" hidden referrerpolicy="no-referrer" sandbox="allow-scripts"></iframe>
   </div>
 </template>
