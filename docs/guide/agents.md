@@ -40,6 +40,7 @@ fill in what's missing ...
 | `if-unsure` | Optional, for checks: `allow` (the default) or `block`, what happens to an action the agent couldn't check in time, within its limits, or with an answer. |
 | `limits` | Optional: `runs-per-hour` (30), `tokens-per-day` (200000) and `steps`, the model turns in one run (12). |
 | `acts-as` | Optional: `self` (the default), the agent acts under its own name; or `person`, it may [act for the person](#acting-for-the-person) once they let it. |
+| `outside` | Optional: `true` for a file that lets [agents outside the app](outside-agents.md#or-with-an-agent-file) in, instead of an agent of the app's own. Such a file has only `id`, `name`, `description`, `version` and `permissions`. |
 | `runner` | Optional: the [agent loop](#a-different-loop) to run, as an address relative to the file, such as `./plan-then-act.js`. Without one, the standard loop, [`/std/agents/runner.js`](../../std/agents/runner.js). |
 
 The frontmatter is a small part of YAML: `key: value`, lists as `[a, b]` or `- item` lines, maps as `{ a: 1 }` or indented lines, and `#` comments. The file's name ends in `.agent.md`. An agent can't own a collection, so waking on `data:changed:<collection>` needs `data:read:<collection>` in `permissions`. `npm run check` reads the file the way the kernel does and says what is wrong.

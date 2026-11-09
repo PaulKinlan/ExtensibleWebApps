@@ -32,6 +32,21 @@
 //
 // The frontmatter is a small part of YAML: `key: value`, lists as `[a, b]` or
 // as `- item` lines, and maps as `{ a: 1 }` or indented lines.
+//
+// An agent that lives outside the app (the browser's own assistant, Claude
+// Code, any MCP client) is described the same way, with `outside: true`: the
+// file says what outside agents may do and, after the frontmatter, what the
+// app is for. The kernel makes it the plugin that opens the door to them
+// (std/outside/module.ts), in the browser and on a space's server, with no
+// model or loop of its own:
+//
+//   ---
+//   id: reading-list-agents
+//   name: Outside agent
+//   outside: true
+//   permissions: [data:read:library, data:write:library]
+//   ---
+//   This is a reading list. ...
 
 import { grants } from "../gate";
 import { isAgentFile } from "../../shared/agent-runner";
@@ -95,6 +110,7 @@ export function asPlugin(href: string, source: string, runner?: string): string 
  */
 export function fromAgentFile(text: string, runner?: string): string {
   const { meta, body } = split(text);
+  if (meta.outside !== undefined) return fromOutsideFile(meta, body);
   for (const key of Object.keys(meta)) {
     if (LATER[key]) throw new AgentFileError(`${LATER[key]}.`);
     if (!KEYS.has(key)) throw new AgentFileError(`The frontmatter has no field \`${key}\``);
@@ -207,6 +223,50 @@ export function fromAgentFile(text: string, runner?: string): string {
   const source = `export const manifest = ${JSON.stringify(manifest, null, 2)};\n\nconst AGENT = ${JSON.stringify(config, null, 2)};\n\n${runner}`;
   made.set(source, config);
   return source;
+}
+
+/** Whether an agent file is for agents outside the app (`outside: true`), so the plugin it makes runs on a space's server too. */
+export function isOutsideFile(text: string): boolean {
+  try {
+    return split(text).meta.outside === true;
+  } catch {
+    return false;
+  }
+}
+
+/** The fields an outside agent file may have: it brings no model, loop or wake-ups, since the agent is elsewhere. */
+const OUTSIDE_KEYS = new Set(["id", "name", "description", "version", "permissions", "outside"]);
+
+/** The door plugin an `outside: true` file makes: it opens the door to outside agents, with the file's text as their instructions. */
+function fromOutsideFile(meta: Record<string, unknown>, body: string): string {
+  if (meta.outside !== true) throw new AgentFileError("`outside` is true, for agents outside the app, or left out");
+  for (const key of Object.keys(meta)) {
+    if (!OUTSIDE_KEYS.has(key)) throw new AgentFileError(KEYS.has(key) ? `An outside agent file has no \`${key}\`: the agent brings its own model and loop` : `The frontmatter has no field \`${key}\``);
+  }
+  const text = (key: string) => {
+    const v = meta[key];
+    if (v !== undefined && typeof v !== "string") throw new AgentFileError(`\`${key}\` must be text`);
+    return v as string | undefined;
+  };
+  const id = text("id");
+  const name = text("name");
+  if (!id) throw new AgentFileError("An outside agent file needs an `id`");
+  if (!name) throw new AgentFileError("An outside agent file needs a `name`");
+  const permissions = meta.permissions ?? [];
+  if (!Array.isArray(permissions) || permissions.some((p) => typeof p !== "string")) throw new AgentFileError("`permissions` must be a list");
+  const instructions = body.trim();
+  if (!instructions) throw new AgentFileError("Say what the app is for after the frontmatter: outside agents are told it when they connect");
+  const manifest = {
+    id,
+    name,
+    description: text("description") ?? `Lets agents outside the app use it: ${instructions.split("\n")[0].slice(0, 200)}`,
+    version: text("version") ?? "1.0.0",
+    // Opened in the browser for WebMCP, and on a space's server for MCP.
+    runs: "both",
+    permissions: [...new Set(["outside", ...(permissions as string[])])],
+    services: ["outside", "tools"],
+  };
+  return `export const manifest = ${JSON.stringify(manifest, null, 2)};\n\nconst INSTRUCTIONS = ${JSON.stringify(instructions)};\n\nexport default async function (ctx) {\n  await ctx.call("outside", "open", { instructions: INSTRUCTIONS });\n}\n`;
 }
 
 /** The frontmatter, read, and the Markdown after it. */

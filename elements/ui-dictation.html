@@ -1,0 +1,37 @@
+<!--
+  ui-dictation: a button that listens while it is pressed in, with the
+  browser's speech recognition, and sends what the person says to the plugin
+  that drew it:
+
+    <ui-dictation action="heard" label="Dictate" lang="en-GB"></ui-dictation>
+
+  Attributes: action (sent for everything below), label (the button's text,
+  "Dictate" if left out), lang (the language spoken; the page's if left out).
+
+  `action` is sent with
+    { listening: true }              once the microphone is on
+    { text, final: false }           what it has heard so far of a phrase
+    { text, final: true }            a phrase it is sure of
+    { listening: false, error? }     when it stops: pressed again, or the
+                                     browser stopped it ("not-allowed" when
+                                     the person refused the microphone)
+
+  The recognition runs in the page, so the words go only to the plugin whose
+  view holds the button, as a click's would. A browser with no speech
+  recognition shows the button disabled, and says why on hover. The page's
+  Permissions-Policy lets this site, and only it, use the microphone.
+
+  The behaviour is in ui-dictation.js, linked below.
+-->
+<template>
+  <style>
+    :host { display: inline-block; }
+    button { display: inline-flex; align-items: center; gap: var(--space-1, 4px); font: inherit; }
+    .dot { width: 0.6em; height: 0.6em; border-radius: 50%; background: var(--fg-2); }
+    button[aria-pressed="true"] .dot { background: var(--danger, #dc2626); animation: pulse 1.2s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.3; } }
+    @media (prefers-reduced-motion: reduce) { button[aria-pressed="true"] .dot { animation: none; } }
+  </style>
+  <button type="button" part="button" aria-pressed="false"><span class="dot" aria-hidden="true"></span><span class="label"></span></button>
+</template>
+<script type="module" src="ui-dictation.js"></script>

@@ -180,6 +180,7 @@ capability shown.
 | `applyEdits([{ find, replace }])` | `document:write` | Edits, each `find` occurring exactly once |
 | `setFrontMatter(key, value)` | `document:write` | Sets one front matter field |
 | `save()` | `document:write` | Saves, as the Save button does |
+| `setOption(name, value)` | `document:write` | Changes how the editor works, not the post: `spellcheck` (true or false) and `words` (words the spell checker accepts) |
 
 Notice that `annotate` and `select` only need `document:read`: they change
 what you see, not the post. A plugin that should only look at the post
@@ -368,6 +369,61 @@ sequenceDiagram
   Note over You,H: after a reload the browser asks again:<br/>"Allow my-site again" calls folder.allow()
 ```
 
+### …you dictate, paste a picture, or preview
+
+Four features need something only the page or the person's computer has:
+the microphone, a file's bytes, a server on their machine, and their
+notifications. Each is still a plugin; the platform lends it the piece it
+can't reach from its worker.
+
+- **Dictation.** `dictation.js` draws a `<ui-dictation>` button. The
+  element runs the browser's speech recognition in the page and sends each
+  phrase back to the plugin as an action, like a click. The plugin turns
+  "comma" into `,` and "new paragraph" into a blank line, capitalises
+  sentences, and puts the phrase in with `document.insert`, so Undo takes it
+  out.
+- **Images.** `images.js` intercepts `posts:paste` and `posts:drop`. A
+  picture in the paste reaches the hook as a token, not its bytes (a hook's
+  value is limited to 1 MB). The plugin hands the token to
+  `document.saveImage`, and `posts.js` writes the picture to
+  `static/images/<post>/` (one at a time, never over a file that is there: a
+  second `image.png` is `image-2.png`). The plugin answers with the Markdown
+  link to put in instead.
+- **Spell check.** `spell-check.js` calls `document.setOption("spellcheck",
+  true)`, which turns the browser's own checker on in the `<ui-editor>`, and
+  `setOption("words", …)` with every tag and category the site uses and the
+  words in `.editor/words.txt`. Chrome 159 and later have a custom
+  dictionary that takes them, so they aren't marked.
+- **Hugo preview.** `hugo-preview.js` puts a `<ui-site-preview>` in a panel,
+  pointing at the post's address on your `hugo server` (localhost:1313 unless
+  you change it). The element shows only a server on your own device. If
+  nothing answers, the panel says how to start Hugo; Hugo reloads the page
+  when you save, and the panel does too.
+- **Notifications.** `notifications.js` hears `agent:done` and calls the
+  `notify` kernel module, which shows your computer's notification from one
+  tab, only while you aren't looking at the editor.
+
+```mermaid
+sequenceDiagram
+  actor You
+  participant E as ui-dictation (page)
+  participant D as dictation.js
+  participant P as posts.js
+  You->>E: press Dictate, speak
+  E->>D: heard { text: "it works full stop", final: true }
+  D->>P: document.insert("It works. ")
+  P-->>You: the words at the caret, undoable
+```
+
+Agents outside the editor get the writer's tools too: `editor-agents.js`
+opens the [outside-agents](outside-agents.md) door, so an agent in the
+browser finds `document_read`, `document_applyEdits`, `commands_run` and the
+rest on `document.modelContext` (WebMCP). Its edits arrive in the editor
+like the writer's, unsaved.
+
+Each app has its own folder: the editor's private folder (and the one you
+open) is not the one another app using the `folder` service sees.
+
 ## The plugins, one by one
 
 Each is one file, plus a template file when it draws more than a line. The
@@ -393,6 +449,13 @@ services it uses.
 | [`snippets`](../../demos/markdown-editor/snippets.js) | Snippets button and picker | close | `folder.read`, `document.insert` | Insert, save, remove snippet |
 | [`autosave`](../../demos/markdown-editor/autosave.js) (sample) | "Autosave" | change, close | `document.save` | (a setting: when) |
 | [`alerts`](../../demos/markdown-editor/alerts.js) | "Writer is done" notices | `agent:done` | | (toolbar toggle) |
+| [`notifications`](../../demos/markdown-editor/notifications.js) | Your computer's notification when the writer is done, while you're away | `agent:done` | `notify` | (toolbar toggle) |
+| [`front-matter`](../../demos/markdown-editor/front-matter.js) | A form over the front matter | open, change, save, close | `document.setFrontMatter` | Show or hide the form |
+| [`dictation`](../../demos/markdown-editor/dictation.js) | Dictate button; "● Listening…" | open, close | `document.insert` | |
+| [`spell-check`](../../demos/markdown-editor/spell-check.js) | Spelling on/off | open, save | `document.setOption`, `document.list`, `folder.read` | Turn spell check on or off |
+| [`images`](../../demos/markdown-editor/images.js) | (pasted and dropped images) | paste, drop (intercepts) | `document.saveImage` | |
+| [`hugo-preview`](../../demos/markdown-editor/hugo-preview.js) | The post from your `hugo server` | open, save, close | `document.read`, `folder.about` | Show or hide the Hugo preview |
+| [`editor-agents`](../../demos/markdown-editor/editor-agents.js) | (the writer's tools on WebMCP) | | `outside` | |
 | [`writer.agent.md`](../../demos/markdown-editor/writer.agent.md) | Replies in the chat | messages on the bus | `document`, `commands`, `folder.read` | |
 
 ![The panels: streak, claims, tags that fit, outline and the emoji picker, with the chat to the writer below](../images/markdown-editor-panels.png)
@@ -442,11 +505,12 @@ flowchart LR
     seo[seo-check]
   end
   subgraph write["document:write"]
-    em[emoji]
+    em[emoji, images]
     sn[snippets]
     tg[tag-suggester]
     au[autosave]
     wr[writer]
+    fm[front-matter, dictation,<br/>spell-check, editor-agents]
   end
   subgraph files["folder"]
     po[posts: read, write, choose]
@@ -455,8 +519,9 @@ flowchart LR
   net[link-checker: network]
 ```
 
-- Only `posts` writes files. Another plugin that wants a file changed would
-  ask with `folder.propose`, which shows you a diff to allow.
+- Only `posts` writes files (including the pictures `images` asks it to
+  save, only under `static/` or `assets/`). Another plugin that wants a file changed would ask with `folder.propose`,
+  which shows you a diff to allow.
 - Only `link-checker` may use the network, to see whether external links
   answer.
 - The writer agent can edit the post but not save it, and can read the
@@ -512,5 +577,7 @@ in the same page as the editor. Here:
 - the assistant is an agent file that uses the features' commands as tools;
 - files come from the `folder` service: your own folder, or a private one.
 
-The original editor's dictation, Hugo preview, spell check, WebMCP and image
-modules are not ported yet.
+Its dictation, Hugo preview, spell check, image, front matter form, WebMCP
+and notification features are plugins here too, each in its own file. The
+original's raw front matter view is the editor itself, and its on-device
+summarizer for the description field isn't ported.

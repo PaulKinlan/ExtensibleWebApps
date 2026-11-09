@@ -43,6 +43,18 @@ the same editor events a textarea sends
 ([`src/host/editing.ts`](../src/host/editing.ts)). The
 [Markdown editor](../demos/markdown-editor/) is built on it.
 
+`ui-editor` can also turn the browser's spell checker on (`spellcheck="true"`)
+and hand it words to accept (`words`), for Chrome's custom dictionary.
+
+## Speech and local previews
+
+[`ui-dictation`](ui-dictation.html) is a button that listens with the
+browser's speech recognition while it is pressed in, and sends what it hears
+to its plugin. [`ui-site-preview`](ui-site-preview.html) shows a page from a
+server on the person's own device (a site's `hugo server`) in a frame, and
+nothing else. The Markdown editor's dictation and Hugo preview are built on
+them.
+
 ## Sound
 
 [`ui-waveform`](ui-waveform.html) draws a sound's waveform from peaks the

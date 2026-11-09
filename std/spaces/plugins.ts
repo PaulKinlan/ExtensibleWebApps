@@ -72,7 +72,7 @@ async function filesOf(store: Store, userAdded: UserPlugins, app: string, id: st
  * its manifest lists, and none of its files belongs to another plugin there (which it would overwrite).
  */
 async function problem(userAdded: UserPlugins, app: string, files: SharedFile[]): Promise<string | undefined> {
-  const plugins = files.filter((f) => f.name.endsWith(".js"));
+  const plugins = files.filter((f) => f.name.endsWith(".js") && !f.name.includes("/"));
   if (plugins.length !== 1 || !("text" in plugins[0])) return "Share one plugin (.js) at a time";
   return userAdded.problem(app, decode(files));
 }
@@ -82,7 +82,7 @@ async function problem(userAdded: UserPlugins, app: string, files: SharedFile[])
  * already there with that id goes first, so files it listed and this one doesn't aren't left behind.
  */
 async function put(userAdded: UserPlugins, app: string, files: SharedFile[]) {
-  const source = files.find((f) => f.name.endsWith(".js"));
+  const source = files.find((f) => f.name.endsWith(".js") && !f.name.includes("/"));
   const id = source && "text" in source ? readManifest(source.text).id : undefined;
   if (id) await userAdded.remove(app, id, { quiet: true });
   return userAdded.add(app, decode(files), { quiet: true });

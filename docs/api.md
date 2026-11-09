@@ -696,6 +696,14 @@ Needs: `folder:read`.
 
 What is in one folder (the top if left out): each file's and folder's name, and kind "file" or "directory", folders first. null if there is no such folder. Hidden names are left out.
 
+#### folder.exists
+
+`folder.exists(path)` → true or false
+
+Needs: `folder:read`.
+
+Whether there is a file at path, whatever is in it (an image, say).
+
 #### folder.forget
 
 `folder.forget()` → true
@@ -735,6 +743,14 @@ A file's text, or null if there is no such file. At most 5 MB.
 Needs: `folder:write`.
 
 Writes a file, making its folders. For the plugin that keeps the folder's files: it doesn't ask the person.
+
+#### folder.writeData
+
+`folder.writeData(path, dataUrl)` → { ok, path }
+
+Needs: `folder:write`.
+
+Writes a file that isn't text, such as an image the person dropped, from a data: URL; at most 5 MB. As write, it doesn't ask the person.
 
 ### game
 
@@ -924,6 +940,14 @@ Needs: `apps:read`.
 
 The apps the person has made.
 
+#### maker.openFolder
+
+`maker.openFolder(app?)` → { ok, app, url, saved, problems, skipped? } or { ok: false, error }
+
+Needs: `apps:make`, and the person's review.
+
+Reads an app's files from a folder the person picks (call it right after they click): app.html and the plugins, templates, styles and agents beside it. Saves them as the made app named app, or after the folder, once the person accepts one review. Other files are skipped.
+
 #### maker.read
 
 `maker.read(app, file)` → the file's text
@@ -956,6 +980,14 @@ Needs: `apps:make`, and the person's review.
 
 Writes files of a made app, or makes a new one (its first save must hold app.html), once the person accepts one review that shows every change. Returns the checks of the app as saved.
 
+#### maker.saveToFolder
+
+`maker.saveToFolder(app)` → { ok, folder, files } or { ok: false, error }
+
+Needs: `apps:read`.
+
+Writes a copy of the app's files into a folder the person picks on their disk (call it right after they click), replacing files there with the same names. The copy is a plain app folder: open it again with openFolder, here or on another device, or check it in a checkout with npm run check.
+
 #### maker.version
 
 `maker.version(app, file, version)` → the file's text at that version
@@ -975,6 +1007,34 @@ Web requests the kernel makes for a plugin, to the hosts its manifest names. A h
 Needs: `network:<host>`.
 
 Fetches `url` (https:, or http: on localhost) and returns the answer as text, up to 4 MB, within two minutes. A header given as `{ secret: name }` is filled with that secret, if the plugin has `secret:<name>` and the host is one the secret is for.
+
+### notify
+
+The operating system's notifications: tell the person something while they are away from the app.
+
+#### notify.request
+
+`notify.request()` → "granted", "denied", "default" or "unsupported"
+
+Needs: `notify`.
+
+Asks the person to allow notifications (call it right after a click in the app, from a button they pressed for it). The browser remembers the answer.
+
+#### notify.show
+
+`notify.show({ title, body?, tag?, always? })` → true if it was shown
+
+Needs: `notify`.
+
+Shows a notification from one tab with the plugin's app open, when nobody is looking at the app (or `always`). False if the person hasn't allowed notifications, or is looking. At most 6 a minute for each plugin.
+
+#### notify.state
+
+`notify.state()` → "granted", "denied", "default" or "unsupported"
+
+Needs: `notify`.
+
+Whether the person allowed this site's notifications: "default" means they haven't been asked yet.
 
 ### outside
 
@@ -1625,8 +1685,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `agents:run:<agent>` | Call agents.run. |
-| `apps:make` | Call maker.save, maker.remove, maker.restore. |
-| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.check. |
+| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder. |
+| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.check. |
 | `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.playClip, audio.open, audio.save. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |
@@ -1642,14 +1702,15 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `files:<folder>` | Call files.read, files.write. |
 | `folder:choose` | Call folder.choose, folder.allow, folder.forget. |
 | `folder:propose` | Call folder.propose. |
-| `folder:read` | Call folder.about, folder.list, folder.entries, folder.read. |
-| `folder:write` | Call folder.write. |
+| `folder:read` | Call folder.about, folder.list, folder.entries, folder.read, folder.exists. |
+| `folder:write` | Call folder.write, folder.writeData. |
 | `game` | Call game.start, game.stop, game.pause, game.input, game.state. |
 | `history` | Call history.state, history.undo, history.redo. |
 | `launch` | Call launch.take. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `members` | Call sync.members. |
 | `network:<host>` | Call net.fetch. |
+| `notify` | Call notify.state, notify.request, notify.show. |
 | `outside` | Call outside.open, outside.close, outside.status. |
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
 | `plugins:manage` | Call authoring.turn, plugins.setEnabled. |
@@ -1683,7 +1744,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hooks` | Optional. Up to 20 hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook `<id>:<key>` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (1000 ms if not given, at most 5000); an agent that checks it has agentTimeoutMs (at most 30 s; without one, agents can't check it). A hook lasts while its plugin is installed. These limits are the defaults; a site may change them in kernel.json's `hooks`. |
 | `services` | Optional. Up to 30 services the plugin calls that not every site runs, by name: ["llm", "bus"]. The kernel's own services (data, storage, settings and the rest) are always there and needn't be listed. A plugin that lists a service the site doesn't run isn't started, and says which one is missing, so an app that needs it fails when it opens rather than on its first call. The site lists the services it runs in kernel.json (docs/layers.md). |
 | `provides` | Optional. Up to 5 services the plugin provides, by name: { mail: { description, methods: { send: { args?, returns?, description, needs? } } } }. Each needs the permission provide:<name>, and the plugin answers its calls with ctx.provide (shared plugins only, not scope "tab"). Other plugins call it with ctx.call(name, method, ...args) and the permission <name>, or what a method's `needs` says. A name the kernel or another plugin already has is refused. See docs/layers.md. |
-| `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, no folders. They are copied with it when a person adds it to an app. |
+| `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, or paths in a folder beside it like plugin-editor.templates/card.js (up to four folders deep, and the first folder's name has a dot in it, so it can never be another app's folder). They are copied with it when a person adds it to an app. |
 
 Reserved ids, which no plugin can take:
 
@@ -1706,6 +1767,7 @@ Reserved ids, which no plugin can take:
 - `llm`
 - `maker`
 - `net`
+- `notify`
 - `outside`
 - `page`
 - `plugins`
@@ -1768,13 +1830,15 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
 | `<ui-spacer>` |  | Takes up the free space in a row. |
 | `<ui-code>` | name, label, rows="20", readonly, revision | A plain code editor: a textarea with line numbers, where Tab indents (Escape, then Tab, leaves it). Its text content is the starting code; edits survive redraws until `revision` changes. In a `form` it is sent under its `name`. |
-| `<ui-editor>` | name, label, placeholder, readonly, revision, action, selection-action, paste-action, drop-action, select="from,to", annotations | A Markdown editor (CodeMirror): styled as you type, with undo, search and Tab to indent. Its text content is the starting text; edits survive redraws until `revision` changes, and then the new text goes in as an edit. `action` is sent with the text after a pause in typing, `selection-action` with { from, to, text }, and `paste-action` and `drop-action` take pastes and drops for the plugin to put in ({ from, to, text, html, files }). `select` selects a range; `annotations` is JSON [{ from, to, severity, message }] to underline. |
+| `<ui-editor>` | name, label, placeholder, readonly, revision, action, selection-action, paste-action, drop-action, select="from,to", annotations, spellcheck="true", words | A Markdown editor (CodeMirror): styled as you type, with undo, search and Tab to indent. Its text content is the starting text; edits survive redraws until `revision` changes, and then the new text goes in as an edit. `action` is sent with the text after a pause in typing, `selection-action` with { from, to, text }, and `paste-action` and `drop-action` take pastes and drops for the plugin to put in ({ from, to, text, html, files }). `select` selects a range; `annotations` is JSON [{ from, to, severity, message }] to underline. `spellcheck="true"` turns the browser's spell check on, and `words` is a JSON list of words it should accept (where the browser has a custom dictionary). |
 | `<ui-commands>` | label, open-keys="Mod+K", run, no-button, message, message-at | A command palette: a button (and the `open-keys` shortcut) opens a searchable list of the commands inside it, each a `<button data-command="name" data-keys='["Mod+B","Shift+N"]' data-group data-description>Title</button>`. Picking one, or pressing one of its keys anywhere on the page, sends `run` with its name. `message` is announced briefly whenever `message-at` changes. |
 | `<ui-diagram>` | label | A Mermaid diagram: its text content is the diagram, in Mermaid's language (flowchart, sequenceDiagram, …). `label` says what it shows, for screen readers. Mermaid loads the first time one is drawn. |
 | `<ui-markdown>` | src, pages="/docs/", repo, sets-title, compact | A Markdown file in the template's folder (or below it), drawn as a page, with ```mermaid blocks as diagrams. Raw HTML in it shows as text. `pages` is a folder whose .md files are this app's screens (links to them drop .md); `repo` is where links to source go; `sets-title` makes its first heading the page's title; `compact` is for a list of contents. |
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
 | `<ui-panel>` | label, toggle | A button labelled `label` that opens a panel above the page, holding the element's content; where the button sits is up to the slot. `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-close` closes the panel as well as sending its action. |
 | `<ui-preview>` | app="<name>", revision, label | A working copy of an app the person made in the browser (std/maker/), from /apps/<name>/, in a frame, with a link to open it in its own tab. Changing `revision` opens it again. |
+| `<ui-dictation>` | action, label, lang | A button that listens, with the browser's speech recognition, while it is pressed in. `action` is sent with { listening: true } when the microphone is on, { text, final } for what it hears (final: false while a phrase is still changing), and { listening: false, error? } when it stops. Disabled, saying why, in a browser without speech recognition. |
+| `<ui-site-preview>` | address="http://localhost:1313/…", revision, label, action | A page from a web server on the person's own device (localhost, 127.0.0.1), such as a site's `hugo server`, in a frame; any other address isn't shown. It checks the server first, and sends `action` with "up", "down" or "blocked" (the browser won't let the site reach the device). Changing `revision` checks again and reloads it. |
 | `<ui-waveform>` | peaks="-12,30,…", duration, select="from,to", action, playing="at,from,to", label | A sound's waveform, from `peaks` (a low and a high from -100 to 100 for each column) and its `duration` in seconds. Dragging across it (or Shift and the arrow keys) picks a part, sent as `action` with { from, to } in seconds; a click sends a cursor. `select` sets the part shown as picked; `playing` runs a playhead from `from` to `to` starting at `at` (ms since the epoch). |
 
 ### Actions
