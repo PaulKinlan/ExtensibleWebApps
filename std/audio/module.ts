@@ -11,7 +11,9 @@
 // processor some plugin registered, offline, and gives back the new clip:
 // so an effect is a plugin that registers a processor, and an editor
 // applies any effect it is told about without knowing what it does. `mix`
-// lays several clips (tracks) over each other into one.
+// lays several clips (tracks) over each other into one. A plugin reads the
+// clips another kept with `load({ name, of })` and the permission
+// audio:kept:<of>: the sound editor's timeline does, for long clips.
 // A kernel module (docs/layers.md): a site that lists `audio` in kernel.json has it, as `ctx.call("audio", …)`.
 
 import { service, type ModuleKernel } from "../../src/kernel/modules";
@@ -60,6 +62,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const next = (keeping.get(base(plugin)) ?? Promise.resolve()).then(work, work);
     keeping.set(base(plugin), next.catch(() => {}));
     return next;
+  };
+  /** A plugin's id, named by `of`, whose kept clips another reads. */
+  const ownerOf = (of: unknown) => {
+    if (typeof of !== "string" || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(of)) throw new Error("of is a plugin's id");
+    return of;
   };
   const keptName = (name: unknown) => {
     if (typeof name !== "string" || !KEPT.test(name)) throw new Error("A kept clip's name is lowercase letters, digits and dashes, up to 64");
@@ -115,9 +122,14 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         needs: "audio",
         description: `Keeps a clip in the person's data folder under a name of this plugin's own, for a clip too long for a collection (which holds 5 MB in all). Keeping a name again replaces it. At most ${MAX_KEPT} a plugin.`,
       },
-      load: { args: "({ name })", returns: `${clipArgs} or null`, needs: "audio", description: "A clip this plugin kept, or null if there is none by that name." },
+      load: {
+        args: "({ name, of? })",
+        returns: `${clipArgs} or null`,
+        needs: "audio, or audio:kept:<of>",
+        description: "A clip this plugin kept, or null if there is none by that name. With `of`, a plugin's id, one that plugin kept: that needs the permission audio:kept:<of>, so a timeline can read the clips an editor keeps.",
+      },
       forget: { args: "({ name })", returns: "{ forgotten }", needs: "audio", description: "Deletes a clip this plugin kept." },
-      kept: { args: "()", returns: "[name]", needs: "audio", description: "The names of the clips this plugin kept." },
+      kept: { args: "({ of? }?)", returns: "[name]", needs: "audio, or audio:kept:<of>", description: "The names of the clips this plugin kept, or, with `of`, that plugin kept (audio:kept:<of>)." },
       playClip: {
         args: "({ clip, from?, to?, chain?, group?, at? })",
         returns: "{ played, ms, at }",
@@ -137,7 +149,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         description: "Saves a clip as a WAV file the person downloads, named name.wav: stereo if the clip is.",
       },
     },
-    capability: () => "audio",
+    // Reading another plugin's kept clips (load or kept with `of`) needs audio:kept:<that plugin>; everything else, audio.
+    capability: (method, args) => {
+      const of = (args[0] as { of?: unknown } | undefined)?.of;
+      return (method === "load" || method === "kept") && of !== undefined ? `audio:kept:${String(of)}` : "audio";
+    },
     // A group is the plugin's own: its name is kept apart from every other plugin's.
     call: async (plugin, method, args, dispatch) => {
       const [first, ...rest] = args as [Record<string, unknown> | undefined, ...unknown[]];
@@ -153,8 +169,10 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         return { kept: name, seconds: Math.round(((pcm.length * 3) / 4 / 2 / (channels === 2 ? 2 : 1) / rate) * 100) / 100 };
         });
       }
+      // Whose kept clips: this plugin's, or with `of` (checked by capability above) another's.
+      const owner = (method === "load" || method === "kept") && first?.of !== undefined ? ownerOf(first.of) : plugin;
       if (method === "load") {
-        const text = await store.readText(keptPath(plugin, keptName(first?.name)));
+        const text = await store.readText(keptPath(owner, keptName(first?.name)));
         return text ? JSON.parse(text) : null;
       }
       if (method === "forget") {
@@ -163,7 +181,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         if (had) await store.removeFile(keptPath(plugin, name));
         return { forgotten: had };
       }
-      if (method === "kept") return (await store.listFiles(keptPath(plugin)).catch(() => [] as string[])).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).sort();
+      if (method === "kept") return (await store.listFiles(keptPath(owner)).catch(() => [] as string[])).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).sort();
       if (method === "mix") {
         if (!first || typeof first !== "object" || !Array.isArray(first.tracks) || !first.tracks.length || first.tracks.length > MAX_TRACKS) throw new Error(`audio.mix takes { tracks: [{ clip, at?, gain?, pan?, chain? }] }, 1 to ${MAX_TRACKS} of them`);
         for (const track of first.tracks as Record<string, unknown>[]) {

@@ -45,13 +45,13 @@
         <button type="button" data-filter="agent" aria-pressed="false">Agents</button>
         <button type="button" data-filter="builtin" aria-pressed="false">Built-in services</button>
       </div>
-      <p class="shown" role="status" aria-live="polite">191 plugins and services</p>
+      <p class="shown" role="status" aria-live="polite">193 plugins and services</p>
     </search>
     <nav class="toc" aria-label="On this page">
       <a href="#add">Add to any app <span class="count">17</span></a>
       <a href="#built-in">Built into this site <span class="count">23</span></a>
       <a href="#std">For app authors <span class="count">7</span></a>
-      <a href="#demos">From the demos <span class="count">112</span></a>
+      <a href="#demos">From the demos <span class="count">114</span></a>
       <a href="#site">This site's pages <span class="count">32</span></a>
     </nav>
 
@@ -247,7 +247,7 @@
         <li class="card" id="service-audio" data-kind="builtin" data-search="audio audio sound for plugins, played by the tab that runs the plugin workers.">
           <h4><code>audio</code> <span class="tags"><span class="tag builtin">Built in</span></span></h4>
           <p>Sound for plugins, played by the tab that runs the plugin workers.</p>
-          <ul class="facts"><li><b>Used by</b> 8 plugins here: Lo-fi, Echo, Sound editor, Telephone, Tremolo, Sequencer, …</li></ul>
+          <ul class="facts"><li><b>Used by</b> 9 plugins here: Lo-fi, Echo, Sound editor, Telephone, Timeline, Tremolo, …</li></ul>
           <p class="actions"><a href="/docs/api#audio">How to call it</a> <a href="https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/audio/module.ts">Code</a></p>
         </li>
         <li class="card" id="service-bus" data-kind="builtin" data-search="bus bus how agents and plugins talk to each other and to the person, by message rather than by calling each other.">
@@ -259,7 +259,7 @@
         <li class="card" id="service-commands" data-kind="builtin" data-search="commands commands things a person (or an agent) can do in an app, named once by the plugin that does them, and run from anywhere: a command palette, a keyboard shortcut, or a model's tool call.">
           <h4><code>commands</code> <span class="tags"><span class="tag builtin">Built in</span></span></h4>
           <p>Things a person (or an agent) can do in an app, named once by the plugin that does them, and run from anywhere: a command palette, a keyboard shortcut, or a model's tool call.</p>
-          <ul class="facts"><li><b>Used by</b> 8 plugins here: Assistant, Command palette, Sound editor, Euclidean rhythms, Controls, Field, …</li></ul>
+          <ul class="facts"><li><b>Used by</b> 9 plugins here: Assistant, Command palette, Sound editor, Timeline, Euclidean rhythms, Controls, …</li></ul>
           <p class="actions"><a href="/docs/api#commands">How to call it</a> <a href="https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/commands/module.ts">Code</a></p>
         </li>
         <li class="card" id="service-debug" data-kind="builtin" data-search="debug debug tools for looking inside a running kernel, which no app needs to run.">
@@ -277,13 +277,13 @@
         <li class="card" id="service-folder" data-kind="builtin" data-search="folder folder a folder of files the person works on, such as a hugo site: on their disk, if they pick one, or a private folder in the browser until they do.">
           <h4><code>folder</code> <span class="tags"><span class="tag builtin">Built in</span></span></h4>
           <p>A folder of files the person works on, such as a Hugo site: on their disk, if they pick one, or a private folder in the browser until they do.</p>
-          <ul class="facts"><li><b>Used by</b> 9 plugins here: Data checker, Outside agents, Hugo preview, Link checker, Posts, Snippets, …</li></ul>
+          <ul class="facts"><li><b>Used by</b> 10 plugins here: Sound editor, Data checker, Outside agents, Hugo preview, Link checker, Posts, …</li></ul>
           <p class="actions"><a href="/docs/api#folder">How to call it</a> <a href="https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/folder/module.ts">Code</a></p>
         </li>
         <li class="card" id="service-game" data-kind="builtin" data-search="game game a game loop, with every rule of the game in plugins.">
           <h4><code>game</code> <span class="tags"><span class="tag builtin">Built in</span></span></h4>
           <p>A game loop, with every rule of the game in plugins.</p>
-          <ul class="facts"><li><b>Used by</b> 10 plugins here: Catch, Controls, Jar, Meadow, Chime, Wind, …</li></ul>
+          <ul class="facts"><li><b>Used by</b> 11 plugins here: Catch, Controls, Jar, Meadow, Chime, Wind, …</li></ul>
           <p class="actions"><a href="/docs/api#game">How to call it</a> <a href="https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/game/module.ts">Code</a></p>
         </li>
         <li class="card" id="service-history" data-kind="builtin" data-search="history history undo and redo for the person, across every write to an app's collections, whichever plugin made it: a delete in a table, an edit in a form, a book a plugin imported, a change an agent made.">
@@ -434,7 +434,7 @@
       <p class="about">Each demo's own plugins, and the samples it suggests. Most use their app's data or hooks, so they belong with that app, but each is an ordinary plugin to read and copy. Paste one's address into Customize's <strong>Add from URL</strong> to try it.</p>
 
       <section class="app" data-section>
-        <h4 class="group"><a href="/demos/audio-editor/app.html">Sound editor</a> <span class="count">5</span></h4>
+        <h4 class="group"><a href="/demos/audio-editor/app.html">Sound editor</a> <span class="count">6</span></h4>
       <ul class="cards">
         <li class="card" id="audio-editor-effect-echo" data-kind="background" data-search="echo effect-echo an echo for the sound editor.  behind the scenes audio hook:intercept:sound-editor:effects audio sound editor">
           <h4>Echo <span class="tags"><span class="tag background">Behind the scenes</span></span></h4>
@@ -450,12 +450,19 @@
           <details><summary>Asks for 2 permissions</summary><ul class="asks"><li><code>audio</code> Use the audio service: sound for plugins, played by the tab that runs the plugin workers.</li><li><code>hook:intercept:sound-editor:effects</code> Change or stop sound-editor:effects before it happens.</li></ul></details>
           <p class="actions"><a href="/demos/audio-editor/crusher.js">Code</a> <button type="button" class="copy" data-copy="/demos/audio-editor/crusher.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;plugin&quot; href=&quot;/demos/audio-editor/crusher.js&quot;&gt;">Copy link tag</button></p>
         </li>
-        <li class="card" id="audio-editor-sound-editor" data-kind="ui" data-search="sound editor sound-editor a clip's waveform to pick parts of, play, edit and run through effects.  on the page ui audio commands plugins:read audio commands sound editor">
+        <li class="card" id="audio-editor-sound-editor" data-kind="ui" data-search="sound editor sound-editor a clip's waveform to pick parts of, play, edit and run through effects.  on the page ui audio commands plugins:read audio:kept:sound-timeline folder:read folder:write folder:choose audio commands folder sound editor">
           <h4>Sound editor <span class="tags"><span class="tag ui">On the page</span></span></h4>
           <p>A clip's waveform to pick parts of, play, edit and run through effects.</p>
-          <ul class="facts"><li><b>Needs</b> <code>audio</code>, <code>commands</code></li><li><b>In</b> <a href="/demos/audio-editor/app.html">Sound editor</a></li></ul>
-          <details><summary>Asks for 4 permissions</summary><ul class="asks"><li><code>ui</code> Draw on this page.</li><li><code>audio</code> Use the audio service: sound for plugins, played by the tab that runs the plugin workers.</li><li><code>commands</code> Use the commands service: things a person (or an agent) can do in an app, named once by the plugin that does them, and run from anywhere: a command palette, a keyboard shortcut, or a model's tool call.</li><li><code>plugins:read</code> See which plugins this page has, which are on, and their code.</li></ul></details>
+          <ul class="facts"><li><b>Needs</b> <code>audio</code>, <code>commands</code>, <code>folder</code></li><li><b>In</b> <a href="/demos/audio-editor/app.html">Sound editor</a></li></ul>
+          <details><summary>Asks for 8 permissions</summary><ul class="asks"><li><code>ui</code> Draw on this page.</li><li><code>audio</code> Use the audio service: sound for plugins, played by the tab that runs the plugin workers.</li><li><code>commands</code> Use the commands service: things a person (or an agent) can do in an app, named once by the plugin that does them, and run from anywhere: a command palette, a keyboard shortcut, or a model's tool call.</li><li><code>plugins:read</code> See which plugins this page has, which are on, and their code.</li><li><code>audio:kept:sound-timeline</code> Use the audio service: sound for plugins, played by the tab that runs the plugin workers.</li><li><code>folder:read</code> Use the folder service: a folder of files the person works on, such as a Hugo site: on their disk, if they pick one, or a private folder in the browser until they do.</li><li><code>folder:write</code> Use the folder service: a folder of files the person works on, such as a Hugo site: on their disk, if they pick one, or a private folder in the browser until they do.</li><li><code>folder:choose</code> Use the folder service: a folder of files the person works on, such as a Hugo site: on their disk, if they pick one, or a private folder in the browser until they do.</li></ul></details>
           <p class="actions"><a href="/demos/audio-editor/editor.js">Code</a> <button type="button" class="copy" data-copy="/demos/audio-editor/editor.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;plugin&quot; href=&quot;/demos/audio-editor/editor.js&quot;&gt;">Copy link tag</button></p>
+        </li>
+        <li class="card" id="audio-editor-sound-timeline" data-kind="ui" data-search="timeline sound-timeline clips laid side by side as tracks you can still move, re-level, pan and mute; plays the mix, or keeps it as a clip.  on the page ui audio commands data:read:sound-clips data:write:sound-clips audio:kept:sound-editor audio commands sound editor">
+          <h4>Timeline <span class="tags"><span class="tag ui">On the page</span></span></h4>
+          <p>Clips laid side by side as tracks you can still move, re-level, pan and mute; plays the mix, or keeps it as a clip.</p>
+          <ul class="facts"><li><b>Needs</b> <code>audio</code>, <code>commands</code></li><li><b>In</b> <a href="/demos/audio-editor/app.html">Sound editor</a></li></ul>
+          <details><summary>Asks for 6 permissions</summary><ul class="asks"><li><code>ui</code> Draw on this page.</li><li><code>audio</code> Use the audio service: sound for plugins, played by the tab that runs the plugin workers.</li><li><code>commands</code> Use the commands service: things a person (or an agent) can do in an app, named once by the plugin that does them, and run from anywhere: a command palette, a keyboard shortcut, or a model's tool call.</li><li><code>data:read:sound-clips</code> Read the sound-clips records, and hear when they change.</li><li><code>data:write:sound-clips</code> Change the sound-clips records. Unless it made them, you are asked first each time.</li><li><code>audio:kept:sound-editor</code> Use the audio service: sound for plugins, played by the tab that runs the plugin workers.</li></ul></details>
+          <p class="actions"><a href="/demos/audio-editor/timeline.js">Code</a> <button type="button" class="copy" data-copy="/demos/audio-editor/timeline.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;plugin&quot; href=&quot;/demos/audio-editor/timeline.js&quot;&gt;">Copy link tag</button></p>
         </li>
         <li class="card" id="audio-editor-effect-tremolo" data-kind="background" data-search="tremolo effect-tremolo a tremolo for the sound editor.  behind the scenes audio hook:intercept:sound-editor:effects audio sound editor">
           <h4>Tremolo <span class="tags"><span class="tag background">Behind the scenes</span></span></h4>
@@ -719,7 +726,7 @@
       </ul>
       </section>
       <section class="app" data-section>
-        <h4 class="group"><a href="/demos/glowfall-together/app.html">Glowfall together</a> <span class="count">5</span></h4>
+        <h4 class="group"><a href="/demos/glowfall-together/app.html">Glowfall together</a> <span class="count">6</span></h4>
       <ul class="cards">
         <li class="card" id="glowfall-together-glowfall-catches" data-kind="background" data-search="catches for everyone glowfall-catches scores each player's catches and the team's, and counts the rain.  behind the scenes hook:intercept:game:rules game glowfall together">
           <h4>Catches for everyone <span class="tags"><span class="tag background">Behind the scenes</span><span class="tag background">Runs on a space's server</span></span></h4>
@@ -755,6 +762,13 @@
           <ul class="facts"><li><b>Needs</b> <code>sync</code></li><li><b>In</b> <a href="/demos/glowfall-together/app.html">Glowfall together</a></li></ul>
           <details><summary>Asks for 7 permissions</summary><ul class="asks"><li><code>ui</code> Draw on this page.</li><li><code>live</code> Send and hear live messages with the other people in this space and its server, such as a game's moves.</li><li><code>members</code> Use members.</li><li><code>sync</code> Use the sync service: what lets an app open in a space (/s/&lt;space&gt;/…) and be shared by its members.</li><li><code>hook:listen:sync:live</code> Hear sync:live.</li><li><code>hook:listen:members:changed</code> Hear members:changed.</li><li><code>hook:listen:sync:changed</code> Hear sync:changed.</li></ul></details>
           <p class="actions"><a href="/demos/glowfall-together/lobby.js">Code</a> <button type="button" class="copy" data-copy="/demos/glowfall-together/lobby.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;plugin&quot; href=&quot;/demos/glowfall-together/lobby.js&quot;&gt;">Copy link tag</button></p>
+        </li>
+        <li class="card" id="glowfall-together-glowfall-referee" data-kind="background" data-search="referee glowfall-referee one jar for each member, moves no faster than a person's, and scores only for fireflies caught.  behind the scenes hook:intercept:game:update hook:intercept:game:rules hook:intercept:glowfall-together:join hook:intercept:glowfall-together:move hook:listen:game:started game glowfall together">
+          <h4>Referee <span class="tags"><span class="tag background">Behind the scenes</span><span class="tag background">Runs on a space's server</span></span></h4>
+          <p>One jar for each member, moves no faster than a person's, and scores only for fireflies caught.</p>
+          <ul class="facts"><li><b>Needs</b> <code>game</code></li><li><b>In</b> <a href="/demos/glowfall-together/app.html">Glowfall together</a></li></ul>
+          <details><summary>Asks for 5 permissions</summary><ul class="asks"><li><code>hook:intercept:game:update</code> Change or stop game:update before it happens.</li><li><code>hook:intercept:game:rules</code> Change or stop game:rules before it happens.</li><li><code>hook:intercept:glowfall-together:join</code> Change or stop glowfall-together:join before it happens.</li><li><code>hook:intercept:glowfall-together:move</code> Change or stop glowfall-together:move before it happens.</li><li><code>hook:listen:game:started</code> Hear game:started.</li></ul></details>
+          <p class="actions"><a href="/demos/glowfall-together/referee.js">Code</a> <button type="button" class="copy" data-copy="/demos/glowfall-together/referee.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;plugin&quot; href=&quot;/demos/glowfall-together/referee.js&quot;&gt;">Copy link tag</button></p>
         </li>
       </ul>
       </section>
@@ -1506,10 +1520,10 @@
           <details><summary>Asks for 2 permissions</summary><ul class="asks"><li><code>data:read:learning</code> Read the learning records, and hear when they change.</li><li><code>hook:intercept:data:beforeWrite:learning</code> Change or stop data:beforeWrite:learning before it happens.</li></ul></details>
           <p class="actions"><a href="/home/quiet-please.js">Code</a> <button type="button" class="copy" data-copy="/home/quiet-please.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;plugin&quot; href=&quot;/home/quiet-please.js&quot;&gt;">Copy link tag</button></p>
         </li>
-        <li class="card" id="site-security-agent" data-kind="agent" data-search="security agent security-agent reads a plugin of your own before you review it, and stops one that would do something it doesn't say.  agents llm agent hook:intercept:plugins:beforeadd agents bus tools">
+        <li class="card" id="site-security-agent" data-kind="agent" data-search="security agent security-agent reads a plugin of your own before you review it, and stops one that would do something it doesn't say.  agents llm agent hook:intercept:plugins:beforeadd agents bus tools home page">
           <h4>Security agent <span class="tags"><span class="tag agent">Agent</span></span></h4>
           <p>Reads a plugin of your own before you review it, and stops one that would do something it doesn't say.</p>
-          <ul class="facts"><li><b>Needs</b> <code>agents</code>, <code>bus</code>, <code>tools</code></li><li><b>In</b> no app yet: add it to one</li></ul>
+          <ul class="facts"><li><b>Needs</b> <code>agents</code>, <code>bus</code>, <code>tools</code></li><li><b>In</b> <a href="/">Home page</a></li></ul>
           <details><summary>Asks for 3 permissions</summary><ul class="asks"><li><code>llm</code> Use the llm service: one way for any plugin to ask a language model, whoever makes the model.</li><li><code>agent</code> Use agent.</li><li><code>hook:intercept:plugins:beforeAdd</code> Change or stop plugins:beforeAdd before it happens.</li></ul></details>
           <p class="actions"><a href="/home/security.agent.md">Code</a> <button type="button" class="copy" data-copy="/home/security.agent.md">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;agent&quot; href=&quot;/home/security.agent.md&quot;&gt;">Copy agent tag</button></p>
         </li>

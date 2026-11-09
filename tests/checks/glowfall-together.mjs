@@ -69,11 +69,12 @@ export default async function ({ check, context, errors, URL }) {
     await ben.page.evaluate((url) => {
       window.__heard = [];
       const ws = new WebSocket(url);
+      window.__probe = ws;
       ws.onopen = () => {
         ws.send(JSON.stringify({ t: "hello", tab: "probe" }));
         ws.send(JSON.stringify({ t: "sync", op: "hello", since: 0 }));
       };
-      ws.onmessage = (e) => window.__heard.push(String(e.data).slice(0, 60));
+      ws.onmessage = (e) => window.__heard.push(String(e.data).slice(0, 200));
     }, `${server.url.replace(/^http/, "ws")}/s/play/kernel`);
     await ben.page.waitForTimeout(500);
     await ann.page.click(`${LOBBY} button[data-action="start"]`);
@@ -96,6 +97,17 @@ export default async function ({ check, context, errors, URL }) {
     check("debugger: the server's events arrive as they happen (the game starting on the server)", started);
     const benHeard = await ben.page.evaluate(() => window.__heard);
     check("a space's server sends its trace only to a debugger that asked: another member's socket gets none", benHeard.length > 0 && !benHeard.some((m) => m.includes('"t":"trace"') || m.includes('"op":"trace"')), `${benHeard.length} messages: ${benHeard.slice(0, 3).join(" | ")}`);
+
+    // The referee (referee.js): Ben holds the arrow down, faster than a person taps, and his second device asks for a jar too.
+    await ben.page.locator('[data-plugin="glowfall-field"] canvas').focus().catch(() => {});
+    for (let i = 0; i < 40; i++) await ben.page.keyboard.press(i % 2 ? "ArrowLeft" : "ArrowRight", { delay: 0 });
+    const aside = await ann.page.waitForFunction((s) => [...document.querySelectorAll(`${s} .players li`)].some((li) => li.dataset.you !== "true" && /set aside/.test(li.textContent)), LOBBY, { timeout: 8000 }).then(() => true, () => false);
+    check("Glowfall together: the referee sets aside moves faster than a person's, and every lobby shows it", aside, (await ann.page.textContent(LOBBY).catch(() => "")).replace(/\s+/g, " ").slice(0, 300));
+    await ben.page.evaluate((topic) => {
+      window.__probe?.send(JSON.stringify({ t: "sync", op: "live", topic, value: { type: "join" } }));
+    }, "glowfall-together");
+    const refused = await ben.page.waitForFunction(() => window.__heard.some((m) => m.includes("refused")), null, { timeout: 8000 }).then(() => true, () => false);
+    check("Glowfall together: a member's second device is refused a second jar", refused, (await ben.page.evaluate(() => window.__heard.slice(-3).join(" | "))).slice(0, 300));
   } finally {
     for (const d of devices) await d.close().catch(() => {});
     await server.stop().catch(() => {});
