@@ -91,7 +91,12 @@ async function seedOnce(ctx, collection, samples) {
 
 export default async function (ctx) {
   const views = ctx.ui.views("chores.html");
-  await seedOnce(ctx, "chores", SAMPLE);
+  // Listening comes first: housemates.js may post while this plugin is still reading what was posted before,
+  // and a post missed then would leave a new household with no samples. One at a time, so they go in once.
+  let seeding = Promise.resolve();
+  const seed = () => (seeding = seeding.then(() => seedOnce(ctx, "chores", SAMPLE)).catch(() => {}));
+  ctx.on("bus:posted", ({ topic }) => topic === "household-new" && seed());
+  await seed();
   let added = 0;
 
   const view = views.live("chores", "list", async (ctx) => {
@@ -113,7 +118,6 @@ export default async function (ctx) {
   });
 
   ctx.on("members:changed", () => view.refresh());
-  ctx.on("bus:posted", ({ topic }) => topic === "household-new" && seedOnce(ctx, "chores", SAMPLE));
   // "Due today" becomes "1 day overdue" at midnight, with no change to any chore: draw again then.
   const atMidnight = () => {
     const now = new Date();

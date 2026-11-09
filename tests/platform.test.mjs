@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { watchAllPages, watchErrors } from "./page-errors.mjs";
 import { watchPolicy } from "./policy-watch.mjs";
 
 const require = createRequire(import.meta.url);
@@ -39,14 +40,14 @@ await new Promise((resolve, reject) => {
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
 // Every context from here on is watched for pages breaking the site's page policy (public/_headers).
 const refusedByPolicy = watchPolicy(browser);
-const context = await browser.newContext();
 const errors = [];
+// And for uncaught errors: every page of every context, named by the check that opened it (tests/page-errors.mjs).
+watchAllPages(browser, errors);
+const context = await browser.newContext();
 const proof = {};
 
 async function openTab(url = WORKBENCH) {
   const page = await context.newPage();
-  // Which page, so an error that comes now and then can be traced to its app.
-  page.on("pageerror", (e) => errors.push(`${e.message} (at ${new globalThis.URL(page.url()).pathname}${e.stack?.split("\n")[1] ? `, ${e.stack.split("\n")[1].trim()}` : ""})`));
   await page.goto(url);
   await page.waitForFunction(() => window.__host);
   return page;
@@ -611,7 +612,7 @@ export default async (ctx) => {
   // ---- Fallback: kernel in a dedicated worker ----
   const isolated = await browser.newContext();
   const c = await isolated.newPage();
-  c.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(c, errors, "the workbench with its kernel in a dedicated worker");
   await c.goto(`${WORKBENCH}?kernel=dedicated`);
   await c.waitForFunction(() => window.__host && window.__host.workers.size === 11, null, { timeout: 10000 });
   check("the kernel also runs in a dedicated worker", (await c.textContent("#mode")).includes("dedicated worker"));
@@ -628,5 +629,7 @@ export default async (ctx) => {
 
 console.log("\nMeasurements:", JSON.stringify(measurements, null, 2));
 const failed = results.filter((r) => !r.ok);
+// Said again at the end, where a long log is read first.
+if (failed.length) console.log(`\nFailed:\n${failed.map((r) => `FAIL  ${r.name}${r.detail ? `  (${r.detail})` : ""}`).join("\n")}`);
 console.log(`\n${results.length - failed.length}/${results.length} checks passed`);
 process.exit(failed.length ? 1 : 0);

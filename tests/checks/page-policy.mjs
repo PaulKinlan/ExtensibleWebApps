@@ -5,6 +5,7 @@
 // made apps get the same (sw/made-page.js), and that no page holds an inline
 // script it would refuse. tests/server/page-policy.mjs checks the Node and
 // Cloudflare hosts send it too.
+import { watchErrors } from "../page-errors.mjs";
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { PAGE_CSP, PERMISSIONS_POLICY } from "../../sw/made-page.js";
@@ -45,7 +46,7 @@ export default async function ({ check, context, URL, errors }) {
   // The browser enforces it: a plain string can't become markup, and no other policy can be made.
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(`page-policy: ${e.message}`));
+  watchErrors(page, errors, "page-policy");
   // Marked, so the runner doesn't count these refusals against the run (tests/policy-watch.mjs).
   await page.goto(`${URL}demos/habits/app.html#policy-probe`);
   await page.waitForFunction(() => window.__host, null, { timeout: 10000 });

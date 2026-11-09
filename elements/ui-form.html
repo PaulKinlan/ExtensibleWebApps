@@ -15,6 +15,8 @@
 <template>
   <style>
     :host { display: block; min-width: 0; }
+    /* Unseen until the view's other bound elements have drawn too (bound-element.js), so none jumps as another fills in. */
+    :host(:state(waiting)) { visibility: hidden; }
     form { display: flex; flex-direction: column; gap: var(--space-3); }
     .fields { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); }
     label { display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); font-weight: 500; color: var(--fg-2); }

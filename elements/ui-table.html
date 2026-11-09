@@ -11,6 +11,8 @@
   <style>
     /* The table sits on a surface of its own, like a card, and scrolls sideways inside it on a phone. */
     :host { display: block; min-width: 0; overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
+    /* Unseen until the view's other bound elements have drawn too (bound-element.js), so none jumps as another fills in. */
+    :host(:state(waiting)) { visibility: hidden; }
     table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
     th, td { text-align: left; padding: 10px var(--space-4); border-bottom: 1px solid var(--border); vertical-align: middle; }
     tbody tr:last-child td { border-bottom: 0; }

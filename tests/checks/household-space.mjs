@@ -6,6 +6,7 @@
 // and when it's back the phones agree, with the version the space didn't
 // take kept as a draft that std/sync.js shows. The platform's own sync checks
 // are tests/checks/space-sync.mjs; this one is about an app made to share.
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,7 +29,7 @@ async function withAuthenticator(context, page) {
 async function signUp(browser, address, name, errors) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+  watchErrors(page, errors, `household-space ${name}`);
   await withAuthenticator(context, page);
   await page.goto(address);
   await page.fill('form[data-action="register"] input[name="name"]', name);
@@ -85,6 +86,8 @@ export default async function ({ check, context, errors }) {
     check("household: in a space, each phone shows who it's signed in as and who else lives there, by their account names, with no name to type", annSees && benSees && !(await ben.page.locator(`${WHO} input`).count()), JSON.stringify({ ann: await ann.page.locator(WHO).textContent().catch(() => ""), ben: await ben.page.locator(WHO).textContent().catch(() => "") }));
 
     // The sample items went in once, though both phones started the list.
+    // They reach Ben's phone from the space, a moment after his list first draws.
+    await shows(ben.page, LIST, "Milk", 15000);
     const milk = (await rows(ben.page, LIST)).filter((t) => /^Milk\b/.test(t)).length;
     check("household: two phones starting the shared list add its sample items once", milk === 1, JSON.stringify(await rows(ben.page, LIST)));
 

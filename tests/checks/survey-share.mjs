@@ -3,6 +3,7 @@
 // share sheet gets the survey's whole public address in the space, and that
 // address is the form, for anyone, signed in or not. (tests/server/run.mjs
 // checks the form and its answers; this is the way there.)
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +18,7 @@ export default async function ({ check, context, errors }) {
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   try {
     const page = await phone.newPage();
-    page.on("pageerror", (e) => errors.push(`survey-share: ${e.message}`));
+    watchErrors(page, errors, "survey-share");
     const cdp = await phone.newCDPSession(page);
     await cdp.send("WebAuthn.enable");
     await cdp.send("WebAuthn.addVirtualAuthenticator", {
@@ -65,7 +66,7 @@ export default async function ({ check, context, errors }) {
     const friend = await browser.newContext();
     try {
       const tab = await friend.newPage();
-      tab.on("pageerror", (e) => errors.push(`survey-share friend: ${e.message}`));
+      watchErrors(tab, errors, "survey-share friend");
       await tab.goto(`${server.url}/demos/survey/`);
       // The first visit may load the page again once the service worker starts: wait for the app, then for the worker.
       await tab.waitForSelector(VIEW, { timeout: 15000 }).catch(() => {});

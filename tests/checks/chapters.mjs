@@ -5,10 +5,12 @@
 // Also: links from the homepage to other pages load them.
 //
 // It runs in a browser context of its own, like the homepage's check.
+import { watchErrors } from "../page-errors.mjs";
+
 export default async function ({ check, context, URL, errors }) {
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "chapters");
   await page.goto(URL);
   const seen = (selector, timeout = 8000) => page.waitForSelector(selector, { state: "attached", timeout }).then(() => true, () => false);
 

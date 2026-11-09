@@ -5,6 +5,8 @@
 // make Claude), the agent reads the plugin and can stop it before the card.
 // Security check is switched off throughout, so the agent is the one judging.
 
+import { watchErrors } from "../page-errors.mjs";
+
 /** A model with its key: it blocks any plugin it is asked about that sends notes to a server. */
 const MODEL = `export const manifest = { id: "scripted-reader", name: "Scripted reader", permissions: ["provide:llm"] };
 export default (ctx) => {
@@ -21,7 +23,7 @@ export default (ctx) => {
 export default async function ({ check, context, URL, errors }) {
   const own = await context.browser().newContext({ viewport: { width: 1280, height: 900 } });
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "homepage-security-agent");
   await page.goto(URL);
   const seen = (selector, timeout = 8000) => page.waitForSelector(selector, { state: "attached", timeout }).then(() => true, () => false);
   const chapter = '[data-plugin="chapter-12-security"]';

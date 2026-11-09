@@ -9,6 +9,7 @@
 // notification, so this check starts full Chromium in its new headless mode,
 // where a granted permission is kept (Playwright installs both).
 
+import { watchErrors } from "../page-errors.mjs";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -41,7 +42,7 @@ export default async function ({ check, errors, URL }) {
     await context.grantPermissions(["notifications"], { origin: new globalThis.URL(URL).origin });
     const openTab = async (url) => {
       const tab = await context.newPage();
-      tab.on("pageerror", (e) => errors.push(`notify-service-worker: ${e.message}`));
+      watchErrors(tab, errors, "notify-service-worker");
       await tab.goto(url);
       await tab.waitForFunction(() => window.__host);
       return tab;
