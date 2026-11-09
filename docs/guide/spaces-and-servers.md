@@ -32,6 +32,8 @@ flowchart LR
 
 Nothing in the app changes. A plugin reads and writes its collections as before, and `data:changed:<collection>` fires for changes from other people's devices too, with `by`: the member's id, or `plugin:<id>` for a server plugin. A live view follows them like any write.
 
+To show who that was, ask for the names: `await ctx.call("sync", "members")` gives `{ space, you, members: [{ id, name }] }`, each member with the name on their account and `you` the member this page is signed in as (it needs the `members` permission). The space sends the names when a page connects, and the page keeps them for when it's offline; `members:changed` says when they arrive or change. A plugin that stamps a record with who did something should use `you` rather than a name the person types: the space vouches for it. [`demos/household`](../../demos/household/) works this way.
+
 To show people whether their copy is in step, link the standard sync plugin and give it a slot:
 
 ```html
@@ -101,6 +103,10 @@ npm run serve      # builds, then serves the site and its spaces at http://127.0
 Open `http://127.0.0.1:8787/account/`, make an account with a passkey (the browser's own, or a phone), make a space, and open any app inside it: `/s/<space>/demos/reading-list/`, say. `/s/<space>/demos/survey/` is the survey builder; make a survey, and its **Share link** opens the public form, which works in another browser, signed out.
 
 To check a server plugin without a browser, copy [`tests/fixtures/server-app/`](../../tests/fixtures/server-app/) and the checks for it in [`tests/server/run.mjs`](../../tests/server/run.mjs), which run against Node and against `wrangler dev` (`npm run test:server`).
+
+## Moving a space to another server
+
+On `/account/`, the owner of a space can **Download a copy** of it and **Load a copy** into an empty space on another server: from the hosted site to `npm run serve` on your own machine, say. Everything in the space goes, and its server plugins start again there by themselves. The people don't: they have accounts on the old server, so invite them again. See [Moving a space between hosts](../server.md#moving-a-space-between-hosts).
 
 ## What isn't there yet
 

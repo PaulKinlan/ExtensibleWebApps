@@ -45,6 +45,9 @@ const changed = () => {
 
 interface State {
   seq: number;
+  /** The space's members' names by id, and which one this device is, as it last said: kept, so a device that's offline still knows them. */
+  members?: Record<string, string>;
+  member?: string;
   versions: Record<string, number>;
   pending: Record<string, Outgoing>;
   drafts: Draft[];
@@ -57,8 +60,9 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   let member: string | undefined;
   const loaded = store.readJson<unknown>(STATE, null).then((saved) => {
     const s = saved as State | null;
-    if (s && typeof s.seq === "number") state = { seq: s.seq, versions: { ...s.versions }, pending: { ...s.pending }, drafts: Array.isArray(s.drafts) ? s.drafts.map((d, i) => ({ ...d, ref: d.ref ?? `d${i}-${d.at}` })) : [] };
+    if (s && typeof s.seq === "number") state = { seq: s.seq, ...(s.members && typeof s.members === "object" ? { members: { ...s.members } } : {}), ...(typeof s.member === "string" ? { member: s.member } : {}), versions: { ...s.versions }, pending: { ...s.pending }, drafts: Array.isArray(s.drafts) ? s.drafts.map((d, i) => ({ ...d, ref: d.ref ?? `d${i}-${d.at}` })) : [] };
   });
+  void loaded.then(() => (member ??= state.member));
   let saving: Promise<unknown> = Promise.resolve();
   const save = () => {
     changed();
@@ -218,7 +222,14 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     }
     if (m?.t !== "sync") return;
     if (m.op === "changes") {
+      const was = member;
       if (typeof m.member === "string") member = m.member;
+      const names = m.members && typeof m.members === "object" && JSON.stringify(m.members) !== JSON.stringify(state.members ?? null);
+      if (names) state.members = { ...m.members! };
+      if (names || member !== state.member) {
+        if (member) state.member = member;
+        save();
+      } else if (member !== was) changed();
       const applied = await changes(m.changes, m.seq);
       first();
       if (!applied) return void ws.close();
@@ -291,7 +302,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     /** What this device has, for the page and for checks. */
     async state() {
       await loaded;
-      return { space, ...(member ? { member } : {}), seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
+      return { space, ...(member ? { member } : {}), members: { ...(state.members ?? {}) }, seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
     },
     /**
      * Makes a draft the record again, as a change made here: it replaces what the space has now (only
