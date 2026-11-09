@@ -34,7 +34,11 @@ export type View =
       pasteAction?: string;
       dropAction?: string;
     }
-  | { type: "canvas"; id: string; width: number; height: number }
+  /**
+   * A canvas its plugin draws on from its worker. With `pointer`, taps and drags on it are sent to the plugin as the
+   * event `canvas:pointer` (src/host/views/canvas.ts), and the page stops scrolling under a finger on it.
+   */
+  | { type: "canvas"; id: string; width: number; height: number; pointer?: boolean }
   /** A line diff, for change review. */
   | { type: "diff"; lines: { op: "same" | "add" | "del"; text: string }[] }
   /** A form field. The host sends `action` with the new value when the person changes it. */

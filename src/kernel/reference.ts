@@ -102,7 +102,7 @@ const CTX: Record<ApiMember<Api>, Doc> = {
   "ui.onCanvas": {
     signature: "ctx.ui.onCanvas(id, (canvas, theme) => …)",
     needs: "",
-    description: "Receives the OffscreenCanvas for a canvas view the plugin rendered, with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope \"tab\" for plugins that draw.",
+    description: "Receives the OffscreenCanvas for a canvas view the plugin rendered, with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope \"tab\" for plugins that draw. A canvas view rendered with `pointer: true` sends taps and drags on it as the event `canvas:pointer` (hear it with ui.onEvent): `{ canvas, type, x, y, id, kind }`, type down, move, up or cancel, x and y in the canvas's own pixels.",
   },
   "ui.onTheme": {
     signature: "ctx.ui.onTheme((theme) => …) → off()",
