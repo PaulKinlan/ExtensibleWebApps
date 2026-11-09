@@ -57,6 +57,26 @@ export type PluginRequest =
   | { t: "sync"; op: "plugins"; id: number; action: "add"; app: string; files: SharedFile[] }
   | { t: "sync"; op: "plugins"; id: number; action: "remove"; app: string; plugin: string };
 
+/** An app a member made (std/maker) and shared with the space, as the list names it: `hash` changes whenever any of its files does. */
+export interface SharedAppSummary {
+  name: string;
+  /** The title its app.html gives. */
+  title: string;
+  hash: string;
+  /** Its files' names. */
+  files: string[];
+  /** The member who shared it, or last changed it. */
+  by?: string;
+  at: string;
+}
+
+/** What a device asks of the space about the apps its members made (std/spaces/made-apps.ts). Each gets an `apps:reply` with the same id. */
+export type AppRequest =
+  | { t: "sync"; op: "apps"; id: number; action: "list" }
+  | { t: "sync"; op: "apps"; id: number; action: "get"; name: string }
+  | { t: "sync"; op: "apps"; id: number; action: "share"; name: string; files: { name: string; text: string }[] }
+  | { t: "sync"; op: "apps"; id: number; action: "unshare"; name: string };
+
 /** A change a space's server asks its members to review (std/spaces/reviews.ts), as the card shows it. */
 export interface SpaceReview {
   plugin: string;
@@ -84,6 +104,7 @@ export type ReflectRequest = { t: "sync"; op: "reflect"; id: number; method: str
 // device -> space
 export type SyncToSpace =
   | PluginRequest
+  | AppRequest
   | ReviewToSpace
   | ReflectRequest
   /** Start hearing changes, with every one after `since` first. */
@@ -105,6 +126,10 @@ export type SyncToDevice =
   | { t: "sync"; op: "plugins:reply"; id: number; ok: boolean; error?: string; list?: SharedSummary[]; files?: SharedFile[]; hash?: string }
   /** A member shared, changed or removed a plugin: each device asks for the list again. */
   | { t: "sync"; op: "plugins:changed" }
+  /** The answer to an AppRequest: the list, one app's files, or a shared app's new hash. */
+  | { t: "sync"; op: "apps:reply"; id: number; ok: boolean; error?: string; list?: SharedAppSummary[]; files?: { name: string; text: string }[]; hash?: string }
+  /** A member shared, changed or stopped sharing an app: each device asks for the list again. */
+  | { t: "sync"; op: "apps:changed" }
   /** The space's kernel started its sync again (the spaces module restarted): each device says hello again, to catch up and keep hearing changes. */
   | { t: "sync"; op: "again" }
   /** A change the space's server wants reviewed, for a device to show; `done` once anyone answered it, or it ended. */

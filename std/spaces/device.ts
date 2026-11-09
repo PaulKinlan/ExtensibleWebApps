@@ -11,7 +11,7 @@
 // Kept in the space's copy, beside its collections:
 //   sync/device.json   the last sequence number seen, each record's version, changes not yet sent, and drafts
 
-import type { Accepted, Outgoing, PluginRequest, ReflectRequest, SyncRecord, SyncToDevice, Verdict } from "../../src/shared/sync";
+import type { Accepted, AppRequest, Outgoing, PluginRequest, ReflectRequest, SyncRecord, SyncToDevice, Verdict } from "../../src/shared/sync";
 import type { Hosts } from "../../src/kernel/hosts";
 import type { Change, Collections, StoredRecord } from "../../src/kernel/records";
 import type { Store } from "../../src/kernel/store";
@@ -290,7 +290,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     heard,
     caughtUp: caughtUpHeard,
     /** Sends a request about members' plugins, or a debugger's question (reflect.ts), if connected and caught up: whether it went. */
-    send(message: PluginRequest | ReflectRequest): boolean {
+    send(message: PluginRequest | ReflectRequest | AppRequest): boolean {
       if (!socket || socket.readyState !== 1 || !caughtUp) return false;
       socket.send(JSON.stringify(message));
       return true;

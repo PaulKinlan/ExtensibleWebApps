@@ -6,12 +6,15 @@
 //   - plugins.ts sends the person's shared plugins to the space, and puts
 //     other members' here, turned off
 //   - reviews.ts shows here the review cards the space's server asks
+//   - made-apps.ts asks the space for the apps members made and shared,
+//     for Your apps (std/maker), where each runs once the person accepts it
 //
 // In a space's kernel on a server:
 //   - hub.ts orders every device's changes, refuses stale ones, and sends
 //     each accepted change to every device (the `sync` messages)
 //   - server-apps.ts starts the server plugins of the apps members open
 //   - plugins.ts keeps the plugins members share, and never runs them
+//   - made-apps.ts keeps the apps members made and share, and never runs them
 //   - reviews.ts sends its review cards to members' devices
 //   - reflect.ts answers a member's debugger: what runs in this kernel
 //
@@ -27,6 +30,7 @@ import { env } from "../../src/kernel/env";
 import type { KernelModule } from "../../src/kernel/modules";
 import { syncDevice } from "./device";
 import { syncHub } from "./hub";
+import { deviceMadeApps, spaceMadeApps } from "./made-apps";
 import { devicePlugins, spacePlugins } from "./plugins";
 import { deviceReviews, relayReviews } from "./reviews";
 import { spaceReflect } from "./reflect";
@@ -53,6 +57,8 @@ export default {
       // A space keeps the plugins its members share with each other, and never runs them.
       const shared = spacePlugins(userAdded, store, hosts, (message) => hub.tell(message));
       hub.plugins = shared.handle;
+      // And the apps they made and shared (made-apps.ts), which it never runs either.
+      hub.apps = spaceMadeApps(store, hosts, (message) => hub.tell(message)).handle;
       // A member's debugger may ask what runs here, from the kernel's own reflect service (reflect.ts).
       hub.reflect = spaceReflect(remote, hosts, shared);
       // A space's server has no screen: its reviews are shown on members' devices.
@@ -62,6 +68,7 @@ export default {
       kernel.space({ server: onServer });
       kernel.cleanup(() => {
         hub.plugins = undefined;
+        hub.apps = undefined;
         hub.reviews = undefined;
         hub.reflect = undefined;
         draining.set(store, hub.stop());
@@ -74,12 +81,15 @@ export default {
     kernel.message("sync", (host) => hosts.send(host, { t: "sync", op: "refused", error: "Only a space's kernel answers sync" }));
     let device: ReturnType<typeof syncDevice> | undefined;
     let shared: ReturnType<typeof devicePlugins> | undefined;
+    let made: ReturnType<typeof deviceMadeApps> | undefined;
     let stopReviews: (() => void) | undefined;
     const begin = () => {
       if (!where.space || device) return;
       device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
       shared = devicePlugins(userAdded, store, hosts, device, reopen);
       stopReviews = deviceReviews(reviews, device);
+      const sync = device;
+      made = deviceMadeApps(device, async () => (await sync.state()).members);
     };
     if (kernel.started()) begin();
     else root.on("internal/started", begin);
@@ -89,13 +99,17 @@ export default {
       get sharing() {
         return shared;
       },
+      get madeApps() {
+        return made;
+      },
     });
     kernel.command("sync", () => (device ? device.state() : { space: false }));
     kernel.cleanup(() => {
       stopReviews?.();
       shared?.stop();
+      made?.stop();
       device?.stop();
-      device = shared = stopReviews = undefined;
+      device = shared = made = stopReviews = undefined;
     });
   },
 } satisfies KernelModule;

@@ -79,6 +79,28 @@ demos. Both need a click first, since the browser opens its folder picker
 only right after one ([`src/host/bridges/maker.ts`](../../src/host/bridges/maker.ts)),
 and a browser with no `showDirectoryPicker` says so.
 
+## Sharing it with a space
+
+An app made in a space, at `/s/<space>/new/`, is kept in the space's folder on
+the device that made it and served at `/s/<space>/apps/<name>/`. **Share with
+the space** (`maker.share(app)`, after a review card) sends a copy of its files
+to the space ([`std/spaces/made-apps.ts`](../../std/spaces/made-apps.ts)),
+which keeps them and never runs them.
+
+Every other member then sees it in their Your apps, under **Shared in this
+space**, with who shared it. It runs for them only once they press **Accept**
+and accept its files on a review card, the same card any save shows
+(`maker.accept(app)`); then it is a made app on their device like any other,
+with its own history. When the sharer changes it and shares it again, each
+member sees **new version**, and the change reaches them the same way: a card
+that shows what changed, before anything runs. `maker.shared()` lists the
+space's apps and how each stands on this device.
+
+**Stop sharing** (`maker.unshare(app)`) takes it off the space's list. Members
+who accepted it keep their copy. An app made outside a space goes into one
+through a folder: **Save to a folder** at `/new/`, then **Open from a folder**
+at `/s/<space>/new/`.
+
 ## Saving, versions and going back
 
 `maker.save(app, files, note)` writes several files at once, after one

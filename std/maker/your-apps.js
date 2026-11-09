@@ -16,6 +16,10 @@
 // "Save to a folder" writes a copy of an app's files to the person's disk,
 // and "Open from a folder" makes an app from one, after a review, so an app
 // can go to another device or into a checkout.
+//
+// In a space (/s/<space>/new/) it also lists the apps the space's members
+// shared, each to accept before it runs here (a review of its files), and
+// offers "Share with the space" for the person's own.
 
 export const manifest = {
   id: "your-apps",
@@ -47,6 +51,9 @@ export default function (ctx) {
   let target = "";
   /** What the last folder save or open said. */
   let folder = null;
+  /** In a space: the apps its members shared, and what the last share or accept said. */
+  let shared = { space: false, apps: [] };
+  let sharing = null;
 
   const draw = () => {
     const app = apps.find((a) => a.name === picked);
@@ -57,8 +64,13 @@ export default function (ctx) {
       answer,
       targets: [{ name: "", title: "A new app", picked: !target }, ...apps.map((a) => ({ name: a.name, title: `Change ${a.title}`, picked: a.name === target }))],
     });
+    const inSpace = !!shared.space;
+    const mine = app && shared.apps.find((a) => a.name === app.name && a.state === "same");
+    const waiting = shared.apps.filter((a) => a.state !== "same");
     views.render("apps", "apps", {
       none: !apps.length,
+      space: inSpace ? { name: shared.space, offline: !!shared.offline, waiting: waiting.map((a) => ({ ...a, changed: a.state === "changed", when: new Date(a.at).toLocaleString(), label: a.state === "new" ? "Accept" : a.state === "changed" ? "Accept the new version" : "Accept, replacing yours" })), sharedHere: !!mine } : null,
+      sharing,
       apps: apps.map((a) => ({ ...a, picked: a.name === picked })),
       app: app ? { ...app, revision } : null,
       folder,
@@ -66,8 +78,12 @@ export default function (ctx) {
     });
   };
 
+  const loadShared = async () => {
+    shared = await ctx.call("maker", "shared").catch(() => ({ space: false, apps: [] }));
+  };
   const load = async () => {
     apps = await ctx.call("maker", "list").catch(() => []);
+    await loadShared();
     if (picked && !apps.some((a) => a.name === picked)) picked = "";
     if (!picked && apps.length) picked = apps[0].name;
     await loadFiles();
@@ -133,6 +149,12 @@ export default function (ctx) {
     reload();
   });
 
+  // In a space: a member shared an app, or a new version of one.
+  ctx.on("maker:shared", async () => {
+    await loadShared();
+    draw();
+  });
+
   ctx.ui.onEvent(async (action, value) => {
     if (action === "make") return make(value?.text, value?.app);
     if (action === "pick") {
@@ -153,6 +175,22 @@ export default function (ctx) {
         ? { text: `Opened ${result.app} from the folder${result.skipped?.length ? `, leaving out ${result.skipped.join(", ")}` : ""}.`, tone: "ok" }
         : { text: `Not opened: ${result.error}`, tone: "warn" };
       if (result.ok) picked = result.app;
+      return load();
+    }
+    if (action === "share" && picked) {
+      const result = await ctx.call("maker", "share", picked).catch((error) => ({ ok: false, error: error.message }));
+      sharing = result.ok ? { text: `Shared with the space. Each member sees it in their apps, to accept.`, tone: "ok" } : { text: `Not shared: ${result.error}`, tone: "warn" };
+      return load();
+    }
+    if (action === "unshare" && picked) {
+      const result = await ctx.call("maker", "unshare", picked).catch((error) => ({ ok: false, error: error.message }));
+      sharing = result.ok ? { text: `No longer shared. Members who accepted it keep their copy.`, tone: "ok" } : { text: `Still shared: ${result.error}`, tone: "warn" };
+      return load();
+    }
+    if (action === "accept") {
+      const result = await ctx.call("maker", "accept", String(value)).catch((error) => ({ ok: false, error: error.message }));
+      sharing = result.ok ? null : { text: `Not accepted: ${result.error}`, tone: "warn" };
+      if (result.ok) picked = String(value);
       return load();
     }
     if (action === "history") {

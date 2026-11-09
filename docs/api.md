@@ -916,6 +916,14 @@ The providers the caller's app links; ready means it has its key.
 
 Apps a person makes in the browser, kept on their device and served at /apps/<name>/: their files, saved after a review, each file's earlier versions, and checks of an app as written and as it runs.
 
+#### maker.accept
+
+`maker.accept(app)` → the same as save
+
+Needs: `apps:make`, and the person's review.
+
+In a space: saves an app a member shared as a made app here, or its newer version, once the person accepts one review that shows its files.
+
 #### maker.check
 
 `maker.check(app)` → { ok, ran, problems: [{ level, file, line?, message }], plugins }
@@ -987,6 +995,30 @@ Writes files of a made app, or makes a new one (its first save must hold app.htm
 Needs: `apps:read`.
 
 Writes a copy of the app's files into a folder the person picks on their disk (call it right after they click), replacing files there with the same names. The copy is a plain app folder: open it again with openFolder, here or on another device, or check it in a checkout with npm run check.
+
+#### maker.share
+
+`maker.share(app)` → { ok, url } or { ok: false, error }
+
+Needs: `apps:make`, and the person's review.
+
+In a space: shares a made app with its members, once the person accepts. Each sees it in their apps and runs it once they accept its files; sharing it again sends them the new version the same way.
+
+#### maker.shared
+
+`maker.shared()` → { space, offline?, apps: [{ name, title, files, by, at, url, state }] }
+
+Needs: `apps:read`.
+
+In a space: the apps its members shared with it. state is new (not accepted here), changed (a newer version than the one accepted here), same, or clash (an app of that name here that didn't come from the space). space is false outside a space.
+
+#### maker.unshare
+
+`maker.unshare(app)` → { ok } or { ok: false, error }
+
+Needs: `apps:make`, and the person's review.
+
+In a space: stops sharing an app, once the person accepts. Members who accepted it keep their copy.
 
 #### maker.version
 
@@ -1604,6 +1636,14 @@ Mode: `emit`. Listening needs `apps:read`.
 
 Listeners get `{ app }`.
 
+### `maker:shared`
+
+In a space: the apps its members shared changed (maker.shared lists them), or this device came back online.
+
+Mode: `emit`. Listening needs `apps:read`.
+
+Listeners get `{}`.
+
 ### `members:changed`
 
 The space told this page who its members are and which one this page is signed in as, or that changed. Read sync.members().
@@ -1685,8 +1725,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `agents:run:<agent>` | Call agents.run. |
-| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder. |
-| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.check. |
+| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.unshare. |
+| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.check. |
 | `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.playClip, audio.open, audio.save. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |

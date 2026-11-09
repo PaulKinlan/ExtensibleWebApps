@@ -8,6 +8,7 @@
 // /s/<space>/kernel is the space's kernel itself, on the server: it goes to the network.
 
 import apps from "./apps.js";
+import made from "./made.js";
 import user from "./user.js";
 
 const SPACE = /^\/s\/([a-z0-9][a-z0-9-]{0,62})(\/.*)$/;
@@ -48,6 +49,11 @@ export default {
     inner.pathname = path;
     // The plugins a person added to an app in the space are kept in the space's folder on this device.
     if (path.startsWith("/user/")) return user.handle(request, inner, env, ["spaces", space]);
+    // So are the apps a person made there, or accepted from the space's members (std/maker): /s/<space>/apps/<name>/.
+    if (path.startsWith("/apps/")) {
+      const answer = await made.handle(request, inner, env, ["spaces", space]);
+      if (answer) return answer;
+    }
     if (request.mode === "navigate") {
       // A plugin on the space's server may answer this address, for anyone: a survey's form at
       // …/demos/survey/answer?survey=…. The server says so, and its answer is the page. An app's own
