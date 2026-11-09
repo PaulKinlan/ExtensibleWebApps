@@ -26,6 +26,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [Editors, and a folder of files](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/editors.md): a text box's selection, pastes and drops, the <ui-editor> Markdown element, and the folder service for files on the person's disk
 - [Loading fast, without jumping](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/loading-fast.md): what the host and service worker do so apps draw early without layout shift
 - [Slots in views, and view transforms](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/slots-and-transforms.md): a plugin declaring `<slot name="<id>.<name>">` in its view for others to fill (page.slots), and changing another plugin's view with a place `in` it (ui:transform:<plugin>)
+- [Making an app by describing it](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/making-apps.md): the app maker agent writes app.html and plugins through review cards, checks the app as it runs and fixes it, with each file's versions (std/maker/, /apps/<name>/)
 
 ## Reference
 

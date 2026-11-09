@@ -83,10 +83,10 @@ const reviews = makeReviews(store, hosts, log);
 const base = (instance: string) => instance.split("@")[0];
 
 /** Asks the person to review a write by `instance`; throws unless they allow it. */
-async function reviewed(instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: { trace?: string }) {
+async function reviewed(instance: string, place: string, target: string, before: string, after: string, reason: unknown, dispatch: { trace?: string }, options: { once?: boolean } = {}) {
   const id = base(instance);
   const outcome = await reviews.ask(
-    { plugin: id, instance, name: remote.installed.get(id)?.manifest.name ?? id, place, target, before, after, reason: String(reason ?? "").slice(0, 300) },
+    { plugin: id, instance, name: remote.installed.get(id)?.manifest.name ?? id, place, target, before, after, reason: String(reason ?? "").slice(0, 300), ...(options.once ? { once: true } : {}) },
     dispatch,
   );
   if (!allowed(outcome)) throw new Error(outcome === "rejected" ? "The person declined the change" : "Nobody answered the review, so nothing changed");
