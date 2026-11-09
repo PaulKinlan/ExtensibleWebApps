@@ -44,7 +44,6 @@ import { fromAgentFile } from "../../src/kernel/agents/file";
 import { DEFAULT_RUNNER, runnerName } from "../../src/shared/agent-runner";
 import { env } from "../../src/kernel/env";
 import { service, type MadeAppsSeam, type ModuleKernel } from "../../src/kernel/modules";
-import { checkFiles, siteFiles } from "./checks.js";
 import { APP_NAME, FILE_NAME, appUrl, pageParts, pageProblems } from "../../sw/made-page.js";
 
 /** Where made apps and their versions are kept in the data folder. `made` is one of the platform's folders (paths.ts), so no plugin can write there itself. */
@@ -161,6 +160,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
    * a link to one that isn't there is found.
    */
   const checked = async (name: string, files: Map<string, string>) => {
+    // The checks load the first time an app is checked: most pages never make one.
+    const { checkFiles, siteFiles } = await import("./checks.js");
     const r = rules(name);
     const site = new Map<string, string>();
     const origin = (globalThis as { location?: Location }).location?.origin;
