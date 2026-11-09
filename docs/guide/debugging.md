@@ -21,13 +21,17 @@ Open [`/demos/debugger/`](../../demos/debugger/app.html) in one tab and the app 
 
 - **Space server**: in a space, the kernel on the space's server, where plugins with `runs: "server"` run. It lists the plugins there (running, or kept for members without running), what each was granted, the routes it answers and the hooks it listens to, its secrets (set or not), its code, and which members' devices are connected now.
 
-It sees the kernel of the address it is opened at: open it at `/s/<space>/demos/debugger/app.html`, signed in as a member of that space, to look at the space in this browser, and at the kernel on its server in the Space server panel. The other panels show this browser's kernel; the server's events and errors aren't streamed to the debugger yet.
+- **Space server events**: in a space, the trace of the kernel on the space's server, as it happens: the hooks its server plugins hear, their answers and calls, refusals, errors, workers, and members' devices coming and going.
+
+It sees the kernel of the address it is opened at: open it at `/s/<space>/demos/debugger/app.html`, signed in as a member of that space, to look at the space in this browser, and at the kernel on its server in the two Space server panels. The other panels show this browser's kernel.
 
 ### Looking inside a space's server
 
 A page in a space already keeps a socket open to the space's kernel, and only a member of the space can open one. The Space server panel asks over that socket with `ctx.call("sync", "reflect", method, id?)`, which needs `reflect:read`, the same permission as `reflect` itself. The space's kernel answers from its own `reflect` service, with the same read-only methods (`snapshot`, `plugins`, `hooks`, `workers`, `tabs`, `source`), so any panel that reads `reflect` can read the server too ([`std/spaces/reflect.ts`](../../std/spaces/reflect.ts)). Outside a space, or while the page can't reach it, the call fails and says why.
 
-The debugger is six plugins in [`demos/debugger/`](../../demos/debugger/), one per panel. The panels agree on which tab to look at through the bus topic `debugger-focus`. Take one out, or add your own panel, as with any app.
+The events panel asks to hear the server's trace with `ctx.call("sync", "trace", true)`, which needs `reflect:read` too. The space sends the few hundred events from just before, then each new batch as it happens, and the page's kernel hands them to plugins as the `sync:trace` hook ([`std/spaces/trace.ts`](../../std/spaces/trace.ts)). The space sends its trace to no one else: a member's device that never asked gets none of it.
+
+The debugger is a plugin per panel in [`demos/debugger/`](../../demos/debugger/). The panels agree on which tab to look at through the bus topic `debugger-focus`. Take one out, or add your own panel, as with any app.
 
 ## The `reflect` service
 

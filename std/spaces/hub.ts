@@ -8,7 +8,7 @@
 //   sync/log/<chunk>.json   the accepted changes, a hundred to a file, so a device catches up from any point
 
 import type { Dispatch } from "../../src/shared/protocol";
-import type { Accepted, Outgoing, PluginRequest, ReflectRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, Verdict } from "../../src/shared/sync";
+import type { Accepted, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, TraceRequest, Verdict } from "../../src/shared/sync";
 import { env } from "../../src/kernel/env";
 import { hooks } from "../../src/kernel/hooks";
 import type { Host, Hosts } from "../../src/kernel/hosts";
@@ -209,6 +209,12 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     reviews: undefined as ((host: Host, message: ReviewToSpace) => unknown) | undefined,
     /** A member's debugger asking what runs in the space's kernel (reflect.ts): the space's kernel sets this. */
     reflect: undefined as ((host: Host, message: ReflectRequest) => unknown) | undefined,
+    /** Live messages from a device (live.ts), and its leaving: the space's kernel sets these. */
+    live: undefined as ((host: Host, message: LiveToSpace) => unknown) | undefined,
+    /** A member's debugger asking to hear the trace (trace.ts): the space's kernel sets this. */
+    trace: undefined as ((host: Host, message: TraceRequest) => unknown) | undefined,
+    /** Whatever else the space's kernel does when a device leaves. */
+    left: new Set<(host: Host) => void>(),
     /** Sends a message to every device that said hello. */
     tell(message: SyncToDevice) {
       for (const other of listening) hosts.send(other, message);
@@ -231,6 +237,8 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       }
       if (message.op === "app") return void onApp?.(message.app);
       if (message.op === "review") return void api.reviews?.(host, message);
+      if (message.op === "live") return void api.live?.(host, message);
+      if (message.op === "trace") return void (api.trace ? api.trace(host, message) : hosts.send(host, { t: "sync", op: "trace", on: false, error: "This space doesn't stream its trace" }));
       if (message.op === "reflect") return void (api.reflect ? api.reflect(host, message) : hosts.send(host, { t: "sync", op: "reflect:reply", id: message.id, ok: false, error: "This space's kernel has no reflect module" }));
       if (message.op === "plugins") return void (api.plugins ? api.plugins(host, message) : hosts.send(host, { t: "sync", op: "plugins:reply", id: message.id, ok: false, error: "This space doesn't keep plugins" }));
       if (message.op === "push") {
@@ -256,7 +264,10 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
         return hosts.send(host, { t: "sync", op: "pushed", id: message.id, results });
       }
     },
-    hostLeft: (host: Host) => void listening.delete(host),
+    hostLeft: (host: Host) => {
+      listening.delete(host);
+      for (const then of api.left) then(host);
+    },
     /** The latest sequence number and the accepted changes after `n`, for checks and tools. */
     since,
     /**

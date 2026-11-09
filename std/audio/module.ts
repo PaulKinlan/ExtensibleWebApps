@@ -2,27 +2,36 @@
 //
 // Two kinds of sound: a processor played for a while (`play`), which is how
 // the Beat pad's drums are made, and a clip: a recording, as
-// { rate, pcm }, where pcm is base64 of 16-bit samples, one channel. A clip
-// is plain JSON, so a plugin can keep it in a collection. `render` runs a
-// clip (or a processor, to make one) through a chain of effects, each an
-// AudioWorklet processor some plugin registered, offline, and gives back the
-// new clip: so an effect is a plugin that registers a processor, and an
-// editor applies any effect it is told about without knowing what it does.
+// { rate, pcm, channels? }, where pcm is base64 of 16-bit samples, one
+// channel, or two (stereo, channels: 2) interleaved. A clip is plain JSON,
+// so a plugin can keep it in a collection; one too long for that (a
+// collection holds 5 MB in all) it keeps with `keep`, in the person's
+// data folder, and gets back with `load`. `render` runs a clip (or a
+// processor, to make one) through a chain of effects, each an AudioWorklet
+// processor some plugin registered, offline, and gives back the new clip:
+// so an effect is a plugin that registers a processor, and an editor
+// applies any effect it is told about without knowing what it does. `mix`
+// lays several clips (tracks) over each other into one.
 // A kernel module (docs/layers.md): a site that lists `audio` in kernel.json has it, as `ctx.call("audio", …)`.
 
 import { service, type ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
 
-/** The longest clip, in base64 characters: about 30 seconds at 22,050 samples a second. */
-const MAX_CLIP = 2_000_000;
+/** The longest clip, in base64 characters: about four and a half minutes of one channel at 22,050 samples a second. */
+const MAX_CLIP = 16_000_000;
 const MAX_CHAIN = 8;
-const clipArgs = "{ rate, pcm }";
+const MAX_TRACKS = 16;
+/** Clips a plugin keeps with `keep`, at most. */
+const MAX_KEPT = 50;
+const clipArgs = "{ rate, pcm, channels? }";
+const KEPT = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /** Checks a clip a plugin sent, so the page is never asked to decode something it shouldn't. */
 function checkClip(clip: unknown): void {
-  const c = clip as { rate?: unknown; pcm?: unknown } | undefined;
+  const c = clip as { rate?: unknown; pcm?: unknown; channels?: unknown } | undefined;
   if (!c || typeof c !== "object" || typeof c.pcm !== "string" || typeof c.rate !== "number") throw new Error(`A clip is ${clipArgs}: pcm is base64 of 16-bit samples`);
   if (c.rate < 3000 || c.rate > 96_000) throw new Error("A clip's rate is 3000 to 96000 samples a second");
+  if (c.channels !== undefined && c.channels !== 1 && c.channels !== 2) throw new Error("A clip has 1 channel or 2 (stereo)");
   if (c.pcm.length > MAX_CLIP) throw new Error(`A clip is limited to ${MAX_CLIP} characters of base64`);
 }
 
@@ -36,11 +45,26 @@ function processorsOf(first: Record<string, unknown>): string[] {
   const source = first.source as { processor?: unknown } | undefined;
   if (source && typeof source.processor === "string") names.add(source.processor);
   if (Array.isArray(first.chain)) for (const link of first.chain) if (link && typeof link.processor === "string") names.add(link.processor);
+  if (Array.isArray(first.tracks)) for (const track of first.tracks) if (track && typeof track === "object") for (const name of processorsOf(track as Record<string, unknown>)) names.add(name);
   return [...names];
 }
 
 const make = (kernel: ModuleKernel): ServiceProvider => {
-  const { hosts } = kernel;
+  const { hosts, store } = kernel;
+  /** Where a plugin's kept clips are, in the data folder: each its own. */
+  // Under plugin-data, which a plugin's file permissions never reach (src/kernel/paths.ts), so one plugin can't read another's.
+  const keptPath = (plugin: string, name?: string) => `plugin-data/audio/${base(plugin)}${name ? `/${name}.json` : ""}`;
+  /** One keep at a time for each plugin, so two at once can't both pass the count. */
+  const keeping = new Map<string, Promise<unknown>>();
+  const oneAtATime = <T>(plugin: string, work: () => Promise<T>): Promise<T> => {
+    const next = (keeping.get(base(plugin)) ?? Promise.resolve()).then(work, work);
+    keeping.set(base(plugin), next.catch(() => {}));
+    return next;
+  };
+  const keptName = (name: unknown) => {
+    if (typeof name !== "string" || !KEPT.test(name)) throw new Error("A kept clip's name is lowercase letters, digits and dashes, up to 64");
+    return name;
+  };
   /** Every processor plugins registered, by name, and the plugin that did: a name is its first plugin's. */
   const sources = new Map<string, string>();
   const owners = new Map<string, string>();
@@ -79,6 +103,21 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         description:
           `Renders a clip, offline, through a chain of registered processors (effects, each given the sound before it as its input), and gives back the new clip. Without a clip, \`source\` makes one: a processor played for ms, at rate (22050 by default). tail adds that many ms of silence at the end for an echo to ring into. Each processor's options get start: 0. At most ${MAX_CHAIN} in a chain.`,
       },
+      mix: {
+        args: "({ tracks: [{ clip, at?, gain?, pan?, chain? }], rate?, channels?, tail? })",
+        returns: clipArgs,
+        needs: "audio",
+        description: `Mixes clips into one, offline: each track starts at \`at\` seconds, at its gain (1 by default, up to 4), panned from -1 (left) to 1 (right), through its own chain of processors. Tracks may differ in rate and channels. The mix is stereo (channels 2) unless channels is 1, at rate (the first track's if not given). At most ${MAX_TRACKS} tracks.`,
+      },
+      keep: {
+        args: "({ name, clip })",
+        returns: "{ kept, seconds }",
+        needs: "audio",
+        description: `Keeps a clip in the person's data folder under a name of this plugin's own, for a clip too long for a collection (which holds 5 MB in all). Keeping a name again replaces it. At most ${MAX_KEPT} a plugin.`,
+      },
+      load: { args: "({ name })", returns: `${clipArgs} or null`, needs: "audio", description: "A clip this plugin kept, or null if there is none by that name." },
+      forget: { args: "({ name })", returns: "{ forgotten }", needs: "audio", description: "Deletes a clip this plugin kept." },
+      kept: { args: "()", returns: "[name]", needs: "audio", description: "The names of the clips this plugin kept." },
       playClip: {
         args: "({ clip, from?, to?, chain?, group?, at? })",
         returns: "{ played, ms, at }",
@@ -86,22 +125,54 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         description: "Plays a clip, from and to in seconds (the whole clip if not given), through a chain of processors if given. With `group`, `stop` can end it. at is when it starts, in ms since the epoch, so a playhead can follow it.",
       },
       open: {
-        args: "({ rate?, maxSeconds? })",
+        args: "({ rate?, maxSeconds?, channels? })",
         returns: "{ name, clip, seconds } or null",
         needs: "audio",
-        description: "Opens the file chooser for a sound file (WAV, MP3, Ogg…), decodes it to one channel at rate (22050 by default) and gives it back as a clip, at most maxSeconds long (15 by default, 30 at most). Only right after the person clicks; null if they close it.",
+        description: "Opens the file chooser for a sound file (WAV, MP3, Ogg…), decodes it to one channel (or two, with channels: 2) at rate (22050 by default) and gives it back as a clip, at most maxSeconds long (15 by default, 300 at most, and no more than a clip holds). Only right after the person clicks; null if they close it.",
       },
       save: {
         args: "({ clip, name })",
         returns: "{ saved }",
         needs: "audio",
-        description: "Saves a clip as a WAV file the person downloads, named name.wav.",
+        description: "Saves a clip as a WAV file the person downloads, named name.wav: stereo if the clip is.",
       },
     },
     capability: () => "audio",
     // A group is the plugin's own: its name is kept apart from every other plugin's.
-    call: (plugin, method, args, dispatch) => {
+    call: async (plugin, method, args, dispatch) => {
       const [first, ...rest] = args as [Record<string, unknown> | undefined, ...unknown[]];
+      // Kept clips are files in the data folder, each plugin's in its own folder: the page plays no part.
+      if (method === "keep") {
+        const name = keptName(first?.name);
+        checkClip(first?.clip);
+        return oneAtATime(plugin, async () => {
+        const names = await store.listFiles(keptPath(plugin)).catch(() => [] as string[]);
+        if (!names.includes(`${name}.json`) && names.filter((n) => n.endsWith(".json")).length >= MAX_KEPT) throw new Error(`A plugin keeps at most ${MAX_KEPT} clips: forget one first`);
+        const { rate, pcm, channels } = first!.clip as { rate: number; pcm: string; channels?: number };
+        await store.writeText(keptPath(plugin, name), JSON.stringify({ rate, pcm, ...(channels === 2 ? { channels } : {}) }));
+        return { kept: name, seconds: Math.round(((pcm.length * 3) / 4 / 2 / (channels === 2 ? 2 : 1) / rate) * 100) / 100 };
+        });
+      }
+      if (method === "load") {
+        const text = await store.readText(keptPath(plugin, keptName(first?.name)));
+        return text ? JSON.parse(text) : null;
+      }
+      if (method === "forget") {
+        const name = keptName(first?.name);
+        const had = (await store.readText(keptPath(plugin, name))) !== undefined;
+        if (had) await store.removeFile(keptPath(plugin, name));
+        return { forgotten: had };
+      }
+      if (method === "kept") return (await store.listFiles(keptPath(plugin)).catch(() => [] as string[])).filter((n) => n.endsWith(".json")).map((n) => n.slice(0, -5)).sort();
+      if (method === "mix") {
+        if (!first || typeof first !== "object" || !Array.isArray(first.tracks) || !first.tracks.length || first.tracks.length > MAX_TRACKS) throw new Error(`audio.mix takes { tracks: [{ clip, at?, gain?, pan?, chain? }] }, 1 to ${MAX_TRACKS} of them`);
+        for (const track of first.tracks as Record<string, unknown>[]) {
+          if (!track || typeof track !== "object") throw new Error("A track is { clip, at?, gain?, pan?, chain? }");
+          checkClip(track.clip);
+          if (track.chain !== undefined && (!Array.isArray(track.chain) || track.chain.length > MAX_CHAIN)) throw new Error(`A chain is a list of at most ${MAX_CHAIN} { processor, options }`);
+        }
+        if (first.tracks.reduce((n: number, t: { clip: { pcm: string } }) => n + t.clip.pcm.length, 0) > MAX_CLIP * 2) throw new Error("The tracks are too long to mix together");
+      }
       if (method === "render" || method === "playClip" || method === "save") {
         if (!first || typeof first !== "object") throw new Error(`audio.${method} takes an object`);
         if (first.clip !== undefined || method !== "render") checkClip(first.clip);

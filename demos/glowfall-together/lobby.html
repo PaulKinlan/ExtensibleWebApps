@@ -1,0 +1,44 @@
+<!--
+  The lobby. lobby.js sends { away, inSpace, joined, waiting, running, idle,
+  note, team, lives, players: [{ key, name, n, you, score, jar }] }. n is the
+  player's colour, as together.js numbers them: the swatch's class.
+-->
+<style>
+  .lobby { display: flex; flex-direction: column; gap: var(--space-3); }
+  .lobby h2 { margin: 0; }
+  .score { display: flex; gap: var(--space-3); }
+  .players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+  .players li { display: flex; align-items: center; gap: var(--space-2); padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); }
+  .swatch { width: 14px; height: 14px; border-radius: 4px; background: #ffe27a; flex: none; }
+  .c1 { background: #9effc7; }
+  .c2 { background: #ff9ecb; }
+  .c3 { background: #9ec9ff; }
+  .c4 { background: #ffb37a; }
+  .c5 { background: #c99eff; }
+  .c6 { background: #7affef; }
+  .c7 { background: #ffffff; }
+  .players .points { margin-left: auto; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
+  .start { min-height: 44px; }
+</style>
+<template id="lobby">
+  <section class="lobby" aria-label="Players">
+    <h2>Together</h2>
+    <template if="away">
+      <p class="muted">Everyone in a space plays the same game, on the space's server. Make a space on <a href="/account/">your account</a>, invite someone, and open this game at <code>/s/&lt;space&gt;/demos/glowfall-together/</code>.</p>
+      <p class="muted">On your own, play <a href="../glowfall/app.html">Glowfall</a>.</p>
+    </template>
+    <template if="waiting"><p class="muted" role="status">Joining the game on the space's server…</p></template>
+    <template if="joined">
+      <div class="score"><ui-stat label="Caught together" value="{{team}}"></ui-stat><ui-stat label="Lights" value="{{lives}}"></ui-stat></div>
+      <template if="idle"><button type="button" class="primary start" data-action="start">Start a game for everyone</button></template>
+      <template if="running"><p class="muted">Playing. Tap or drag on the meadow, or use the arrow keys.</p></template>
+      <ul class="players">
+        <template for="p of players">
+          <li key="{{p.key}}" data-you="{{p.you}}" data-jar="{{p.jar}}"><span class="swatch c{{p.n}}"></span><span>{{p.name}}<template if="p.you"> (you)</template></span><span class="points">{{p.score}}</span></li>
+        </template>
+      </ul>
+    </template>
+    <template if="note"><p class="muted" role="status">{{note}}</p></template>
+  </section>
+</template>

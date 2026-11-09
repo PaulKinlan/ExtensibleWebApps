@@ -33,6 +33,6 @@ const PROCESSOR = `registerProcessor("effect-tremolo", class extends AudioWorkle
 export default async function (ctx) {
   await ctx.call("audio", "registerProcessor", "effect-tremolo", PROCESSOR);
   ctx.on("sound-editor:effects", ({ effects }) => ({
-    effects: [...effects, { id: "tremolo", name: "Tremolo", description: "Loudness that wobbles, six times a second", processor: "effect-tremolo", options: { rate: 6, depth: 0.8 } }],
+    effects: [...effects, { id: "tremolo", name: "Tremolo", description: "Loudness that wobbles, six times a second", processor: "effect-tremolo", options: { rate: 6, depth: 0.8 }, knobs: { rate: { label: "Speed", min: 0.5, max: 20, step: 0.5, unit: "Hz" }, depth: { label: "Depth", min: 0, max: 1, step: 0.05 } } }],
   }));
 }

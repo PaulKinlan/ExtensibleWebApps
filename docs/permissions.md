@@ -46,6 +46,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `bus:read:<topic>` | Read the messages posted to a topic. | See [Agents](guide/agents.md). |
 | `sync` | Know whether the tab's copy of a space is in step, and keep or let go of the drafts kept from a conflict. | What [`std/sync.js`](../std/sync.js) uses. Only means something in a space. |
 | `members` | Read the space's members, each with the name on their account, and which of them this page is signed in as (`sync.members()`), and hear `members:changed`. | Lets a plugin show who changed what: `by` on a change is a member's id. What [`demos/household`](../demos/household/) uses. Only means something in a space. |
+| `live` | Send live messages in a space (`sync.live`): from a page to the space's server plugins, or from a server plugin to the devices on a topic. Nothing is kept. | For a game played together, cursors, presence. Each message carries the member and device it came from, so a device can't speak for another. To hear them, `hook:listen:sync:live`. |
 | `hook:listen:<hook>` | Hear an `emit` or `parallel` hook: something happened. | It can't change what happened. |
 
 ## Taking part

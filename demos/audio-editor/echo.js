@@ -39,6 +39,6 @@ const PROCESSOR = `registerProcessor("effect-echo", class extends AudioWorkletPr
 export default async function (ctx) {
   await ctx.call("audio", "registerProcessor", "effect-echo", PROCESSOR);
   ctx.on("sound-editor:effects", ({ effects }) => ({
-    effects: [...effects, { id: "echo", name: "Echo", description: "It comes back, a quarter second later", processor: "effect-echo", options: { delay: 0.25, feedback: 0.45, mix: 0.5 }, tail: 1500 }],
+    effects: [...effects, { id: "echo", name: "Echo", description: "It comes back, a quarter second later", processor: "effect-echo", options: { delay: 0.25, feedback: 0.45, mix: 0.5 }, knobs: { delay: { label: "Delay", min: 0.05, max: 1, step: 0.05, unit: "s" }, feedback: { label: "Repeats", min: 0, max: 0.9, step: 0.05 }, mix: { label: "Mix", min: 0, max: 1, step: 0.05 } }, tail: 1500 }],
   }));
 }

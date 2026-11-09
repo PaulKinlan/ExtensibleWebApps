@@ -1,0 +1,49 @@
+<!--
+  The space server events panel. space-events.js sends { away, inSpace,
+  problem, listening, paused, pressed, onlyProblems, search, count, none,
+  left, rows }. rows are the newest events first, each { seq, time, kind,
+  problem, name, plugin, ms, detail }; time is seconds since the space's
+  kernel started.
+-->
+<style>
+  .bar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin: 0 0 var(--space-2); }
+  .bar input[type=search] { flex: 1; min-width: 12ch; }
+  .log { list-style: none; margin: 0; padding: 0; font-family: var(--font-mono, monospace); font-size: var(--text-sm); max-height: 30rem; overflow: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .log li { display: grid; grid-template-columns: 9ch 10ch 1fr; gap: 0 var(--space-2); padding: 3px var(--space-2); border-bottom: 1px solid var(--border); }
+  .log li[data-problem] { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  .log .kind { color: var(--fg-2); }
+  .log .what { overflow-wrap: anywhere; }
+  .log .detail { grid-column: 3; color: var(--fg-2); overflow-wrap: anywhere; }
+  .muted { color: var(--fg-2); font-size: var(--text-sm); }
+  @media (max-width: 40rem) { .log li { grid-template-columns: 1fr; } .log .detail { grid-column: 1; } }
+</style>
+<template id="space-events">
+  <section aria-label="Space server events">
+    <h2>Space server events <template if="inSpace"><ui-badge>{{count}}</ui-badge></template> <template if="listening"><ui-badge tone="ok">live</ui-badge></template> <template if="paused"><ui-badge tone="warn">paused</ui-badge></template></h2>
+    <template if="away">
+      <p class="muted">A space's server runs a kernel of its own. Open this debugger in a space, at <code>/s/&lt;space&gt;/demos/debugger/app.html</code>, to watch what it does as it happens.</p>
+    </template>
+    <template if="inSpace">
+      <div class="bar">
+        <input type="search" placeholder="Filter by hook, plugin or text" aria-label="Filter the space's events" value="{{search}}" data-action="search" data-live>
+        <label><input type="checkbox" checked="{{onlyProblems}}" data-action="problems"> Only problems</label>
+        <button type="button" data-action="listen"><template if="listening">Stop</template><template if="!listening">Listen</template></button>
+        <button type="button" data-action="pause" aria-pressed="{{pressed}}">Pause</button>
+        <button type="button" data-action="clear">Clear</button>
+      </div>
+      <template if="problem"><p class="muted" role="status">{{problem}}</p></template>
+      <template if="none"><ui-empty heading="Nothing yet"><p>Use an app in this space, and what its server does shows here.</p></ui-empty></template>
+      <ol class="log" reversed>
+        <template for="e of rows">
+          <li key="{{e.seq}}" data-problem="{{e.problem}}">
+            <span class="time">{{e.time}}</span>
+            <span class="kind">{{e.kind}}</span>
+            <span class="what"><strong>{{e.name}}</strong> <template if="e.plugin">[{{e.plugin}}]</template> {{e.ms}}</span>
+            <template if="e.detail"><span class="detail">{{e.detail}}</span></template>
+          </li>
+        </template>
+      </ol>
+      <template if="left"><p class="muted">{{left}} older events not drawn. Filter to see them.</p></template>
+    </template>
+  </section>
+</template>
