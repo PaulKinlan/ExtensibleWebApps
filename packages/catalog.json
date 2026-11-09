@@ -1484,6 +1484,8 @@
         "ui",
         "data:read:items",
         "data:read:fetched",
+        "data:read:here-items",
+        "data:read:here-fetched",
         "sync"
       ],
       "provides": [],
@@ -1509,6 +1511,28 @@
       "services": [],
       "places": [],
       "runs": "server",
+      "apps": [
+        "demos/feeds"
+      ]
+    },
+    {
+      "id": "feeds-here",
+      "name": "Read feeds here",
+      "description": "Without a space, reads the feeds you follow on this device, through this site, while the app is open.",
+      "href": "/demos/feeds/read-here.js",
+      "source": "feeds",
+      "kind": "background",
+      "permissions": [
+        "network",
+        "schedule",
+        "sync",
+        "data:read:feeds"
+      ],
+      "provides": [],
+      "services": [
+        "sync"
+      ],
+      "places": [],
       "apps": [
         "demos/feeds"
       ]
