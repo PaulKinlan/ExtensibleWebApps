@@ -21,7 +21,9 @@
       "places": [
         "append main"
       ],
-      "apps": [],
+      "apps": [
+        "home"
+      ],
       "needsOneOf": {
         "llm": [
           "llm-anthropic",
@@ -86,6 +88,7 @@
         "demos/librarian",
         "demos/markdown-editor",
         "demos/security",
+        "home",
         "site/new"
       ]
     },
@@ -134,6 +137,7 @@
         "demos/reading-list",
         "demos/recipes",
         "demos/spending",
+        "home",
         "site/new"
       ]
     },
@@ -157,6 +161,7 @@
       "group": "Language models",
       "places": [],
       "apps": [
+        "home",
         "site/new"
       ]
     },
@@ -179,7 +184,9 @@
       "places": [
         "append main"
       ],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "import-export",
@@ -245,6 +252,7 @@
       "group": "Language models",
       "places": [],
       "apps": [
+        "home",
         "site/new"
       ]
     },
@@ -268,7 +276,9 @@
       "places": [
         "append main"
       ],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "reset",
@@ -289,7 +299,9 @@
       "places": [
         "append main"
       ],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "switchboard",
@@ -311,6 +323,7 @@
         "append main"
       ],
       "apps": [
+        "home",
         "site/new"
       ]
     },
@@ -383,7 +396,9 @@
       "places": [
         "append main"
       ],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "world-clock",
