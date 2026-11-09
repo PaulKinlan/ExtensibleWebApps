@@ -157,13 +157,17 @@ export default async function ({ check, openTab, context, URL }) {
     check("the app maker's tools are the maker's, not the data's or the authoring service's", ["maker_check", "maker_list", "maker_read", "maker_save"].every((t) => tools.includes(t)) && !tools.some((t) => /^(data_(list|get|put|delete)|authoring_)/.test(t)), tools.join(" "));
     check("the app maker sees the bug only running the app shows, and saves a fix after a second card", await accept("changes reminder.js"));
     check("the app maker says where the app is", await seen(`${make} >> text=Made it: /apps/reading-list/`, 20000));
-    const checked = await page.evaluate(() =>
+    // The trace reaches the page in batches, so the chat can say "Made it" before the last model turn's trace is here: wait for both checks.
+    const checks = () =>
       window.__host.traces
         .filter((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked"))
         .map((e) => JSON.parse(e.detail.slice(12)).last)
         .filter((l) => l?.name === "maker_check")
-        .map((l) => l.content),
-    );
+        .map((l) => l.content);
+    await page
+      .waitForFunction(() => window.__host.traces.filter((e) => e.plugin === "fake-model" && e.detail?.includes('"name":"maker_check"')).length >= 2, null, { timeout: 5000 })
+      .catch(() => {});
+    const checked = await page.evaluate(checks);
     check("the first check ran the app in the preview and named the failing file", /"ran":true/.test(checked[0] ?? "") && /reminder\.js/.test(checked[0] ?? "") && /nextSundy/.test(checked[0] ?? ""), (checked[0] ?? "no check").slice(0, 300));
     check("after the fix, the check passes", /"ok":true/.test(checked[1] ?? ""), (checked[1] ?? "no second check").slice(0, 300));
     check("the preview runs the app: the books form, from the collection's schema", await inPreview('[data-key="reading-list-books:books"] ui-form'));

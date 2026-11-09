@@ -23,6 +23,7 @@ Start with `npm run new-app -- my-app` (with no checkout, `npm create extensible
 3. A plugin owns the collections in its manifest and reads and writes them freely. Reading another's needs `data:read:<name>`; writing needs `data:write:<name>` and the person reviews each write, so pass a reason: `ctx.call("data", "put", name, record, "why")`.
 4. Views are HTML from an allowlist ([`src/shared/html.ts`](src/shared/html.ts)): no scripts, `style` attributes, iframes, SVG or event handlers. Use `class` with a `<style>` in the template file.
 5. A plugin can't touch the DOM, the network (without `network`), or other plugins. It sends messages through `ctx`.
+6. Pages run no inline script and take no markup from a plain string (Trusted Types): put a page's script in a file next to it, and build elements rather than setting `innerHTML`. Every app installs and works offline already: [installing, offline and files](docs/guide/installing-and-files.md).
 
 ## How to write it
 

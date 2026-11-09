@@ -5,6 +5,7 @@
 // unknown elements are unwrapped so their text survives.
 
 import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../shared/html";
+import { html as trusted } from "./trusted";
 
 const SAFE_HREF = /^(https?:|mailto:|#)/i;
 const SAFE_SRC = /^(https:|data:image\/(png|jpeg|gif|webp|avif);)/i;
@@ -124,7 +125,7 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
 /** A plugin's HTML as a fragment of allowed DOM. */
 export function sanitize(html: string, owner: string, { remote = false, base }: { remote?: boolean; base?: string } = {}): DocumentFragment {
   const template = document.createElement("template");
-  template.innerHTML = html;
+  template.innerHTML = trusted(html);
   const out = document.createDocumentFragment();
   copy(template.content, out, owner, remote, base);
   return out;

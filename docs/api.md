@@ -772,6 +772,18 @@ Needs: nothing.
 
 This API reference, as the kernel describes itself.
 
+### launch
+
+Files opened with the app, when it is installed and its manifest has file_handlers: what each is, and a text file's text.
+
+#### launch.take
+
+`launch.take()` → [{ name, type, size, lastModified, text? }]
+
+Needs: `launch`.
+
+The files opened with the plugin's tab, once: they are gone after, and the tab moves back to the app's own address. text is there for a text file (text/*, JSON, CSV, Markdown) of at most 5 MB. An empty list when nothing is waiting.
+
 ### llm
 
 Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js). The caller never holds a key.
@@ -1360,6 +1372,14 @@ Mode: `emit`. Listening needs `history`.
 
 Listeners get `{}`.
 
+### `launch:received`
+
+Files were opened with an app (it is installed, and its manifest has file_handlers). Call launch.take() to have them, if they were opened with your app. It carries nothing itself, as every plugin with `launch` hears it.
+
+Mode: `emit`. Listening needs `launch`.
+
+Listeners get `{}`.
+
 ### `llm:complete`
 
 Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }. Listening needs provide:llm.
@@ -1501,6 +1521,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `folder:read` | Call folder.about, folder.list, folder.entries, folder.read. |
 | `folder:write` | Call folder.write. |
 | `history` | Call history.state, history.undo, history.redo. |
+| `launch` | Call launch.take. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `members` | Call sync.members. |
 | `network:<host>` | Call net.fetch. |
@@ -1555,6 +1576,7 @@ Reserved ids, which no plugin can take:
 - `hooks`
 - `host`
 - `kernel`
+- `launch`
 - `llm`
 - `maker`
 - `net`

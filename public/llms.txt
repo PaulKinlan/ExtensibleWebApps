@@ -37,6 +37,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [Servers and spaces](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/server.md): the kernel on Node and Cloudflare, seams, sign-in, sync, server plugins
 - [API keys and web requests](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/keys-and-requests.md): network:<host>, net.fetch, and secrets a plugin uses without seeing
 - [Outside agents: WebMCP and MCP](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/outside-agents.md): a plugin that calls outside.open lets the browser's agents (WebMCP) and members' MCP clients (/s/<space>/mcp/<plugin>, agent keys) use its tools
+- [Installing, offline, and opening files](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/installing-and-files.md): every app gets a manifest and works offline; file_handlers and the launch service; the page policy (Trusted Types, no inline scripts, Permissions-Policy)
 
 ## Examples
 

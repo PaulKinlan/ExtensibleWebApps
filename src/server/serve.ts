@@ -26,6 +26,7 @@ import { type Accounts, type Decision, frontDoor, type Knock, SPACE, unrouted } 
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "./routes.ts";
 import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
 import { accept } from "./websocket.ts";
+import { headerRules } from "./header-rules.ts";
 import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse } from "./mcp.ts";
 
 const TYPES: Record<string, string> = {
@@ -394,25 +395,8 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
   };
 }
 
-/**
- * The rules of a Cloudflare `_headers` file: a path (where `*` matches anything) on a line of its
- * own, then its headers, indented, one `Name: value` to a line. No file, no rules.
- */
-export function headerRules(file: string): { path: RegExp; headers: Record<string, string> }[] {
-  if (!existsSync(file)) return [];
-  const rules: { path: RegExp; headers: Record<string, string> }[] = [];
-  for (const line of readFileSync(file, "utf8").split("\n")) {
-    if (!line.trim() || line.trim().startsWith("#")) continue;
-    if (!/^\s/.test(line)) {
-      const pattern = line.trim().split("*").map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*");
-      rules.push({ path: new RegExp(`^${pattern}$`), headers: {} });
-    } else if (rules.length) {
-      const at = line.indexOf(":");
-      if (at > 0) rules[rules.length - 1].headers[line.slice(0, at).trim().toLowerCase()] = line.slice(at + 1).trim();
-    }
-  }
-  return rules;
-}
+// The site's _headers, read as Cloudflare does (header-rules.ts): also used by vite.config.ts.
+export { headerRules };
 
 // Run directly: read the options and start.
 if (import.meta.url === `file://${process.argv[1]}`) {

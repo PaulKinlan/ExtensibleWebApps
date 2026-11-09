@@ -11,6 +11,9 @@
 // workbench (site/workbench/index.html, the page with the trace) shows every view along
 // with the trace and the plugins panel.
 
+// First: the Trusted Types policies, before anything hands the page a string (trusted.ts).
+import "./trusted";
+import { html as trustedHtml } from "./trusted";
 import { folder as appFolder, followLinks, screen } from "./router";
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
 import { inspect } from "./inspect";
@@ -33,6 +36,7 @@ import { workbench } from "./workbench";
 import { elementsIn, warmPlugin } from "./prefetch";
 import { reserveSlots } from "./reserve";
 import { speculate } from "./speculation";
+import { installable } from "./install";
 
 const tab = Math.random().toString(36).slice(2, 8);
 const params = new URLSearchParams(location.search);
@@ -679,6 +683,7 @@ function spawn(plugin: string, source: string, network: boolean) {
 // ---- Bridges to page-only APIs: a file each in bridges/ ----
 
 const bridge = bridges({
+  tab,
   workers,
   places: pagePlaces,
   running: () => running,
@@ -714,6 +719,7 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
 /** The trace, benchmarks and demo links, on the workbench page only. */
 const bench = document.getElementById("devtools") ? workbench(command) : undefined;
 serviceWorker(command, report);
+installable();
 const traces: TraceEvent[] = [];
 function showTrace(events: TraceEvent[]) {
   traces.push(...events);
@@ -816,5 +822,6 @@ function resetLinks() {
 }
 
 // For tests and poking around in the console.
-// Tests reach the template filler and the CSS cleaner here, to check them without a plugin.
-Object.assign(window, { __host: { tab, app, command, traces, audioStats, audioProbe, workers, fill, cleanCss, report, places: () => pagePlaces.status(), inspect: () => inspector?.start(), get spawner() { return spawner; } } });
+// Tests reach the template filler and the CSS cleaner here, to check them without a plugin, and parse a
+// template file as the host does (through its Trusted Types policy: trusted.ts).
+Object.assign(window, { __host: { tab, app, command, traces, audioStats, audioProbe, workers, fill, cleanCss, report, parse: (text: string) => new DOMParser().parseFromString(trustedHtml(text), "text/html"), places: () => pagePlaces.status(), inspect: () => inspector?.start(), get spawner() { return spawner; } } });
