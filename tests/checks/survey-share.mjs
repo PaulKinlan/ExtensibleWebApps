@@ -25,18 +25,18 @@ export default async function ({ check, context, errors }) {
     });
     // Surveys links the account page as /account/?app=/demos/survey/, so it offers that app in each space.
     await page.goto(`${server.url}/account/?app=/demos/survey/`);
-    await page.fill("#name", "Sam");
-    await page.click('#register button[type="submit"]');
-    await page.waitForSelector("#in:not([hidden])", { timeout: 8000 });
-    await page.fill("#space-name", "polls");
-    await page.click('#new-space button[type="submit"]');
+    await page.fill('form[data-action="register"] input[name="name"]', "Sam");
+    await page.click('form[data-action="register"] button[type="submit"]');
+    await page.waitForSelector(".signed-in", { timeout: 8000 });
+    await page.fill('form[data-action="make"] input[name="name"]', "polls");
+    await page.click('form[data-action="make"] button[type="submit"]');
 
     // The account page links Surveys in each space, and the site's front page, and names no other app.
-    const open = page.locator('#spaces a:has-text("Open Surveys in it")');
+    const open = page.locator('.space-list a:has-text("Open Surveys in it")');
     await open.waitFor({ timeout: 8000 });
     const href = await open.getAttribute("href");
     check("survey share: the account page opens Surveys in each of your spaces", href === "/s/polls/demos/survey/", String(href));
-    const links = await page.locator("#spaces a:not([download])").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+    const links = await page.locator(".space-list a:not([href$=\"/export\"])").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
     check("account: a space opens only the app you came from and the site, never a hardcoded demo", JSON.stringify(links) === JSON.stringify(["/s/polls/demos/survey/", "/s/polls/"]), JSON.stringify(links));
     await open.click();
     const button = `${VIEW} .survey[key="sample-launch"] button[data-action="share"]`;

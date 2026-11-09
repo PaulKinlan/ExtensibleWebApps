@@ -1,0 +1,27 @@
+<!--
+  The other sites to sign in with (providers.js). It sends { providers }, each
+  { id, text, ask? }: `ask` ({ name, label, placeholder }) is what that site
+  needs typed first, such as a Bluesky handle.
+-->
+<style>
+  .providers { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .providers form { flex: 1 1 100%; display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .providers input { flex: 1 1 12rem; }
+</style>
+<template id="providers">
+  <template if="providers.length">
+    <div class="providers">
+      <template for="p of providers">
+        <template if="p.ask">
+          <form data-action="start:{{p.id}}" key="{{p.id}}">
+            <input name="{{p.ask.name}}" placeholder="{{p.ask.placeholder}}" title="{{p.ask.label}}" required autocomplete="username">
+            <button type="submit">{{p.text}}</button>
+          </form>
+        </template>
+        <template if="!p.ask">
+          <button type="button" data-action="start:{{p.id}}" key="{{p.id}}">{{p.text}}</button>
+        </template>
+      </template>
+    </div>
+  </template>
+</template>

@@ -1,0 +1,45 @@
+<!--
+  Who is signed in (account.js). It sends { unavailable, out, user, status }:
+  `out` when nobody is signed in, `user` ({ name }) when someone is, and
+  `unavailable` when the site has no server to sign in to. The other sites
+  to sign in with fill the slot account-signin.providers (providers.js).
+-->
+<style>
+  .account-view { display: grid; gap: var(--space-3); }
+  .account-view form { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .account-view input { flex: 1 1 12rem; }
+  .account-view .actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .account-view .status:empty { display: none; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+<template id="account">
+  <div class="account-view">
+    <p class="status" role="status">{{status}}</p>
+    <template if="unavailable">
+      <p>Sign-in needs this site's server (<code>npm run serve</code>, or the site on Cloudflare); this page is being served without one.</p>
+    </template>
+    <template if="out">
+      <section class="signed-out">
+        <p>Sign in with a passkey: your phone or computer keeps it for this site, and unlocks it with your face, fingerprint or screen lock.</p>
+        <p class="actions"><button type="button" data-action="signin">Sign in with a passkey</button></p>
+        <slot name="account-signin.providers"></slot>
+        <h2>New here?</h2>
+        <form data-action="register">
+          <label for="name" class="visually-hidden">Your name</label>
+          <input id="name" name="name" autocomplete="name" placeholder="Your name" required maxlength="64">
+          <button type="submit">Make an account</button>
+        </form>
+      </section>
+    </template>
+    <template if="user">
+      <section class="signed-in">
+        <p>Signed in as <strong class="who">{{user.name}}</strong>.</p>
+        <p class="actions">
+          <button type="button" data-action="add">Add a passkey on another device</button>
+          <button type="button" data-action="signout">Sign out</button>
+        </p>
+        <slot name="account-signin.providers"></slot>
+      </section>
+    </template>
+  </div>
+</template>
