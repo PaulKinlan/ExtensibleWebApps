@@ -21,6 +21,7 @@ How to build apps on this platform, from the first page to sharing data between 
 17. [The plugin registry](plugin-registry.md): plugins the site offers that no app links, which a person adds from Customize, with the plugins that provide the services they need.
 18. [Making an app by describing it](making-apps.md): the app maker writes a whole app, page and plugins, from what a person describes, through review cards; checks it as it runs and fixes it; and keeps every version of every file.
 19. [Editors, and a folder of files](editors.md): a text box's selection, pastes and drops sent to its plugin, the `<ui-editor>` Markdown element, and the `folder` service for files on the person's disk.
+20. [How the Markdown editor is built](markdown-editor.md): a whole writing app taken apart: one plugin owns the post, the others hear it through hooks and change it through a service, and an agent uses their reports as tools; with diagrams of typing, pasting, saving and quick edits.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 

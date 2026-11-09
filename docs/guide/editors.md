@@ -94,6 +94,8 @@ write a file of its own asks with `folder.propose`.
 
 ## The Markdown editor, as an example
 
+[How the Markdown editor is built](markdown-editor.md) takes it apart in full, with diagrams.
+
 [`demos/markdown-editor/`](../../demos/markdown-editor/) is the editor from
 [MarkdownEdiitor](https://github.com/PaulKinlan/MarkdownEdiitor), with each
 of its extensions written again as a plugin. `posts` opens a post in a
