@@ -14,7 +14,7 @@ npm run deploy:app -- demos/packing-list    # build, lay out, deploy
 
 That is two commands for each new app, and one more the first time on a machine. The last one prints the address, `https://packing-list.<your subdomain>.workers.dev/`, which goes straight to the app.
 
-Two demos are deployed this way: [Habits](https://habits.kinlan-test.workers.dev/) and the [Markdown editor](https://extensible-markdown.kinlan-test.workers.dev/) (`--name extensible-markdown`, because a Worker called `markdown-editor` already exists in that account). Pick a name no other Worker in the account has: deploying under an existing name replaces that Worker.
+Some demos are deployed this way, for example [Habits](https://habits.kinlan-test.workers.dev/) and the [Markdown editor](https://extensible-markdown.kinlan-test.workers.dev/) (`--name extensible-markdown`, because a Worker called `markdown-editor` already exists in that account). Pick a name no other Worker in the account has: deploying under an existing name replaces that Worker.
 
 With no checkout, `npm create extensible-app packing-list` (or `npx github:PaulKinlan/ExtensibleWebApps packing-list`) makes one: a `packing-list/` folder with a copy of the platform, installed, and the app already made in `demos/packing-list/` ([`scripts/create-app.mjs`](../../scripts/create-app.mjs)). Then `cd packing-list` and run the last command.
 
