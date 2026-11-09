@@ -8,6 +8,7 @@
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { hookLimits } from "../vite.kernel-modules.ts";
 
 const ROOT = new URL("../packages/", import.meta.url);
 const ID = /^[a-z][a-z0-9-]{0,63}$/;
@@ -15,14 +16,17 @@ const ID = /^[a-z][a-z0-9-]{0,63}$/;
 /** The kernel's own manifest reader, bundled from src/ (as scripts/check.mjs does): it reads the manifest literal without running the plugin. */
 async function manifestReader() {
   const out = await build({
-    stdin: { contents: 'export { readManifest } from "./src/kernel/manifest.ts";', resolveDir: fileURLToPath(new URL("..", import.meta.url)), loader: "ts" },
+    stdin: { contents: 'export { readManifest } from "./src/kernel/manifest.ts";\nexport { PLUGIN_HOOKS } from "./src/kernel/hooks.ts";', resolveDir: fileURLToPath(new URL("..", import.meta.url)), loader: "ts" },
     bundle: true,
     write: false,
     format: "esm",
     platform: "neutral",
     logLevel: "silent",
   });
-  return (await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`)).readManifest;
+  const reader = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
+  // The hook limits the site set in kernel.json, as the kernel uses them.
+  Object.assign(reader.PLUGIN_HOOKS, hookLimits(fileURLToPath(new URL("..", import.meta.url))));
+  return reader.readManifest;
 }
 
 /** The index, as it should be: an error for any folder that isn't a package. */

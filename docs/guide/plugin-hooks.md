@@ -28,6 +28,15 @@ Each key becomes a hook named `<id>:<key>`, so these are `notes:open` and `notes
 - **`agentTimeoutMs`** lets an [agent](agents.md) check the hook (`- check: notes:publish`), with that long to answer, at most 30 s. Without it, agents can't check the hook, which keeps it fast.
 - **`onFailure`**: `"open"` (the default) skips a listener that fails or runs out of time; `"closed"` treats it as a block.
 
+These limits (20 hooks, 1 s, 5 s, 30 s, and 1 MB of JSON for a value sent with `ctx.hooks`) are the platform's defaults. A site that needs others sets them in its [`kernel.json`](../../kernel.json), beside its modules, and the build refuses a name it doesn't know or a value that isn't a whole number above 0:
+
+```json
+{
+  "modules": ["…"],
+  "hooks": { "max": 20, "defaultTimeoutMs": 1000, "timeoutMs": 10000, "agentTimeoutMs": 60000, "maxValue": 1000000 }
+}
+```
+
 A plugin can define up to 20 hooks. They last while the plugin is installed: removing it removes them, and a new version of it with different hooks replaces them. A plugin whose id starts one of the kernel's own hooks (`data`, `agent`, `commands`, …) can't define any, so no plugin can pass for the kernel.
 
 ## Running them

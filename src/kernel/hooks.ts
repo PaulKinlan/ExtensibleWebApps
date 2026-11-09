@@ -31,7 +31,9 @@ export const hooks = new Map<string, HookSpec>();
 
 /**
  * The limits on hooks a plugin defines in its manifest's `hooks`, in one place so they can change:
- * how many, how long each listener may take, and how long an agent that checks one may take.
+ * how many, how long each listener may take, and how long an agent that checks one may take. These are
+ * the defaults: a site changes any of them in kernel.json's `hooks` (`{ "timeoutMs": 10000 }`), which the
+ * build checks (vite.kernel-modules.ts) and the kernel applies as it starts.
  */
 export const PLUGIN_HOOKS = {
   max: 20,

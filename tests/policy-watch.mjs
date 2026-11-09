@@ -8,10 +8,8 @@
 const listen = () => {
   addEventListener("securitypolicyviolation", (e) => {
     // A plugin's view may hold onclick= (the workbench's checks and the homepage's chapter 9 draw one on purpose).
-    // The host parses it, inert, and its sanitiser drops it; newer Chromium (158) reports the attribute
-    // as it is parsed, from the host's own script, though nothing runs. An inline handler in a page of the
-    // site is reported from that page instead, so it still fails the run.
-    if (e.effectiveDirective === "script-src-attr" && /\/platform\/host\.js$/.test(e.sourceFile)) return;
+    // The host takes it out before parsing (src/host/handlers.ts), because Chromium 158 and later report it as
+    // it is parsed, even inert: so a report of one from the host's script fails the run too.
     console.error(`[page policy] ${e.effectiveDirective} refused ${e.blockedURI || "inline"}${e.sample ? `: ${e.sample}` : ""} at ${e.sourceFile || location.pathname}:${e.lineNumber}`);
   });
 };

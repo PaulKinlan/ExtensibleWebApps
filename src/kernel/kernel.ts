@@ -10,7 +10,7 @@
 
 import { Context } from "cordis";
 import { env } from "./env";
-import { defineHook, hooks } from "./hooks";
+import { defineHook, hooks, PLUGIN_HOOKS } from "./hooks";
 import { Hosts } from "./hosts";
 import { apps as makeApps } from "./apps";
 import { makeRoutes, type RouteRequest, type RouteResponse } from "./routes";
@@ -25,7 +25,7 @@ import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { loadServices } from "./services";
 import { loadModules, type Seams } from "./modules";
-import modules from "virtual:kernel-modules";
+import modules, { hookLimits } from "virtual:kernel-modules";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
@@ -39,6 +39,8 @@ import type { Opened } from "../shared/protocol";
 
 const where = env();
 const shared = where.kind === "shared";
+// The limits on plugins' own hooks, as the site set them in kernel.json (checked by the build).
+Object.assign(PLUGIN_HOOKS, hookLimits);
 
 const root: any = new Context();
 tap(root);
@@ -166,6 +168,30 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
     app = undefined;
   }
   openApps.set(host.tab, { app, links });
+  // A person's plugin with the id of one the app links replaces it in this app: the app's copy isn't started.
+  // (Turning theirs off, or removing it, brings the app's back.)
+  const idOf = (link: { href: string; source: string; runner?: string }) => {
+    try {
+      return readManifest(asPlugin(link.href, link.source, link.runner)).id;
+    } catch {
+      return undefined;
+    }
+  };
+  const replaced = new Set(mine.map(idOf).filter((id): id is string => !!id));
+  const linked: { href: string; source: string; runner?: string }[] = [...links.filter((link) => !replaced.has(idOf(link) ?? "")), ...mine];
+  // A copy of a plugin with other code or from another address (the app's, where the person's now replaces it, or the person's, where
+  // they turned it off) is stopped first, when only tabs with this app open use it: the new code then starts
+  // under the same id. A copy another app still runs stays, and this one is refused as a clash, as before.
+  if (app !== undefined) {
+    for (const link of linked) {
+      const id = idOf(link);
+      const running = id ? remote.installed.get(id) : undefined;
+      // The same code from the same address is the same plugin; the person's copy of the app's, with the same code but
+      // its own templates beside it, isn't.
+      if (!id || running?.origin !== "app" || (running.source === asPlugin(link.href, link.source, link.runner) && running.href === link.href)) continue;
+      if (apps.tabsWith(id).every((tab) => tab === host.tab || openApps.get(tab)?.app === app)) remote.uninstall(id);
+    }
+  }
   const describe = (o: Opened): Opened => {
     if (!o.id) return o;
     const installed = remote.installed.get(o.id);
@@ -174,7 +200,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
     const unlocked = app ? reviews.grantsFor(o.id).flatMap((g) => (g.startsWith(`unlock:${app}#`) ? [g.split("#")[1]] : [])) : [];
     return { ...o, name: installed?.manifest.name, places: manifest?.places, theme: manifest?.theme, unlocked, user: ids.has(o.id) };
   };
-  await apps.open(host, [...links, ...mine], describe);
+  await apps.open(host, linked, describe);
 }
 
 /** Opens an app again in every tab that has it open, after its user plugins or places changed. */

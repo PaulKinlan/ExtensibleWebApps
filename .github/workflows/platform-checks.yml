@@ -34,9 +34,12 @@ jobs:
           node-version: 22
           cache: npm
 
-      # Playwright isn't a dependency of the site: the checks bring their own Chromium.
+      # Playwright isn't a dependency of the site: the checks bring their own Chromium. Its version is
+      # pinned (1.65.0 brings Chromium 158), so a new browser can't fail an unrelated pull request. To move
+      # to a newer one, change it here, in regenerate-reference.yml and in keep-prs-current.yml, in a pull
+      # request of its own, and fix what the new browser finds.
       - name: Install
-        run: npm ci && npm i --no-save playwright && npx playwright install --with-deps chromium
+        run: npm ci && npm i --no-save playwright@1.65.0 && npx playwright install --with-deps chromium
 
       - name: npm test
         run: npm test
