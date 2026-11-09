@@ -10,7 +10,7 @@ export default async function ({ a, check }) {
   const missing = await install(`export const manifest = { id: 'needs-mail', name: 'Needs mail', permissions: [], services: ['debug', 'carrier-pigeon'] };
 export default () => {};`);
   check("a plugin that needs a service the site doesn't run is refused", missing.ok === false, JSON.stringify(missing));
-  check("the refusal names the missing service and where to add it", /carrier-pigeon/.test(missing.error ?? "") && !/debug/.test(missing.error ?? "") && /kernel\.json/.test(missing.error ?? ""), missing.error);
+  check("the refusal names the missing service and how a person gets it, not the site's kernel.json", /carrier-pigeon/.test(missing.error ?? "") && !/debug/.test(missing.error ?? "") && /a plugin that provides it/.test(missing.error ?? "") && !/kernel\.json/.test(missing.error ?? ""), missing.error);
 
   const bad = await install(`export const manifest = { id: 'bad-services', name: 'Bad services', permissions: [], services: 'debug' };
 export default () => {};`);

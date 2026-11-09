@@ -36,6 +36,10 @@ export interface UserPlugin {
   description?: string;
   permissions?: string[];
   places?: Record<string, { at: string; put: string; each?: boolean }>;
+  /** The services it needs that not every site runs (its manifest's `services`). */
+  services?: string[];
+  /** The services it provides to other plugins (its manifest's `provides`). */
+  provides?: string[];
   on: boolean;
   /** Why its manifest couldn't be read. */
   error?: string;
@@ -76,7 +80,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
       const source = (await store.readText(`user/${app}/${file}`)) ?? "";
       try {
         const m = readManifest(source);
-        out.push({ file, id: m.id, name: m.name, description: m.description, permissions: m.permissions, places: m.places, on: on.includes(m.id) });
+        out.push({ file, id: m.id, name: m.name, description: m.description, permissions: m.permissions, places: m.places, services: m.services ?? [], provides: Object.keys(m.provides ?? {}), on: on.includes(m.id) });
       } catch (error) {
         out.push({ file, on: false, error: error instanceof Error ? error.message : String(error) });
       }
@@ -211,6 +215,61 @@ export function userPlugins(store: Store, origin: string, space?: string) {
 
     on: (app: string, id: string) => setOn(checkApp(app), id, true),
     off: (app: string, id: string) => setOn(checkApp(app), id, false),
+
+    /**
+     * Turns one of the person's plugins on, and with it the ones of theirs for the app that provide the
+     * services it needs (and the ones those need), so turning on World clock turns on Clock too. A service
+     * the kernel has already (`has`: a kernel module's, or a running plugin's) needs nothing turned on.
+     * Each was reviewed when it was added, as turning one on needs no review. Returns the others it turned on.
+     */
+    async onWithNeeds(app: string, id: string, has: (service: string) => boolean): Promise<UserPlugin[]> {
+      const all = await list(checkApp(app));
+      const also: UserPlugin[] = [];
+      const seen = new Set<string>();
+      const visit = async (plugin: UserPlugin) => {
+        if (!plugin.id || seen.has(plugin.id)) return;
+        seen.add(plugin.id);
+        for (const service of plugin.services ?? []) {
+          if (has(service)) continue;
+          const provider = all.find((p) => p.id !== plugin.id && p.provides?.includes(service));
+          if (!provider?.id) continue;
+          if (!provider.on && !also.includes(provider)) {
+            await setOn(app, provider.id, true);
+            also.push(provider);
+          }
+          await visit(provider);
+        }
+      };
+      const plugin = all.find((p) => p.id === id);
+      await setOn(app, id, true);
+      if (plugin) await visit(plugin);
+      return also;
+    },
+
+    /**
+     * Turns one of the person's plugins off, and with it the ones of theirs for the app that need a service
+     * only it provides, so they don't start again without it. Returns the others it turned off.
+     */
+    async offWithDependents(app: string, id: string): Promise<UserPlugin[]> {
+      const all = await list(checkApp(app));
+      const also: UserPlugin[] = [];
+      const off = async (gone: UserPlugin) => {
+        for (const service of gone.provides ?? []) {
+          // Another of theirs that is on and provides it too keeps it there.
+          if (all.some((p) => p !== gone && p.on && !also.includes(p) && p.id !== id && p.provides?.includes(service))) continue;
+          for (const p of all) {
+            if (!p.id || !p.on || p.id === id || also.includes(p) || !p.services?.includes(service)) continue;
+            await setOn(app, p.id, false);
+            also.push(p);
+            await off(p);
+          }
+        }
+      };
+      const plugin = all.find((p) => p.id === id);
+      await setOn(app, id, false);
+      if (plugin) await off(plugin);
+      return also;
+    },
 
     /** Removes a plugin and the files its manifest lists. */
     async remove(app: string, id: string, { quiet = false } = {}): Promise<boolean> {

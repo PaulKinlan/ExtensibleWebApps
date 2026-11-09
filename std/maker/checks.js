@@ -90,6 +90,9 @@ export function checkFiles(files, rules, app) {
   const page = pageParts(html);
   if (!page.title) report("warning", "app.html", undefined, "The page has no <title>: give it the app's name");
   if (!page.plugins.length) report("warning", "app.html", undefined, 'The page links no plugins: add <link rel="plugin" href="x.js"> for each');
+  // A service one of the app's own plugins provides is there for the others, as the kernel has it once that
+  // plugin runs: calling it needs the permission named after it, as calling any provided service does.
+  rules = withProvided(rules, page.plugins.map((l) => ownFile(l.href, app)).flatMap((name) => (name !== undefined && files.has(name) ? [files.get(name) ?? ""] : [])));
   const ids = new Map();
   for (const link of page.plugins) {
     const own = ownFile(link.href, app);
@@ -110,6 +113,31 @@ export function checkFiles(files, rules, app) {
     if (name.endsWith(".js") && !page.plugins.some((l) => ownFile(l.href, app) === name)) report("warning", name, undefined, `${name} isn't linked from app.html, so it doesn't run: add <link rel="plugin" href="${name}">, or remove it`);
   }
   return { problems, plugins };
+}
+
+/**
+ * The rules, with the services the app's own plugins provide (their manifests' `provides`) added to the ones
+ * the kernel has. A plugin whose manifest can't be read adds none; its own check says why.
+ * @param {Rules} rules @param {string[]} sources @returns {Rules}
+ */
+function withProvided(rules, sources) {
+  const services = new Set(rules.services);
+  const methods = new Map(rules.methods);
+  for (const source of sources) {
+    let provides;
+    try {
+      provides = /** @type {{ provides?: Record<string, { methods?: Record<string, { needs?: string }> }> }} */ (rules.readManifest(source)).provides ?? {};
+    } catch {
+      continue;
+    }
+    for (const [name, spec] of Object.entries(provides)) {
+      if (services.has(name)) continue;
+      services.add(name);
+      // As the kernel does (provided.ts): a method needs what it says, or the permission named after the service.
+      for (const [method, doc] of Object.entries(spec?.methods ?? {})) methods.set(`${name}.${method}`, doc?.needs ?? name);
+    }
+  }
+  return { ...rules, services, methods };
 }
 
 /**

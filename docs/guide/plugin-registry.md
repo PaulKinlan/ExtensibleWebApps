@@ -6,7 +6,7 @@ The site's plugin registry is a folder of plugins no app links: [`packages/`](..
 
 Customize lists the registry under **Add a plugin**: each plugin's name, what it does and what it asks for. **Add** puts it with the person's own plugins for that app, switched off, as with any plugin they add. If it needs a service another plugin in the registry provides, that plugin is added too, and Customize says so before they click.
 
-Try it: open any demo, open Customize, and add **World clock**. It needs the `clock` service, so **Clock** comes with it. Turn both on and a strip of clocks appears at the foot of the page.
+Try it: open any demo, open Customize, and add **World clock**. It needs the `clock` service, so **Clock** comes with it. Turn World clock on, and Clock comes on with it, since it provides what World clock needs: a strip of clocks appears at the foot of the page. Turn Clock off and World clock goes off too. Nothing here asks the app's author, or the site's `kernel.json`, for anything ([The layers](../layers.md#when-a-persons-plugin-needs-a-service)).
 
 ## A package
 
