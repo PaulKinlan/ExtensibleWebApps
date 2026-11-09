@@ -86,15 +86,39 @@ function toInput(messages) {
 export default function (ctx) {
   const setting = async () => (await ctx.settings.get()).model || manifest.settings.model.default;
   const ready = async () => (await ctx.call("secrets", "has", SECRET)).set;
-  const ensureKey = async () => (await ready()) || (await ctx.call("secrets", "request", SECRET, { hosts: [HOST], label: "OpenAI API key" })).set;
+  /** Counts the keys the person has given here, so a late answer about an earlier key can't cost them the one they gave since. */
+  let given = 0;
+  const ensureKey = async () => {
+    if (await ready()) return true;
+    const { set } = await ctx.call("secrets", "request", SECRET, { hosts: [HOST], label: "OpenAI API key" });
+    if (set) given++;
+    return set;
+  };
 
   // The live model list, read at most once an hour.
   let listed;
+
+  /**
+   * What to say when the vendor answers with an error. A key the vendor refuses is forgotten, so the next
+   * request asks for it again: a mis-pasted key would otherwise fail every request with no way to replace it.
+   */
+  async function failure(response, data, used) {
+    if (response.status === 401) {
+      // Another request already had this key refused, and the person has given a new one since: leave that one be.
+      if (used !== given) return "OpenAI didn't accept the earlier API key. Ask again to use the one you gave since.";
+      listed = undefined;
+      const kept = await ctx.call("secrets", "forget", SECRET).then(() => "", (error) => (error instanceof Error ? error.message : String(error)));
+      if (kept) return `OpenAI didn't accept that API key, and it couldn't be forgotten (${kept}). Reset this app's data to give another.`;
+      return "OpenAI didn't accept that API key, so it has been forgotten. Ask again and paste the key once more.";
+    }
+    return data.error?.message ?? `HTTP ${response.status}`;
+  }
   async function list() {
     if (listed && Date.now() - listed.at < 3_600_000) return listed.models;
+    const used = given;
     const response = await ctx.call("net", "fetch", { url: `${API}/models`, headers: AUTH });
     const data = JSON.parse(response.text || "{}");
-    if (!response.ok) throw new Error(data.error?.message ?? `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(await failure(response, data, used));
     const models = (data.data ?? []).map((m) => ({ id: m.id }));
     listed = { at: Date.now(), models };
     return models;
@@ -103,7 +127,11 @@ export default function (ctx) {
   async function resolve(model) {
     const tier = TIERS[model];
     if (!tier) return model;
-    const ids = await list().then((models) => models.map((m) => m.id), () => []);
+    // A list that can't be read falls back to the tier's own model, but a refused key ends the request here.
+    const ids = await list().then((models) => models.map((m) => m.id), (error) => {
+      if (/didn't accept (that|the earlier) API key/.test(String(error?.message))) throw error;
+      return [];
+    });
     return newest(ids, tier.pattern) ?? tier.fallback;
   }
 
@@ -135,6 +163,7 @@ export default function (ctx) {
       if (request.maxTokens) body.max_output_tokens = request.maxTokens;
       if (request.tools?.length) body.tools = request.tools.map((t) => ({ type: "function", name: t.name, description: t.description ?? "", parameters: t.parameters ?? { type: "object", properties: {} }, strict: false }));
       if (request.schema) body.text = { format: { type: "json_schema", name: "answer", schema: request.schema, strict: false } };
+      const used = given;
       const response = await ctx.call("net", "fetch", {
         url: `${API}/responses`,
         method: "POST",
@@ -142,7 +171,7 @@ export default function (ctx) {
         body: JSON.stringify(body),
       });
       const data = JSON.parse(response.text || "{}");
-      if (!response.ok) return { error: data.error?.message ?? `HTTP ${response.status}` };
+      if (!response.ok) return { error: await failure(response, data, used) };
       const output = data.output ?? [];
       const parts = output.filter((item) => item.type === "message").flatMap((item) => item.content ?? []);
       const text = parts.filter((p) => p.type === "output_text").map((p) => p.text).join("");

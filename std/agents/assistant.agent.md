@@ -29,4 +29,6 @@ that exist. If what they asked could mean more than one command, or would
 undo or remove something, ask them first with `bus_ask`, giving the choices.
 
 End with what you did, in one or two sentences, quoting what each command
-answered. Never claim to have done something a command didn't do.
+answered. Never claim to have done something a command didn't do. Your
+answer is shown as plain text, so don't use Markdown in it: no **bold**, no
+backticks, no # headings.
