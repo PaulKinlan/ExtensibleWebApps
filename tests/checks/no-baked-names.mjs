@@ -3,7 +3,8 @@
 // - host CSS floats slots the page marks (float), never a slot or a plugin's
 //   element by name;
 // - the account page opens the app you came from in a space, never a demo by name;
-// - the demo gallery is built from each app's own <meta> tags, so it can't drift.
+// - the demo gallery is built from each app's own <meta> tags, so it can't drift: the page is committed with
+//   its lists empty, and the site fills them as it serves and builds (scripts/generated.mjs).
 import { readdirSync, readFileSync } from "node:fs";
 import { render } from "../../scripts/gallery.mjs";
 
@@ -12,7 +13,7 @@ const read = (path) => readFileSync(new URL(path, ROOT), "utf8");
 /** CSS with its comments taken out, so a comment may still give an example. */
 const rules = (css) => css.replace(/\/\*[\s\S]*?\*\//g, "");
 
-export default async function ({ check }) {
+export default async function ({ check, URL: SITE }) {
   const css = rules(read("src/host/styles.css"));
   check("host CSS doesn't place the debug console's element (a page marks a slot float instead)", !/ui-debug/.test(css));
   const slots = [...css.matchAll(/slot\[name[~|^$*]?=["']?([^"'\]]+)/g)].map((m) => m[1]);
@@ -28,5 +29,8 @@ export default async function ({ check }) {
   } catch (error) {
     gallery = String(error.message);
   }
-  check("demos/index.html is what the apps' gallery <meta> tags say (run npm run gallery)", gallery === read("demos/index.html"), gallery.startsWith("<") ? "out of date" : gallery);
+  const served = await fetch(`${SITE}demos/`).then((r) => r.text(), () => "");
+  check("the demo gallery the site serves is what the apps' gallery <meta> tags say", gallery === served, gallery.startsWith("<") ? "out of date" : gallery);
+  const filled = [...read("demos/index.html").matchAll(/<ul class="apps" data-gallery="[a-z-]+">\s*<li/g)].length;
+  check("demos/index.html is committed with its gallery lists empty (the build fills them, so adding demos never conflicts)", filled === 0, `${filled} lists have cards in the repo`);
 }

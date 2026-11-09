@@ -7,13 +7,11 @@
 // registry package needs is one the registry or the site's kernel modules
 // provide, and the app maker's checks count a service the app's own plugin
 // provides as there.
-import { readFileSync } from "node:fs";
-import { expected } from "../../scripts/packages.mjs";
-
 export default async function ({ check, openTab, URL }) {
-  const { packages } = JSON.parse(readFileSync(new globalThis.URL("../../packages/index.json", import.meta.url), "utf8"));
-  const listing = readFileSync(new globalThis.URL("../../packages/index.html", import.meta.url), "utf8");
-  check("the registry's page at /packages/ lists every package in the index (run npm run packages)", listing === (await expected())["index.html"] && packages.every((p) => listing.includes(`id="${p.id}"`)));
+  // The site makes the registry from the plugins' manifests as it builds (scripts/generated.mjs).
+  const { packages } = await fetch(`${URL}packages/index.json`).then((r) => r.json());
+  const listing = await fetch(`${URL}packages/`).then((r) => r.text());
+  check("the registry's page at /packages/ lists every package in the index", packages.every((p) => listing.includes(`id="${p.id}"`)));
 
   const app = "demos/trip";
   const page = await openTab(`${URL}${app}/app.html`);

@@ -5,7 +5,8 @@ import { readdirSync, existsSync, readFileSync } from "node:fs";
 export default async function ({ check, context, URL, errors }) {
   const root = new globalThis.URL("../../demos/", import.meta.url);
   const apps = readdirSync(root, { withFileTypes: true }).filter((e) => e.isDirectory() && existsSync(new globalThis.URL(`${e.name}/app.html`, root))).map((e) => e.name);
-  const gallery = readFileSync(new globalThis.URL("index.html", root), "utf8");
+  // The page as the site serves it: the build fills its lists from the apps (scripts/generated.mjs).
+  const gallery = await fetch(`${URL}demos/`).then((r) => r.text(), () => "");
   const unlisted = apps.filter((name) => !gallery.includes(`href="/demos/${name}/app.html"`));
   check("/demos/ lists every demo app", !unlisted.length, unlisted.join(", "));
   const noNav = apps.filter((name) => {

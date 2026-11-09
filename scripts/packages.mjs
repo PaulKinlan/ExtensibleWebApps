@@ -7,10 +7,13 @@
 //                          and every demo's plugins, with the apps that link each one
 //   packages/index.html    the page at /packages/, made from the catalogue
 //
-//   npm run packages    rewrites all three (tests/checks/registry.mjs fails when any is out of date)
+// None of the three is committed, so pull requests that each add a plugin never conflict over them: the
+// site makes them as it serves and builds (scripts/generated.mjs, vite.config.ts), into dist/packages/.
+//
+//   npm run packages    makes all three and says what is in them, or fails on a plugin it can't list (it writes nothing)
 //
 // Nothing here runs a plugin: each manifest is read as the kernel reads it, without running the code.
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { hookLimits } from "../vite.kernel-modules.ts";
@@ -388,7 +391,7 @@ ${list(own)}
   const total = catalog.plugins.length + catalog.services.length;
   return `<!doctype html>
 <!--
-  The plugin registry, as a page. Written by \`npm run packages\` (scripts/packages.mjs) from the same
+  The plugin registry, as a page. Made by the build (scripts/generated.mjs, scripts/packages.mjs) from the same
   manifests as index.json, which Customize reads, and catalog.json; don't edit it by hand.
 -->
 <html lang="en">
@@ -481,18 +484,7 @@ ${list(catalog.plugins.filter((p) => p.source === "site").sort(byName))}
 `;
 }
 
-/** Writes the three files. */
-export async function writeAll() {
-  const k = await kernel();
-  const index = await buildIndex(k);
-  const catalog = await buildCatalog(k, index);
-  writeFileSync(new URL("index.json", ROOT), render(index));
-  writeFileSync(new URL("catalog.json", ROOT), render(catalog));
-  writeFileSync(new URL("index.html", ROOT), renderPage(index, catalog, k));
-  return { index, catalog };
-}
-
-/** The three files as they should be, for the check in tests/checks/registry.mjs. */
+/** The three files as they should be: what the build writes, and what tests/checks/registry.mjs checks it served. */
 export async function expected() {
   const k = await kernel();
   const index = await buildIndex(k);
@@ -500,7 +492,9 @@ export async function expected() {
   return { "index.json": render(index), "catalog.json": render(catalog), "index.html": renderPage(index, catalog, k) };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  const { index, catalog } = await writeAll();
-  console.log(`Wrote packages/index.json (${index.packages.length} offered), catalog.json (${catalog.plugins.length} plugins and agents, ${catalog.services.length} built-in services) and index.html`);
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const made = await expected();
+  const index = JSON.parse(made["index.json"]);
+  const catalog = JSON.parse(made["catalog.json"]);
+  console.log(`The registry offers ${index.packages.length} plugins; its catalogue has ${catalog.plugins.length} plugins and agents and ${catalog.services.length} built-in services. The site makes /packages/index.json, catalog.json and index.html from them as it serves and builds.`);
 }
