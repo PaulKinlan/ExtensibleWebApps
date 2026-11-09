@@ -1,94 +1,139 @@
 <!--
-  The Customize panel. customize.js draws the panel's content only while it
-  is open, and one tab at a time: { open, reopen, tabs: { plugins, make,
-  layout }, message, follow, space, inspect, arrange, busy } and then
+  The Customize panel. customize.js draws it: { open, reopen, tabs: { plugins,
+  make, layout }, message, follow, space, inspect, arrange, busy, make } and
+  then, while it is open, one tab at a time:
 
   - Plugins: query, here (every plugin on the page: { id, name, description,
-    who, user, app, on, off, error, asks, draws, places, share }), groups
-    (what can be added, by kind: { kind, title, about, packages }), samples,
+    who, user, app, on, off, error, offHint, places, share }), groups (what
+    can be added, by kind: { kind, title, about, packages }), samples,
     registry, nothingFound. Each place is { key, where, label, ok, fragile,
     locked, unlocked, movable, moved }.
   - Make: make { starters, started, spotLabel, chosenSpot, name, code, rev,
-    ok, problem, permissions, status, editorLinked }.
+    ok, problem, permissions, status, saved, editorLinked }. It is drawn even
+    while the panel is closed, so a draft being typed survives closing it.
   - Layout: layout { slots, parts, elements, noSlots, noParts }.
 
   Every button sends an action with the plugin's id (or "plugin/place") as
   its value. Buttons that start something on the page have data-close, so
   the panel gets out of the way.
+
+  The panel sits in the app's page, and the page's own CSS beats a plugin's
+  (src/host/plugin-styles.ts). So the markup keeps to classed <div>s rather
+  than lists, which apps often style for their own content: an app's
+  `li { display: flex }` must not lay out Customize.
 -->
 <style>
-  .customize { display: grid; gap: var(--space-3); }
-  .customize h3 { margin: 0; font-size: var(--text-md); }
-  .customize h4 { margin: 0; font-size: var(--text-sm); }
+  .customize { display: grid; gap: var(--space-4); align-content: start; container-type: inline-size; min-width: 0; min-height: calc(min(85vh, 900px) - 6rem); line-height: 1.45; }
+  .customize * { min-width: 0; }
+  .customize h3 { margin: 0; font-size: var(--text-md); font-weight: 650; }
+  .customize h4 { margin: 0; font-size: var(--text-md); font-weight: 600; }
   .customize p { margin: 0; }
   .customize .muted { color: var(--fg-2); font-size: var(--text-sm); }
   .customize .ok { color: var(--ok, var(--accent)); }
   .customize .error { color: var(--danger); font-size: var(--text-sm); }
-  .customize .tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-  .customize .tabs button { all: unset; cursor: pointer; padding: var(--space-2) var(--space-3); font-weight: 600; font-size: var(--text-sm); color: var(--fg-2); border-bottom: 3px solid transparent; margin-bottom: -1px; }
+  .customize code { font: var(--text-sm) var(--mono, monospace); overflow-wrap: anywhere; }
+  .customize strong { overflow-wrap: anywhere; }
+
+  /* The tabs and what just happened stay in sight while the panel scrolls. */
+  .customize .top { position: sticky; top: calc(-1 * var(--space-4)); z-index: 2; display: grid; gap: var(--space-3); margin: calc(-1 * var(--space-2)) 0 0; padding: var(--space-2) 0 var(--space-1); background: var(--surface); }
+  .customize .tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--border); }
+  .customize .tabs button { all: unset; cursor: pointer; padding: var(--space-2) var(--space-3); font-weight: 600; font-size: var(--text-md); color: var(--fg-2); border-bottom: 3px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+  .customize .tabs button:hover { color: var(--fg); }
   .customize .tabs button[aria-pressed="true"] { color: var(--fg); border-bottom-color: var(--accent); }
-  .customize .tabs button:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); }
-  .customize .status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 10%, var(--bg-2)); }
-  .customize .status p { flex: 1; min-width: 12rem; }
-  .customize section { display: grid; gap: var(--space-2); }
-  .customize .entries { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
-  .customize .entries > li { padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); display: grid; gap: var(--space-1); }
-  .customize .entries > li.off { background: var(--bg-2); }
+  .customize .tabs button:focus-visible { outline: 3px solid var(--ring, var(--accent)); outline-offset: -3px; border-radius: var(--radius-sm); }
+  .customize .status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3); border-radius: var(--radius); border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border)); background: color-mix(in srgb, var(--accent) 9%, var(--surface)); }
+  .customize .status p { flex: 1 1 14rem; font-weight: 500; }
+  .customize .status .buttons { display: flex; gap: var(--space-2); }
+
+  .customize .section { display: grid; gap: var(--space-3); }
+  .customize .section-head { display: grid; gap: var(--space-1); }
+  .customize .entries { display: grid; gap: var(--space-2); }
+  .customize .entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2) var(--space-4); align-items: start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .customize .entry.off { border-style: dashed; background: var(--bg-2); }
+  .customize .entry-main { display: grid; gap: var(--space-1); }
   .customize .head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
-  .customize .head strong { margin-right: auto; }
-  .customize .pill { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--bg-2); color: var(--fg-2); border: 1px solid var(--border); white-space: nowrap; }
-  .customize .pill.on { background: color-mix(in srgb, var(--ok, var(--accent)) 15%, transparent); color: var(--fg); border-color: color-mix(in srgb, var(--ok, var(--accent)) 50%, transparent); }
-  .customize .places { list-style: none; margin: 0; padding: 0; font-size: var(--text-sm); display: grid; gap: var(--space-1); }
-  .customize .places li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
-  .customize .places code, .customize .layout code { font-size: var(--text-sm); }
-  .customize .actions, .customize .row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
-  .customize .actions button, .customize .places button { min-height: 32px; }
-  .customize .search { display: flex; gap: var(--space-2); }
-  .customize .search input { flex: 1; min-width: 0; min-height: 40px; }
-  .customize .kind { border-left: 3px solid var(--accent); padding-left: var(--space-3); }
-  .customize textarea { width: 100%; font-family: var(--font-mono, monospace); }
-  .customize .row input { flex: 1; min-width: 12rem; }
-  .customize .entries > li.package { grid-template-columns: 1fr auto; align-items: center; }
-  .customize details { display: grid; gap: var(--space-2); }
-  .customize summary { cursor: pointer; font-size: var(--text-sm); font-weight: 600; }
-  .customize .starters { display: grid; grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr)); gap: var(--space-2); }
+  .customize .head strong { font-size: var(--text-md); }
+  .customize .entry-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
+  .customize .entry-actions button { min-width: 6.5rem; }
+  .customize .pill { display: inline-flex; align-items: center; font-size: 11px; line-height: 18px; font-weight: 600; padding: 0 8px; border-radius: 999px; background: var(--bg-2); color: var(--fg-2); border: 1px solid var(--border); white-space: nowrap; }
+  .customize .pill.on { background: color-mix(in srgb, var(--ok, var(--accent)) 14%, transparent); color: var(--fg); border-color: color-mix(in srgb, var(--ok, var(--accent)) 45%, transparent); }
+  .customize .pill.off { background: color-mix(in srgb, var(--warn, var(--fg-2)) 14%, transparent); color: var(--fg); border-color: color-mix(in srgb, var(--warn, var(--fg-2)) 45%, transparent); }
+  .customize .hint { font-size: var(--text-sm); color: var(--fg); }
+  .customize .places { display: grid; gap: var(--space-1); margin-top: var(--space-1); }
+  .customize .place { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); font-size: var(--text-sm); }
+  .customize .place button { height: 28px; padding: 0 10px; font-size: var(--text-sm); }
+  .customize .note { font-size: var(--text-sm); color: var(--fg-2); }
+
+  /* A view's submit buttons look primary by default; here only the one that finishes a step does. */
+  .customize button[type="submit"]:not(.primary) { background: var(--surface); color: var(--fg); border-color: var(--border); }
+  .customize button[type="submit"]:not(.primary):hover { background: var(--bg-2); }
+  .customize .search input { width: 100%; min-height: 40px; }
+  .customize .kind + .kind { margin-top: var(--space-2); }
+  .customize .kind { display: grid; gap: var(--space-2); padding-left: var(--space-3); border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
+  .customize .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+  .customize .row input { flex: 1 1 12rem; }
+  .customize details { display: block; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
+  .customize details > :not(summary) { margin-top: var(--space-3); }
+  .customize summary { cursor: pointer; font-size: var(--text-md); font-weight: 600; }
+  .customize textarea { width: 100%; font-family: var(--mono, monospace); }
+  .customize .stack { display: grid; gap: var(--space-2); }
+
+  /* Make */
+  .customize .make { display: grid; gap: var(--space-3); }
+  .customize .make[hidden] { display: none; }
+  .customize .make form { display: grid; gap: var(--space-3); margin: 0; }
+  .customize .step { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); }
+  .customize .step > h3 { display: flex; align-items: center; gap: var(--space-2); }
+  .customize .step > h3::before { content: attr(data-step); flex: none; display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--accent); color: var(--accent-fg, #fff); font-size: var(--text-sm); }
+  .customize .starters { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: var(--space-2); }
   .customize .starters button { display: grid; gap: 2px; align-content: start; justify-items: start; text-align: left; padding: var(--space-2) var(--space-3); min-height: 64px; height: auto; white-space: normal; line-height: 1.3; }
-  .customize .starters button[aria-pressed="true"] { outline: 3px solid var(--accent); }
-  .customize .starters small { color: var(--fg-2); font-weight: 400; }
-  .customize .step { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
-  .customize .step > h3::before { content: attr(data-step); display: inline-grid; place-items: center; width: 1.5em; height: 1.5em; margin-right: var(--space-2); border-radius: 50%; background: var(--accent); color: var(--accent-fg, #fff); font-size: var(--text-sm); }
-  .customize label.field { display: grid; gap: 2px; font-size: var(--text-sm); }
-  .customize .asks { margin: 0; padding-left: var(--space-4); font-size: var(--text-sm); }
-  .customize .layout { display: grid; gap: var(--space-4); }
-  .customize .layout details { padding: var(--space-1) 0; border-bottom: 1px solid var(--border); }
-  .customize .layout dl { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: var(--space-1) var(--space-3); font-size: var(--text-sm); }
+  .customize .starters button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+  .customize .starters small { color: var(--fg-2); font-weight: 400; font-size: var(--text-sm); }
+  .customize label.field { display: grid; gap: var(--space-1); font-size: var(--text-sm); font-weight: 600; }
+  .customize label.field input { font-weight: 400; }
+  .customize .asks { display: grid; gap: 2px; padding-left: var(--space-3); font-size: var(--text-sm); }
+  .customize .asks span::before { content: "· "; color: var(--fg-2); }
+  .customize .tip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius); background: var(--bg-2); }
+  .customize .tip p { flex: 1 1 16rem; }
+
+  /* Layout */
+  .customize .layout { display: grid; gap: var(--space-5); }
+  .customize .layout .section + .section { padding-top: var(--space-4); border-top: 1px solid var(--border); }
+  .customize .layout dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-2) var(--space-4); font-size: var(--text-sm); }
   .customize .layout dt { font-weight: 600; }
   .customize .layout dd { margin: 0; color: var(--fg-2); }
+  .customize .elements { display: grid; border-top: 1px solid var(--border); }
+  .customize .elements details { padding: var(--space-2) 0; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; }
+  .customize .elements details > :not(summary) { margin-top: var(--space-1); }
   .customize .mark-locked { color: var(--danger); }
   .customize .mark-review { color: var(--warn, var(--fg-2)); }
-  @media (max-width: 520px) {
-    .customize .entries > li.package { grid-template-columns: 1fr; }
-    .customize .layout { display: grid; gap: var(--space-4); }
-  .customize .layout details { padding: var(--space-1) 0; border-bottom: 1px solid var(--border); }
-  .customize .layout dl { grid-template-columns: 1fr; }
+
+  @container (max-width: 520px) {
+    .customize .entry { grid-template-columns: minmax(0, 1fr); }
+    .customize .entry-actions { justify-content: flex-start; }
+    .customize .tabs button { padding: var(--space-2); }
+    .customize .step { padding: var(--space-3); }
+    .customize .layout dl { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .customize .layout dd { margin-bottom: var(--space-2); }
   }
 </style>
 <template id="panel">
   <ui-panel label="Customize" toggle="panel" reopen="{{reopen}}">
-    <template if="open">
-      <div class="customize">
-        <div class="tabs" role="toolbar" aria-label="Customize">
-          <button type="button" data-action="tab" data-value="plugins" data-tab="plugins" aria-pressed="{{pressed.plugins}}">Plugins</button>
-          <button type="button" data-action="tab" data-value="make" data-tab="make" aria-pressed="{{pressed.make}}">Make a plugin</button>
-          <button type="button" data-action="tab" data-value="layout" data-tab="layout" aria-pressed="{{pressed.layout}}">Layout</button>
-        </div>
-
-        <template if="message">
-          <div class="status">
-            <p role="status">{{message}}</p>
-            <template if="follow"><button type="button" class="primary" data-action="{{follow.action}}" data-value="{{follow.value}}" data-follow>{{follow.label}}</button></template>
+    <div class="customize">
+      <template if="open">
+        <div class="top">
+          <div class="tabs" role="toolbar" aria-label="Customize">
+            <button type="button" data-action="tab" data-value="plugins" data-tab="plugins" aria-pressed="{{pressed.plugins}}">Plugins</button>
+            <button type="button" data-action="tab" data-value="make" data-tab="make" aria-pressed="{{pressed.make}}">Make a plugin</button>
+            <button type="button" data-action="tab" data-value="layout" data-tab="layout" aria-pressed="{{pressed.layout}}">Layout</button>
           </div>
-        </template>
+          <template if="message">
+            <div class="status">
+              <p role="status">{{message}}</p>
+              <template if="follow"><div class="buttons"><button type="button" data-action="{{follow.action}}" data-value="{{follow.value}}" data-follow>{{follow.label}}</button></div></template>
+            </div>
+          </template>
+        </div>
 
         <!-- Plugins: what's here, then what can be added. -->
         <template if="tabs.plugins">
@@ -96,85 +141,96 @@
             <input type="search" data-action="search" value="{{query}}" placeholder="Search plugins and services" aria-label="Search plugins and services">
           </div>
 
-          <section>
-            <h3>On this page</h3>
-            <template if="space"><p class="muted">Yours are on this device until you share one; the space's reach every member turned off, and each person turns them on for themselves.</p></template>
+          <section class="section">
+            <div class="section-head">
+              <h3>On this page</h3>
+              <template if="space"><p class="muted">Yours are on this device until you share one. The space's reach every member turned off, and each person turns them on for themselves.</p></template>
+            </div>
             <template if="none"><p class="muted">Nothing here matches. Clear the search to see everything.</p></template>
             <template if="empty"><p class="muted">No plugins on this page yet. Add one below, or make your own.</p></template>
-            <ul class="entries">
+            <div class="entries" role="list">
               <template for="p of here">
-                <li key="{{p.id}}" data-plugin-id="{{p.id}}" class="{{p.offClass}}">
-                  <div class="head">
-                    <strong>{{p.name}}</strong>
-                    <span class="pill">{{p.who}}</span>
-                    <template if="p.on"><span class="pill on">On</span></template>
-                    <template if="p.off"><span class="pill">Off</span></template>
+                <div role="listitem" key="{{p.id}}" data-plugin-id="{{p.id}}" class="entry {{p.offClass}}">
+                  <div class="entry-main">
+                    <div class="head">
+                      <strong>{{p.name}}</strong>
+                      <span class="pill">{{p.who}}</span>
+                      <template if="p.on"><span class="pill on">On</span></template>
+                      <template if="p.off"><span class="pill off">Off</span></template>
+                    </div>
+                    <template if="p.description"><p class="muted">{{p.description}}</p></template>
+                    <template if="p.error"><p class="error">{{p.error}}</p></template>
+                    <template if="p.offHint"><p class="hint">{{p.offHint}}</p></template>
+                    <template if="p.places.length">
+                      <div class="places">
+                        <template for="pl of p.places">
+                          <div class="place" key="{{pl.key}}" data-place="{{pl.key}}" data-state="{{pl.state}}">
+                            <span>{{pl.where}}</span>
+                            <template if="pl.ok"><span class="ok">· {{pl.label}}</span></template>
+                            <template if="!pl.ok"><span class="muted">· {{pl.label}}</span></template>
+                            <template if="pl.moved"><span class="pill">Moved by you</span></template>
+                            <template if="pl.movable"><button type="button" data-action="move" data-value="{{pl.key}}" data-move="{{pl.key}}" data-close>Move</button></template>
+                            <template if="pl.moved"><button type="button" class="secondary" data-action="unmove" data-value="{{pl.key}}" data-unmove="{{pl.key}}">Put back</button></template>
+                            <template if="pl.locked"><button type="button" data-action="unlock" data-value="{{pl.key}}" data-unlock="{{pl.key}}">Unlock for this plugin</button></template>
+                            <template if="pl.unlocked"><button type="button" data-action="lock" data-value="{{pl.key}}">Lock again</button></template>
+                          </div>
+                          <template if="pl.fragile"><p class="note">This spot leans on how the page is laid out, so an update to the app may move or break it.</p></template>
+                        </template>
+                      </div>
+                    </template>
                   </div>
-                  <template if="p.description"><p class="muted">{{p.description}}</p></template>
-                  <template if="p.error"><p class="error">{{p.error}}</p></template>
-                  <template if="p.asks"><p class="muted">{{p.asks}}</p></template>
-                  <template if="p.draws"><p class="muted">{{p.draws}}</p></template>
-                  <template if="p.places.length">
-                    <ul class="places">
-                      <template for="pl of p.places">
-                        <li key="{{pl.key}}" data-place="{{pl.key}}" data-state="{{pl.state}}">
-                          <span>Shows <code>{{pl.where}}</code>:</span>
-                          <template if="pl.ok"><span class="ok">{{pl.label}}</span></template>
-                          <template if="!pl.ok"><span class="muted">{{pl.label}}</span></template>
-                          <template if="pl.moved"><span class="pill">Moved by you</span></template>
-                          <template if="pl.fragile"><span class="muted">· this spot leans on the page's layout, so an update to the app may break it</span></template>
-                          <template if="pl.movable"><button type="button" data-action="move" data-value="{{pl.key}}" data-move="{{pl.key}}" data-close>Move</button></template>
-                          <template if="pl.moved"><button type="button" class="secondary" data-action="unmove" data-value="{{pl.key}}" data-unmove="{{pl.key}}">Put back</button></template>
-                          <template if="pl.locked"><button type="button" data-action="unlock" data-value="{{pl.key}}" data-unlock="{{pl.key}}">Unlock for this plugin</button></template>
-                          <template if="pl.unlocked"><button type="button" data-action="lock" data-value="{{pl.key}}">Lock again</button></template>
-                        </li>
-                      </template>
-                    </ul>
-                  </template>
-                  <div class="actions">
+                  <div class="entry-actions">
                     <template if="p.on"><button type="button" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn off</button></template>
                     <template if="p.off"><button type="button" class="primary" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn on</button></template>
                     <template if="p.share"><button type="button" data-action="share" data-value="{{p.id}}" data-share="{{p.id}}">{{p.share}}</button></template>
                     <template if="p.user"><button type="button" class="secondary" data-action="remove" data-value="{{p.id}}" data-remove="{{p.id}}">Remove</button></template>
                   </div>
-                </li>
+                </div>
               </template>
-            </ul>
+            </div>
           </section>
 
           <template if="registry">
-            <section>
-              <h3>Add to this page</h3>
-              <p class="muted">From this site's <a href="/packages/" target="_blank">plugin registry</a>. You see each one's code before it's added; it starts off, and you turn it on here.</p>
+            <section class="section">
+              <div class="section-head">
+                <h3>Add to this page</h3>
+                <p class="muted">From this site's <a href="/packages/" target="_blank">plugin registry</a>. You see each one's code first, and once you accept it, it's added and turned on.</p>
+              </div>
               <template for="g of groups">
-                <section class="kind" key="{{g.kind}}" data-kind="{{g.kind}}">
-                  <h4>{{g.title}}</h4>
-                  <p class="muted">{{g.about}}</p>
-                  <ul class="entries">
+                <div class="kind" key="{{g.kind}}" data-kind="{{g.kind}}">
+                  <div class="section-head">
+                    <h4>{{g.title}}</h4>
+                    <p class="muted">{{g.about}}</p>
+                  </div>
+                  <div class="entries" role="list">
                     <template for="p of g.packages">
-                      <li key="{{p.id}}" class="package">
-                        <div>
-                          <div class="head"><strong>{{p.name}}</strong><template if="p.state"><span class="pill">{{p.state}}</span></template></div>
+                      <div role="listitem" key="{{p.id}}" class="entry package">
+                        <div class="entry-main">
+                          <div class="head"><strong>{{p.name}}</strong><template if="p.state"><span class="pill {{p.stateClass}}">{{p.state}}</span></template></div>
                           <p class="muted">{{p.description}}</p>
-                          <p class="muted">{{p.asks}} {{p.also}}</p>
+                          <template if="p.can"><p class="muted">{{p.can}}</p></template>
+                          <template if="p.also"><p class="muted">{{p.also}}</p></template>
                         </div>
-                        <div class="actions">
-                          <template if="p.add"><button type="button" class="primary" data-action="package" data-value="{{p.id}}" data-package="{{p.id}}" disabled="{{p.disabled}}">Add</button></template>
-                          <template if="p.turnOn"><button type="button" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn on</button></template>
+                        <div class="entry-actions">
+                          <template if="p.add"><button type="button" data-action="package" data-value="{{p.id}}" data-package="{{p.id}}" disabled="{{p.disabled}}">Add</button></template>
+                          <template if="p.turnOn"><button type="button" class="primary" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn on</button></template>
                         </div>
-                      </li>
+                      </div>
                     </template>
-                  </ul>
-                </section>
+                  </div>
+                </div>
               </template>
             </section>
           </template>
           <template if="nothingFound"><p class="muted">No plugin or service matches “{{query}}”. Try Make a plugin to write your own.</p></template>
 
           <template if="samples.length">
-            <section>
-              <h3>Samples for this app</h3>
-              <div class="actions">
+            <section class="section">
+              <div class="section-head">
+                <h3>Samples for this app</h3>
+                <p class="muted">Plugins the app's author wrote to try with it.</p>
+              </div>
+              <div class="row">
                 <template for="s of samples"><button type="button" data-action="sample" data-value="{{s.href}}" data-sample="{{s.href}}" disabled="{{busy}}">{{s.title}}</button></template>
               </div>
             </section>
@@ -182,10 +238,10 @@
 
           <details>
             <summary>Add one from files, code or an address</summary>
-            <p class="row"><button type="button" data-action="pick" data-pick>Pick a plugin's files…</button> <span class="muted">Its .js file, and any files it lists.</span></p>
-            <form data-action="paste">
+            <div class="row"><button type="button" data-action="pick" data-pick>Pick a plugin's files…</button> <span class="muted">Its .js file, and any files it lists.</span></div>
+            <form data-action="paste" class="stack">
               <textarea name="code" rows="6" placeholder="export const manifest = { … }" aria-label="Plugin code"></textarea>
-              <p class="row"><button type="submit">Add this code</button> <span class="muted">It is turned on once you accept its review.</span></p>
+              <div class="row"><button type="submit">Add this code</button> <span class="muted">It's turned on once you accept its review.</span></div>
             </form>
             <form data-action="url" class="row">
               <input name="url" type="text" placeholder="/demos/trip/samples/countdown.js" aria-label="Plugin address">
@@ -193,26 +249,27 @@
             </form>
           </details>
         </template>
+      </template>
 
-        <!-- Make: a starter, a spot, then a name and the code. -->
-        <!-- Kept in the page while another tab shows, so a draft being written isn't lost by looking at Plugins or Layout. -->
-        <div hidden="{{notMake}}">
-          <p class="muted">Make a plugin of your own for this app. It's kept on this device, and you see its code before it runs.</p>
-          <div class="step">
-            <h3 data-step="1">Start from</h3>
-            <div class="starters">
-              <template for="s of make.starters">
-                <button type="button" key="{{s.file}}" data-action="starter" data-value="{{s.file}}" data-starter="{{s.file}}" aria-pressed="{{s.pressed}}"><strong>{{s.title}}</strong><small>{{s.about}}</small></button>
-              </template>
-            </div>
-            <slot name="customize.make"></slot>
+      <!-- Make: a starter, a spot, then a name and the code. -->
+      <!-- Drawn on every tab and while the panel is closed, hidden, so a draft being written isn't lost by looking at another tab or closing the panel. -->
+      <div class="make" key="make" hidden="{{notMake}}">
+        <p class="muted">Make a plugin of your own for this app. It's kept on this device, and you see its code before it runs.</p>
+        <div class="step">
+          <h3 data-step="1">Start from</h3>
+          <div class="starters">
+            <template for="s of make.starters">
+              <button type="button" key="{{s.file}}" data-action="starter" data-value="{{s.file}}" data-starter="{{s.file}}" aria-pressed="{{s.pressed}}"><strong>{{s.title}}</strong><small>{{s.about}}</small></button>
+            </template>
           </div>
-          <!-- One form, so choosing a spot sends the name and code as they are now, and they come back as typed. -->
-          <form data-action="make-save" class="customize">
+          <slot name="customize.make"></slot>
+        </div>
+        <!-- One form, so choosing a spot sends the name and code as they are now, and they come back as typed. -->
+        <form data-action="make-save">
           <div class="step">
             <h3 data-step="2">Where it shows</h3>
             <p>{{make.spotLabel}}</p>
-            <template if="arrange"><p class="row"><button type="submit" data-action="spot" data-spot data-close>Choose a spot on the page</button> <span class="muted">The panel gets out of the way while you point.</span></p></template>
+            <template if="arrange"><div class="row"><button type="submit" data-action="spot" data-spot data-close>Choose a spot on the page</button> <span class="muted">The panel gets out of the way while you point.</span></div></template>
           </div>
           <template if="make.started">
             <div class="step">
@@ -220,65 +277,86 @@
               <label class="field">Name <input name="name" type="text" value="{{make.name}}" data-make-name></label>
               <ui-code name="code" label="Plugin code" rows="16" revision="{{make.rev}}">{{make.code}}</ui-code>
               <template if="make.ok">
-                <p class="muted">Once it's on, it can:</p>
-                <ul class="asks"><template for="pm of make.permissions"><li key="{{pm.name}}">{{pm.about}}</li></template></ul>
+                <div class="stack">
+                  <p class="muted">Once it's on, it can:</p>
+                  <div class="asks"><template for="pm of make.permissions"><span key="{{pm.name}}">{{pm.about}}</span></template></div>
+                </div>
               </template>
               <template if="make.problem"><p class="error">{{make.problem}}</p></template>
-              <div class="actions">
+              <div class="row">
                 <button type="submit" class="primary" data-make-save>Save and turn on</button>
                 <button type="submit" class="secondary" data-action="make-check">Check it</button>
               </div>
-              <template if="make.status"><p role="status">{{make.status}}</p></template>
+              <template if="make.status">
+                <div class="status">
+                  <p role="status">{{make.status}}</p>
+                  <template if="make.saved"><div class="buttons"><button type="button" data-action="tab" data-value="plugins" data-see-plugins>See it in Plugins</button></div></template>
+                </div>
+              </template>
             </div>
           </template>
-          </form>
-          <template if="!make.editorLinked">
-            <p class="muted">Want more room, a copy of one of this page's plugins to change, or its log as it runs? <button type="button" data-action="editor" data-add-editor>Add the plugin editor</button></p>
-          </template>
-        </div>
+        </form>
+        <template if="!make.editorLinked">
+          <div class="tip">
+            <p class="muted">Want more room, a copy of one of this page's plugins to change, or its log as it runs?</p>
+            <button type="button" data-action="editor" data-add-editor>Add the plugin editor</button>
+          </div>
+        </template>
+      </div>
 
-        <!-- Layout: where plugins can go, and the elements views can use. -->
+      <!-- Layout: where plugins can go, and the elements views can use. -->
+      <template if="open">
         <template if="tabs.layout">
           <div class="layout">
-            <section>
-              <h3>Move things around</h3>
-              <p class="muted">Every plugin's view that sits in its own spot can be moved: above or below any part of the page, or inside it. Your moves are kept for you, on this device.</p>
-              <div class="actions">
+            <section class="section">
+              <div class="section-head">
+                <h3>Move things around</h3>
+                <p class="muted">Any plugin's view that sits in a spot of its own can be moved: above or below any part of the page, or inside it. Your moves are kept for you, on this device.</p>
+              </div>
+              <div class="row">
                 <template if="arrange"><button type="button" class="primary" data-action="arrange" data-arrange-start data-close>Arrange the page</button></template>
                 <template if="inspect"><button type="button" data-action="inspect" data-close data-inspect-start>Inspect the page</button></template>
               </div>
               <template if="inspect"><p class="muted">Inspect: point at any part to see which plugin drew it, then hide it or add a note beside it.</p></template>
             </section>
-            <section>
-              <h3>Slots the app offers</h3>
-              <p class="muted">Spots the app's author left for plugins. A plugin draws in one by naming it.</p>
+            <section class="section">
+              <div class="section-head">
+                <h3>Slots the app offers</h3>
+                <p class="muted">Spots the app's author left for plugins. A plugin draws in one by naming it.</p>
+              </div>
               <template if="layout.noSlots"><p class="muted">This app has no slots: plugins draw beside the parts below instead.</p></template>
               <dl>
                 <template for="s of layout.slots"><dt key="{{s.name}}"><code>{{s.name}}</code></dt><dd>{{s.plugins.length}} drawing here <template for="id of s.plugins"><span class="pill">{{id}}</span> </template></dd></template>
               </dl>
             </section>
-            <section>
-              <h3>Parts of the page</h3>
-              <p class="muted">What a plugin can be put above, below or inside. Open parts take anything; for review, you're asked first; locked, the author asked that nothing changes there (you can still unlock one plugin in Plugins).</p>
+            <section class="section">
+              <div class="section-head">
+                <h3>Parts of the page</h3>
+                <p class="muted">What a plugin can be put above, below or inside. Open parts take anything; for review, you're asked first; locked, the author asked that nothing changes there (you can still unlock one plugin in Plugins).</p>
+              </div>
               <template if="layout.noParts"><p class="muted">This page names no parts.</p></template>
               <dl>
                 <template for="p of layout.parts"><dt key="{{p.selector}}"><code>{{p.selector}}</code></dt><dd>{{p.name}} · <span class="mark-{{p.mark}}">{{p.mark}}</span></dd></template>
               </dl>
             </section>
-            <section>
-              <h3>UI elements a plugin can use</h3>
-              <p class="muted">Every view can use these ui-* elements as well as plain HTML. The <a href="/docs/" target="_blank">guide</a> shows them at work.</p>
-              <template for="e of layout.elements">
-                <details key="{{e.tag}}">
-                  <summary><code>&lt;{{e.tag}}&gt;</code></summary>
-                  <p class="muted">{{e.about}}</p>
-                  <template if="e.attributes"><p class="muted">Attributes: <code>{{e.attributes}}</code></p></template>
-                </details>
-              </template>
+            <section class="section">
+              <div class="section-head">
+                <h3>UI elements a plugin can use</h3>
+                <p class="muted">Every view can use these ui-* elements as well as plain HTML. The <a href="/docs/" target="_blank">guide</a> shows them at work.</p>
+              </div>
+              <div class="elements">
+                <template for="e of layout.elements">
+                  <details key="{{e.tag}}">
+                    <summary><code>&lt;{{e.tag}}&gt;</code></summary>
+                    <p class="muted">{{e.about}}</p>
+                    <template if="e.attributes"><p class="muted">Attributes: <code>{{e.attributes}}</code></p></template>
+                  </details>
+                </template>
+              </div>
             </section>
           </div>
         </template>
-      </div>
-    </template>
+      </template>
+    </div>
   </ui-panel>
 </template>
