@@ -224,7 +224,12 @@ async function fetchLink(href: string, priority?: RequestPriority): Promise<{ hr
     warmPlugin(href, source);
     return { href, source, why: "" };
   }
-  const loop = runnerHref(source, href);
+  let loop: string;
+  try {
+    loop = runnerHref(source, href);
+  } catch {
+    return { href, source: "", why: "its `runner:` isn't an address" };
+  }
   const runner = await fetch(loop, { priority }).catch((error: Error) => error);
   if (!(runner instanceof Response && runner.ok)) return { href, source: "", why: `its agent loop ${loop} ${runner instanceof Response ? `answered ${runner.status}` : `didn't load: ${runner.message}`}` };
   return { href, source, runner: await runner.text(), why: "" };

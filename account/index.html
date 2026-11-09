@@ -92,30 +92,49 @@
       // The app this page was opened from, to open in a space: /account/?app=/demos/<app>/, or else the
       // app page that linked here. Kept for this tab, since signing in elsewhere comes back without it.
       const APP = /^\/(?:[a-z0-9][a-z0-9-]*\/)+$/;
+      /** What was asked for: an address given in ?app= (which must be an app as given), or the folder of the page that linked here. */
       const appAsked = (() => {
         const asked = new URLSearchParams(location.search).get("app");
-        if (asked !== null) return asked;
+        if (asked !== null) return { path: asked, exact: true };
         try {
           const from = new URL(document.referrer);
           if (from.origin === location.origin) {
             const path = from.pathname.replace(/^\/s\/[a-z0-9][a-z0-9-]*\//, "/").replace(/[^/]*$/, "");
-            if (APP.test(path) && !path.startsWith("/account/")) return path;
+            if (APP.test(path) && !path.startsWith("/account/")) return { path, exact: false };
           }
         } catch {}
-        try { return sessionStorage.getItem("account:app"); } catch { return null; }
+        try {
+          const kept = sessionStorage.getItem("account:app");
+          return kept ? { path: kept, exact: true } : null;
+        } catch { return null; }
       })();
 
-      /** The asked-for app's address and title, or undefined if none was asked for. One that isn't an app here says so. */
-      async function appFrom(path) {
-        if (path === null || path === "") return undefined;
-        const page = APP.test(path) ? await fetch(`${path}app.html`).catch(() => undefined) : undefined;
-        if (!page?.ok || !(page.headers.get("content-type") ?? "").includes("html")) {
+      /** The app.html at a folder, or undefined. */
+      const page = async (path) => {
+        const res = await fetch(`${path}app.html`).catch(() => undefined);
+        return res?.ok && (res.headers.get("content-type") ?? "").includes("html") ? res : undefined;
+      };
+
+      /**
+       * The asked-for app's address and title, or undefined if none was asked for. A page that linked here may
+       * be one of an app's screens (/demos/<app>/book/42), so its nearest folder with an app.html is the
+       * app. One named in ?app= must be an app as given, and says so when it isn't.
+       */
+      async function appFrom(asked) {
+        if (!asked?.path) return undefined;
+        let path = APP.test(asked.path) ? asked.path : "";
+        let found = path ? await page(path) : undefined;
+        while (!found && !asked.exact && path.split("/").length > 3) {
+          path = path.replace(/[^/]+\/$/, "");
+          found = await page(path);
+        }
+        if (!found) {
           try { sessionStorage.removeItem("account:app"); } catch {}
-          say(`There's no app at ${path} to open in a space.`);
+          if (asked.exact) say(`There's no app at ${asked.path} to open in a space.`);
           return undefined;
         }
         try { sessionStorage.setItem("account:app", path); } catch {}
-        const title = new DOMParser().parseFromString(await page.text(), "text/html").title.trim();
+        const title = new DOMParser().parseFromString(await found.text(), "text/html").title.trim();
         return { path, title: title || path };
       }
       const appReady = appFrom(appAsked);

@@ -16,8 +16,12 @@ export const isAgentFile = (href: string) => /\.agent\.md$/i.test(new URL(href, 
 export function runnerName(text: string): string | undefined {
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
   const end = lines[0]?.trim() === "---" ? lines.indexOf("---", 1) : -1;
-  const line = end > 0 ? lines.slice(1, end).find((l) => /^runner\s*:/.test(l)) : undefined;
-  return line?.replace(/^runner\s*:\s*/, "").replace(/\s+#.*$/, "").trim().replace(/^(["'])(.*)\1$/, "$2") || undefined;
+  const body = end > 0 ? lines.slice(1, end) : [];
+  // Top-level keys sit at the first key's indent (the kernel's reader allows the block to be indented).
+  const first = body.find((l) => l.trim() && !l.trim().startsWith("#"));
+  const indent = first ? first.length - first.trimStart().length : 0;
+  const line = body.find((l) => l.length - l.trimStart().length === indent && /^runner\s*:/.test(l.trimStart()));
+  return line?.trimStart().replace(/^runner\s*:\s*/, "").replace(/\s+#.*$/, "").trim().replace(/^(["'])(.*)\1$/, "$2") || undefined;
 }
 
 /** The address of the loop an agent file runs: its `runner:`, resolved against the file, or the standard one. */
