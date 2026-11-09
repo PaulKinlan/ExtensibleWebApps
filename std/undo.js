@@ -21,6 +21,11 @@ export const manifest = {
   services: ["history"],
   // Each tab's buttons undo the changes of the app open in that tab, and no other.
   scope: "tab",
+  // Where it draws on a page with no <slot name="history">, such as a person adding it to any app from the
+  // registry (packages/std.json); a page with the slot keeps it there.
+  places: { "history": { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["undo.html"],
 };
 
 export default async function (ctx) {

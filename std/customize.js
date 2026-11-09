@@ -99,8 +99,8 @@ export default function (ctx) {
       app: page.running.filter((p) => p.id && !p.user && p.id !== manifest.id).map((p) => ({ id: p.id, name: p.name ?? p.id, places: placesOf(page, p.id, p.unlocked) })),
       packages: list.map((p) => ({
         ...p,
-        label: p.added ? "Added" : "Add",
-        disabled: p.added || busy,
+        label: p.linked ? "In this app" : p.added ? "Added" : "Add",
+        disabled: p.added || p.linked || busy,
         asks: `Asks for: ${p.permissions.join(", ") || "nothing"}`,
         also: p.adds.length > 1 ? `Adds ${p.adds.filter((a) => a.id !== p.id).map((a) => a.name).join(", ")} too, which it needs.` : "",
       })),

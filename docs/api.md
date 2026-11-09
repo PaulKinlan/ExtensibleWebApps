@@ -342,11 +342,11 @@ The person's own plugins for the caller's app. In a space, shared says which are
 
 #### authoring.packages
 
-`authoring.packages()` → [{ id, name, description, href, permissions, added, adds: [href] }]
+`authoring.packages()` → [{ id, name, description, href, permissions, added, linked, adds: [href] }]
 
 Needs: `plugins:read`.
 
-The site's plugin registry (/packages/): each package, whether the person has added it to this app, and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.
+The site's plugin registry (/packages/): each package, whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.
 
 #### authoring.page
 

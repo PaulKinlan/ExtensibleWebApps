@@ -1,6 +1,42 @@
 {
   "packages": [
     {
+      "id": "ask-the-page",
+      "name": "Ask the page",
+      "description": "Answers questions about this page with a language model, from the plugins it is made of.",
+      "version": "1.0.0",
+      "href": "/std/ask-the-page.js",
+      "permissions": [
+        "ui",
+        "llm",
+        "plugins:read"
+      ],
+      "provides": [],
+      "services": [
+        "llm"
+      ],
+      "std": true
+    },
+    {
+      "id": "board",
+      "name": "Board",
+      "description": "Questions from the app's agents, waiting for your answer, and what they did lately.",
+      "version": "1.0.0",
+      "href": "/std/board.js",
+      "permissions": [
+        "ui",
+        "bus:board",
+        "hook:listen:bus:asked",
+        "hook:listen:bus:answered",
+        "hook:listen:agent:*"
+      ],
+      "provides": [],
+      "services": [
+        "bus"
+      ],
+      "std": true
+    },
+    {
       "id": "clock",
       "name": "Clock",
       "description": "Provides the clock service: the time now in any time zone.",
@@ -13,6 +49,129 @@
         "clock"
       ],
       "services": []
+    },
+    {
+      "id": "debug-console",
+      "name": "Debug console",
+      "description": "A bug button that shows errors and the trace, ready to copy into a bug report.",
+      "version": "1.0.0",
+      "href": "/std/debug-console.js",
+      "permissions": [
+        "ui",
+        "debug:read"
+      ],
+      "provides": [],
+      "services": [
+        "debug"
+      ],
+      "std": true
+    },
+    {
+      "id": "hook-tracer",
+      "name": "Hook tracer",
+      "description": "Shows each hook an action runs, in order, and what every plugin listening said.",
+      "version": "1.0.0",
+      "href": "/std/hook-tracer.js",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "debug:read"
+      ],
+      "provides": [],
+      "services": [],
+      "std": true
+    },
+    {
+      "id": "import-export",
+      "name": "Import and export",
+      "description": "Buttons to save each of the app's collections to a CSV or JSON file, and to import a file's rows into one.",
+      "version": "1.0.0",
+      "href": "/std/import-export.js",
+      "permissions": [
+        "ui",
+        "transfer"
+      ],
+      "provides": [],
+      "services": [
+        "transfer"
+      ],
+      "std": true
+    },
+    {
+      "id": "reset",
+      "name": "Reset",
+      "description": "Turns every plugin on the page back on.",
+      "version": "1.0.0",
+      "href": "/std/reset.js",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "std": true
+    },
+    {
+      "id": "switchboard",
+      "name": "Switchboard",
+      "description": "A switch for each plugin on the page.",
+      "version": "1.0.0",
+      "href": "/std/switchboard.js",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:manage"
+      ],
+      "provides": [],
+      "services": [],
+      "std": true
+    },
+    {
+      "id": "sync-status",
+      "name": "Sync",
+      "description": "In a space: whether this page reaches it, and the versions of records it kept when someone else changed them first.",
+      "version": "1.0.0",
+      "href": "/std/sync.js",
+      "permissions": [
+        "ui",
+        "sync"
+      ],
+      "provides": [],
+      "services": [
+        "sync"
+      ],
+      "std": true
+    },
+    {
+      "id": "undo",
+      "name": "Undo",
+      "description": "Undo and Redo buttons that take back the app's most recent change to its data, and put it back again.",
+      "version": "1.0.0",
+      "href": "/std/undo.js",
+      "permissions": [
+        "ui",
+        "history"
+      ],
+      "provides": [],
+      "services": [
+        "history"
+      ],
+      "std": true
+    },
+    {
+      "id": "view-source",
+      "name": "View source",
+      "description": "Shows the code of every plugin on the page, and what each one may do.",
+      "version": "1.0.0",
+      "href": "/std/view-source.js",
+      "permissions": [
+        "ui",
+        "plugins:read"
+      ],
+      "provides": [],
+      "services": [],
+      "std": true
     },
     {
       "id": "world-clock",

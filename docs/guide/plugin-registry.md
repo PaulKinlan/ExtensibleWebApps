@@ -2,9 +2,11 @@
 
 The site's plugin registry is a folder of plugins no app links: [`packages/`](../../packages/), served at `/packages/`. A person adds any of them to any app from Customize, as they would a plugin of their own. Plugins in it can provide services, so a person can get a capability the site didn't build in without any trusted code loading at run time.
 
+`/packages/` is also a page listing every plugin in the registry, and the registry offers the general-purpose [standard plugins](../plugins.md) too: Undo, Import and export, Debug console, View source, Hook tracer, Switchboard, Reset, Ask the page, Board and Sync. They stay in `std/`, where apps link them; [`packages/std.json`](../../packages/std.json) lists the ones offered. Each says in its manifest where it draws on a page with no slot for it (`places`, appending to `main`), and lists its template in `files` so it is copied with it. Customize itself and the plugin editor aren't offered: the host adds Customize to every app, and the editor's starting templates sit in a folder beside it, which can't be copied with it. Plugins that only work with one app's hooks, such as the Markdown editor's, stay with that app as its samples.
+
 ## What a person sees
 
-Customize lists the registry under **Add a plugin**: each plugin's name, what it does and what it asks for. **Add** puts it with the person's own plugins for that app, switched off, as with any plugin they add. If it needs a service another plugin in the registry provides, that plugin is added too, and Customize says so before they click.
+Customize lists the registry under **Add a plugin**, at the top of its panel: each plugin's name, what it does and what it asks for. **Add** puts it with the person's own plugins for that app, switched off, as with any plugin they add. If it needs a service another plugin in the registry provides, that plugin is added too, and Customize says so before they click.
 
 Try it: open any demo, open Customize, and add **World clock**. It needs the `clock` service, so **Clock** comes with it. Turn World clock on, and Clock comes on with it, since it provides what World clock needs: a strip of clocks appears at the foot of the page. Turn Clock off and World clock goes off too. Nothing here asks the app's author, or the site's `kernel.json`, for anything ([The layers](../layers.md#when-a-persons-plugin-needs-a-service)).
 
@@ -26,7 +28,7 @@ packages/
 ## Adding a package
 
 1. Make the folder, with the plugin and its files.
-2. Run `npm run packages`, which reads every manifest and rewrites `packages/index.json`. The tests fail if it is out of date.
+2. Run `npm run packages`, which reads every manifest and rewrites `packages/index.json` and the page `packages/index.html`. The tests fail if either is out of date. To offer a standard plugin instead, add its name to `packages/std.json`; its manifest needs `places` and `files`.
 3. Check it in Customize on any demo.
 
 A registry plugin is an ordinary sandboxed plugin. It runs in its own worker, can do only what its manifest asks for, and the person sees what that is before they turn it on.

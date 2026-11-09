@@ -201,9 +201,9 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       packages: {
         args: "()",
-        returns: "[{ id, name, description, href, permissions, added, adds: [href] }]",
+        returns: "[{ id, name, description, href, permissions, added, linked, adds: [href] }]",
         needs: "plugins:read",
-        description: "The site's plugin registry (/packages/): each package, whether the person has added it to this app, and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.",
+        description: "The site's plugin registry (/packages/): each package, whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.",
         params: [],
       },
       pick: {
@@ -389,6 +389,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           href: pkg.href,
           permissions: pkg.permissions,
           added: have.has(pkg.id),
+          // A standard plugin the app links already runs here: adding a copy of it would clash.
+          linked: (apps.linkedBy(tab) ?? []).includes(pkg.id),
           adds: withNeeds(pkg).filter((p) => !have.has(p.id)).map((p) => ({ id: p.id, name: p.name, href: p.href })),
         }));
       }

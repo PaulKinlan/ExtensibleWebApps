@@ -18,6 +18,11 @@ export const manifest = {
   version: "1.0.0",
   permissions: ["ui", "plugins:read", "plugins:manage"],
   scope: "tab",
+  // Where it draws on a page with no <slot name="switchboard">, such as a person adding it to any app from the
+  // registry (packages/std.json); a page with the slot keeps it there.
+  places: { "switchboard": { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["reset.html"],
 };
 
 export default function (ctx) {

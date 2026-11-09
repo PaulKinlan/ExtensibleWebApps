@@ -8,19 +8,24 @@
 // provide, and the app maker's checks count a service the app's own plugin
 // provides as there.
 import { readFileSync } from "node:fs";
+import { buildIndex, renderPage } from "../../scripts/packages.mjs";
 
 export default async function ({ check, openTab, URL }) {
   const { packages } = JSON.parse(readFileSync(new globalThis.URL("../../packages/index.json", import.meta.url), "utf8"));
-  const { modules } = JSON.parse(readFileSync(new globalThis.URL("../../kernel.json", import.meta.url), "utf8"));
-  const provided = new Set([...modules, ...packages.flatMap((p) => p.provides)]);
-  const unmet = packages.flatMap((p) => p.services.filter((s) => !provided.has(s)).map((s) => `${p.id} needs ${s}`));
-  check("every service a registry package needs is provided by a registry package or one of the site's kernel modules", !unmet.length, unmet.join(", "));
+  const listing = readFileSync(new globalThis.URL("../../packages/index.html", import.meta.url), "utf8");
+  check("the registry's page at /packages/ lists every package in the index (run npm run packages)", listing === renderPage(await buildIndex()) && packages.every((p) => listing.includes(`id="${p.id}"`)));
 
   const app = "demos/trip";
   const page = await openTab(`${URL}${app}/app.html`);
   const command = (name, arg) => page.evaluate(([name, arg]) => window.__host.command(name, arg), [name, { app, ...arg }]);
   const on = async () => Object.fromEntries((await command("user:list")).map((p) => [p.id, p.on]));
   try {
+    // The services the site's kernel runs, as it describes itself (its core and the modules in kernel.json).
+    const { data } = await page.evaluate(() => window.__host.command("reference"));
+    const provided = new Set([...data.services.map((s) => s.name), ...packages.flatMap((p) => p.provides)]);
+    const unmet = packages.flatMap((p) => p.services.filter((s) => !provided.has(s)).map((s) => `${p.id} needs ${s}`));
+    check("every service a registry package needs is provided by a registry package or the site's kernel", !unmet.length, unmet.join(", "));
+
     for (const id of ["clock", "world-clock"]) await command("user:add", { url: `/packages/${id}/${id}.js` });
     const added = await on();
     check("registry plugins are added off", added.clock === false && added["world-clock"] === false, JSON.stringify(added));
@@ -37,6 +42,15 @@ export default async function ({ check, openTab, URL }) {
     await command("user:off", { id: "clock" });
     const off = await on();
     check("turning off the plugin that provides a service turns off the person's plugins that need it", off.clock === false && off["world-clock"] === false, JSON.stringify(off));
+
+    // A standard plugin from the registry draws on a page with no slot for it, through its manifest's place.
+    await command("user:add", { url: "/std/undo.js" });
+    await command("user:on", { id: "undo" });
+    const undo = await page
+      .waitForFunction(() => !!document.querySelector('main [data-plugin="undo"] button'), null, { timeout: 10000 })
+      .then(() => true, () => false);
+    const why = undo ? "" : await page.evaluate(() => JSON.stringify(window.__host.places().filter((p) => p.plugin === "undo")));
+    check("a standard plugin added from the registry draws on an app with no slot for it", undo, why);
 
     // The app maker's checks: a service the app's own plugin provides is there for its other plugins.
     const problems = await page.evaluate(async () => {
@@ -59,7 +73,7 @@ export default async function ({ check, openTab, URL }) {
     });
     check("the app maker's checks count a service the app's own plugin provides", !problems.length, problems.join("; "));
   } finally {
-    for (const id of ["world-clock", "clock"]) await command("user:remove", { id }).catch(() => {});
+    for (const id of ["world-clock", "clock", "undo"]) await command("user:remove", { id }).catch(() => {});
     await page.close({ runBeforeUnload: true });
   }
 }
