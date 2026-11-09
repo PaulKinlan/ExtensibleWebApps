@@ -42,6 +42,7 @@ const STATES = {
   locked: "Locked by the app's author",
   "no match": "Matches nothing in this page",
   "bad selector": "The selector can't be read",
+  slot: "In the page's own slot",
 };
 
 export default function (ctx) {
@@ -65,7 +66,7 @@ export default function (ctx) {
         where: `${p.put}${p.each ? " each" : ""} ${p.at}`,
         state: p.state,
         label: STATES[p.state] + (p.each && p.matches ? ` (${p.matches})` : ""),
-        ok: p.state === "drawn",
+        ok: p.state === "drawn" || p.state === "slot",
         fragile: p.fragile,
         locked: p.state === "locked",
         unlocked: unlocked.includes(p.name),

@@ -102,6 +102,13 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     return undefined;
   }
 
+  /** Who made the change numbered `seq`, from the log, as `{ by }`: nothing for a version the log doesn't name anyone for. */
+  async function madeBy(seq: number): Promise<{ by?: string }> {
+    if (!seq) return {};
+    const by = (await readChunk(chunkOf(seq)).catch(() => [] as Accepted[])).find((c) => c.seq === seq)?.by;
+    return by ? { by } : {};
+  }
+
   /** The record a change names, as the space has it, with its version: none if the change doesn't name one properly. */
   async function current(change: Outgoing): Promise<{ version?: number; record?: SyncRecord | null }> {
     if (!change || typeof change.collection !== "string" || !NAME.test(change.collection) || typeof change.id !== "string" || !ID.test(change.id)) return {};
@@ -117,7 +124,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     if (wrong) return { verdict: { ok: false, error: wrong, ...(await current(change)) } };
     const version = head.versions[key(change.collection, change.id)] ?? 0;
     const before = (await records.record(change.collection, change.id)) as SyncRecord | null;
-    if (change.base !== version) return { verdict: { ok: false, stale: true, version, record: before } };
+    if (change.base !== version) return { verdict: { ok: false, stale: true, version, record: before, ...(await madeBy(version)) } };
     const at = new Date().toISOString();
     // Every stored record has string timestamps (collections sort by updatedAt): a device's are kept, missing ones filled in.
     const after: SyncRecord | null =
@@ -136,7 +143,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     }
     // A server plugin may have written the record while its hook ran: then this change is stale too.
     const now = head.versions[key(change.collection, change.id)] ?? 0;
-    if (now !== version) return { verdict: { ok: false, stale: true, version: now, record: (await current(change)).record ?? null } };
+    if (now !== version) return { verdict: { ok: false, stale: true, version: now, record: (await current(change)).record ?? null, ...(await madeBy(now)) } };
     // The number is taken before the write, so a plugin's write that lands while this one is applied comes after it, in the log as in the data.
     const accepted: Accepted = { seq: head.seq + 1, collection: change.collection, id: change.id, after, ...(by ? { by } : {}), at };
     head.seq = accepted.seq;

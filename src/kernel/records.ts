@@ -23,6 +23,7 @@ import { BEFORE_WRITE, defineHook, hooks } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import { check, grants } from "./gate";
 import type { RemotePlugins, ServiceProvider } from "./remote";
+import { carryOver } from "./legacy";
 import { checkSchema, validate, type Schema } from "./schema";
 import type { Store } from "./store";
 import { record as trace } from "./trace";
@@ -83,7 +84,9 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     if (!data.has(name)) {
       data.set(
         name,
-        store.readJson<unknown>(`collections/${name}.json`, {}).then((saved) => {
+        ready.then(() => carryOver(store, name, registry.get(name)?.owner)).catch(() => undefined).then(async (old) => {
+          if (old) return old;
+          const saved = await store.readJson<unknown>(`collections/${name}.json`, {});
           const out = new Map<string, StoredRecord>();
           if (saved && typeof saved === "object" && !Array.isArray(saved)) for (const [id, r] of Object.entries(saved)) if (r && typeof r === "object") out.set(id, r as StoredRecord);
           return out;

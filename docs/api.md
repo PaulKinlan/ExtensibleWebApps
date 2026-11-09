@@ -434,7 +434,7 @@ The site's plugin registry (/packages/): each package, whether the person has ad
 
 Needs: `plugins:read`.
 
-The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample), and whether it has inspect mode.
+The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match, or slot when the page has its own slot of that name), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample), and whether it has inspect mode.
 
 #### authoring.pick
 

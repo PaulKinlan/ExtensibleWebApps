@@ -157,11 +157,12 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   const passedOver = new Map<string, { seq: number; by?: string }>();
 
   /** Puts the space's record here, as the space answered a push, saying who made it when this device heard. */
-  async function take(collection: string, id: string, record: SyncRecord | null, version: number, why: string) {
+  async function take(collection: string, id: string, record: SyncRecord | null, version: number, why: string, by?: string) {
     const heard = passedOver.get(key(collection, id));
     passedOver.delete(key(collection, id));
     try {
-      await records.apply(collection, id, record as StoredRecord | null, { trace: `sync-${why}` }, heard?.seq === version ? heard.by : undefined);
+      // Who made it: as heard, or as the space said when it refused this device's change (it may answer before this device hears it).
+      await records.apply(collection, id, record as StoredRecord | null, { trace: `sync-${why}` }, heard?.seq === version ? heard.by : by);
     } catch (error) {
       trace({ kind: "error", name: "sync:apply", detail: `${key(collection, id)}: ${error instanceof Error ? error.message : error}` });
     }
@@ -190,7 +191,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
         if (newer) newer.base = verdict.version;
         else {
           delete state.pending[k];
-          await take(change.collection, change.id, verdict.record, verdict.version, `same-${id}`);
+          await take(change.collection, change.id, verdict.record, verdict.version, `same-${id}`, verdict.by);
         }
         continue;
       }
@@ -200,7 +201,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       delete state.pending[k];
       if ("record" in verdict && verdict.record !== undefined && typeof verdict.version === "number") {
         state.versions[k] = verdict.version;
-        await take(change.collection, change.id, verdict.record, verdict.version, `refused-${id}`);
+        await take(change.collection, change.id, verdict.record, verdict.version, `refused-${id}`, "stale" in verdict ? verdict.by : undefined);
       }
       trace({ kind: "note", name: "sync:draft", detail: `${change.collection}/${change.id}: ${why}` });
       hosts.broadcast({ t: "notice", text: `${why === "Someone changed it first" ? "Someone else changed this record first" : `The space didn't take a change: ${why}`}. Your version is kept as a draft.`, tone: "error" });

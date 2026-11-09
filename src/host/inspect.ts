@@ -26,6 +26,7 @@ const OUTCOME: Record<string, (kind: "hide" | "note") => string> = {
   locked: () => "Made, but the author locked that part, so it can't be changed.",
   "no match": () => "Made, but it couldn't find that part again, so nothing changed.",
   "bad selector": () => "Made, but it couldn't find that part again, so nothing changed.",
+  slot: () => "Made: the page has a slot of its own for it, so it is shown there.",
 };
 
 /** Containers a change can't be made to here: a whole plugin's view, or the place it was drawn in. */
@@ -206,7 +207,7 @@ export function inspect(host: InspectHost) {
     let last: string | undefined;
     for (let tries = 0; tries < 40; tries++) {
       last = host.places().find((p) => p.plugin === plugin)?.state;
-      if (last === "drawn" || last === "locked" || last === "declined") return last;
+      if (last === "drawn" || last === "locked" || last === "declined" || last === "slot") return last;
       await new Promise((r) => setTimeout(r, 100));
     }
     return last;

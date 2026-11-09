@@ -395,6 +395,7 @@ async function syncChecks(base, check, owner, restart) {
     JSON.stringify({ stale, newer }),
   );
   check("sync: a device can't say it is another member: the server says who it is", byBea?.by === ids.bea, JSON.stringify(byBea));
+  check("sync: a refusal as stale says who made the version that won, so the device needn't have heard it first", stale?.[0]?.by === ids.owner, JSON.stringify(stale?.[0]));
   const told = (d) => d.heard.find((m) => m.op === "changes")?.member;
   check("sync: the space's answer to hello tells each device which member it is", told(phone) === ids.owner && told(laptop) === ids.bea, JSON.stringify({ phone: told(phone), laptop: told(laptop) }));
   const names = phone.heard.find((m) => m.op === "changes")?.members;

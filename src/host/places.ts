@@ -29,7 +29,8 @@
 
 import type { Opened, Place } from "../shared/protocol";
 
-export type PlaceState = "drawn" | "waiting" | "declined" | "locked" | "no match" | "bad selector";
+/** "slot": the page has a <slot> of the place's name, so the plugin's views go there and the place isn't used. */
+export type PlaceState = "drawn" | "waiting" | "declined" | "locked" | "no match" | "bad selector" | "slot";
 
 interface Applied {
   plugin: string;
@@ -48,6 +49,9 @@ interface Applied {
   /** Elements this place hid. */
   hidden: Element[];
 }
+
+/** Whether the page itself (not a plugin's view) has a <slot> of this name. */
+const pageHasSlot = (name: string) => [...document.querySelectorAll(`slot[name="${CSS.escape(name)}"]`)].some((slot) => !slot.closest("[data-plugin]"));
 
 /** Elements a place may never match: plugins' views, other places, and the platform's own panels. */
 const OFF_LIMITS = ".place, [data-plugin], #review, #notice, #inspect";
@@ -131,7 +135,8 @@ export function places(host: PlacesHost) {
   function find(place: Place): Element[] | "bad selector" {
     let all: Element[];
     try {
-      all = [...document.body.querySelectorAll(place.at)];
+      // The body itself too, so a place `at: "body"` works: querySelectorAll looks only below it.
+      all = [...(document.body.matches(place.at) ? [document.body] : []), ...document.body.querySelectorAll(place.at)];
     } catch {
       return "bad selector";
     }
@@ -186,6 +191,11 @@ export function places(host: PlacesHost) {
 
   async function apply(a: Applied) {
     const unlocked = a.unlocked;
+    // The page's own <slot> of that name wins (the host renders there first), so the place is neither drawn nor reported.
+    if (!a.place.in && pageHasSlot(a.name)) {
+      a.state = "slot";
+      return;
+    }
     const found = find(a.place);
     if (found === "bad selector") {
       a.state = "bad selector";
