@@ -1,85 +1,50 @@
-// Housemates: owns the `housemates` collection, everyone's name, which syncs
-// to every device in the space like any collection. It also asks who is
-// using this device, and remembers the answer here alone (in its own
-// storage, which never leaves the device).
+// Housemates: who lives here, and who is using this device. In a space
+// (/s/<space>/demos/household/) the housemates are the space's members, each
+// with the name on their account, and the space says which of them this
+// phone is signed in as: nobody types a name, and nobody can sign as someone
+// else. Opened on its own (/demos/household/) it's one person's list.
 //
-// The other plugins learn the answer from the bus: this plugin posts it to
-// the topic `household-me`, and they read the latest post. The bus is kept
-// by this device's kernel, so each phone has its own "me". The plugins never
-// call each other; a post is information, not permission.
+// It also decides, once, whether this is a new household, and posts the
+// answer to the bus topic `household-new`: groceries.js and chores.js add
+// their sample items only then. The answer comes from the `household`
+// collection, which syncs: a phone new to a space where people have cleared
+// everything doesn't put the samples back.
 
 export const manifest = {
   id: "housemates",
   name: "Housemates",
-  description: "Everyone who lives here, and who is using this device.",
-  version: "1.0.0",
-  permissions: ["ui", "bus:post:household-me", "bus:read:household-me", "hook:listen:bus:posted"],
+  description: "Everyone who lives here (the space's members), and who is using this device.",
+  version: "2.0.0",
+  permissions: ["ui", "members", "hook:listen:members:changed", "bus:post:household-new"],
   collections: {
-    housemates: {
-      title: "Housemates",
+    household: {
+      title: "Household",
       schema: {
         type: "object",
-        required: ["name"],
         properties: {
-          name: { type: "string", title: "Name", maxLength: 40 },
+          started: { type: "boolean", title: "Started" },
         },
       },
     },
   },
 };
 
-const TOPIC = "household-me";
-
 export default async function (ctx) {
   const views = ctx.ui.views("housemates.html");
-  /** Bumped after each join, so the template's form is drawn fresh, with its field empty. */
-  let joined = 0;
 
-  /** Who this device is, as the last post on the topic says: { id, name } or null. */
-  const me = async () => {
-    const posts = await ctx.call("bus", "read", TOPIC);
-    try {
-      return posts.length ? JSON.parse(posts[posts.length - 1].text) : null;
-    } catch {
-      return null;
-    }
-  };
-  const become = (person) => ctx.call("bus", "post", TOPIC, JSON.stringify(person ? { id: person.id, name: person.name } : null));
+  // A new household is one nobody has opened before, on any phone. Two phones that start it at once
+  // write the same record, which the space takes as one.
+  const started = await ctx.call("data", "get", "household", "started");
+  if (!started) await ctx.call("data", "put", "household", { id: "started", started: true });
+  await ctx.call("bus", "post", "household-new", JSON.stringify({ new: !started }));
 
   const view = views.live("who", "who", async (ctx) => {
-    const people = (await ctx.call("data", "list", "housemates")).sort((a, b) => a.name.localeCompare(b.name));
-    const current = await me();
-    // Someone renamed on another device is still them here; someone removed isn't anyone, so the
-    // other plugins stop signing with their name too.
-    const still = current && people.find((p) => p.id === current.id);
-    if (current && !still) await become(null);
-    if (still && still.name !== current.name) await become(still);
-    return {
-      me: still ? still.name : null,
-      choosing: !still,
-      people: people.map((p) => ({ id: p.id, name: p.name })),
-      form: `join-${joined}`,
-    };
+    const { space, you, members } = await ctx.call("sync", "members");
+    const people = members.map((m) => ({ id: m.id, name: m.name, you: m.id === you })).sort((a, b) => Number(b.you) - Number(a.you) || a.name.localeCompare(b.name));
+    const me = people.find((p) => p.you);
+    return { shared: !!space, me: me?.name ?? null, others: people.filter((p) => !p.you).map((p) => p.name).join(", ") };
   });
 
-  ctx.on("bus:posted", ({ topic }) => topic === TOPIC && view.refresh());
-
-  ctx.ui.onEvent(async (action, value) => {
-    // "Not you?" forgets who this device is, so nothing is signed with that name until someone says who they are.
-    if (action === "change") await become(null);
-    if (action.startsWith("pick:")) {
-      const person = await ctx.call("data", "get", "housemates", action.slice(5));
-      if (person) await become(person);
-    }
-    if (action === "join" && value.name?.trim()) {
-      const name = value.name.trim();
-      // Joining under a name someone already has is them, on a new device.
-      const people = await ctx.call("data", "list", "housemates");
-      const found = people.find((p) => p.name.toLowerCase() === name.toLowerCase());
-      const result = found ? { ok: true, id: found.id } : await ctx.call("data", "put", "housemates", { name });
-      if (!result.ok) return;
-      joined++;
-      await become({ id: result.id, name: found?.name ?? name });
-    }
-  });
+  // The space says who its members are when the page connects, and again whenever it reconnects.
+  ctx.on("members:changed", () => view.refresh());
 }

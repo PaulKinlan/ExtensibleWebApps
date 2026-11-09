@@ -1,35 +1,22 @@
 <!--
-  Who is using this device. housemates.js sends { me, choosing, people, form }:
-  me is this device's person's name (null until they say), choosing is true
-  while they pick, people is everyone in the house, and form is a key that
-  changes after each join, so the form is drawn again with its field empty.
+  Who lives here. housemates.js sends { shared, me, others }: shared is true
+  in a space, me is the name on this person's account there, and others are
+  the names of everyone else in the space, joined with commas.
 -->
 <style>
-  .who { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; margin-block-end: var(--space-3); }
+  .who { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: baseline; margin-block-end: var(--space-3); }
   .who p { margin: 0; }
-  .who .people { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-  .who form { flex-direction: row; gap: var(--space-2); flex: 1 1 16rem; }
-  .who input { flex: 1; min-width: 0; }
 </style>
 <template id="who">
-  <section class="who" aria-label="Who's using this device">
+  <section class="who" aria-label="Who lives here">
     <template if="me">
-      <p>You're <strong>{{me}}</strong> on this device.</p>
-      <button type="button" data-action="change">Not you?</button>
+      <p>You're <strong>{{me}}</strong><template if="others"> · also here: {{others}}</template></p>
     </template>
-    <template if="choosing">
-      <template if="people.length">
-        <p>Who's this?</p>
-        <div class="people">
-          <template for="p of people">
-            <button type="button" key="{{p.id}}" data-action="pick:{{p.id}}">{{p.name}}</button>
-          </template>
-        </div>
-      </template>
-      <form data-action="join" key="{{form}}">
-        <input name="name" placeholder="Your name" aria-label="Your name" maxlength="40" autocomplete="given-name">
-        <button type="submit">I live here</button>
-      </form>
+    <template if="shared">
+      <template if="!me"><p><small>Connecting to the space…</small></p></template>
+    </template>
+    <template if="!shared">
+      <p><small>Just you on this device. Share it with a space to see who did what.</small></p>
     </template>
   </section>
 </template>

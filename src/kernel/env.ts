@@ -33,6 +33,11 @@ export interface KernelEnv {
    */
   addresses?(): Promise<string[]>;
   /**
+   * On a server, the space's members with the names they gave on their accounts, so a page can show who
+   * made a change (`by` is a member's id) by name (sync.ts sends them to each device).
+   */
+  members?(): Promise<{ id: string; name: string }[]>;
+  /**
    * On a host that can put a space to sleep (Cloudflare), asks to be woken at `at` (ms since 1970), or
    * not at all when undefined, for the earliest job plugins scheduled (std/schedule/module.ts).
    */
