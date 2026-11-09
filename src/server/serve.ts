@@ -25,6 +25,7 @@ import { type Accounts, type Decision, frontDoor, type Knock, SPACE, unrouted } 
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "./routes.ts";
 import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
 import { accept } from "./websocket.ts";
+import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse } from "./mcp.ts";
 
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -214,7 +215,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
 
   let routed = 0;
   /** Asks a space's kernel to answer a public route (src/server/routes.ts): null if no plugin has it. */
-  const ask = async (name: string, route: RouteRequest): Promise<RouteResponse | null> => {
+  const ask = async (name: string, route: RouteRequest, timeout = 15_000): Promise<RouteResponse | null> => {
     const kernel = await space(name);
     const id = ++routed;
     const answer = (m: { t?: string; id?: number; result?: RouteResponse | null }) => m?.t === "routed" && m.id === id && done(m.result ?? null);
@@ -222,7 +223,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     const result = new Promise<RouteResponse | null>((resolve) => (done = resolve));
     kernel.on("message", answer);
     kernel.postMessage({ t: "route", id, request: route });
-    const timer = setTimeout(() => done({ status: 504, text: "The space didn't answer in time" }), 15_000);
+    const timer = setTimeout(() => done({ status: 504, text: "The space didn't answer in time" }), timeout);
     try {
       return await result;
     } finally {
@@ -264,12 +265,30 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     return true;
   };
 
+  /** An MCP request from a member's agent (src/server/mcp.ts): false when the address isn't one. */
+  const mcp = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    // The front door has already found the space (src/server/front-door.ts).
+    const url = addressOf(request);
+    const at = mcpAddress(url);
+    if (!at) return false;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
+    const asked = await mcpRequest(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), at, auth.agent);
+    const answer = asked instanceof Response ? asked : mcpResponse(await ask(at.space, asked, MCP_TIMEOUT_MS));
+    // A body refused before it was read (too big, or no key) is still on the connection: close it rather than reuse it.
+    if (!request.complete) answer.headers.set("connection", "close");
+    response.writeHead(answer.status, Object.fromEntries(answer.headers));
+    response.end(Buffer.from(await answer.arrayBuffer()));
+    return true;
+  };
+
   /** Sends what the door decided for a request that isn't the space's socket. */
   const answer = async (request: IncomingMessage, response: ServerResponse, decision: Decision): Promise<void> => {
     // Moving a space (src/server/transfer.ts) is under /auth/ too; anything else there is the accounts'.
     if (decision.door === "auth") return void ((await transfer(request, response)) || (await signIn(request, response)));
     if (decision.door === "route") {
-      if (!(await publicRoute(request, response, decision))) await answer(request, response, unrouted(request.method ?? "GET"));
+      if (!(await mcp(request, response)) && !(await publicRoute(request, response, decision))) await answer(request, response, unrouted(request.method ?? "GET"));
       return;
     }
     if (decision.door === "asset") return file(request, response);

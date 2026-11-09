@@ -20,6 +20,7 @@ import { smtpMailer } from "../../src/server/smtp.ts";
 import { fakeSmtp } from "./fake-smtp.mjs";
 import { authenticator } from "./authenticator.mjs";
 import { blueskyChecks } from "./bluesky.mjs";
+import { mcpChecks } from "./mcp.mjs";
 import { fakeAtproto } from "./fake-atproto.mjs";
 import { fakeProvider } from "./fake-oauth.mjs";
 
@@ -980,6 +981,7 @@ async function suite(name, make) {
       JSON.stringify(tests.map((t) => [t.status, t.body])),
     );
     await surveyChecks(server.url, check, owner);
+    await mcpChecks(server.url, check, owner, await person(server.url).account("Stranger"));
 
     // Workers can't reach a private network in production; wrangler's local runtime isn't a guide to that.
     if (name === "node") await networkGuardChecks(server.url, check);
