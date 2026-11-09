@@ -131,6 +131,8 @@ If `AUTH_PROVIDERS` is set up wrong (not JSON, an entry missing its client id or
 
 At the provider, register the callback URL `https://<your host>/auth/oauth/<id>/callback`. On Cloudflare, `AUTH_PROVIDERS` is a var and the secret is a Worker secret (`npx wrangler secret put GITHUB_CLIENT_SECRET`). The site's own list (GitHub and Bluesky) is under `vars` in [`wrangler.jsonc`](../wrangler.jsonc), so it is in Git and a deploy keeps it; a deploy leaves secrets alone. `npx wrangler dev` reads [`.env`](../.env) instead, which turns the list off on this machine (passkeys only), since it hasn't the secret. That file is in Git and holds no secrets: to try a provider locally, put its entry and its secret in `.env.local`, which Git ignores (as it does `.dev.vars`); and a Worker for one app ([`scripts/deploy-app.mjs`](../scripts/deploy-app.mjs)) leaves the list out.
 
+A branch's preview on Cloudflare (`npx wrangler preview`) uses none of the settings above: it has only the bindings and variables under `previews` in [`wrangler.jsonc`](../wrangler.jsonc), with Durable Objects and databases of its own. A binding missing there makes the preview answer `error code: 1101` wherever the Worker reaches for it, so each one is repeated there ([`tests/checks/preview-config.mjs`](../tests/checks/preview-config.mjs)). A preview signs in with a passkey or Bluesky, not GitHub, and sends no mail. The "Preview sign-in" workflow ([`preview-sign-in.yml`](../.github/workflows/preview-sign-in.yml)) asks a branch's preview for `/auth/providers`.
+
 | Route | What it does |
 | --- | --- |
 | `GET /auth/providers` | The providers that are on: `{ providers: [{ id, name, ask? }] }`. `ask` names a field to type before starting (Bluesky's handle). |
