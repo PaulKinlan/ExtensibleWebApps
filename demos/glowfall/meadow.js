@@ -9,13 +9,18 @@
 // the sky and the jar come from the page's theme (ctx.ui.onCanvas gives them,
 // ctx.ui.onTheme gives them again when they change); the fireflies glow
 // their own colour in any theme.
+//
+// It is also where a finger steers: the canvas is drawn with `pointer`, so
+// a tap or drag on it comes here (canvas:pointer, in the canvas's own
+// pixels), and the lane under the finger goes to the loop as input, the
+// same input jar.js already moves the jar for: { type: "lane", lane }.
 
 export const manifest = {
   id: "glowfall-meadow",
   name: "Meadow",
-  description: "Draws the night meadow, the jar and everything falling, on a canvas.",
+  description: "Draws the night meadow, the jar and everything falling, on a canvas, and steers the jar to where you tap or drag.",
   version: "1.0.0",
-  permissions: ["ui", "hook:listen:game:frame"],
+  permissions: ["ui", "game", "hook:listen:game:frame"],
   services: ["game"],
   scope: "tab",
   order: 10,
@@ -162,6 +167,7 @@ export default function (ctx) {
       g.fillStyle = "rgba(244,241,255,0.75)";
       g.fillText(state.done ? `${state.score} fireflies caught` : "Catch the fireflies. Dodge the rain.", W / 2, H * 0.4 + 52);
       g.fillText("Press Start (or Enter)", W / 2, H * 0.4 + 96);
+      g.fillText("Then tap or drag where the jar should go", W / 2, H * 0.4 + 136);
     }
     requestAnimationFrame(draw);
   };
@@ -172,5 +178,19 @@ export default function (ctx) {
     requestAnimationFrame(draw);
   });
   ctx.ui.onTheme((given) => (theme = given));
-  ctx.ui.render("main", "meadow", { type: "canvas", id: "meadow", width: W, height: H });
+  // A tap or drag: the jar goes to the lane under the finger. Only a change of lane is sent, so a drag along one lane sends nothing more.
+  let sent = null;
+  ctx.ui.onEvent((action, value) => {
+    if (action !== "canvas:pointer" || value?.canvas !== "meadow") return;
+    const state = last?.state;
+    if (!state || state.done) return;
+    if (value.type === "up" || value.type === "cancel") return void (sent = null);
+    const lanes = state.lanes ?? 5;
+    const lane = Math.min(lanes - 1, Math.max(0, Math.floor((value.x / W) * lanes)));
+    if (lane === sent && value.type === "move") return;
+    sent = lane;
+    // No game running (it ended a moment ago), or paused: the loop says no, and that's fine.
+    ctx.call("game", "input", { game: "glowfall", type: "lane", lane }).catch(() => {});
+  });
+  ctx.ui.render("main", "meadow", { type: "canvas", id: "meadow", width: W, height: H, pointer: true });
 }

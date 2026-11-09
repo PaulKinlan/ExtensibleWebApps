@@ -79,6 +79,15 @@ tick as `input`, in order, each with `from`, the plugin that sent it.
 Glowfall's [`controls.js`](../../demos/glowfall/controls.js) sends a press
 for each button and each key (as commands, so the palette lists them).
 
+**Tapping and dragging.** A canvas view rendered with `pointer: true`
+sends each tap and drag on it to its plugin as the event `canvas:pointer`
+(`ctx.ui.onEvent`): `{ canvas, type, x, y, id, kind }`, where type is
+`down`, `move`, `up` or `cancel`, and x and y are in the canvas's own pixels,
+whatever size the page shows it at. Moves come only while a finger or
+button is down, at most once a frame, and the page doesn't scroll under a
+finger on it. Glowfall's meadow sends the lane under the finger as input,
+`{ type: "lane", lane }`, which `jar.js` already understood.
+
 **Drawing.** A canvas goes to the worker that draws on it, so the plugin
 that draws is `scope: "tab"`, and each tab draws its own. It listens to
 `game:frame` (with `hook:listen:game:frame`), keeps the last two frames, and
@@ -115,22 +124,53 @@ frame's state says something was caught on that tick.
 `ctx.call("game", "state", { game })` reads a game as it is now, and the
 page command `game-state` lists every game, for tests and developer tools.
 
+### Playing together, on a space's server
+
+The loop is a kernel module, so a space's server has it too, and a game
+that runs there is one game for every member. [Glowfall
+together](../../demos/glowfall-together/) is the example: open it at
+`/s/<space>/demos/glowfall-together/` and each member gets a jar of their
+own under one sky.
+
+- Its host, [`together.js`](../../demos/glowfall-together/together.js), is a
+  server plugin (`runs: "server"`) that starts the game in the space's
+  kernel. Its systems, `jars.js` and `catches.js`, run there too, and so
+  does Glowfall's own `sky.js`, which says `runs: "both"`: the same plugin
+  is the sky alone in a browser and together on the server.
+- Moves and frames are **live messages**: `ctx.call("sync", "live", topic,
+  value)`, heard as the `sync:live` hook, with the `live` permission. A
+  page's message reaches the space's server plugins with the member and
+  device it came from, so no one moves another's jar; a server plugin's
+  reaches every device that has spoken on that topic. They aren't kept or
+  traced, so twenty frames a second cost nothing but the bytes
+  ([`std/spaces/live.ts`](../../std/spaces/live.ts)).
+- Each device draws the frames as Glowfall's meadow does, between the last
+  two, and sends taps, drags and keys back as moves.
+
 ## Clips, and effects that are plugins
 
 The `audio` service has played sound since the
 [Beat pad](../../demos/beats/): a plugin registers an AudioWorklet
 processor and plays it. For sound that is edited rather than played, it also
-has **clips**: a recording as `{ rate, pcm }`, where `pcm` is base64 of
-16-bit samples, one channel. A clip is plain JSON, so a plugin can keep one
-in a collection, send it in a hook, or hand it to the service:
+has **clips**: a recording as `{ rate, pcm, channels? }`, where `pcm` is
+base64 of 16-bit samples, one channel, or two (`channels: 2`, stereo)
+interleaved. A clip holds up to about four and a half minutes of one
+channel at 22,050 samples a second. It is plain JSON, so a plugin can keep
+one in a collection, send it in a hook, or hand it to the service:
 
 | Method | Does |
 | --- | --- |
 | `audio.render({ clip, chain, tail? })` | Runs a clip through a chain of processors in an `OfflineAudioContext`, faster than real time, and gives back the new clip. `tail` adds silence for an echo to ring into. With `source` instead of `clip`, a processor makes the clip. |
 | `audio.playClip({ clip, from?, to?, chain?, group? })` | Plays a clip, or a part of it, through a chain if given. Answers `{ at, ms }`, when it starts and how long it lasts, for a playhead. |
 | `audio.stop({ group })` | Stops a group's sounds, even those already sounding. |
-| `audio.open()` | Opens the file chooser for a sound file and decodes it into a clip (only right after a click). |
+| `audio.mix({ tracks: [{ clip, at?, gain?, pan?, chain? }] })` | Lays clips over each other into one, offline: each track starts `at` seconds in, at its gain, panned from -1 (left) to 1 (right), through its own chain. Stereo unless `channels: 1`. |
+| `audio.open({ channels? })` | Opens the file chooser for a sound file and decodes it into a clip, in stereo with `channels: 2` (only right after a click). |
 | `audio.save({ clip, name })` | Downloads a clip as a WAV file. |
+| `audio.keep({ name, clip })`, `load({ name })`, `forget`, `kept()` | Keeps a clip in the person's data folder, for one too long for a collection (a collection holds 5 MB in all). Each plugin's are its own. |
+
+Effects are processors that take one channel: on a stereo clip, each
+channel goes through a copy of the chain of its own, so every effect works
+on both.
 
 An **effect** is a processor some plugin registered. The service sends each
 processor's source with the sound that uses it, so a processor registered by
@@ -192,6 +232,21 @@ sequenceDiagram
 The editor's own edits (cut, trim, fade, reverse, normalise) are done on the
 samples in its worker; they need no effect.
 
+### Knobs
+
+An effect can say which of its options the person may tune: beside
+`options`, its answer to `sound-editor:effects` gives `knobs`, `{ delay: {
+label, min, max, step?, unit? } }`. The editor draws a slider for each, and
+renders with the values set. [`echo.js`](../../demos/audio-editor/echo.js)
+offers delay, repeats and mix; an effect with no knobs, like the Telephone
+sample, still works as it did. The command `tune-effect` sets one by name,
+for an agent.
+
+The editor also lays another clip over the one open (**Layer another
+clip**, through `audio.mix`), opens sound files in stereo, and keeps a clip
+too long for the collection with `audio.keep`, its record holding the name
+it was kept under.
+
 ### The waveform
 
 [`<ui-waveform>`](../../elements/ui-waveform.html) draws a sound's shape
@@ -216,12 +271,13 @@ does both, with a scripted model, and plays each.
 
 ## What isn't there yet
 
-- **The canvas doesn't take input.** A game's controls are buttons and keys
-  (commands); a tap or drag on the canvas itself doesn't reach the plugin.
-- **No game on a server.** The loop runs in the browser's kernel; a game
-  several people play together would need it in a space's server, and a
-  frame sent to each member.
-- **Clips are one channel, and short.** About 30 seconds at 22,050 samples a
-  second; no stereo, no tracks to mix.
-- **Effects can't be tuned in the editor.** An effect offers one setting of
-  its options; a knob for each would need the effect to describe them.
+- **Live messages take the server's word for who sent them, not a
+  referee's.** A game played together trusts each device's moves as moves;
+  nothing stops a player sending them faster than a hand could (beyond 60
+  messages a second).
+- **No timeline of tracks.** `audio.mix` lays tracks over each other, and the
+  editor lays one clip over another; there is no view of several tracks to
+  arrange side by side.
+- **Kept clips stay on the device.** A long clip kept with `audio.keep` is in
+  that browser's data folder, not in a space: other members see its record,
+  not its sound.

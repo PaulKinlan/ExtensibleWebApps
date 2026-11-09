@@ -35,6 +35,6 @@ const PROCESSOR = `registerProcessor("effect-crusher", class extends AudioWorkle
 export default async function (ctx) {
   await ctx.call("audio", "registerProcessor", "effect-crusher", PROCESSOR);
   ctx.on("sound-editor:effects", ({ effects }) => ({
-    effects: [...effects, { id: "lofi", name: "Lo-fi", description: "Fewer bits, like an old sampler", processor: "effect-crusher", options: { bits: 5, hold: 4 } }],
+    effects: [...effects, { id: "lofi", name: "Lo-fi", description: "Fewer bits, like an old sampler", processor: "effect-crusher", options: { bits: 5, hold: 4 }, knobs: { bits: { label: "Bits", min: 2, max: 12, step: 1 }, hold: { label: "Hold", min: 1, max: 16, step: 1 } } }],
   }));
 }

@@ -88,6 +88,15 @@ What a server plugin can do that a browser plugin can't:
 
 What it writes reaches every member's device as a change by `plugin:<id>`.
 
+**Live messages** are for what shouldn't be kept: a game's moves and
+frames, a cursor, who is here. A page calls `ctx.call("sync", "live",
+topic, value)` (with the `live` permission) and the space's server plugins
+hear it as `sync:live`, with the member and device it came from; a server
+plugin calls the same and every device that has spoken on that topic hears
+it, or only the one it names. Nothing is stored or traced, and a device may
+send 60 a second. [Glowfall together](../../demos/glowfall-together/) plays
+one game for everyone this way ([games and sound](games-and-audio.md#playing-together-on-a-spaces-server)).
+
 ## The rules a server plugin runs under
 
 - **Only the app's own files run there.** When a device opens an app in a space, the space reads that app's `app.html` from the site and starts the plugins it links that run on the server. It never runs code a member's browser sent: a plugin a member adds in the space is their own, and one they share with the space goes to the other members' browsers, turned off until each of them turns it on, never to the server. So a server plugin is always the author's, as the site serves it.
@@ -112,6 +121,5 @@ On `/account/`, the owner of a space can **Download a copy** of it and **Load a 
 
 - **Only collections sync.** A person's own plugins for an app, and an app's other files, stay on each device.
 - **Keys the site provides**, so a person needn't bring their own API key, aren't there yet. A server plugin with `secret:<name>` has no one to ask for a key.
-- **The debugger can't see a space's server kernel.** Opened inside a space (`/s/<space>/demos/debugger/`), it sees that space's kernel in your browser; opened outside, your own.
 
 Back to the [guide's contents](README.md).

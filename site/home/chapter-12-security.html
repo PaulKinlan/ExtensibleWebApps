@@ -1,0 +1,43 @@
+<!--
+  Chapter 12's words. chapter-12-security.js sends { reviews: [{ id, name,
+  blocked, verdict, reason }], none, code, outcome, tone, done, trying }:
+  the latest verdicts of Security check, and how the last try went.
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter ol { padding-left: 1.25em; }
+  .chapter li { margin-bottom: var(--space-1); }
+  .reviews { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
+  .reviews li { padding: var(--space-1) var(--space-2); border-left: 3px solid var(--ok); background: var(--bg-2); }
+  .reviews li[data-blocked] { border-left-color: var(--danger); }
+  .reviews .why { display: block; color: var(--fg-2); font-size: var(--text-sm); }
+  .outcome { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--ok); background: var(--bg-2); }
+  .outcome[data-tone="warn"] { border-left-color: var(--warn); }
+  .code pre { max-height: 18em; overflow: auto; font-size: var(--text-sm); }
+  .muted { color: var(--fg-2); font-size: var(--text-sm); }
+</style>
+<template id="chapter">
+  <ui-card class="chapter" tone="accent">
+    <h2><ui-badge tone="accent">12</ui-badge> A second pair of eyes</h2>
+    <p>A review card asks you to judge code, and not everyone reads code. So before a plugin of yours reaches its card, something else gets to look at it first.</p>
+    <ol>
+      <li><strong>A hook before the card.</strong> Whenever a plugin of your own is added or changed, by the editor, the builder agent or Customize, the kernel runs <code>plugins:beforeAdd</code> with its code and what it asks for. A checker may stop it there, with a reason.</li>
+      <li><strong>The checker is a plugin.</strong> On this page it's Security check: plain rules, no model. It stops a plugin that may read your data and also reach the internet, and code that builds code from text. It's on the switchboard, so you can turn it off.</li>
+      <li><strong>Or an agent.</strong> <code>/home/security.agent.md</code> does the same job with a model, reading the code like a person would. It's an agent file with one <code>check: plugins:beforeAdd</code>, woken only for plugins that ask to reach the internet. Link it beside a model and your key.</li>
+      <li><strong>You still decide.</strong> A checker can only stop a plugin, never let one in: what gets past it still waits for your card.</li>
+    </ol>
+    <p>Try saving a plugin that reads your notes and sends them to a server:</p>
+    <details class="code"><summary>The plugin it tries to save</summary><pre><code>{{code}}</code></pre></details>
+    <ui-toolbar>
+      <button type="button" data-action="try" disabled="{{trying}}">Try to add Note backup</button>
+    </ui-toolbar>
+    <template if="done"><p class="outcome" data-tone="{{tone}}" role="status">{{outcome}}</p></template>
+    <h3>What Security check decided</h3>
+    <template if="none"><p class="muted">Nothing yet. It looks at each plugin of yours before its card: try the button, or save one in the editor.</p></template>
+    <ul class="reviews">
+      <template for="r of reviews">
+        <li key="{{r.id}}" data-blocked="{{r.blocked}}"><strong>{{r.verdict}}:</strong> {{r.name}}<template if="r.reason"><span class="why">{{r.reason}}</span></template></li>
+      </template>
+    </ul>
+  </ui-card>
+</template>

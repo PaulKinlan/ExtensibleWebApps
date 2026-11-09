@@ -14,15 +14,61 @@
 //
 // reflect() is for debuggers (demos/debugger/space.js): it asks the space's
 // own kernel, on its server, what reflect.<method>() says there (reflect.ts).
-// It needs reflect:read, as the reflect service does in this kernel.
+// It needs reflect:read, as the reflect service does in this kernel. So does
+// trace(), which streams that kernel's trace here as sync:trace (trace.ts).
+//
+// live() sends a live message between the members' devices and the space's
+// server plugins (live.ts): a game's moves one way, its frames the other.
+// It needs `live`. They hear each other with the sync:live hook.
 
 import { env } from "../../src/kernel/env";
 import type { ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
 import { thisDevice } from "./device";
 import { askSpace, READS } from "./reflect";
+import { checkTopic, LIVE_HOOK, type LiveSpace } from "./live";
+import type { SyncToDevice } from "../../src/shared/sync";
 
-export default ({ root, collections, hook, cleanup }: ModuleKernel): ServiceProvider => {
+export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, space: { live?: LiveSpace } = {}): ServiceProvider => {
+  hook("sync:live", LIVE_HOOK);
+  hook("sync:trace", {
+    mode: "emit",
+    quiet: true,
+    needs: "reflect:read",
+    args: "{ events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], first?, error? }",
+    description: "New events in the trace of the space's own kernel, on its server, for a debugger that asked with sync.trace(true): first is the batch from before it asked (again after each reconnection), and error says the space stopped sending. They name every server plugin and what it did, so listening needs reflect:read.",
+  });
+  /** The devices this service listens to for live messages and the space's trace, once a plugin has used either. */
+  const attached = new WeakSet<object>();
+  /** The plugins hearing the space's trace on this device: it stops once none of them is running. */
+  const watchers = new Set<string>();
+  const attach = (device: NonNullable<typeof thisDevice.sync>) => {
+    if (attached.has(device)) return;
+    attached.add(device);
+    const listen = (m: SyncToDevice) => {
+      if (m.op === "live") return void root.emit({ trace: `live-${m.topic}` }, "sync:live", { topic: m.topic, value: m.value, from: "space" });
+      if (m.op !== "trace") return;
+      for (const w of [...watchers]) if (!remote.live.has(w)) watchers.delete(w);
+      if (!watchers.size) return void (m.on !== false && device.send({ t: "sync", op: "trace", on: false }));
+      // The space said no (too many debuggers watching): the watchers hear why, and stop.
+      if (m.on === false && m.error) {
+        watchers.clear();
+        return void root.emit({}, "sync:trace", { events: [], error: m.error });
+      }
+      if (m.events?.length) root.emit({}, "sync:trace", { events: m.events, ...(m.on ? { first: true } : {}) });
+    };
+    // A new connection is a new socket the space knows nothing of: ask for the trace again, if anyone still listens.
+    const again = () => {
+      for (const w of [...watchers]) if (!remote.live.has(w)) watchers.delete(w);
+      if (watchers.size) device.send({ t: "sync", op: "trace", on: true });
+    };
+    device.heard.add(listen);
+    device.caughtUp.add(again);
+    cleanup(() => {
+      device.heard.delete(listen);
+      device.caughtUp.delete(again);
+    });
+  };
   hook("sync:changed", {
     mode: "emit",
     needs: "sync",
@@ -115,6 +161,26 @@ export default ({ root, collections, hook, cleanup }: ModuleKernel): ServiceProv
         ],
         description: "For debuggers: asks the space's own kernel, on its server, what its reflect service says (its server plugins, their permissions, hooks and workers, and the members' devices connected, each with its member). A snapshot also lists `shared`: the plugins members share, which the space keeps but never runs ({ app, id, by?, at }); source reads theirs too. Read only, like reflect. Fails outside a space, or while this page can't reach it.",
       },
+      live: {
+        args: "(topic, value, device?)",
+        returns: "{ sent } (on a server, { sent, reached })",
+        needs: "live",
+        quiet: true,
+        params: [
+          { name: "topic", schema: { type: "string", description: "What it's about: lowercase letters, digits and dashes, such as a game's name" } },
+          { name: "value", schema: { description: "Anything JSON: a move, a frame. A device's is at most 4,000 characters of JSON, the space's 64,000" } },
+          { name: "device", optional: true, schema: { type: "string", description: "On the space's server: only this device, as sync:live named it" } },
+        ],
+        description:
+          "Sends a live message, kept nowhere: from a page in a space, to the space's server plugins, which hear it as sync:live with the member and device it came from; from a server plugin, to every device that has said something on the topic (or only `device`), whose plugins hear it as sync:live. For moves and frames of a game played together, cursors, presence. A device may send 60 a second. Fails outside a space, or while the page can't reach it.",
+      },
+      trace: {
+        args: "(on)",
+        returns: "{ on }",
+        needs: "reflect:read",
+        params: [{ name: "on", schema: { type: "boolean", description: "true to start hearing the space's trace, false to stop" } }],
+        description: "For debuggers: streams the trace of the space's own kernel, on its server, to this device as it happens: the sync:trace hook carries each batch, starting with a few hundred events from before. Stops when no plugin that asked is running. Fails outside a space, or while this page can't reach it.",
+      },
       dismiss: {
         args: "(ref)",
         returns: "{ ok }",
@@ -123,8 +189,36 @@ export default ({ root, collections, hook, cleanup }: ModuleKernel): ServiceProv
         description: "Lets a draft go: the record stays as the space has it.",
       },
     },
-    capability: (method) => (method === "members" ? "members" : method === "reflect" ? "reflect:read" : "sync"),
-    call: async (_instance, method, args, dispatch) => {
+    capability: (method) => (method === "members" ? "members" : method === "reflect" || method === "trace" ? "reflect:read" : method === "live" ? "live" : "sync"),
+    call: async (instance, method, args, dispatch) => {
+      if (method === "live") {
+        const topic = checkTopic(args?.[0]);
+        if (space.live) {
+          const device = args?.[2];
+          return { sent: true, reached: space.live.say(topic, args?.[1], typeof device === "string" ? device : undefined) };
+        }
+        const device = thisDevice.sync;
+        if (!device) throw new Error("Live messages are for pages in a space: open the app at /s/<space>/…");
+        if (JSON.stringify(args?.[1] ?? null).length > 4000) throw new Error("A live message from a page is at most 4,000 characters of JSON");
+        attach(device);
+        if (!device.send({ t: "sync", op: "live", topic, value: args?.[1] ?? null })) throw new Error("This page isn't connected to its space right now");
+        return { sent: true };
+      }
+      if (method === "trace") {
+        const device = thisDevice.sync;
+        if (!device) throw new Error("This page isn't in a space: open the debugger at /s/<space>/… to hear its server");
+        attach(device);
+        const on = args?.[0] !== false;
+        if (on) watchers.add(instance);
+        else watchers.delete(instance);
+        if (on && watchers.size === 1 && !device.send({ t: "sync", op: "trace", on: true })) {
+          watchers.delete(instance);
+          throw new Error("This page isn't connected to its space right now");
+        }
+        if (on && watchers.size > 1) device.send({ t: "sync", op: "trace", on: true });
+        if (!on && !watchers.size) device.send({ t: "sync", op: "trace", on: false });
+        return { on };
+      }
       if (method === "state") return state();
       if (method === "members") return members();
       if (method === "reflect") {

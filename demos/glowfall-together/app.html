@@ -1,0 +1,94 @@
+<!doctype html>
+<!--
+  Glowfall together: one game for everyone in a space. The game loop
+  (std/game) runs on the space's server, in its own kernel, and every member
+  who opens this page plays in it, each with a jar of their own.
+
+  On the space's server (runs: "server"):
+  together.js   starts the game, hears each player's moves as live
+                messages (sync.live), and sends each frame back to them
+  jars.js       game:update   moves each player's jar
+  catches.js    game:rules    scores each player's catches and the team's
+  ../glowfall/sky.js           Glowfall's own sky, which runs in browsers
+                               and on servers (runs: "both")
+
+  In each member's browser:
+  field.js      draws the frames on a canvas, and sends taps, drags and keys
+  lobby.js      joins, starts, and shows who is playing and the scores
+
+  Outside a space there's no server to play on: the lobby says how to get
+  to one. The moves and frames are live messages (std/spaces/live.ts): not
+  kept, not traced, gone once heard.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Glowfall together</title>
+  <meta name="description" content="Glowfall for everyone in a space: the game runs on the space's server, and each member steers a jar of their own.">
+  <meta name="gallery" content="showcase">
+  <meta name="gallery-about" content="One sky for everyone in a space. The game loop runs on the space's server; each member's moves go to it as live messages and every frame comes back to each of them. The sky is Glowfall's own plugin, running on the server too.">
+  <meta name="gallery-shows" content="a game loop on a space's server, live messages between members and server plugins, a plugin that runs in both places. Needs a space.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="together.js">
+  <link rel="plugin" href="jars.js">
+  <link rel="plugin" href="catches.js">
+  <link rel="plugin" href="../glowfall/sky.js">
+  <link rel="plugin" href="field.js">
+  <link rel="plugin" href="lobby.js">
+  <link rel="plugin" href="/std/commands/palette.js">
+  <style>
+    @layer platform {
+      :root {
+        color-scheme: dark;
+        --bg: #070a1c;
+        --bg-2: #10162f;
+        --surface: #141b38;
+        --fg: #f4f1ff;
+        --fg-2: #a3a8c9;
+        --border: #262e55;
+        --accent: #ffe27a;
+        --accent-fg: #1b1500;
+        --radius: 12px;
+      }
+    }
+    body {
+      background: radial-gradient(60rem 30rem at 30% -10%, rgb(255 226 122 / 0.12), transparent 60%), var(--bg);
+      background-attachment: fixed;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+    }
+    body > header { align-items: center; background: transparent; border-bottom: 0; }
+    body > header nav.site { margin-left: auto; }
+    body > header nav.site a { color: var(--fg-2); text-decoration: none; }
+    body > header nav.site a:hover { color: var(--accent); }
+    body > aside { border-left: 0; }
+    [data-plugin="glowfall-field"] canvas { display: block; width: min(100%, calc((100dvh - 120px) * 0.875)); height: auto; aspect-ratio: 7 / 8; margin: 0 auto; border-radius: var(--radius); box-shadow: 0 20px 60px rgb(0 0 0 / 0.5); }
+    @media (max-width: 800px) {
+      body { grid-template-columns: minmax(0, 1fr); }
+      body > header nav.site { margin-left: 0; width: 100%; }
+      body > main { padding: 8px; }
+      [data-plugin="glowfall-field"] canvas { width: max(min(100%, 220px), min(100%, calc((100dvh - 430px) * 0.875))); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Glowfall together</h1>
+    <slot name="commands"></slot>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <slot name="main"><p>Lighting the lanterns…</p></slot>
+  </main>
+  <aside>
+    <slot name="side"></slot>
+  </aside>
+</body>
+</html>

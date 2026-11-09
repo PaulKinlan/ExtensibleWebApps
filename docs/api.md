@@ -154,7 +154,7 @@ Draws what the function returns, like `ui.render`, and draws it again whenever a
 
 Needs: nothing.
 
-Receives the OffscreenCanvas for a canvas view the plugin rendered, with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope "tab" for plugins that draw.
+Receives the OffscreenCanvas for a canvas view the plugin rendered, with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope "tab" for plugins that draw. A canvas view rendered with `pointer: true` sends taps and drags on it as the event `canvas:pointer` (hear it with ui.onEvent): `{ canvas, type, x, y, id, kind }`, type down, move, up or cancel, x and y in the canvas's own pixels.
 
 ### ctx.ui.onEvent
 
@@ -264,13 +264,53 @@ Needs: `audio`.
 
 Takes back this plugin's sounds in `group` that haven't started yet, as a Stop button wants. One already sounding plays on to its end.
 
-#### audio.open
+#### audio.forget
 
-`audio.open({ rate?, maxSeconds? })` → { name, clip, seconds } or null
+`audio.forget({ name })` → { forgotten }
 
 Needs: `audio`.
 
-Opens the file chooser for a sound file (WAV, MP3, Ogg…), decodes it to one channel at rate (22050 by default) and gives it back as a clip, at most maxSeconds long (15 by default, 30 at most). Only right after the person clicks; null if they close it.
+Deletes a clip this plugin kept.
+
+#### audio.keep
+
+`audio.keep({ name, clip })` → { kept, seconds }
+
+Needs: `audio`.
+
+Keeps a clip in the person's data folder under a name of this plugin's own, for a clip too long for a collection (which holds 5 MB in all). Keeping a name again replaces it. At most 50 a plugin.
+
+#### audio.kept
+
+`audio.kept()` → [name]
+
+Needs: `audio`.
+
+The names of the clips this plugin kept.
+
+#### audio.load
+
+`audio.load({ name })` → { rate, pcm, channels? } or null
+
+Needs: `audio`.
+
+A clip this plugin kept, or null if there is none by that name.
+
+#### audio.mix
+
+`audio.mix({ tracks: [{ clip, at?, gain?, pan?, chain? }], rate?, channels?, tail? })` → { rate, pcm, channels? }
+
+Needs: `audio`.
+
+Mixes clips into one, offline: each track starts at `at` seconds, at its gain (1 by default, up to 4), panned from -1 (left) to 1 (right), through its own chain of processors. Tracks may differ in rate and channels. The mix is stereo (channels 2) unless channels is 1, at rate (the first track's if not given). At most 16 tracks.
+
+#### audio.open
+
+`audio.open({ rate?, maxSeconds?, channels? })` → { name, clip, seconds } or null
+
+Needs: `audio`.
+
+Opens the file chooser for a sound file (WAV, MP3, Ogg…), decodes it to one channel (or two, with channels: 2) at rate (22050 by default) and gives it back as a clip, at most maxSeconds long (15 by default, 300 at most, and no more than a clip holds). Only right after the person clicks; null if they close it.
 
 #### audio.play
 
@@ -298,7 +338,7 @@ Registers an AudioWorklet processor, from its source, under a name.
 
 #### audio.render
 
-`audio.render({ clip?, source?: { processor, ms, options? }, rate?, chain?: [{ processor, options? }], tail? })` → { rate, pcm }
+`audio.render({ clip?, source?: { processor, ms, options? }, rate?, chain?: [{ processor, options? }], tail? })` → { rate, pcm, channels? }
 
 Needs: `audio`.
 
@@ -310,7 +350,7 @@ Renders a clip, offline, through a chain of registered processors (effects, each
 
 Needs: `audio`.
 
-Saves a clip as a WAV file the person downloads, named name.wav.
+Saves a clip as a WAV file the person downloads, named name.wav: stereo if the clip is.
 
 #### audio.stop
 
@@ -1312,6 +1352,14 @@ Needs: `sync`.
 
 Makes a draft the record again, with no review, as a new change sent to the space. data:beforeWrite listeners can still stop it.
 
+#### sync.live
+
+`sync.live(topic, value, device?)` → { sent } (on a server, { sent, reached })
+
+Needs: `live`.
+
+Sends a live message, kept nowhere: from a page in a space, to the space's server plugins, which hear it as sync:live with the member and device it came from; from a server plugin, to every device that has said something on the topic (or only `device`), whose plugins hear it as sync:live. For moves and frames of a game played together, cursors, presence. A device may send 60 a second. Fails outside a space, or while the page can't reach it.
+
 #### sync.members
 
 `sync.members()` → { space, you?, members: [{ id, name }] }
@@ -1335,6 +1383,14 @@ For debuggers: asks the space's own kernel, on its server, what its reflect serv
 Needs: `sync`.
 
 Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
+
+#### sync.trace
+
+`sync.trace(on)` → { on }
+
+Needs: `reflect:read`.
+
+For debuggers: streams the trace of the space's own kernel, on its server, to this device as it happens: the sync:trace hook carries each batch, starting with a few hundred events from before. Stops when no plugin that asked is running. Fails outside a space, or while this page can't reach it.
 
 ### tools
 
@@ -1620,6 +1676,14 @@ Mode: `emit`. Listening needs `outside`.
 
 Listeners get `{ plugin, tool, via: "webmcp" | "mcp", member?, ok }`.
 
+### `plugins:beforeAdd`
+
+Before one of the person's own plugins is added or changed (how: save, add or pick), and before they see its review card: a checker gets its code and the permissions it asks for, and may return { block: reason } to stop it. by is the plugin that asked. It carries the code, so listening needs hook:intercept:plugins:beforeAdd.
+
+Mode: `serial`, 2000 ms per listener, fails open; an agent that checks it has 20 s. Listening needs `hook:intercept:plugins:beforeAdd`.
+
+Listeners get `{ app, id, name, permissions, code, how, by }`.
+
 ### `plugins:changed`
 
 A plugin was installed, removed, or turned on or off (`change` is install, uninstall, enable or disable, and `id` is the plugin), or a tab opened its app (`change` is open, and `id` is the tab), so plugins.app() may answer differently.
@@ -1651,6 +1715,22 @@ This page's sync with its space changed: it connected or lost the server, sent w
 Mode: `emit`. Listening needs `sync`.
 
 Listeners get `{}`.
+
+### `sync:live`
+
+A live message in a space (sync.live): on the space's server, from a member's device, with the member and the device it came from (gone: true when that device left); on a device, from the space's server plugins (from: "space"). Nothing is kept, and it isn't traced.
+
+Mode: `emit`. Listening needs `hook:listen:sync:live`.
+
+Listeners get `{ topic, value, member?, device?, gone?, from? }`.
+
+### `sync:trace`
+
+New events in the trace of the space's own kernel, on its server, for a debugger that asked with sync.trace(true): first is the batch from before it asked (again after each reconnection), and error says the space stopped sending. They name every server plugin and what it did, so listening needs reflect:read.
+
+Mode: `emit`. Listening needs `reflect:read`.
+
+Listeners get `{ events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], first?, error? }`.
 
 ### `transfer:changed`
 
@@ -1687,7 +1767,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `agents:run:<agent>` | Call agents.run. |
 | `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder. |
 | `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.check. |
-| `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.playClip, audio.open, audio.save. |
+| `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.mix, audio.keep, audio.load, audio.forget, audio.kept, audio.playClip, audio.open, audio.save. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |
 | `bus:inbox` | Call bus.receive, bus.reply. |
@@ -1707,6 +1787,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `game` | Call game.start, game.stop, game.pause, game.input, game.state. |
 | `history` | Call history.state, history.undo, history.redo. |
 | `launch` | Call launch.take. |
+| `live` | Call sync.live. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `members` | Call sync.members. |
 | `network:<host>` | Call net.fetch. |
@@ -1715,7 +1796,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
 | `plugins:manage` | Call authoring.turn, plugins.setEnabled. |
 | `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.inspect, authoring.check, plugins.app. |
-| `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source, sync.reflect. |
+| `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source, sync.reflect, sync.trace. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `share` | Call share.send, share.take. |
