@@ -46,7 +46,7 @@ jobs:
   checks:
     needs: plan
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       # Every run finishes, so each failure is seen, not only the first.
       fail-fast: false

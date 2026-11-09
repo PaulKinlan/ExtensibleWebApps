@@ -86,6 +86,8 @@ export default async function ({ check, context, errors }) {
     check("household: in a space, each phone shows who it's signed in as and who else lives there, by their account names, with no name to type", annSees && benSees && !(await ben.page.locator(`${WHO} input`).count()), JSON.stringify({ ann: await ann.page.locator(WHO).textContent().catch(() => ""), ben: await ben.page.locator(WHO).textContent().catch(() => "") }));
 
     // The sample items went in once, though both phones started the list.
+    // They reach Ben's phone from the space, a moment after his list first draws.
+    await shows(ben.page, LIST, "Milk", 15000);
     const milk = (await rows(ben.page, LIST)).filter((t) => /^Milk\b/.test(t)).length;
     check("household: two phones starting the shared list add its sample items once", milk === 1, JSON.stringify(await rows(ben.page, LIST)));
 

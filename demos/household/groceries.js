@@ -69,7 +69,12 @@ async function seedOnce(ctx, collection, samples) {
 
 export default async function (ctx) {
   const views = ctx.ui.views("groceries.html");
-  await seedOnce(ctx, "groceries", SAMPLE);
+  // Listening comes first: housemates.js may post while this plugin is still reading what was posted before,
+  // and a post missed then would leave a new household with no samples. One at a time, so they go in once.
+  let seeding = Promise.resolve();
+  const seed = () => (seeding = seeding.then(() => seedOnce(ctx, "groceries", SAMPLE)).catch(() => {}));
+  ctx.on("bus:posted", ({ topic }) => topic === "household-new" && seed());
+  await seed();
   /** Bumped after each add, so the template's form is drawn fresh, with its field empty. */
   let added = 0;
 
@@ -85,9 +90,8 @@ export default async function (ctx) {
     return { toGet, got, empty: !items.length, form: `add-${added}` };
   });
 
-  // Names arrive when the page reaches the space; samples once housemates.js says the household is new.
+  // Names arrive when the page reaches the space.
   ctx.on("members:changed", () => view.refresh());
-  ctx.on("bus:posted", ({ topic }) => topic === "household-new" && seedOnce(ctx, "groceries", SAMPLE));
 
   ctx.ui.onEvent(async (action, value) => {
     const { me } = await people(ctx);
