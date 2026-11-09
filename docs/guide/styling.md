@@ -8,7 +8,9 @@ Plain HTML already looks right: the platform's stylesheet styles headings, lists
 | 2. `@layer plugins` | A `<style>` in a plugin's template file | The plugin, for its own views only |
 | 3. No layer | The page's own `<style>` or stylesheet | The app's author, who always wins |
 
-So a plugin can style itself, and an app can restyle any plugin without the plugin's help.
+So a plugin can style itself, and an app can restyle any plugin without the plugin's help. The rules for spacing, sizes and layout that keep every app looking like one system are in [DESIGN.md](../../DESIGN.md).
+
+One thing to know before laying out a form: inside a view a `<form>` is already a column. For a row of fields, say so: `display: flex; flex-direction: row; flex-wrap: wrap; align-items: center`.
 
 ## Design tokens
 
