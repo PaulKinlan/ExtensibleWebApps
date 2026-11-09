@@ -5,7 +5,7 @@
 import { readFileSync } from "node:fs";
 import { expected } from "../../scripts/packages.mjs";
 
-export default async function ({ check, openTab, URL }) {
+export default async function ({ check, openTab, context, URL }) {
   const want = await expected();
   for (const [name, text] of Object.entries(want)) {
     const written = readFileSync(new globalThis.URL(`../../packages/${name}`, import.meta.url), "utf8");
@@ -19,8 +19,10 @@ export default async function ({ check, openTab, URL }) {
   check("the catalogue has every std plugin, every demo's plugins and the built-in services", catalog.plugins.some((p) => p.href === "/std/customize.js") && catalog.plugins.some((p) => p.href === "/demos/reading-list/library.js") && catalog.services.some((s) => s.id === "llm"));
 
   // The page: every plugin, the search narrows it, and the filters show one kind.
-  const listing = await openTab(`${URL}packages/`);
+  // A plain page, not an app, so it has no window.__host for openTab to wait for.
+  const listing = await context.newPage();
   try {
+    await listing.goto(`${URL}packages/`);
     const all = await listing.locator("li.card").count();
     check("/packages/ shows every plugin and built-in service", all === catalog.plugins.length + catalog.services.length, `${all}`);
     await listing.fill("#find", "language model");
