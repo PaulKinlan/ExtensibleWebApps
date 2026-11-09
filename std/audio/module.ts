@@ -119,11 +119,9 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       // that registered one runs in another (an effect, shared, used by a tab-scoped editor).
       const used = first && typeof first === "object" ? processorsOf(first) : [];
       const own = first && typeof first === "object" && "group" in first ? [{ ...first, group: `${plugin}\n${String(first.group)}` }, ...rest] : args;
-      if (used.length) {
-        const missing = used.filter((name) => !sources.has(name));
-        if (missing.length) throw new Error(`No audio processor named ${missing.join(", ")}: a plugin registers one with audio.registerProcessor`);
-        own[0] = { ...(own[0] as object), sources: Object.fromEntries(used.map((name) => [name, sources.get(name)])) };
-      }
+      // One this module hasn't seen (registered before it was restarted) is left to the tab, which may have it.
+      const known = used.filter((name) => sources.has(name));
+      if (known.length) own[0] = { ...(own[0] as object), sources: Object.fromEntries(known.map((name) => [name, sources.get(name)])) };
       // A tab-scoped plugin's sounds play, and its files are chosen and saved, in its own tab: where the person is.
       return hosts.bridge("audio", method, own, dispatch, tabOf(plugin));
     },
