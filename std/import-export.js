@@ -7,7 +7,7 @@
 //   <link rel="plugin" href="/std/import-export.js">
 //   <slot name="import-export"></slot>
 //
-// The kernel does the work (src/kernel/services/transfer.ts): it reads the
+// The kernel does the work (std/transfer/module.ts): it reads the
 // file's columns into the collection's fields and asks the person to review
 // the import once, as a whole. This plugin only draws the buttons and says
 // what happened. It needs the `transfer` permission, and runs in each tab

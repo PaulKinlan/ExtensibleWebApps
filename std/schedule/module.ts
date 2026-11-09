@@ -1,6 +1,6 @@
 // The `schedule` service: work a plugin wants done later, once or again and
 // again, with the `schedule` permission.
-// Found by name: this file is src/kernel/services/schedule.ts, so it is `ctx.call("schedule", …)`.
+// A kernel module (docs/layers.md): a site that lists `schedule` in kernel.json has it, as `ctx.call("schedule", …)`.
 //
 //   ctx.schedule.every("digest", 60 * 60 * 1000, async () => { … });
 //   ctx.schedule.at("reminder", Date.parse("2026-12-01T09:00:00Z"), async () => { … });
@@ -20,12 +20,12 @@
 // Setting a job that's already there with the same timing keeps it as it is,
 // so a plugin that sets its jobs each time it starts doesn't push them back.
 
-import { env } from "../env";
-import { scheduleHook, type ServiceProvider } from "../remote";
-import { memorySchedule } from "../../seams/memory.ts";
-import type { Job } from "../../seams/index.ts";
-import { record } from "../trace";
-import type { Kernel } from "./index";
+import { env } from "../../src/kernel/env";
+import { scheduleHook, type ServiceProvider } from "../../src/kernel/remote";
+import { memorySchedule } from "../../src/seams/memory.ts";
+import type { Job } from "../../src/seams/index.ts";
+import { record } from "../../src/kernel/trace";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
 
 const FILE = "schedule/jobs.json";
 const NAME = /^[a-z][a-z0-9-]{0,63}$/;
@@ -39,12 +39,22 @@ const base = (instance: string) => instance.split("@")[0];
 /** The kernel's name for a plugin's job. */
 const jobName = (plugin: string, name: string) => `${plugin} ${name}`;
 
-export default ({ root, store, remote }: Kernel): ServiceProvider => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { root, store, remote } = kernel;
   const jobs = new Map<string, Job>();
   const timers = memorySchedule(jobs, (name, error) => record({ kind: "error", name: "schedule:failed", detail: `${name}: ${error instanceof Error ? error.message : error}` }));
+  // When the module stops, so do its timers; the jobs stay saved for when it starts again. A job already
+  // under way, or the first read of the file, finishes without saving or running anything: the module
+  // that starts next owns the file, and this one's copy of the jobs may be out of date by then.
+  let stopped = false;
+  kernel.cleanup(() => {
+    stopped = true;
+    timers.stop();
+  });
 
   /** Tells the host when to wake the space next, and keeps the jobs. */
   const saved = async () => {
+    if (stopped) return;
     await store.writeJson(FILE, [...jobs.values()]);
     const next = [...jobs.values()].reduce<number | undefined>((soonest, job) => (soonest === undefined || job.at < soonest ? job.at : soonest), undefined);
     env().wake?.(next);
@@ -52,6 +62,7 @@ export default ({ root, store, remote }: Kernel): ServiceProvider => {
 
   // Read once the folder is open; jobs that came due meanwhile run now.
   const loaded = store.readJson<Job[]>(FILE, []).then((list) => {
+    if (stopped) return;
     for (const job of Array.isArray(list) ? list : []) if (job && typeof job.name === "string" && typeof job.at === "number") jobs.set(job.name, job);
     timers.onDue(due);
     env().wake?.([...jobs.values()].reduce<number | undefined>((s, j) => (s === undefined || j.at < s ? j.at : s), undefined));
@@ -63,6 +74,7 @@ export default ({ root, store, remote }: Kernel): ServiceProvider => {
     const listening = () => [...remote.live.values()].some((live) => base(live.instance) === plugin && live.heard.includes(hook));
     // A space just started may still be installing its plugins: wait for this one before deciding anything.
     for (let waited = 0; !listening() && waited < WAIT_FOR_PLUGIN; waited += 250) await new Promise((r) => setTimeout(r, 250));
+    if (stopped) return;
     // Its plugin is gone: so is the job.
     if (!listening() && !remote.installed.has(plugin)) {
       jobs.delete(name);
@@ -132,3 +144,5 @@ export default ({ root, store, remote }: Kernel): ServiceProvider => {
     },
   };
 };
+
+export default service("schedule", make);

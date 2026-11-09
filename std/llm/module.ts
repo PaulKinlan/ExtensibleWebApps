@@ -44,11 +44,10 @@
 //
 // Streaming answers come next, with the chat plugin that needs them.
 
-import type { ServiceProvider } from "../remote";
-import { defineHook } from "../hooks";
-import { record } from "../trace";
-import { checkSchema, validate, type Schema } from "../schema";
-import type { Kernel } from "./index";
+import type { ServiceProvider } from "../../src/kernel/remote";
+import { record } from "../../src/kernel/trace";
+import { checkSchema, validate, type Schema } from "../../src/kernel/schema";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
 
 const MAX = 4_000_000;
 const TOOL = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -134,8 +133,9 @@ function cleanAnswer(value: Record<string, unknown>, provider: string) {
   return answer;
 }
 
-export default ({ root, apps }: Kernel): ServiceProvider => {
-  defineHook("llm:providers", {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { root, apps } = kernel;
+  kernel.hook("llm:providers", {
     mode: "waterfall",
     timeoutMs: 2000,
     onFailure: "open",
@@ -143,7 +143,7 @@ export default ({ root, apps }: Kernel): ServiceProvider => {
     args: "{ providers: [{ id, name, model?, ready }] }",
     description: "Asks which language models are available. A provider returns { providers: [...providers, itself] }. Listening needs provide:llm.",
   });
-  defineHook("llm:complete", {
+  kernel.hook("llm:complete", {
     mode: "bail",
     // Long enough for a slow model, and for the person to paste a key when the provider asks for one.
     timeoutMs: 11 * 60_000,
@@ -153,7 +153,7 @@ export default ({ root, apps }: Kernel): ServiceProvider => {
     description: "Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }. Listening needs provide:llm.",
   });
 
-  defineHook("llm:models", {
+  kernel.hook("llm:models", {
     mode: "bail",
     timeoutMs: 30_000,
     onFailure: "open",
@@ -243,3 +243,5 @@ export default ({ root, apps }: Kernel): ServiceProvider => {
   };
   return service;
 };
+
+export default service("llm", make);

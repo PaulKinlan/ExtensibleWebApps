@@ -1,4 +1,4 @@
-// The transfer service (src/kernel/services/transfer.ts): import and export for
+// The transfer service (std/transfer/module.ts): import and export for
 // the person. The spending demo's checks cover the buttons (std/import-export.js),
 // a bank statement's import and a CSV export; these cover the service's limits.
 

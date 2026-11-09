@@ -12,7 +12,7 @@ import { record } from "./trace";
 export interface Host {
   tab: string;
   port: MessagePort;
-  /** The screen the tab shows, from its address, and when it last changed (see services/router.ts). */
+  /** The screen the tab shows, from its address, and when it last changed (see std/router/module.ts). */
   url?: { path: string; query: Record<string, string>; at: number };
   /** On a server: the member of the space this client is signed in as, which the server tells the kernel. */
   member?: string;

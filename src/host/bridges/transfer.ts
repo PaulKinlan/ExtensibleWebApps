@@ -1,5 +1,5 @@
 // transfer: the browser's file chooser and downloads, for importing and
-// exporting collections (../../kernel/services/transfer.ts).
+// exporting collections (../../kernel/std/transfer/module.ts).
 
 /** Saves text as a file the person downloads. */
 function save(name: unknown, text: unknown, type: unknown) {

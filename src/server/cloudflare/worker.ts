@@ -126,13 +126,13 @@ class PluginHost extends RpcTarget {
     } catch {}
   }
 
-  /** The kernel asks to be woken for its earliest scheduled job (src/kernel/services/schedule.ts). */
+  /** The kernel asks to be woken for its earliest scheduled job (std/schedule/module.ts). */
   async wake(at: number | undefined): Promise<void> {
     if (at === undefined) await this.ctx.storage.deleteAlarm();
     else await this.ctx.storage.setAlarm(Math.max(at, Date.now()));
   }
 
-  /** The space's members' email addresses, from the accounts (src/kernel/services/email.ts mails only these). */
+  /** The space's members' email addresses, from the accounts (std/email/module.ts mails only these). */
   addresses(): Promise<string[]> {
     return this.env.ACCOUNTS.getByName("accounts").addresses(this.space);
   }

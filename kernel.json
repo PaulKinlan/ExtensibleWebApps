@@ -1,9 +1,20 @@
 {
   "modules": [
     "agents",
+    "audio",
     "bus",
+    "commands",
     "debug",
+    "email",
+    "history",
+    "llm",
     "maker",
-    "tools"
+    "page",
+    "reflect",
+    "router",
+    "schedule",
+    "share",
+    "tools",
+    "transfer"
   ]
 }

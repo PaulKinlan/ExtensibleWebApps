@@ -1,4 +1,4 @@
-// The llm service (src/kernel/services/llm.ts) and the vendor plugins behind it
+// The llm service (std/llm/module.ts) and the vendor plugins behind it
 // (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js). A small server
 // on this computer stands in for all three vendors' APIs: each plugin is
 // installed from its own file with its API's address pointed at it, so the

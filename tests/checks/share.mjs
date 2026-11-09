@@ -1,4 +1,4 @@
-// The share service (src/kernel/services/share.ts). The reading list's checks cover
+// The share service (std/share/module.ts). The reading list's checks cover
 // sending a book's address and receiving a shared page; these cover its limits.
 
 export default async function ({ check, plugin, pluginLog, a }) {

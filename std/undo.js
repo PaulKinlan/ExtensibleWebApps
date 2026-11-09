@@ -7,7 +7,7 @@
 //   <link rel="plugin" href="/std/undo.js">
 //   <slot name="history"></slot>
 //
-// The kernel keeps the list of changes (src/kernel/services/history.ts); this
+// The kernel keeps the list of changes (std/history/module.ts); this
 // plugin only draws the buttons and says what each would do. It needs the
 // `history` permission, which lets it undo changes to data it doesn't own
 // without a review, so it acts only when the person presses a button.

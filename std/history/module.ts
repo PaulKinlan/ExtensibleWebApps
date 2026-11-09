@@ -1,7 +1,7 @@
 // The `history` service. Undo and redo for the person, across every write to
 // an app's collections, whichever plugin made it: a delete in a table, an
 // edit in a form, a book a plugin imported, a change an agent made.
-// Found by name: this file is src/kernel/services/history.ts, so it is `ctx.call("history", …)`.
+// A kernel module (docs/layers.md): a site that lists `history` in kernel.json has it, as `ctx.call("history", …)`.
 //
 // The kernel sees every write (records.ts tells it, with the plugin that
 // made it), so it keeps the list here, in memory while the app is open: the
@@ -18,23 +18,15 @@
 // `history` is a permission to give only to a plugin that does it when the
 // person asks.
 
-import { defineHook } from "../hooks";
-import type { Change } from "../records";
-import { record } from "../trace";
-import type { Kernel } from "./index";
-import type { ServiceProvider } from "../remote";
+import type { Change } from "../../src/kernel/records";
+import { record } from "../../src/kernel/trace";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
+import type { ServiceProvider } from "../../src/kernel/remote";
 
 const base = (instance: string) => instance.split("@")[0];
 
 /** How many writes it remembers. */
 const KEEP = 100;
-
-defineHook("history:changed", {
-  mode: "emit",
-  needs: "history",
-  args: "{}",
-  description: "Something was written, undone or redone, so what Undo and Redo would do may have changed: read history.state().",
-});
 
 type Entry = { change: Change; by: string; at: number };
 
@@ -54,18 +46,27 @@ export interface Step {
   text: string;
 }
 
-export default ({ root, apps, collections }: Kernel): ServiceProvider => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { root, apps, collections } = kernel;
+  kernel.hook("history:changed", {
+    mode: "emit",
+    needs: "history",
+    args: "{}",
+    description: "Something was written, undone or redone, so what Undo and Redo would do may have changed: read history.state().",
+  });
   const done: Entry[] = [];
   const undone: Entry[] = [];
   const changed = () => root.emit({}, "history:changed", {});
 
-  collections.written.add((change, instance) => {
+  const heard = (change: Change, instance: string) => {
     done.push({ change, by: base(instance), at: Date.now() });
     if (done.length > KEEP) done.splice(0, done.length - KEEP);
     // A new write to a record makes redoing an older change to it meaningless.
     for (let i = undone.length - 1; i >= 0; i--) if (undone[i].change.collection === change.collection && undone[i].change.id === change.id) undone.splice(i, 1);
     changed();
-  });
+  };
+  collections.written.add(heard);
+  kernel.cleanup(() => void collections.written.delete(heard));
 
   /**
    * The plugins in the caller's app. A tab's instance (`undo@<tab>`) has only the app open in its
@@ -163,3 +164,5 @@ export default ({ root, apps, collections }: Kernel): ServiceProvider => {
     },
   };
 };
+
+export default service("history", make);

@@ -18,7 +18,7 @@ export const PLATFORM = new Set([
   // A space's sync log and a device's sync state (sync.ts, sync-device.ts), and a server's apps (server-apps.ts).
   "sync",
   "server",
-  // Plugins' scheduled jobs (services/schedule.ts).
+  // Plugins' scheduled jobs (std/schedule/module.ts).
   "schedule",
   // Apps a person made in the browser, and their files' versions (std/maker/module.ts).
   "made",
