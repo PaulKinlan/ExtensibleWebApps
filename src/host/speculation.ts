@@ -7,12 +7,14 @@
 // open. Sign-in addresses are left out, and a link can opt out with
 // data-no-prefetch. A page that writes its own rules keeps them.
 
+import { script as trustedScript } from "./trusted";
+
 export function speculate(): void {
   if (!HTMLScriptElement.supports?.("speculationrules")) return;
   if (document.querySelector('script[type="speculationrules"]')) return;
   const script = document.createElement("script");
   script.type = "speculationrules";
-  script.textContent = JSON.stringify({
+  script.textContent = trustedScript(JSON.stringify({
     prefetch: [
       {
         where: {
@@ -21,6 +23,6 @@ export function speculate(): void {
         eagerness: "moderate",
       },
     ],
-  });
+  }));
   document.head.append(script);
 }

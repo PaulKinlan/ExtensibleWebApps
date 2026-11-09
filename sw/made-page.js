@@ -155,6 +155,10 @@ export const FILE_NAME = /^(?:app\.html|[a-z0-9][a-z0-9-]{0,63}\.(?:js|html|css|
 /**
  * The policy a made app's page is served with: scripts only from this site (the platform's own files; the
  * page rules allow no other script tag), workers from blob: (plugins' sandboxes), and no plugins or frames
- * of other sites. Inline scripts and javascript: URLs never run.
+ * of other sites. Inline scripts and javascript: URLs never run, and markup reaches the page only through
+ * the host's Trusted Types policies, as on every page of the site (public/_headers).
  */
-export const PAGE_CSP = "script-src 'self' blob: 'inline-speculation-rules'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'";
+export const PAGE_CSP = "script-src 'self' blob: 'inline-speculation-rules'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'; form-action 'self'; require-trusted-types-for 'script'; trusted-types platform default mermaid dompurify";
+
+/** The device features a made app's page may use: the same as every page of the site's (public/_headers; tests/checks/page-policy.mjs keeps them equal). */
+export const PERMISSIONS_POLICY = "accelerometer=(), autoplay=(self), bluetooth=(), camera=(), clipboard-write=(self), display-capture=(), fullscreen=(self), gamepad=(self), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(self), midi=(), payment=(), publickey-credentials-create=(self), publickey-credentials-get=(self), screen-wake-lock=(self), serial=(), usb=(), web-share=(self), xr-spatial-tracking=()";

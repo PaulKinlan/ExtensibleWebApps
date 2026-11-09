@@ -9,7 +9,7 @@ export default async function (page, { check, openTab, URL, proof }) {
   // month.html's own <style> lays out its grid, and reaches nothing outside the month plugin's views.
   proof.styled = await page.evaluate(() => {
     const grid = document.querySelector('[data-key="month:grid"]');
-    const outside = document.body.appendChild(Object.assign(document.createElement("table"), { className: "month", innerHTML: "<tr><td>x</td></tr>" }));
+    const outside = document.body.appendChild(Object.assign(document.createElement("table"), { className: "month" }));
     const style = (el) => el && getComputedStyle(el);
     const result = {
       plugin: grid?.dataset.plugin,

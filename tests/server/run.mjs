@@ -22,6 +22,7 @@ import { fakeSmtp } from "./fake-smtp.mjs";
 import { authenticator } from "./authenticator.mjs";
 import { blueskyChecks } from "./bluesky.mjs";
 import { mcpChecks } from "./mcp.mjs";
+import { pagePolicyChecks } from "./page-policy.mjs";
 import { fakeAtproto } from "./fake-atproto.mjs";
 import { fakeProvider } from "./fake-oauth.mjs";
 
@@ -685,7 +686,7 @@ async function feedChecks(base, check, owner) {
   const latest = (collection, id) => phone.changes().filter((c) => c.collection === collection && c.id === id).at(-1)?.after;
   let items = [];
   let atomItems = [];
-  for (let i = 0; i < 60 && !(items.length >= 2 && atomItems.length >= 2 && latest("fetched", "plain") && latest("fetched", "away")); i++) {
+  for (let i = 0; i < 60 && !(items.length >= 2 && atomItems.length >= 2 && latest("fetched", "local") && latest("fetched", LONG) && latest("fetched", "plain") && latest("fetched", "away")); i++) {
     await new Promise((r) => setTimeout(r, 250));
     await phone.settle();
     items = phone.changes().filter((c) => c.collection === "items" && c.after?.feed === "local");
@@ -996,6 +997,7 @@ async function suite(name, make) {
     // Someone with an account, who makes the spaces the checks use.
     const owner = await person(server.url).account("Owner");
     for (const space of ["family", "work", "tabs"]) await owner.call("/auth/spaces", { name: space });
+    await pagePolicyChecks(server.url, check, owner.cookie);
 
     const a = await client(server.url, "family", owner.cookie);
     await new Promise((r) => setTimeout(r, 300));
