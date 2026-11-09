@@ -7,7 +7,7 @@ export default async function (page, { check, proof }) {
   proof.sample = await page.locator(`${view} .survey[key="sample-launch"] .results > li`).count();
   proof.note = await page.locator(`${view} .note`).count();
   proof.meters = await page.locator(`${view} .survey[key="sample-launch"] meter[aria-label]`).count();
-  check("the survey builder shows the sample's questions, with a bar for each choice named for it, and says answers need a space", proof.sample === 3 && proof.meters === 6 && proof.note === 1, JSON.stringify({ sample: proof.sample, meters: proof.meters, note: proof.note }));
+  check("the survey builder shows the sample's questions, with a bar for each choice named for it, and offers a space for sharing in one line", proof.sample === 3 && proof.meters === 6 && proof.note === 1, JSON.stringify({ sample: proof.sample, meters: proof.meters, note: proof.note }));
 
   await page.fill(`${view} ui-form input[name=title]`, "Team offsite");
   await page.fill(`${view} ui-form textarea[name=questions]`, "Which month: May | June\nOne thing to try");

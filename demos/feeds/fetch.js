@@ -230,14 +230,21 @@ function plain(html) {
     .trim();
 }
 
+/** The named entities feeds use most, beyond XML's five: curly quotes, dashes, the ellipsis. */
+const NAMED = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+  rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", hellip: "…", mdash: "—", ndash: "–", bull: "•", middot: "·",
+  copy: "©", reg: "®", trade: "™", deg: "°", laquo: "«", raquo: "»", times: "×", euro: "€", pound: "£",
+};
+
 function decode(text) {
-  return String(text).replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (all, e) => {
+  return String(text).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e) => {
     const k = e.toLowerCase();
     if (k[0] === "#") {
       const n = k[1] === "x" ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10);
       return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : "";
     }
-    return { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " " }[k] ?? all;
+    return NAMED[k] ?? all;
   });
 }
 
