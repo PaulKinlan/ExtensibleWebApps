@@ -29,6 +29,8 @@ import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, spaceRoute, tooLarge } from "../routes.ts";
+import type { SpaceCopy } from "../space-copy.ts";
+import { transferRoute } from "../transfer.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 /** A new kernel build gets a new isolate; spaces on the old one move over as they restart. */
@@ -47,6 +49,8 @@ interface KernelStub {
   leave(client: string): Promise<void>;
   route(origin: string, request: RouteRequest, host?: PluginHost): Promise<RouteResponse | null>;
   tick(origin: string, host?: PluginHost): Promise<void>;
+  dump(space: string): Promise<SpaceCopy>;
+  load(copy: SpaceCopy): Promise<{ files: number }>;
 }
 
 type Send = ((message: unknown) => void) & { dup?: () => Send };
@@ -179,6 +183,21 @@ export class Space extends DurableObject<Env> {
     return this.kernel(space).route(origin, request, this.plugins);
   }
 
+  /** The space's folder, as a copy to move it to another host (src/server/transfer.ts). */
+  async exportCopy(space: string): Promise<SpaceCopy> {
+    return this.kernel(space).dump(space);
+  }
+
+  /** Loads a copy into the space, which must be empty, then starts its kernel on it, so its server plugins and jobs run. */
+  async importCopy(space: string, origin: string, copy: SpaceCopy): Promise<{ files: number }> {
+    if (this.clients.size) throw new Error("Someone has the space open: make a new space for the copy");
+    const done = await this.kernel(space).load(copy);
+    this.plugins ??= new PluginHost(this.ctx, this.env, space);
+    await this.remember(space, origin);
+    await this.kernel(space).tick(origin, this.plugins);
+    return done;
+  }
+
   /** Which space this is and where it's served, for an alarm, which comes with neither. */
   private async remember(space: string, origin: string): Promise<void> {
     const known = await this.ctx.storage.get<{ space: string; origin: string }>("where");
@@ -244,6 +263,11 @@ export class Accounts extends DurableObject<Env> {
     return this.auth.members(space);
   }
 
+  /** The role in a space of the session in a cookie header, if they're in it. */
+  async role(cookie: string, space: string): Promise<"owner" | "member" | null> {
+    return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.role ?? null;
+  }
+
   /** Which member of a space the session in a cookie header is, if it's one. */
   async member(cookie: string, space: string): Promise<string | null> {
     return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.user.id ?? null;
@@ -265,7 +289,15 @@ async function publicRoute(request: Request, env: Env): Promise<Response | undef
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (new URL(request.url).pathname.startsWith("/auth/")) return env.ACCOUNTS.getByName("accounts").fetch(request);
+    if (new URL(request.url).pathname.startsWith("/auth/")) {
+      // Moving a space (src/server/transfer.ts): its folder is the space's, which the accounts can't reach.
+      const moved = await transferRoute(request, {
+        role: (req, space) => env.ACCOUNTS.getByName("accounts").role(req.headers.get("cookie") ?? "", space),
+        exportSpace: (space) => env.SPACE.getByName(space).exportCopy(space),
+        importSpace: (space, copy, origin) => env.SPACE.getByName(space).importCopy(space, origin, copy),
+      });
+      return moved ?? env.ACCOUNTS.getByName("accounts").fetch(request);
+    }
     const space = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url).pathname)?.[1];
     if (space === undefined) return (await publicRoute(request, env)) ?? env.ASSETS.fetch(request);
     if (!SPACE.test(space)) return new Response("Not a space", { status: 404 });

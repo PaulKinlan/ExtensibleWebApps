@@ -100,7 +100,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
 
 /** A request's body, read only up to `limit` bytes: null if it's longer. */
-async function bodyOf(request: Request, limit: number): Promise<string | null> {
+export async function bodyOf(request: Request, limit: number): Promise<string | null> {
   if (Number(request.headers.get("content-length") ?? 0) > limit) return null;
   if (!request.body) return "";
   const reader = request.body.getReader();

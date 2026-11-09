@@ -145,7 +145,21 @@
                 $("invite-url").value = new URL(`/account/?invite=${token}`, location.href).href;
                 $("invite-link").hidden = false;
               }, `Here's an invite to ${name}.`, false));
-              li.append(button);
+              li.append(button, " ");
+              // Moving the space to another server (src/server/transfer.ts): a copy of everything in it, and a copy loaded into an empty one.
+              li.append(Object.assign(document.createElement("a"), { href: `/auth/spaces/${name}/export`, download: `${name}.space.json`, className: "button", textContent: "Download a copy" }), " ");
+              const load = Object.assign(document.createElement("label"), { className: "button", textContent: "Load a copy" });
+              const file = Object.assign(document.createElement("input"), { type: "file", accept: ".json,application/json", hidden: true });
+              file.addEventListener("change", run(async () => {
+                const chosen = file.files?.[0];
+                file.value = "";
+                if (!chosen) return;
+                const res = await fetch(`/auth/spaces/${name}/import`, { method: "POST", headers: { "content-type": "application/json" }, body: await chosen.text() });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error ?? `The server answered ${res.status}`);
+              }, `The copy is in ${name}. Invite the others again: they have accounts on the old server, not this one.`, false));
+              load.append(file);
+              li.append(load);
             } else {
               const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Leave" });
               button.addEventListener("click", run(() => call(`/auth/spaces/${name}/leave`, {}), `You've left ${name}.`, false));

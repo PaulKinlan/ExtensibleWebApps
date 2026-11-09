@@ -104,10 +104,16 @@ A space holds people and their data (collections and plugins), and any app can o
 | `POST /auth/spaces/<name>/invite` | A one-time invite, for a week (its owner only). `/account/?invite=<token>` accepts it once the person signs in or makes an account. |
 | `POST /auth/invites/accept` | `{ token }` joins the space the invite is for, and uses the invite up. |
 | `POST /auth/spaces/<name>/leave` | Leaves it. Its owner can give `{ user }` to remove someone, and can't leave it. |
+| `GET /auth/spaces/<name>/export` | A copy of the space's folder, as one JSON file, to move it to another host (its owner only). |
+| `POST /auth/spaces/<name>/import` | Loads such a copy into the space, which must be empty, and starts its kernel on it (its owner only). |
 
 Every change under `/auth/` runs one at a time, so a challenge or an invite is used once and a name gets one owner, on both hosts. Someone who leaves a space, or is removed, is disconnected from it at once.
 
-The kernel of a space knows which member each client is: the server adds it to the client's `hello` (a client can't say it itself), and sync records it with every change. Plugins hear it too: a change that came from another device or from the space's server has `by` (the member's id, or `plugin:<id>` for a server plugin) on `data:changed:<collection>`, and a server plugin's `data:beforeWrite:<collection>` hears which member's device sent the change. A device learns which member it is from the space's answer to its hello: `sync.state()` has it as `member`.
+The kernel of a space knows which member each client is: the server adds it to the client's `hello` (a client can't say it itself), and sync records it with every change. Plugins hear it too: a change that came from another device or from the space's server has `by` (the member's id, or `plugin:<id>` for a server plugin) on `data:changed:<collection>`, and a server plugin's `data:beforeWrite:<collection>` hears which member's device sent the change. A device learns which member it is from the space's answer to its hello: `sync.state()` has it as `member`. The same answer names every member, by the name on their account, and the device keeps the names for when it's offline: `sync.members()` gives them to a plugin with the `members` permission, so it can show a `by` as a name.
+
+### Moving a space between hosts
+
+A space's owner can move it from one host to another, say from Cloudflare to a Node machine of their own ([src/server/transfer.ts](../src/server/transfer.ts)). `/account/` has **Download a copy** and **Load a copy** for each space you own. The copy is the space's folder: its collections and change log, the plugins members shared, the apps opened in it (so its server plugins start again on the new host, at once, with no one connected), scheduled jobs and settings. It isn't the people: members, invites and passkeys are accounts, which belong to a host, so whoever loads the copy owns the new space and invites the others again. A copy only goes into an empty space, and is at most 24 MB. Records stamped with a member's id on the old host keep that id, which names nobody on the new one. The server checks move the feed reader's space from Cloudflare to Node and back (`moveChecks` in tests/server/run.mjs).
 
 ### Signing in with another site
 

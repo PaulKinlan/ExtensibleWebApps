@@ -20,6 +20,7 @@ import { accounts } from "./auth/accounts.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
 import { signed } from "./signed.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, spaceRoute, tooLarge } from "./routes.ts";
+import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
 import { accept } from "./websocket.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -120,6 +121,45 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     createReadStream(full).pipe(response);
   };
 
+  /** A space's folder, where its kernel keeps it. */
+  const folderOf = (name: string) => nodeFiles(join(resolve(options.spaces), name, "files"));
+  /** Copies going in, by space, so two at once can't both find it empty. */
+  const loading = new Set<string>();
+
+  /** Moving a space between hosts (src/server/transfer.ts): its copy out, or a copy in. False for any other request. */
+  const transfer = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    // Only these two routes: anything else under /auth/ keeps its body for the accounts.
+    if (!/^\/auth\/spaces\/[^/?]+\/(export|import)(\?|$)/.test(request.url ?? "")) return false;
+    const url = `${options.origin?.replace(/\/$/, "") ?? `http://${request.headers.host ?? "localhost"}`}${request.url}`;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
+    const answer = await transferRoute(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), {
+      role: async (req, name) => (await auth.member(req, name))?.role ?? null,
+      exportSpace: (name) => exportSpace(folderOf(name), name),
+      async importSpace(name, copy) {
+        if (loading.has(name)) throw new Error("A copy is already going into this space");
+        loading.add(name);
+        try {
+          // Its kernel, if it's running, stops first: it would keep what it read before the copy went in.
+          const running = spaces.get(name);
+          spaces.delete(name);
+          await (await running?.catch(() => undefined))?.terminate();
+          const done = await importSpace(folderOf(name), copy);
+          // Started now, so its server plugins and scheduled jobs run with no one connected.
+          void space(name).catch(() => {});
+          return done;
+        } finally {
+          loading.delete(name);
+        }
+      },
+    });
+    if (!answer) return false;
+    response.writeHead(answer.status, Object.fromEntries(answer.headers));
+    response.end(Buffer.from(await answer.arrayBuffer()));
+    return true;
+  };
+
   /** A request under /auth/, as the web's Request, answered with the accounts' Response. */
   const signIn = async (request: IncomingMessage, response: ServerResponse) => {
     const chunks: Buffer[] = [];
@@ -183,11 +223,13 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
 
   const server = createServer((request, response) => {
     if (request.url?.startsWith("/auth/")) {
-      return void signIn(request, response).catch((error) => {
-        console.error("Sign-in:", error);
-        if (!response.headersSent) response.writeHead(500);
-        response.end();
-      });
+      return void transfer(request, response)
+        .then((answered) => answered || signIn(request, response))
+        .catch((error) => {
+          console.error("Sign-in:", error);
+          if (!response.headersSent) response.writeHead(500);
+          response.end();
+        });
     }
     if (request.url?.startsWith("/s/")) {
       return void publicRoute(request, response)

@@ -19,6 +19,7 @@ import { setEnv } from "../../kernel/env";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { type IsolateHost, remoteIsolates } from "../../seams/remote-isolates.ts";
 import type { RouteRequest, RouteResponse } from "../routes.ts";
+import { exportSpace, importSpace, type SpaceCopy } from "../space-copy.ts";
 import { signed } from "../signed.ts";
 
 type Send = (text: string) => void | Promise<void>;
@@ -138,6 +139,17 @@ export class SpaceKernel extends DurableObject {
   async tick(origin: string, host?: SpaceHost): Promise<void> {
     await this.start(origin, host);
     boot?.();
+  }
+
+  /** The space's folder, as a copy to move it to another host (src/server/transfer.ts). */
+  async dump(space: string): Promise<SpaceCopy> {
+    return exportSpace(durableFiles(this.ctx.storage.sql as unknown as Sql), space);
+  }
+
+  /** Loads a copy into the space's folder, which must be empty, before the kernel has started on it. */
+  async load(copy: SpaceCopy): Promise<{ files: number }> {
+    if (this.started) throw new Error("The space is already running: make a new space for the copy");
+    return importSpace(durableFiles(this.ctx.storage.sql as unknown as Sql), copy);
   }
 
   async deliver(client: string, text: string): Promise<void> {

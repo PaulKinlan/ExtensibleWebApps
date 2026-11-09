@@ -104,6 +104,10 @@ Open `http://127.0.0.1:8787/account/`, make an account with a passkey (the brows
 
 To check a server plugin without a browser, copy [`tests/fixtures/server-app/`](../../tests/fixtures/server-app/) and the checks for it in [`tests/server/run.mjs`](../../tests/server/run.mjs), which run against Node and against `wrangler dev` (`npm run test:server`).
 
+## Moving a space to another server
+
+On `/account/`, the owner of a space can **Download a copy** of it and **Load a copy** into an empty space on another server: from the hosted site to `npm run serve` on your own machine, say. Everything in the space goes, and its server plugins start again there by themselves. The people don't: they have accounts on the old server, so invite them again. See [Moving a space between hosts](../server.md#moving-a-space-between-hosts).
+
 ## What isn't there yet
 
 - **Only collections sync.** A person's own plugins for an app, and an app's other files, stay on each device.
