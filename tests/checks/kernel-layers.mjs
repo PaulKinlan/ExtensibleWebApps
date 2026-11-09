@@ -25,6 +25,7 @@ const CORE = [
   "kernel.ts",
   "manifest.ts",
   "modules.ts",
+  "moves.ts",
   "net.ts",
   "paths.ts",
   "provided.ts",

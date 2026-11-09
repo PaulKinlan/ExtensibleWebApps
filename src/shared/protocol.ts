@@ -117,7 +117,8 @@ export type Command =
   | "user:unshare"
   | "place:ask"
   | "place:unlock"
-  | "place:lock";
+  | "place:lock"
+  | "place:move";
 
 // kernel -> host
 export type KernelToHost =
@@ -147,6 +148,8 @@ export interface Opened {
   places?: Record<string, Place>;
   theme?: Record<string, string>;
   unlocked?: string[];
+  /** The places the person moved somewhere else (src/kernel/moves.ts): `places` already says where. */
+  moved?: string[];
   user?: boolean;
 }
 
@@ -161,6 +164,8 @@ export interface Place {
   put: "before" | "after" | "prepend" | "append" | "replace" | "hide";
   each?: boolean;
   in?: string;
+  /** Among the views placed at the same spot, lower comes first. The person sets it by moving views (src/kernel/moves.ts). */
+  order?: number;
 }
 
 /** The page's theme, for drawing on a canvas: resolved colours of the platform's tokens, the font, and light or dark. */

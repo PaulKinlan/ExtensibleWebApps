@@ -1,18 +1,24 @@
 // Customize: a button in the corner of every app that opens a panel where
-// the person changes the app for themselves:
+// the person changes the app for themselves. It has three tabs:
 //
-//   - adds their own plugins: from this site's plugin registry (/packages/),
-//     the app's samples, files they pick, code they paste, or a URL on this
-//     site. Each is kept on this device, never in the app's files.
-//   - turns them on or off, or removes them. A new one starts off, and the
-//     panel shows what it asks for and where it draws before it is turned on.
-//     Turning one on turns on the ones of theirs it needs (World clock brings
-//     Clock), and turning one off turns off the ones that need it.
-//   - in a space, shares one with the space's members, or stops sharing it
-//   - sees every plugin's places and how each went: drawn, waiting for a
-//     review card, declined, locked by the app's author, or matching nothing
-//   - lets one plugin into an area the author locked
-//   - starts inspect mode, to point at a part and change it
+//   - Plugins: what is on this page (the app's own, the person's, the
+//     space's), each with a switch, where it draws and a Move button; then
+//     everything they can add, searchable, in three kinds: services (which
+//     give the app something new other plugins use, such as a language
+//     model), plugins that show on the page, and ones that work behind the
+//     scenes. A plugin that has just been added says so where it is listed,
+//     with Turn on right there. The app's samples, and adding a plugin from
+//     files, pasted code or a URL, come last.
+//   - Make: makes a new plugin of the person's own, in three steps: pick a
+//     starter (std/customize.templates/), point at where it should show on
+//     the page, then name it, change the code if they like, and save. Other
+//     plugins can offer more ways to make one in the `customize.make` slot
+//     (an agent that writes it from a description, say).
+//   - Layout: where plugins can go on this page (its slots and the parts its
+//     author named, and whether each is open, needs review or is locked), the
+//     ui-* elements a view can use, and Arrange, which lets the person move
+//     any plugin's view around the page (src/host/arrange.ts). Moves are kept
+//     for this person and app (src/kernel/moves.ts).
 //
 // The host adds it to every app (src/host/main.ts), with a "customize" slot
 // pinned to a corner. An app leaves it out with
@@ -20,14 +26,14 @@
 // brings it back.
 //
 // It is an ordinary sandboxed plugin, so it can't change anything on its
-// own: every add, remove and share goes through the authoring service
+// own: every add, remove, save and share goes through the authoring service
 // (src/kernel/authoring.ts), which shows the person a review card first.
-// Turning one of their own plugins on or off needs no review.
+// Turning plugins on or off, and moving them, needs no review.
 
 export const manifest = {
   id: "customize",
   name: "Customize",
-  description: "A Customize button that adds, turns on and off, removes and shares the person's own plugins for an app.",
+  description: "A Customize button that adds, makes, arranges, turns on and off, removes and shares plugins for an app.",
   version: "1.0.0",
   permissions: ["ui", "plugins:read", "plugins:author", "plugins:manage"],
   // Each tab's panel customizes the app open in that tab.
@@ -36,124 +42,334 @@ export const manifest = {
 
 /** What each place state says to the person. */
 const STATES = {
-  drawn: "In place",
-  waiting: "Waiting for you to allow it",
-  declined: "You declined it",
-  locked: "Locked by the app's author",
-  "no match": "Matches nothing in this page",
-  "bad selector": "The selector can't be read",
+  drawn: "showing",
+  waiting: "waiting for you to allow it",
+  declined: "you declined it",
+  locked: "the app's author locked that part of the page",
+  "no match": "can't find its spot on this page",
+  "bad selector": "its spot can't be read",
 };
+
+/** How a place's `put` reads. */
+const PUTS = { before: "above", after: "below", prepend: "at the top of", append: "at the bottom of", replace: "instead of", hide: "hides" };
+
+/** The kinds of package, as the /packages/ page groups them too. */
+const KINDS = [
+  { kind: "service", title: "Services", about: "Give the app something new that other plugins use, such as a language model or the time in other places. A service draws nothing itself." },
+  { kind: "ui", title: "On the page", about: "Buttons, panels and views you can add to this page." },
+  { kind: "background", title: "Behind the scenes", about: "Work for you without showing anything, such as checking or tidying what other plugins do." },
+];
+
+/** The starters for Make, files beside this one. */
+const STARTERS = [
+  { file: "note.js", title: "A note", about: "A card with your own words." },
+  { file: "links.js", title: "A list of links", about: "Links you keep beside this app." },
+  { file: "tally.js", title: "A tally", about: "A button that counts, and remembers." },
+  { file: "blank.js", title: "Blank", about: "A heading to replace with your own code." },
+];
+
+/** A package's kind: from the registry when it says, else worked out the same way it does. */
+const kindOf = (p) => p.kind ?? (p.provides?.length || p.permissions?.some((x) => x.startsWith("provide:")) ? "service" : p.permissions?.includes("ui") ? "ui" : "background");
+
+/** Words a person reads for where a place draws. */
+const whereOf = (p) => `${PUTS[p.put] ?? p.put} ${p.at}${p.each ? " (each one)" : ""}`;
+
+/** An id from a name: lowercase words joined by dashes. */
+const slug = (name) =>
+  `${String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/^([^a-z])/, "my-$1")
+    .slice(0, 48)
+    .replace(/-+$/, "") || "my-plugin"}`;
+
+/** The draft with its name, id and spot set, where the starter's manifest has the fields to set. */
+function finish(code, name, spot) {
+  let out = code;
+  const quote = (s) => JSON.stringify(String(s));
+  if (name?.trim()) {
+    // Callbacks, so a $ in a name or selector goes in as written.
+    out = out.replace(/(\bid\s*:\s*)(["'])(?:\\.|(?!\2).)*\2/, (_m, key) => `${key}${quote(slug(name))}`);
+    out = out.replace(/(\bname\s*:\s*)(["'])(?:\\.|(?!\2).)*\2/, (_m, key) => `${key}${quote(name.trim().replace(/["\\]/g, ""))}`);
+  }
+  if (spot) out = out.replace(/(\bhere\s*:\s*\{\s*at\s*:\s*)(["'])(?:\\.|(?!\2).)*\2(\s*,\s*put\s*:\s*)(["'])(?:\\.|(?!\4).)*\4/, (_m, at, _q, put) => `${at}${quote(spot.at)}${put}${quote(spot.put)}`);
+  return out;
+}
 
 export default function (ctx) {
   const views = ctx.ui.views("customize.html");
   const call = (method, ...args) => ctx.call("authoring", method, ...args).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
   /** Whether the panel is open: it reads the page only while someone is looking. */
   let open = false;
-  /** How the last action went. */
+  /** Which tab shows. */
+  let tab = "plugins";
+  /** What the search box holds. */
+  let query = "";
+  /** How the last action went, and a button that follows from it (Turn it on, Undo). */
   let message = "";
+  let follow = null;
   /** True while something is being added, so a second click doesn't add it twice. */
   let busy = false;
+  /** Each new value opens the panel again, after something on the page closed it. */
+  let reopen = 0;
+  /** The plugin being made in Make: the starter, the spot, the name and the code. */
+  const make = { starter: "", spot: null, name: "", code: "", rev: 0, check: null, status: "" };
 
-  /** A plugin's places and how each went, from the page. */
-  const placesOf = (page, id, unlocked) =>
+  const matches = (p) => !query || `${p.name} ${p.description ?? ""} ${p.id}`.toLowerCase().includes(query.toLowerCase());
+
+  /** A plugin's places on this page, as Customize says them. */
+  const placesOf = (page, id, running) =>
     page.places
       .filter((p) => p.plugin === id)
       .map((p) => ({
         key: `${p.plugin}/${p.name}`,
-        plugin: p.plugin,
-        name: p.name,
-        where: `${p.put}${p.each ? " each" : ""} ${p.at}`,
+        where: whereOf(p),
         state: p.state,
         label: STATES[p.state] + (p.each && p.matches ? ` (${p.matches})` : ""),
         ok: p.state === "drawn",
         fragile: p.fragile,
         locked: p.state === "locked",
-        unlocked: unlocked.includes(p.name),
+        unlocked: running?.unlocked?.includes(p.name),
+        // A place that adds a view at one spot can be moved; one that hides, replaces or draws in every match is its plugin's to say.
+        movable: page.arrange && !p.each && !p.in && ["before", "after", "prepend", "append"].includes(p.put),
+        moved: running?.moved?.includes(p.name),
       }));
 
-  const row = (page, space) => (p) => {
-    const live = page.running.find((r) => r.id === p.id);
-    return {
-      ...p,
+  /** Everything on this page, in one list: the person's, the space's, then the app's own. */
+  const onPage = (mine, page, app) => {
+    const running = (id) => page.running.find((r) => r.id === id);
+    const own = mine.map((p) => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      who: p.shared ? "The space's" : "Yours",
+      user: true,
+      on: p.on,
       off: !p.on,
+      offClass: p.on ? "" : "off",
+      error: p.error,
       asks: p.on ? "" : `Asks for: ${p.permissions.join(", ") || "nothing"}`,
-      draws: p.on || !p.places.length ? "" : `Draws: ${p.places.join("; ")}`,
-      places: p.on ? placesOf(page, p.id, live?.unlocked ?? []) : [],
-      share: space ? (p.shared ? "Stop sharing" : "Share with the space") : "",
-    };
+      places: p.on ? placesOf(page, p.id, running(p.id)) : [],
+      draws: p.on || !p.places.length ? "" : `Shows ${p.places.join("; ")}`,
+      share: page.space ? (p.shared ? "Stop sharing" : "Share with the space") : "",
+      shared: p.shared,
+    }));
+    const theirs = app
+      .filter((p) => p.id !== manifest.id && !mine.some((m) => m.id === p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name ?? p.id,
+        description: p.description ?? "",
+        who: "The app's",
+        app: true,
+        on: !!p.enabled,
+        off: !p.enabled,
+        offClass: p.enabled ? "" : "off",
+        places: placesOf(page, p.id, running(p.id)),
+      }));
+    return [...own, ...theirs].filter(matches);
   };
 
-  const draw = async () => {
-    if (!open) return views.render("customize", "panel", { open: false });
-    const [mine, page, packages] = await Promise.all([call("mine"), call("page"), call("packages")]);
-    if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
-    const toRow = row(page, page.space);
-    const list = Array.isArray(packages) ? packages : [];
-    views.render("customize", "panel", {
+  const drawNow = async () => {
+    if (!open) return views.render("customize", "panel", { open: false, reopen });
+    const [mine, page] = await Promise.all([call("mine"), call("page")]);
+    if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, reopen, message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
+    const tabs = { plugins: tab === "plugins", make: tab === "make", layout: tab === "layout" };
+    const pressed = Object.fromEntries(Object.entries(tabs).map(([k, v]) => [k, String(v)]));
+    const base = {
       open,
+      reopen,
+      tabs,
+      pressed,
+      notMake: tab !== "make",
       message,
+      follow,
       space: page.space,
       inspect: page.inspect,
-      mine: mine.filter((p) => !p.shared).map(toRow),
-      shared: mine.filter((p) => p.shared).map(toRow),
-      app: page.running.filter((p) => p.id && !p.user && p.id !== manifest.id).map((p) => ({ id: p.id, name: p.name ?? p.id, places: placesOf(page, p.id, p.unlocked) })),
-      packages: list.map((p) => ({
-        ...p,
-        label: p.linked ? "In this app" : p.added ? "Added" : "Add",
-        disabled: p.added || p.linked || busy,
-        asks: `Asks for: ${p.permissions.join(", ") || "nothing"}`,
-        also: p.adds.length > 1 ? `Adds ${p.adds.filter((a) => a.id !== p.id).map((a) => a.name).join(", ")} too, which it needs.` : "",
-      })),
-      registry: list.length > 0,
-      samples: page.samples,
+      arrange: page.arrange,
       busy,
-    });
+      // Make is drawn on every tab, hidden on the others, so a draft in it survives a look at another tab.
+      make: {
+        ...make,
+        starters: STARTERS.map((s) => ({ ...s, pressed: String(s.file === make.starter) })),
+        started: !!make.starter,
+        spotLabel: make.spot?.label ?? "At the bottom of the page's main part (choose a spot to put it somewhere else)",
+        chosenSpot: !!make.spot,
+        ok: make.check?.ok,
+        problem: make.check && !make.check.ok ? make.check.error : "",
+        permissions: make.check?.ok ? make.check.permissions : [],
+        editorLinked: page.running.some((r) => r.id === "plugin-editor"),
+      },
+    };
+    if (tab === "plugins") {
+      const [packages, app] = await Promise.all([call("packages"), ctx.call("plugins", "app").catch(() => [])]);
+      const list = Array.isArray(packages) ? packages : [];
+      const ownById = new Map(mine.map((p) => [p.id, p]));
+      const rows = list.filter(matches).map((p) => {
+        const own = ownById.get(p.id);
+        return {
+          ...p,
+          state: own ? (own.on ? "Added, on" : "Added, off") : p.linked ? "In this app" : "",
+          add: !p.linked && !own,
+          turnOn: !!own && !own.on,
+          disabled: busy,
+          asks: `Asks for: ${p.permissions.join(", ") || "nothing"}`,
+          also: p.adds.length > 1 ? `Adds ${p.adds.filter((a) => a.id !== p.id).map((a) => a.name).join(", ")} too, which it needs.` : "",
+        };
+      });
+      const groups = KINDS.map((k) => ({ ...k, packages: rows.filter((p) => kindOf(p) === k.kind) })).filter((g) => g.packages.length);
+      const here = onPage(mine, page, Array.isArray(app) ? app : []);
+      return views.render("customize", "panel", {
+        ...base,
+        query,
+        here,
+        none: !here.length && !!query,
+        empty: !here.length && !query,
+        groups,
+        registry: list.length > 0,
+        nothingFound: !!query && !groups.length && !here.length,
+        samples: page.samples.filter((s) => matches({ name: s.title, id: s.href })),
+      });
+    }
+    if (tab === "make") return views.render("customize", "panel", base);
+    const layout = await call("layout");
+    return views.render("customize", "panel", { ...base, layout: layout?.slots ? { ...layout, noSlots: !layout.slots.length, noParts: !layout.parts.length } : { slots: [], parts: [], elements: [], noSlots: true, noParts: true } });
+  };
+
+  /**
+   * Draws the panel, once at a time: a change heard while drawing (plugins:changed, an action) draws once
+   * more after, rather than reading everything twice at the same moment.
+   */
+  let drawing = null;
+  let again = false;
+  const draw = () => {
+    if (drawing) {
+      again = true;
+      return drawing;
+    }
+    drawing = (async () => {
+      try {
+        do {
+          again = false;
+          await drawNow();
+        } while (again);
+      } finally {
+        drawing = null;
+      }
+    })();
+    return drawing;
   };
 
   /** Runs one authoring call, says how it went, and draws the panel again. */
-  const run = async (method, args, done) => {
+  const run = async (method, args, done, then = null) => {
     const result = await call(method, ...args);
     const failed = result && typeof result === "object" && result.ok === false;
     message = failed ? result.error : done;
+    follow = failed ? null : then;
     await draw();
     return !failed;
   };
 
-  /** Adds plugins from this site one after another, stopping at the first the person declines. */
+  /** Adds plugins from this site one after another, stopping at the first the person declines; offers to turn the last on. */
   const addAll = async (adds) => {
     if (busy) return;
     busy = true;
+    message = "Waiting for your answer on the review card…";
+    follow = null;
     await draw();
     try {
       for (const a of adds) if (!(await run("add", [a.href]))) return;
-      message = `Added ${adds.map((a) => a.name).join(" and ")}. Turn ${adds.length > 1 ? "them" : "it"} on above.`;
+      const last = adds[adds.length - 1];
+      message = `Added ${adds.map((a) => a.name).join(" and ")}, turned off for now.`;
+      follow = last.id ? { label: `Turn ${last.name} on`, action: "turn", value: last.id } : null;
     } finally {
       busy = false;
       await draw();
     }
   };
 
+  /** Turns one of the person's plugins on or off, or the app's own (plugins.setEnabled). */
+  const turn = async (id) => {
+    const mine = await call("mine");
+    const p = Array.isArray(mine) ? mine.find((m) => m.id === id) : undefined;
+    if (!p) {
+      const app = await ctx.call("plugins", "app").catch(() => []);
+      const theirs = app.find((a) => a.id === id);
+      if (!theirs) return;
+      await ctx.call("plugins", "setEnabled", id, !theirs.enabled);
+      message = `Turned ${theirs.name ?? id} ${theirs.enabled ? "off" : "on"}`;
+      follow = null;
+      return draw();
+    }
+    const before = new Map(mine.map((m) => [m.id, !!m.on]));
+    const result = await call("turn", p.id, !p.on);
+    if (result?.ok === false) message = result.error;
+    else {
+      // Turning one on brings the plugins of yours it needs; turning one off takes the ones that need it.
+      const also = (result?.also ?? []).map((a) => a.name);
+      const why = p.on ? (also.length > 1 ? "which need it" : "which needs it") : "which it needs";
+      message = `Turned ${p.name} ${p.on ? "off" : "on"}${also.length ? `, and ${also.join(" and ")}, ${why}` : ""}.`;
+    }
+    undo = result?.ok === false ? null : before;
+    follow = undo ? { label: "Undo", action: "undo-turn", value: p.id } : null;
+    await draw();
+  };
+
+  /** What the person's plugins were before the last turn, so Undo puts every one it changed back, not just the one clicked. */
+  let undo = null;
+  const undoTurn = async () => {
+    const before = undo;
+    undo = null;
+    follow = null;
+    const mine = await call("mine");
+    if (!before || !Array.isArray(mine)) return draw();
+    const changed = mine.filter((m) => before.has(m.id) && before.get(m.id) !== !!m.on);
+    // Off first, then on: turning one on brings what it needs, so the ones that were on end up on.
+    for (const m of changed.filter((m) => !before.get(m.id))) await call("turn", m.id, false);
+    for (const m of changed.filter((m) => before.get(m.id))) await call("turn", m.id, true);
+    message = changed.length ? `Put back ${changed.map((m) => m.name).join(" and ")}.` : "Nothing to put back.";
+    await draw();
+  };
+
+  /** Loads a starter into Make. */
+  const start = async (file) => {
+    const code = await call("file", `customize.templates/${file}`);
+    if (typeof code !== "string") {
+      make.status = code?.error ?? "Couldn't read that starter";
+      return draw();
+    }
+    make.starter = file;
+    make.name = make.name || STARTERS.find((s) => s.file === file)?.title.replace(/^A /, "My ") || "My plugin";
+    // The editor shows the starter with the spot and name already in it.
+    make.code = finish(code, make.name, make.spot);
+    make.rev++;
+    make.status = "";
+    make.check = await call("check", finish(make.code, make.name, make.spot));
+    await draw();
+  };
+
   ctx.ui.onEvent(async (action, value) => {
     if (action === "panel") {
       open = !!value;
-      if (!open) message = "";
+      if (!open) {
+        message = "";
+        follow = null;
+      }
       return draw();
     }
-    if (action === "turn") {
-      const mine = await call("mine");
-      const p = Array.isArray(mine) ? mine.find((m) => m.id === value) : undefined;
-      if (!p) return;
-      const result = await call("turn", p.id, !p.on);
-      if (result?.ok === false) message = result.error;
-      else {
-        // Turning one on brings the plugins of yours it needs; turning one off takes the ones that need it.
-        const also = (result?.also ?? []).map((a) => a.name);
-        const why = p.on ? (also.length > 1 ? "which need it" : "which needs it") : "which it needs";
-        message = `Turned ${p.name} ${p.on ? "off" : "on"}${also.length ? `, and ${also.join(" and ")}, ${why}` : ""}`;
-      }
-      await draw();
-      return;
+    if (action === "tab") {
+      tab = ["plugins", "make", "layout"].includes(value) ? value : "plugins";
+      message = "";
+      follow = null;
+      return draw();
     }
+    if (action === "search") {
+      query = String(value ?? "").trim();
+      return draw();
+    }
+    if (action === "turn") return turn(String(value));
+    if (action === "undo-turn") return undoTurn();
     if (action === "remove") return run("remove", [value], "Removed");
     if (action === "share") {
       const mine = await call("mine");
@@ -165,6 +381,15 @@ export default function (ctx) {
       const [plugin, place] = String(value).split("/");
       return run(action, [plugin, place], action === "unlock" ? `Unlocked for ${plugin}` : "");
     }
+    if (action === "move") {
+      const [plugin, place] = String(value).split("/");
+      return call("arrange", plugin, place);
+    }
+    if (action === "unmove") {
+      const [plugin, place] = String(value).split("/");
+      return run("move", [plugin, place, null], "Put back where its plugin puts it.");
+    }
+    if (action === "arrange") return call("arrange");
     if (action === "package") {
       const packages = await call("packages");
       const p = Array.isArray(packages) ? packages.find((x) => x.id === value) : undefined;
@@ -177,7 +402,7 @@ export default function (ctx) {
       if (sample) await addAll([{ href: sample.href, name: sample.title }]);
       return;
     }
-    if (action === "pick") return run("pick", [], "Added. Turn it on above.");
+    if (action === "pick") return run("pick", [], "Added, turned off for now. Turn it on in the list above.");
     if (action === "paste") {
       const code = String(value?.code ?? "").trim();
       if (code) await run("save", [code], "Added and turned on.");
@@ -189,6 +414,48 @@ export default function (ctx) {
       return;
     }
     if (action === "inspect") return call("inspect");
+
+    // Make a plugin.
+    if (action === "starter") return start(String(value));
+    if (action === "spot") {
+      // The draft as typed comes with it (the button is in the draft's form): keep it, and show it again as it was.
+      if (typeof value?.code === "string" && value.code !== make.code) {
+        make.code = value.code;
+        make.rev++;
+      }
+      if (typeof value?.name === "string") make.name = value.name;
+      // The panel closed so the person can see the page; it opens again once they choose (or cancel).
+      const spot = await call("choose", "Point at where your plugin should show, and click");
+      if (spot && spot.at) make.spot = spot;
+      reopen++;
+      if (make.code) make.check = await call("check", finish(make.code, make.name, make.spot));
+      return draw();
+    }
+    if (action === "make-check" || action === "make-save") {
+      make.code = String(value?.code ?? make.code);
+      make.name = String(value?.name ?? make.name);
+      const code = finish(make.code, make.name, make.spot);
+      make.check = await call("check", code);
+      make.status = "";
+      if (action === "make-save" && make.check?.ok) {
+        make.status = "Waiting for your answer on the review card…";
+        await draw();
+        const saved = await call("save", code);
+        make.status = saved?.ok ? `Saved, and ${make.check.manifest.name} is on. It's listed under Plugins, where you can turn it off, move it or remove it.` : saved?.error ?? "Not saved";
+        if (saved?.ok) {
+          make.code = code;
+          make.rev++;
+        }
+      }
+      return draw();
+    }
+    if (action === "editor") {
+      const packages = await call("packages");
+      const editor = Array.isArray(packages) ? packages.find((x) => x.id === "plugin-editor") : undefined;
+      if (editor?.adds.length) await addAll(editor.adds);
+      else message = "The plugin editor isn't in this site's registry.";
+      return draw();
+    }
   });
 
   // Plugins turned on, off, added or removed elsewhere (another tab, an agent, the space) show here too.

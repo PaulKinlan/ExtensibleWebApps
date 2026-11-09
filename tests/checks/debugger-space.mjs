@@ -32,12 +32,12 @@ export default async function ({ check, context, errors }) {
     check("debugger: outside a space, the space server panel says how to look inside one", away);
 
     await page.goto(`${server.url}/account/`);
-    await page.fill("#name", "Dee");
-    await page.click('#register button[type="submit"]');
-    await page.waitForSelector("#in:not([hidden])", { timeout: 8000 });
-    await page.fill("#space-name", "lab");
-    await page.click('#new-space button[type="submit"]');
-    await page.waitForSelector("#spaces >> text=lab", { timeout: 8000 });
+    await page.fill('form[data-action="register"] input[name="name"]', "Dee");
+    await page.click('form[data-action="register"] button[type="submit"]');
+    await page.waitForSelector(".signed-in", { timeout: 8000 });
+    await page.fill('form[data-action="make"] input[name="name"]', "lab");
+    await page.click('form[data-action="make"] button[type="submit"]');
+    await page.waitForSelector(".space-list >> text=lab", { timeout: 8000 });
 
     // Surveys in the space: its server plugin starts on the space's server.
     await page.goto(`${server.url}/s/lab/demos/survey/`);
