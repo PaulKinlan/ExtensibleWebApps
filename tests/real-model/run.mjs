@@ -259,7 +259,8 @@ await feature("ask", async ({ context, errors, info, track }) => {
   const text = answered ? await page.textContent(`${ask} .answer`) : await page.textContent(ask).catch(() => "");
   check("the Gemini key card came up once and took the key", person.seen.keys === 1 && !person.seen.refusedKeyCards.length, `${person.seen.keys} key cards; ${person.seen.refusedKeyCards.join(" | ")}`);
   check("Gemini answers a question about a plugin on the page", answered && text.trim().length > 40, text.slice(0, 600));
-  check("the answer is about the plugin's code: it names the hook that stops the save", /beforeWrite|data:before/i.test(text), text.slice(0, 300));
+  // Only the plugin's code says what it stops: notes written all in capitals. A model may name the hook or say it in plain words.
+  check("the answer comes from the plugin's code: it says the note is stopped for being all capitals", /capital|upper.?case/i.test(text), text.slice(0, 300));
   const about = (await page.textContent(`${ask} .about-answer`).catch(() => "")) ?? "";
   check("it says which model answered and what it cost", /Answered by Gemini, \S+ · \d+ in, \d+ out tokens/.test(about), about);
   check("the answer reads as plain text, with no Markdown marks left in it", answered && !markdown(text), text.slice(0, 300));
