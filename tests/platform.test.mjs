@@ -478,11 +478,20 @@ export default async (ctx) => {
   await a.click(`${card} >> text=Always allow in data:notes`);
   await a.waitForFunction((t) => document.querySelector("textarea").value === t, tidied, { timeout: 5000 });
   await saveText(messy);
-  const asked = await a.evaluate(() => window.__host.traces.filter((e) => e.name === "review:asked").length);
+  // The card closes, and the traces of the review it held arrive, before counting (both can trail the change on a busy runner).
+  await a.waitForSelector(card, { state: "detached", timeout: 5000 }).catch(() => {});
+  await a.waitForTimeout(300);
+  // The page keeps its last 5,000 traces, so count the reviews asked after a mark, not all of them.
+  await a.evaluate(() => (window.__mark = window.__host.traces.at(-1)));
   await a.click("text=Tidy this note");
   await a.waitForFunction((t) => document.querySelector("textarea").value === t, tidied, { timeout: 5000 });
-  const askedAfter = await a.evaluate(() => window.__host.traces.filter((e) => e.name === "review:asked").length);
-  check("“always allow” is remembered, so the next change goes through without asking", askedAfter === asked && !(await a.$(card)));
+  await a.waitForTimeout(300);
+  const asked = await a.evaluate(() => {
+    const traces = window.__host.traces;
+    return traces.slice(traces.indexOf(window.__mark) + 1).filter((e) => e.name === "review:asked").length;
+  });
+  const still = await a.$(card);
+  check("“always allow” is remembered, so the next change goes through without asking", asked === 0 && !still, `asked ${asked} times, card ${still ? (await still.textContent()).slice(0, 160) : "gone"}`);
   await a.waitForSelector('aside [data-key="plugins:tidy"] >> text=Changes data:notes without asking');
   await a.click('aside [data-key="plugins:tidy"] >> text=Forget');
   await a.waitForFunction(() => !document.querySelector('aside [data-key="plugins:tidy"]').textContent.includes("without asking"));
