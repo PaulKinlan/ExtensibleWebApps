@@ -18,6 +18,9 @@
   /std/hook-tracer.js     the hooks each action runs, and what plugins said
   /std/ask-the-page.js    ask a language model about the page's plugins
   /std/llm/*.js           the language models it can ask; bring your own key
+  home/x-ray.js           outlines each part of the page with the plugin that drew it
+  home/story-view.js      switches between the guided view and one scrolling story
+  /std/agents/builder.agent.md + chat.js   an agent that writes plugins for you (chapter 11)
 
   If a plugin breaks the page, or you switch off the switchboard itself,
   add ?reset to the address: the host turns this page's plugins back on.
@@ -44,6 +47,9 @@
   <link rel="plugin" href="home/chapter-8-data.js">
   <link rel="plugin" href="home/chapter-9-views.js">
   <link rel="plugin" href="home/chapter-10-your-app.js">
+  <link rel="plugin" href="home/chapter-11-agent.js">
+  <link rel="plugin" href="home/story-view.js">
+  <link rel="plugin" href="home/x-ray.js">
   <link rel="plugin" href="/std/switchboard.js">
   <link rel="plugin" href="/std/reset.js">
   <link rel="plugin" href="/std/debug-console.js">
@@ -56,6 +62,9 @@
   <link rel="plugin" href="/std/llm/anthropic.js">
   <link rel="plugin" href="/std/llm/openai.js">
   <link rel="plugin" href="/std/llm/gemini.js">
+  <!-- Chapter 11's agent, and the box to write to it. -->
+  <link rel="agent" href="/std/agents/builder.agent.md">
+  <link rel="plugin" href="/std/agents/chat.js">
   <style>
     /* The page's own layout: the guided view, chapters beside the playground. One column on phones. */
     body { display: block; }
@@ -74,6 +83,63 @@
     /* The debug console's bug sits bottom left, so the platform's Customize button goes bottom right. */
     body slot[name="customize"] > [data-plugin] { left: auto; right: 16px; }
     body > footer { padding: 16px; border-top: 1px solid var(--border); color: var(--fg-2); font-size: var(--text-sm); }
+    /* The header's tools: X-ray and the layout switch, both plugins. */
+    body > header slot[name="page-tools"] > [data-plugin] { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .page-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+    /*
+      X-ray (home/x-ray.js). While its switch is pressed, every part a plugin drew is outlined and
+      labelled with that plugin's id, which the host puts on each view as data-plugin. The outline
+      sits inside the box: each view is contained, so nothing it paints can spill over the page.
+      Only the page's main part is outlined: the header's tools and the floating buttons stay as they are.
+    */
+    body:has([data-plugin="x-ray"] [aria-pressed="true"]) .home slot > [data-plugin] {
+      outline: 2px dashed color-mix(in oklab, var(--accent) 70%, transparent);
+      outline-offset: -2px;
+    }
+    body:has([data-plugin="x-ray"] [aria-pressed="true"]) .home slot > [data-plugin]::before {
+      content: attr(data-plugin);
+      position: absolute; inset: 0 0 auto auto; z-index: 1;
+      padding: 1px 6px; border-bottom-left-radius: 6px;
+      background: var(--accent); color: var(--accent-fg);
+      font: 600 11px/1.5 var(--mono, ui-monospace, monospace);
+      pointer-events: none;
+    }
+    body:has([data-plugin="x-ray"] [aria-pressed="true"]) .home slot > [data-plugin] { position: relative; }
+
+    /*
+      Story view (home/story-view.js). While its switch says story, the page is one column to read
+      from top to bottom, like an article: the chapters lose their cards, and the playground docks
+      to the side (on a phone, it comes after the story). The chapters draw the same views either way.
+    */
+    .story-progress { display: none; }
+    body:has([data-plugin="story-view"] [data-layout="story"]) {
+      .intro { max-width: 68ch; margin-inline: auto; padding-top: 48px; }
+      .intro h2 { font-size: clamp(2rem, 5vw, 3rem); }
+      .home { grid-template-columns: minmax(0, 68ch) minmax(0, 340px); justify-content: center; gap: 48px; }
+      .chapters { gap: 64px; }
+      .chapters ui-card { padding: 0; border: 0; background: none; box-shadow: none; font-size: var(--text-lg); line-height: 1.65; }
+      .chapters ui-card h2 { font-size: var(--text-2xl); }
+      .side { top: 72px; max-height: calc(100vh - 144px); padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-2); }
+      .story-progress { display: block; position: fixed; inset: 0 0 auto; height: 3px; background: var(--accent); transform-origin: 0 50%; transform: scaleX(0); z-index: 10; }
+    }
+    @media (max-width: 800px) {
+      body:has([data-plugin="story-view"] [data-layout="story"]) {
+        .home { grid-template-columns: minmax(0, 1fr); grid-template-areas: "chapters" "playground"; }
+        .side { position: static; max-height: none; }
+        .intro { padding-top: 24px; }
+        .chapters ui-card { font-size: var(--text-md); }
+      }
+    }
+    /* Decorative, so only where the browser has scroll-driven animations, and only for those who want motion. */
+    @media (prefers-reduced-motion: no-preference) {
+      @supports (animation-timeline: scroll()) {
+        @keyframes story-progress { to { transform: scaleX(1); } }
+        @keyframes story-in { from { opacity: 0; translate: 0 24px; } }
+        body:has([data-plugin="story-view"] [data-layout="story"]) .story-progress { animation: story-progress auto linear both; animation-timeline: scroll(root); }
+        body:has([data-plugin="story-view"] [data-layout="story"]) .chapters slot > [data-plugin] { animation: story-in auto ease-out backwards; animation-timeline: view(); animation-range: entry 0% entry 60%; }
+      }
+    }
     @media (max-width: 800px) {
       .home { grid-template-columns: minmax(0, 1fr); grid-template-areas: "playground" "chapters"; }
       .side { position: static; max-height: none; }
@@ -81,8 +147,10 @@
   </style>
 </head>
 <body>
+  <div class="story-progress" aria-hidden="true"></div>
   <header>
     <h1>Extensible Web Apps</h1>
+    <div class="page-tools"><slot name="page-tools"></slot></div>
     <nav aria-label="Elsewhere">
       <a href="/demos/">Demo apps</a>
       <a href="/workbench/">Workbench</a>
@@ -107,6 +175,8 @@
       <slot name="data"></slot>
       <slot name="views"></slot>
       <slot name="your-app"></slot>
+      <slot name="agent"></slot>
+      <slot name="chat"></slot>
     </section>
     <aside class="side">
       <slot name="playground"><p class="empty">Your learning notes go here, once their plugin is running.</p></slot>

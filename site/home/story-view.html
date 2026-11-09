@@ -1,0 +1,16 @@
+<!--
+  Story view's switch: two buttons, one pressed. The page's own style in
+  /index.html reads data-layout and lays the page out to match.
+-->
+<style>
+  .layout { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+  .layout button { border: 0; border-radius: 0; margin: 0; }
+  .layout button + button { border-left: 1px solid var(--border); }
+  .layout button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); }
+</style>
+<template id="switch">
+  <div class="layout" role="group" aria-label="How to read this page" data-layout="{{layout}}">
+    <button type="button" data-action="layout" data-value="guided" aria-pressed="{{guided}}">Guided</button>
+    <button type="button" data-action="layout" data-value="story" aria-pressed="{{story}}">Story</button>
+  </div>
+</template>

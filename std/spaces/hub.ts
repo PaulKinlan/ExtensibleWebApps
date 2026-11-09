@@ -8,7 +8,7 @@
 //   sync/log/<chunk>.json   the accepted changes, a hundred to a file, so a device catches up from any point
 
 import type { Dispatch } from "../../src/shared/protocol";
-import type { Accepted, Outgoing, PluginRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, Verdict } from "../../src/shared/sync";
+import type { Accepted, Outgoing, PluginRequest, ReflectRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, Verdict } from "../../src/shared/sync";
 import { env } from "../../src/kernel/env";
 import { hooks } from "../../src/kernel/hooks";
 import type { Host, Hosts } from "../../src/kernel/hosts";
@@ -207,6 +207,8 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     plugins: undefined as ((host: Host, message: PluginRequest) => unknown) | undefined,
     /** Reviews the space's server asks its members for (reviews.ts): the space's kernel sets this. */
     reviews: undefined as ((host: Host, message: ReviewToSpace) => unknown) | undefined,
+    /** A member's debugger asking what runs in the space's kernel (reflect.ts): the space's kernel sets this. */
+    reflect: undefined as ((host: Host, message: ReflectRequest) => unknown) | undefined,
     /** Sends a message to every device that said hello. */
     tell(message: SyncToDevice) {
       for (const other of listening) hosts.send(other, message);
@@ -229,6 +231,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       }
       if (message.op === "app") return void onApp?.(message.app);
       if (message.op === "review") return void api.reviews?.(host, message);
+      if (message.op === "reflect") return void (api.reflect ? api.reflect(host, message) : hosts.send(host, { t: "sync", op: "reflect:reply", id: message.id, ok: false, error: "This space's kernel has no reflect module" }));
       if (message.op === "plugins") return void (api.plugins ? api.plugins(host, message) : hosts.send(host, { t: "sync", op: "plugins:reply", id: message.id, ok: false, error: "This space doesn't keep plugins" }));
       if (message.op === "push") {
         const changes = Array.isArray(message.changes) ? message.changes.slice(0, MAX_PUSH) : [];
