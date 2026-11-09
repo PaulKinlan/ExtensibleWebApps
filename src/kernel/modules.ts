@@ -38,6 +38,29 @@ import { record } from "./trace";
 /** The Cordis service a module's service is also registered as, so other modules can `inject` it. */
 const cordisName = (name: string) => `kernel.${name}`;
 
+/** An app a member made and shared with the space, as a device sees it (std/spaces/made-apps.ts). */
+export interface SharedMadeApp {
+  name: string;
+  title: string;
+  hash: string;
+  files: string[];
+  /** The member who shared it, or last changed it: their id, and their name if the space said. */
+  by?: string;
+  byName?: string;
+  at: string;
+}
+
+/** In a browser kernel for a space: the apps its members made and shared (std/spaces/made-apps.ts), for the maker module. */
+export interface MadeAppsSeam {
+  /** The space's shared apps; undefined if the space can't be reached. */
+  list(): Promise<SharedMadeApp[] | undefined>;
+  get(name: string): Promise<{ ok: true; files: { name: string; text: string }[]; hash: string } | { ok: false; error: string }>;
+  share(name: string, files: { name: string; text: string }[]): Promise<{ ok: true; hash: string } | { ok: false; error: string }>;
+  unshare(name: string): Promise<{ ok: true } | { ok: false; error: string }>;
+  /** Heard whenever the list may have changed: a member shared, changed or stopped sharing one, or the device caught up. */
+  changed: Set<() => void>;
+}
+
 /**
  * What the spaces module (std/spaces/module.ts) lends the core while it runs. The core asks it, and never
  * names it: a kernel without it keeps no space.
@@ -49,6 +72,8 @@ export interface SpaceSeam {
   use?(app: string): void;
   /** In a browser kernel for a space: sharing the person's own plugins with its members (Customize, authoring). */
   sharing?: Sharing;
+  /** In a browser kernel for a space: the apps its members made and shared with it, for the maker module. */
+  madeApps?: MadeAppsSeam;
   /** On a space's server: its apps' server plugins starting, so a request for a route one adds waits for them. */
   server?: { starting(): boolean; settled(): Promise<unknown>; finishedAt(): number };
 }
@@ -80,6 +105,8 @@ export interface ModuleKernel extends Kernel {
   message(type: string, handle: (host: Host, message: any) => unknown): void;
   /** Lends the core what a space adds (SpaceSeam). One module at a time. */
   space(seam: SpaceSeam): void;
+  /** What a module lends as the space seam now, if any: how another module (maker) reaches the space. */
+  lent(): SpaceSeam | undefined;
 }
 
 /** A module: a Cordis plugin the kernel runs with its parts as the config. */
@@ -173,6 +200,7 @@ export function loadModules(
                 return () => void seams.messages.delete(type);
               }, `message ${type}`);
             },
+            lent: () => seams.space.current,
             space(seam) {
               if (seams.space.current) throw new Error(`The ${module.name} module can't lend a space: another module does`);
               ctx.effect(() => {
