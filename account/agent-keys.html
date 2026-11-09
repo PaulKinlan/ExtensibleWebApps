@@ -4,9 +4,12 @@
   `made` ({ value, address, command, door }) for the key just made, shown once.
 -->
 <style>
-  .keys form { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+  .keys { display: grid; gap: var(--space-3); }
+  .keys form { display: flex; flex-direction: row; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
   .keys form input { flex: 1 1 12rem; }
   .keys .made input { width: 100%; }
+  .keys ul { display: grid; gap: var(--space-2); padding: 0; list-style: none; }
+  .keys li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
   .keys .status:empty { display: none; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
