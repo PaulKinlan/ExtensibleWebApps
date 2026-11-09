@@ -109,18 +109,24 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
       const before = new Set(linked.get(host.tab));
       linked.set(host.tab, new Set());
       // The plugins this open will start: a server-only one isn't started here (openOne), so it provides nothing here.
+      const next = new Set<string>();
       const sources = links.flatMap((link) => {
         try {
           const source = asPlugin(link.href, link.source, link.runner);
-          return readManifest(source).runs === "server" ? [] : [source];
+          const manifest = readManifest(source);
+          next.add(manifest.id);
+          return manifest.runs === "server" ? [] : [source];
         } catch {
           return [];
         }
       });
+      // The ones it no longer links stop first, so a service one of them provided is free for the plugin that
+      // takes its place (a person swapping one provider of a service for another), rather than refused as a clash.
+      for (const id of before) if (!next.has(id)) release(id, host.tab);
       const started = remote.expect(sources);
       const plugins = await Promise.all(links.map((link) => openOne(host, link))).finally(started);
       const now = linked.get(host.tab)!;
-      for (const id of before) if (!now.has(id)) release(id, host.tab);
+      for (const id of before) if (next.has(id) && !now.has(id)) release(id, host.tab);
       record({ kind: "lifecycle", name: "app:open", detail: `${host.tab}: ${plugins.map((p) => p.id ?? `${p.href} (${p.error})`).join(", ")}` });
       if (hosts.list.includes(host)) hosts.send(host, { t: "opened", plugins: plugins.map(describe) });
     },

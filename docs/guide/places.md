@@ -90,6 +90,8 @@ The author lists their plugins in `app.html` with `<link rel="plugin">`. A perso
    files: ["countdown.html", "tram.svg"],
    ```
 
+   A file may sit in a folder beside the plugin, up to four folders deep (`templates/card.js`); it keeps its path. Only a `.js` file at the top of the folder is a plugin, so a template in a folder is never started on its own.
+
 3. A plugin that is added **starts off**. Customize shows what it asks for and where it draws, and the person turns it on.
 4. The service worker serves the folder at `/user/<app folder>/`, so the plugin's templates and images load like any other file. An image next to a template (`<img src="tram.svg">`) is the plugin's own, so it needs no network permission.
 

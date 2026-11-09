@@ -27,6 +27,10 @@ export const manifest = {
   permissions: ["ui", "plugins:read", "plugins:author", "debug:read"],
   // Its tab says which app it is editing.
   scope: "tab",
+  // On an app with no slot for it (added from the registry), it draws at the end of the page's main part.
+  places: { editor: { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app: its view, and the starting templates in the folder beside it.
+  files: ["plugin-editor.html", "plugin-editor/templates/card.js", "plugin-editor/templates/listen.js", "plugin-editor/templates/block.js", "plugin-editor/templates/button.js"],
 };
 
 /** The starting templates: files next to this one. */

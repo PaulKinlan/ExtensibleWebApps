@@ -5,6 +5,7 @@
     "debug-console",
     "hook-tracer",
     "import-export",
+    "plugin-editor",
     "reset",
     "switchboard",
     "sync",

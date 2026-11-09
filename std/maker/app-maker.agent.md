@@ -185,6 +185,16 @@ write a plugin for the new part; never copy or change theirs.
   Link it beside the editor and any of its effects you want (`echo.js`,
   `crusher.js`, `tremolo.js`).
 
+## Plugins the site already has
+
+Link one of the site's plugins instead of writing it, when it does the job.
+The plugin registry (`/packages/`) offers some: `/packages/clock/clock.js`
+provides a `clock` service (`ctx.call("clock", "now", "Asia/Tokyo")` returns
+`{ time, date, timeZone }`; the caller needs the `clock` permission and
+`services: ["clock"]`), and `/std/undo.js`, `/std/import-export.js` and
+`/std/board.js` add undo, import and export, and a board for questions. The
+checks read what a linked plugin provides, so calling its service is fine.
+
 ## How to work
 
 1. `maker_list` first. If the person names an app they made, or says
