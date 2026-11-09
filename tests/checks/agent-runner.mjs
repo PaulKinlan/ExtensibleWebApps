@@ -3,6 +3,7 @@
 // agent file may name another with `runner:`. The kernel makes the agent's
 // plugin from the manifest, AGENT and whichever loop came with the file; an
 // agent whose loop didn't load fails, and never runs the standard one instead.
+import { watchErrors } from "../page-errors.mjs";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,7 +49,7 @@ export default async function ({ check, URL, context, errors }) {
     const bench = await own.newPage();
     await bench.goto(`${URL}workbench/`);
     const page = await own.newPage();
-    page.on("pageerror", (e) => errors.push(e.message));
+    watchErrors(page, errors, "agent-runner");
     await page.goto(`${URL}demos/librarian/app.html`);
     const said = async (what) =>
       bench

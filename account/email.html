@@ -5,7 +5,8 @@
   what the server has after each save.
 -->
 <style>
-  .email form { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .email { display: grid; gap: var(--space-3); }
+  .email form { display: flex; flex-direction: row; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
   .email input { flex: 1 1 12rem; }
   .email .status:empty, .email .state:empty { display: none; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

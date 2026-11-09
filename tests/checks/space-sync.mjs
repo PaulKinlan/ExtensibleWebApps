@@ -5,6 +5,7 @@
 // for a while: both keep working, and when it's back, what each did reaches
 // the other, and a record both changed ends up the same, with the loser's
 // version kept as a draft. tests/server/run.mjs checks the space's side alone.
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,7 +26,7 @@ async function withAuthenticator(context, page) {
 async function signUp(browser, address, name, errors) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+  watchErrors(page, errors, `space-sync ${name}`);
   await withAuthenticator(context, page);
   await page.goto(address);
   await page.fill('form[data-action="register"] input[name="name"]', name);

@@ -8,6 +8,7 @@
 //
 // It makes the project with --no-install, so it needs no network, and runs it
 // against this checkout, which `npm test` has built.
+import { watchErrors } from "../page-errors.mjs";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -87,7 +88,7 @@ export default async function ({ check, context, URL, errors }) {
     server = await dev(folder, { port: 0, quiet: true });
     const own = await context.browser().newContext();
     const tab = await own.newPage();
-    tab.on("pageerror", (e) => errors.push(e.message));
+    watchErrors(tab, errors, "create-app");
     await tab.goto(server.url);
     const drawn = await tab.waitForSelector('slot[name="main"] ui-form', { timeout: 15000 }).then(() => true, () => false);
     check("extensible-app dev serves the project's app at /", drawn && (await tab.title()) === "Packing list");
@@ -109,7 +110,7 @@ export default async function ({ check, context, URL, errors }) {
 
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "create-app");
   await page.goto(URL);
   const chapter = 'slot[name="your-app"] .chapter';
   const shown = await page.waitForSelector(`${chapter} >> text=npm create extensible-app packing-list`, { state: "attached", timeout: 8000 }).then(() => true, () => false);

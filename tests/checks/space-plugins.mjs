@@ -4,6 +4,7 @@
 // turned off there; turning it on is each person's own choice; a change to it
 // arrives off again; removing it removes it for everyone; and stopping
 // sharing it takes it from the others and leaves it with its owner.
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +17,7 @@ const plugin = (text) => `export const manifest = { id: "shelf-note", name: "She
 async function signUp(browser, address, name, errors) {
   const context = await browser.newContext();
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(`space-plugins ${name}: ${e.message}`));
+  watchErrors(page, errors, `space-plugins ${name}`);
   const cdp = await context.newCDPSession(page);
   await cdp.send("WebAuthn.enable");
   await cdp.send("WebAuthn.addVirtualAuthenticator", {

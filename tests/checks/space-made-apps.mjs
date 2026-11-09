@@ -6,6 +6,7 @@
 //
 // The folder picker is replaced, as in maker-for-real.mjs: Ann's app comes
 // from a folder called "tides" in the browser's private file system.
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -23,7 +24,7 @@ async function signUp(browser, address, name, errors) {
     window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle("tides", { create: true });
   });
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(`space-made-apps ${name}: ${e.message}`));
+  watchErrors(page, errors, `space-made-apps ${name}`);
   const cdp = await context.newCDPSession(page);
   await cdp.send("WebAuthn.enable");
   await cdp.send("WebAuthn.addVirtualAuthenticator", {

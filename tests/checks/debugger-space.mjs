@@ -5,6 +5,7 @@
 // and its Space server panel shows that kernel: the plugin running there
 // with its routes, and their own device connected. Outside a space, the
 // panel says how to get there, and sync.reflect refuses.
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -19,7 +20,7 @@ export default async function ({ check, context, errors }) {
   const own = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   try {
     const page = await own.newPage();
-    page.on("pageerror", (e) => errors.push(`debugger-space: ${e.message}`));
+    watchErrors(page, errors, "debugger-space");
     const cdp = await own.newCDPSession(page);
     await cdp.send("WebAuthn.enable");
     await cdp.send("WebAuthn.addVirtualAuthenticator", {
@@ -51,7 +52,7 @@ export default async function ({ check, context, errors }) {
 
     // The debugger, in the same space, in a second tab.
     const debug = await own.newPage();
-    debug.on("pageerror", (e) => errors.push(`debugger-space: ${e.message}`));
+    watchErrors(debug, errors, "debugger-space");
     await debug.goto(`${server.url}/s/lab/demos/debugger/app.html`);
     const collect = `${PANEL} li.plugin[key="collect"]`;
     const shown = await debug.waitForSelector(collect, { timeout: 20000 }).then(() => true, () => false);

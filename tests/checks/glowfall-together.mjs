@@ -5,6 +5,7 @@
 // both of them. Ann's debugger, in the same space, streams the server's
 // trace (sync.trace) and sees the game start; Ben, who never asked, gets no
 // trace on his socket at all.
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,7 +17,7 @@ const EVENTS = '[data-plugin="debugger-space-events"]';
 async function signUp(browser, address, name, errors) {
   const context = await browser.newContext({ viewport: { width: 1200, height: 900 } });
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+  watchErrors(page, errors, `glowfall-together ${name}`);
   const cdp = await context.newCDPSession(page);
   await cdp.send("WebAuthn.enable");
   await cdp.send("WebAuthn.addVirtualAuthenticator", {
@@ -54,7 +55,7 @@ export default async function ({ check, context, errors, URL }) {
 
     // Ann's debugger first, listening to the server.
     const debug = await ann.context.newPage();
-    debug.on("pageerror", (e) => errors.push(`debugger: ${e.message}`));
+    watchErrors(debug, errors, `glowfall-together debugger`);
     await debug.goto(`${server.url}/s/play/demos/debugger/app.html`);
     const live = await debug.waitForSelector(`${EVENTS} >> text=live`, { timeout: 20000 }).then(() => true, () => false);
     check("debugger: in a space, the space server events panel streams the server's trace (sync.trace)", live, (await debug.textContent(EVENTS).catch(() => "")).slice(0, 200));

@@ -14,6 +14,7 @@
 // The folder picker is the page's showDirectoryPicker, which a test can't
 // click through, so it is replaced by one that hands back folders in the
 // browser's private file system.
+import { watchErrors } from "../page-errors.mjs";
 import { checkApps } from "../../scripts/check.mjs";
 
 export default async function ({ check, context, URL, errors }) {
@@ -28,7 +29,7 @@ export default async function ({ check, context, URL, errors }) {
     window.showDirectoryPicker = async () => (await navigator.storage.getDirectory()).getDirectoryHandle(`picked-${++n}`, { create: true });
   });
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "maker-for-real");
   try {
     await page.goto(`${URL}demos/trip/app.html`);
     await page.waitForFunction(() => window.__host);
