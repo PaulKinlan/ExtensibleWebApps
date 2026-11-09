@@ -15,7 +15,13 @@
 // with the other members or stop sharing it. Each change but on and off
 // waits for the person to accept a review card that shows the code; on and
 // off need plugins:manage, as switching the app's own plugins does.
+//
+// Before a new or changed plugin is shown to the person, plugins:beforeAdd
+// runs with its code and what it asks for: a plugin or an agent that checks
+// plugins (a security reviewer) may stop it with { block: reason }, which
+// the caller gets back as the error, or let it through to the review.
 
+import { defineHook } from "./hooks";
 import { readManifest } from "./manifest";
 import type { Dispatch } from "../shared/protocol";
 import type { RemotePlugins, ServiceProvider } from "./remote";
@@ -24,6 +30,16 @@ import type { Store } from "./store";
 import type { UserPlugin, UserPlugins } from "./user-plugins";
 
 type Apps = { linkedBy(tab: string): string[] | undefined; tabsWith?(id: string): string[] };
+
+defineHook("plugins:beforeAdd", {
+  mode: "serial",
+  timeoutMs: 2000,
+  agentTimeoutMs: 20_000,
+  onFailure: "open",
+  args: "{ app, id, name, permissions, code, how, by }",
+  description:
+    "Before one of the person's own plugins is added or changed (how: save, add or pick), and before they see its review card: a checker gets its code and the permissions it asks for, and may return { block: reason } to stop it. by is the plugin that asked. It carries the code, so listening needs hook:intercept:plugins:beforeAdd.",
+});
 
 /** What saving needs from the kernel: the person's plugins, the app open in each tab, and the review. */
 export interface Saving {
@@ -46,6 +62,8 @@ export interface Saving {
   page(tab: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown>;
   /** Lets a plugin into a place the app's author locked, or locks it again, and opens the app again so it shows. */
   unlock(app: string, plugin: string, place: string, on: boolean): Promise<void>;
+  /** Runs plugins:beforeAdd: a checker's { block: reason }, or nothing. */
+  check?(value: { app: string; id: string; name: string; permissions: string[]; code: string; how: string; by: string }, dispatch: Dispatch): Promise<unknown>;
 }
 
 /** A plugin in the registry's index (packages/index.json, built by scripts/packages.mjs). */
@@ -437,6 +455,12 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           return file ? ((await saving.store.readText(`user/${app}/${file}`)) ?? "") : undefined;
         };
         const changed = "It changed while the review was open (in another tab, perhaps), so nothing was done. Look again and try once more.";
+        /** What a checker on plugins:beforeAdd said: an error to give back if it stopped the plugin, or undefined. */
+        const checked = async (m: { id: string; name: string; permissions: string[] }, code: string, how: string) => {
+          const verdict = await saving.check?.({ app, id: m.id, name: m.name, permissions: m.permissions, code, how, by: caller }, dispatch);
+          if (verdict && typeof verdict === "object" && "block" in verdict) return { ok: false as const, error: `Stopped before review: ${String((verdict as { block: unknown }).block)}`, blocked: true };
+          return undefined;
+        };
         const once = async <T>(id: string, work: () => Promise<T>): Promise<T | { ok: false; error: string }> => {
           const key = `${app}/${id}`;
           if (asking.has(key)) return { ok: false, error: "There's already a review open for this plugin. Answer that one first." };
@@ -466,6 +490,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (!mine.some((p) => p.id === m.id) && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page` };
           const manifest = m;
           return once(manifest.id, async () => {
+            const stopped = await checked(manifest, fetched.source, "add");
+            if (stopped) return stopped;
             const before = await current(manifest.id);
             if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", fetched.source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
             if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
@@ -497,6 +523,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (!mine.some((p) => p.id === m.id) && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page` };
           const manifest = m;
           return once(manifest.id, async () => {
+            const stopped = await checked(manifest, source, "pick");
+            if (stopped) return stopped;
             const before = await current(manifest.id);
             if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
             if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
@@ -555,6 +583,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         if (!own && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page. Give yours a new id.` };
         const manifest = m;
         return once(manifest.id, async () => {
+          const stopped = await checked(manifest, code, "save");
+          if (stopped) return stopped;
           const before = await current(manifest.id);
           if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", code, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not saved" };
           // Replace only the version the person saw, or add one that still isn't there.

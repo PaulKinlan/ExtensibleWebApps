@@ -21,6 +21,9 @@
   home/x-ray.js           outlines each part of the page with the plugin that drew it
   home/story-view.js      switches between the guided view and one scrolling story
   /std/agents/builder.agent.md + chat.js   an agent that writes plugins for you (chapter 11)
+  home/security-check.js  stops a plugin of yours that looks like trouble, before its review card
+  home/chapter-12-security.js  a second pair of eyes: the checks before the card (chapter 12)
+  /docs/panel.js          the docs, in a panel beside the page
 
   If a plugin breaks the page, or you switch off the switchboard itself,
   add ?reset to the address: the host turns this page's plugins back on.
@@ -48,8 +51,11 @@
   <link rel="plugin" href="home/chapter-9-views.js">
   <link rel="plugin" href="home/chapter-10-your-app.js">
   <link rel="plugin" href="home/chapter-11-agent.js">
+  <link rel="plugin" href="home/chapter-12-security.js">
+  <link rel="plugin" href="home/security-check.js">
   <link rel="plugin" href="home/story-view.js">
   <link rel="plugin" href="home/x-ray.js">
+  <link rel="plugin" href="/docs/panel.js">
   <link rel="plugin" href="/std/switchboard.js">
   <link rel="plugin" href="/std/reset.js">
   <link rel="plugin" href="/std/debug-console.js">
@@ -86,6 +92,9 @@
     /* The header's tools: X-ray and the layout switch, both plugins. */
     body > header slot[name="page-tools"] > [data-plugin] { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .page-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    /* The docs panel (/docs/panel.js), docked to the right while it's open; the whole width on a phone. */
+    .docs-dock:has(> slot[name="docs"] > [data-plugin]) { position: fixed; inset: 0 0 0 auto; z-index: 20; width: min(46rem, 100vw); padding: 16px; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--border); box-shadow: -12px 0 40px rgb(0 0 0 / 0.25); }
+    .docs-dock > slot[name="docs"] > [data-plugin] { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
     /*
       X-ray (home/x-ray.js). While its switch is pressed, every part a plugin drew is outlined and
@@ -177,6 +186,7 @@
       <slot name="your-app"></slot>
       <slot name="agent"></slot>
       <slot name="chat"></slot>
+      <slot name="security"></slot>
     </section>
     <aside class="side">
       <slot name="playground"><p class="empty">Your learning notes go here, once their plugin is running.</p></slot>
@@ -185,5 +195,6 @@
   </div>
   <footer>Your notes and switches are kept in this browser only. <a href="?reset">Reset this page</a>.</footer>
   <slot name="debug" float></slot>
+  <div class="docs-dock"><slot name="docs"></slot></div>
 </body>
 </html>

@@ -121,6 +121,7 @@ const openApps = new Map<string, { app?: string; links: { href: string; source: 
 /** Tabs whose app is still opening: their address waits for it (see the `url` message). */
 const opening = new Map<string, Promise<void>>();
 services.authoring = authoring(remote, apps, {
+  check: (value, dispatch) => root.serial(dispatch, "plugins:beforeAdd", value),
   store,
   userAdded,
   appIn: (tab) => openApps.get(tab)?.app,

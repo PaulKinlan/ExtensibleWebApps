@@ -1616,6 +1616,14 @@ Mode: `emit`. Listening needs `outside`.
 
 Listeners get `{ plugin, tool, via: "webmcp" | "mcp", member?, ok }`.
 
+### `plugins:beforeAdd`
+
+Before one of the person's own plugins is added or changed (how: save, add or pick), and before they see its review card: a checker gets its code and the permissions it asks for, and may return { block: reason } to stop it. by is the plugin that asked. It carries the code, so listening needs hook:intercept:plugins:beforeAdd.
+
+Mode: `serial`, 2000 ms per listener, fails open; an agent that checks it has 20 s. Listening needs `hook:intercept:plugins:beforeAdd`.
+
+Listeners get `{ app, id, name, permissions, code, how, by }`.
+
 ### `plugins:changed`
 
 A plugin was installed, removed, or turned on or off (`change` is install, uninstall, enable or disable, and `id` is the plugin), or a tab opened its app (`change` is open, and `id` is the tab), so plugins.app() may answer differently.
