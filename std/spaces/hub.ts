@@ -8,7 +8,7 @@
 //   sync/log/<chunk>.json   the accepted changes, a hundred to a file, so a device catches up from any point
 
 import type { Dispatch } from "../../src/shared/protocol";
-import type { Accepted, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, TraceRequest, Verdict } from "../../src/shared/sync";
+import type { Accepted, AppRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, TraceRequest, Verdict } from "../../src/shared/sync";
 import { env } from "../../src/kernel/env";
 import { hooks } from "../../src/kernel/hooks";
 import type { Host, Hosts } from "../../src/kernel/hosts";
@@ -205,6 +205,8 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
   const api = {
     /** Members' plugins (plugins.ts): the space's kernel sets this. */
     plugins: undefined as ((host: Host, message: PluginRequest) => unknown) | undefined,
+    /** Apps members made and shared (made-apps.ts): the space's kernel sets this. */
+    apps: undefined as ((host: Host, message: AppRequest) => unknown) | undefined,
     /** Reviews the space's server asks its members for (reviews.ts): the space's kernel sets this. */
     reviews: undefined as ((host: Host, message: ReviewToSpace) => unknown) | undefined,
     /** A member's debugger asking what runs in the space's kernel (reflect.ts): the space's kernel sets this. */
@@ -241,6 +243,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       if (message.op === "trace") return void (api.trace ? api.trace(host, message) : hosts.send(host, { t: "sync", op: "trace", on: false, error: "This space doesn't stream its trace" }));
       if (message.op === "reflect") return void (api.reflect ? api.reflect(host, message) : hosts.send(host, { t: "sync", op: "reflect:reply", id: message.id, ok: false, error: "This space's kernel has no reflect module" }));
       if (message.op === "plugins") return void (api.plugins ? api.plugins(host, message) : hosts.send(host, { t: "sync", op: "plugins:reply", id: message.id, ok: false, error: "This space doesn't keep plugins" }));
+      if (message.op === "apps") return void (api.apps ? api.apps(host, message) : hosts.send(host, { t: "sync", op: "apps:reply", id: message.id, ok: false, error: "This space doesn't keep apps" }));
       if (message.op === "push") {
         const changes = Array.isArray(message.changes) ? message.changes.slice(0, MAX_PUSH) : [];
         const dispatch = { trace: `sync-${message.id}` };

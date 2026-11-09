@@ -1,7 +1,7 @@
 // @ts-check
 // <ui-preview>: shows an app made in the browser, in a frame. See ui-preview.html.
 
-/** A made app's name: it is shown from /apps/<name>/, served from the person's data folder (sw/routes/made.js). */
+/** A made app's name: it is shown from /apps/<name>/ (or /s/<space>/apps/<name>/ in a space), served from the person's data folder (sw/routes/made.js). */
 const NAME = /^[a-z][a-z0-9-]{0,47}$/;
 
 export default class UiPreview extends HTMLElement {
@@ -32,7 +32,9 @@ export default class UiPreview extends HTMLElement {
     if (!frame || !none || !link || !where) return;
     const name = this.getAttribute("app") ?? "";
     const ok = NAME.test(name);
-    const src = `/apps/${name}/`;
+    // A page in a space (/s/<space>/new/) shows the app made in that space.
+    const space = /^\/s\/[a-z0-9][a-z0-9-]{0,62}\//.exec(location.pathname)?.[0].slice(0, -1) ?? "";
+    const src = `${space}/apps/${name}/`;
     frame.hidden = !ok;
     none.hidden = ok;
     link.hidden = !ok;

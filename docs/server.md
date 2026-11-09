@@ -234,6 +234,10 @@ A plugin a person adds is a user plugin, theirs alone. In a space, Customize has
 
 [`tests/checks/space-plugins.mjs`](../tests/checks/space-plugins.mjs) checks it in Chromium with two people's devices, and [`tests/server/run.mjs`](../tests/server/run.mjs) checks the space's side on both hosts: what it keeps and tells, what it refuses, and that it never runs one.
 
+### Made apps in a space
+
+An app a member makes in a space (at `/s/<space>/new/`) can be shared with it the same way, from Your apps. The space keeps a copy of its files under `made/shared/` ([`made-apps.ts`](../std/spaces/made-apps.ts)), checked against the rules every made app follows, and never runs it. Each other member sees it as from the space and runs it only once they accept its files on a review card; a new version reaches them the same way, and stopping sharing leaves their copies with them. [Making an app](guide/making-apps.md#sharing-it-with-a-space) says more, and [`tests/checks/space-made-apps.mjs`](../tests/checks/space-made-apps.mjs) checks it with two people's devices.
+
 ## Server plugins
 
 A plugin can run on a space's server as well as, or instead of, in the browser. It says so in its manifest with `runs`: `"browser"` (the default), `"server"`, or `"both"`. It is the same kind of file, read by the same manifest parser and checked by the same gate. A server plugin keeps working with no app open anywhere: it can check every change a device sends with `data:beforeWrite:<collection>`, and what it writes reaches every device as a change made by that plugin.

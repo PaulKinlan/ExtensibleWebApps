@@ -9,6 +9,10 @@
 // script but this site's own files. Its code is its plugins, which run in
 // workers with only the permissions they ask for, like any app's.
 //
+// In a space, /s/family/apps/reading-list/ is the app made (or accepted from
+// the space's members) in that space, kept in the space's folder on this
+// device (sw/routes/spaces.js passes `within`).
+//
 // Like apps.js, a visit to a screen inside the app (/apps/reading-list/book/
 // 42) gets the app's page, with a <base> naming its folder.
 
@@ -16,11 +20,11 @@ import { APP_NAME, FILE_NAME, PAGE_CSP, PERMISSIONS_POLICY, pageProblems } from 
 
 const TYPES = { js: "text/javascript", html: "text/html", css: "text/css", md: "text/markdown" };
 
-/** A file of a made app, or undefined. @param {string} app @param {string} file */
-async function read(app, file) {
+/** A file of a made app, or undefined. @param {string} app @param {string} file @param {string[]} within */
+async function read(app, file, within) {
   try {
     let folder = await navigator.storage.getDirectory();
-    for (const part of ["made", "apps", app]) folder = await folder.getDirectoryHandle(part);
+    for (const part of [...within, "made", "apps", app]) folder = await folder.getDirectoryHandle(part);
     return await (await folder.getFileHandle(file)).getFile();
   } catch {
     return undefined;
@@ -32,19 +36,23 @@ const text = (body, status) => new Response(body, { status, headers: { "Content-
 export default {
   name: "made",
   prefix: "/apps/",
-  /** @param {Request} request @param {URL} url */
-  async handle(request, url) {
+  /**
+   * @param {Pick<Request, "method" | "mode">} request @param {URL} url @param {unknown} [_env]
+   * @param {string[]} [within] the folder the data is in: an app made in a space is kept under spaces/<space>/
+   */
+  async handle(request, url, _env, within = []) {
     if (request.method !== "GET" && request.method !== "HEAD") return undefined;
     const [, , app, ...rest] = decodeURIComponent(url.pathname).split("/");
     if (!app || !APP_NAME.test(app)) return undefined;
     const last = rest.at(-1) ?? "";
     if (request.mode === "navigate" || last === "" || last === "app.html" || !last.includes(".")) {
-      const file = await read(app, "app.html");
-      if (!file) return text(`There's no app called ${app} on this device. Make one at /new/.`, 404);
+      const file = await read(app, "app.html", within);
+      const inSpace = within[0] === "spaces" ? `/s/${within[1]}` : "";
+      if (!file) return text(`There's no app called ${app} on this device. Make one at ${inSpace}/new/.`, 404);
       const html = await file.text();
       const problems = pageProblems(html);
       if (problems.length) return text(`This app's page breaks the rules for made apps, so it isn't shown:\n\n${problems.map((p) => `line ${p.line}: ${p.message}`).join("\n")}`, 500);
-      const folder = `/apps/${app}/`;
+      const folder = `${inSpace}/apps/${app}/`;
       const based = html.replace(/<head\b[^>]*>/i, (head) => `${head}\n  <base href="${folder}">`);
       return new Response(based.includes(`<base href="${folder}">`) ? based : `<base href="${folder}">${html}`, {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP, "Permissions-Policy": PERMISSIONS_POLICY, "X-Content-Type-Options": "nosniff" },
@@ -52,7 +60,7 @@ export default {
     }
     // A file the page loads: one of the app's plugins, templates or styles.
     if (rest.length !== 1 || !FILE_NAME.test(last)) return text("Not found", 404);
-    const file = await read(app, last);
+    const file = await read(app, last, within);
     if (!file) return text("Not found", 404);
     const type = TYPES[/** @type {keyof typeof TYPES} */ (last.split(".").pop() ?? "")] ?? "application/octet-stream";
     return new Response(file, {

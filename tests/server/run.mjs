@@ -293,6 +293,79 @@ export default (ctx) => { ctx.routes.add("GET", "club-note", () => ({ text: "ran
   theirs.close();
 }
 
+/** Made apps (std/spaces/made-apps.ts): the space keeps the apps members share, tells every device, refuses what a made app can't be, and never runs one. */
+async function madeAppChecks(base, check, owner) {
+  const dee = await person(base).account("Dee");
+  await owner.call("/auth/spaces", { name: "makers" });
+  await dee.call("/auth/invites/accept", { token: (await owner.call("/auth/spaces/makers/invite", {})).body?.token });
+  const ownerId = (await owner.call("/auth/me")).body?.user?.id;
+  const mine = await client(base, "makers", owner.cookie);
+  const theirs = await client(base, "makers", dee.cookie);
+  let n = 0;
+  const ask = (who, request) => {
+    const id = ++n;
+    who.send({ t: "sync", op: "apps", id, ...request });
+    return new Promise((done) => {
+      const end = Date.now() + 5000;
+      const look = () => {
+        const reply = who.heard.find((m) => m.op === "apps:reply" && m.id === id);
+        if (reply || Date.now() > end) return done(reply);
+        setTimeout(look, 50);
+      };
+      look();
+    });
+  };
+  for (const who of [mine, theirs]) who.send({ t: "sync", op: "hello", since: 0 });
+  await new Promise((r) => setTimeout(r, 300));
+
+  const page = '<!doctype html><html lang="en"><head><title>Tides</title><script type="module" src="/platform/host.js"></script><link rel="plugin" href="tides.js"></head><body><main><slot name="main"></slot></main></body></html>';
+  const plugin = 'export const manifest = { id: "tides", name: "Tides", permissions: ["ui"] };\nexport default () => {};';
+  const files = [{ name: "app.html", text: page }, { name: "tides.js", text: plugin }, { name: "tides.html", text: "<template id=\"t\"></template>" }];
+  const shared = await ask(mine, { action: "share", name: "tides", files });
+  await new Promise((r) => setTimeout(r, 300));
+  const told = theirs.heard.some((m) => m.op === "apps:changed");
+  const listed = (await ask(theirs, { action: "list" }))?.list?.find((a) => a.name === "tides");
+  const got = await ask(theirs, { action: "get", name: "tides" });
+  check(
+    "space made apps: an app a member shares is kept by the space, every device hears of it, and another member gets its files, saying who shared it",
+    shared?.ok && told && listed?.title === "Tides" && listed.by === ownerId && listed.hash === shared.hash && got?.hash === shared.hash && got.files?.length === 3,
+    JSON.stringify({ shared, told, listed, got: got && { ok: got.ok, files: got.files?.map((f) => f.name) } }),
+  );
+
+  const leaner = await ask(mine, { action: "share", name: "tides", files: files.slice(0, 2) });
+  const now = await ask(theirs, { action: "get", name: "tides" });
+  check("space made apps: a new version replaces the old, leaving none of the files it no longer has, with a new hash", leaner?.ok && leaner.hash !== shared?.hash && now?.files?.length === 2, JSON.stringify(now?.files?.map((f) => f.name)));
+
+  const refusals = await Promise.all([
+    ask(mine, { action: "share", name: "../etc", files }),
+    ask(mine, { action: "share", name: "nopage", files: files.slice(1) }),
+    ask(mine, { action: "share", name: "scripted", files: [{ name: "app.html", text: page.replace("</head>", "<script>alert(1)</script></head>") }] }),
+    ask(mine, { action: "share", name: "badfile", files: [...files, { name: "../x.js", text: plugin }] }),
+    ask(mine, { action: "share", name: "notplugin", files: [files[0], { name: "tides.js", text: "export default 1;" }] }),
+    ask(mine, { action: "share", name: "huge", files: [files[0], { name: "big.css", text: "x".repeat(800_000) }] }),
+  ]);
+  check(
+    "space made apps: the space refuses a name that isn't an app's, no app.html, a page with its own script, a file a made app can't have, a plugin with no manifest, and over 700 KB",
+    refusals.every((r) => r && r.ok === false && r.error) && !(await ask(theirs, { action: "list" }))?.list?.some((a) => a.name !== "tides"),
+    JSON.stringify(refusals.map((r) => r?.error)),
+  );
+
+  const routes = await Promise.all(["/s/makers/apps/tides/", "/s/makers/apps/tides/tides.js"].map((path) => fetch(`${base}${path}`).then((r) => r.text(), () => "")));
+  check("space made apps: the space's server never serves a shared app's files", routes.every((text) => !text.includes('id: "tides"') && !text.includes("<title>Tides</title>")), routes.map((t) => t.slice(0, 60)).join(" | "));
+
+  const before = mine.heard.filter((m) => m.op === "apps:changed").length;
+  const gone = await ask(theirs, { action: "unshare", name: "tides" });
+  await new Promise((r) => setTimeout(r, 300));
+  const after = await ask(mine, { action: "list" });
+  check(
+    "space made apps: stopping sharing takes it off the space's list, and every device hears it",
+    gone?.ok && after?.ok && !after.list?.length && mine.heard.filter((m) => m.op === "apps:changed").length > before,
+    JSON.stringify({ gone, after }),
+  );
+  mine.close();
+  theirs.close();
+}
+
 async function syncChecks(base, check, owner, restart) {
   const bea = await person(base).account("Bea");
   await owner.call("/auth/spaces", { name: "shared" });
@@ -1035,6 +1108,7 @@ async function suite(name, make) {
     await oauthChecks(server.url, check);
     await blueskyChecks(server.url, check, atproto);
     await sharedPluginChecks(server.url, check, owner);
+    await madeAppChecks(server.url, check, owner);
     await syncChecks(server.url, check, owner, async () => {
       await server.stop();
       server = await host.start();
