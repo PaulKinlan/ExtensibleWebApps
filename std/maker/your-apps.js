@@ -98,7 +98,7 @@ export default function (ctx) {
     files = [];
     for (const name of app?.files ?? []) {
       const versions = (await ctx.call("maker", "history", picked, name).catch(() => [])).slice().reverse();
-      files.push({ name, versions, latest: versions[0]?.version ?? 0, count: versions.length });
+      files.push({ name, versions, latest: versions[0]?.version ?? 0, count: versions.length, label: versions.length === 1 ? "1 version" : `${versions.length} versions` });
     }
   };
 
