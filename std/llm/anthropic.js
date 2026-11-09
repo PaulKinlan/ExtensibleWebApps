@@ -94,7 +94,14 @@ const STOP = { end_turn: "end", stop_sequence: "end", tool_use: "tool", max_toke
 export default function (ctx) {
   const setting = async () => (await ctx.settings.get()).model || manifest.settings.model.default;
   const ready = async () => (await ctx.call("secrets", "has", SECRET)).set;
-  const ensureKey = async () => (await ready()) || (await ctx.call("secrets", "request", SECRET, { hosts: [HOST], label: "Anthropic API key" })).set;
+  /** Counts the keys the person has given here, so a late answer about an earlier key can't cost them the one they gave since. */
+  let given = 0;
+  const ensureKey = async () => {
+    if (await ready()) return true;
+    const { set } = await ctx.call("secrets", "request", SECRET, { hosts: [HOST], label: "Anthropic API key" });
+    if (set) given++;
+    return set;
+  };
 
   // The live model list, read at most once an hour.
   let listed;
@@ -103,19 +110,23 @@ export default function (ctx) {
    * What to say when the vendor answers with an error. A key the vendor refuses is forgotten, so the next
    * request asks for it again: a mis-pasted key would otherwise fail every request with no way to replace it.
    */
-  async function failure(response, data) {
+  async function failure(response, data, used) {
     if (response.status === 401) {
-      await ctx.call("secrets", "forget", SECRET).catch(() => {});
+      // Another request already had this key refused, and the person has given a new one since: leave that one be.
+      if (used !== given) return "Anthropic didn't accept the earlier API key. Ask again to use the one you gave since.";
       listed = undefined;
+      const kept = await ctx.call("secrets", "forget", SECRET).then(() => "", (error) => (error instanceof Error ? error.message : String(error)));
+      if (kept) return `Anthropic didn't accept that API key, and it couldn't be forgotten (${kept}). Reset this app's data to give another.`;
       return "Anthropic didn't accept that API key, so it has been forgotten. Ask again and paste the key once more.";
     }
     return data.error?.message ?? `HTTP ${response.status}`;
   }
   async function list() {
     if (listed && Date.now() - listed.at < 3_600_000) return listed.models;
+    const used = given;
     const response = await ctx.call("net", "fetch", { url: `${API}/v1/models?limit=1000`, headers: HEADERS });
     const data = JSON.parse(response.text || "{}");
-    if (!response.ok) throw new Error(await failure(response, data));
+    if (!response.ok) throw new Error(await failure(response, data, used));
     const models = (data.data ?? []).map((m) => ({ id: m.id, name: m.display_name }));
     listed = { at: Date.now(), models };
     return models;
@@ -126,7 +137,7 @@ export default function (ctx) {
     if (!tier) return model;
     // A list that can't be read falls back to the tier's own model, but a refused key ends the request here.
     const ids = await list().then((models) => models.map((m) => m.id), (error) => {
-      if (/didn't accept that API key/.test(String(error?.message))) throw error;
+      if (/didn't accept (that|the earlier) API key/.test(String(error?.message))) throw error;
       return [];
     });
     return newest(ids, tier.pattern) ?? tier.fallback;
@@ -157,6 +168,7 @@ export default function (ctx) {
       if (request.system) body.system = request.system;
       if (request.tools?.length) body.tools = request.tools.map((t) => ({ name: t.name, description: t.description ?? "", input_schema: t.parameters ?? { type: "object", properties: {} } }));
       if (request.schema) body.output_config = { format: { type: "json_schema", schema: request.schema } };
+      const used = given;
       const response = await ctx.call("net", "fetch", {
         url: `${API}/v1/messages`,
         method: "POST",
@@ -164,7 +176,7 @@ export default function (ctx) {
         body: JSON.stringify(body),
       });
       const data = JSON.parse(response.text || "{}");
-      if (!response.ok) return { error: await failure(response, data) };
+      if (!response.ok) return { error: await failure(response, data, used) };
       const text = data.content.filter((b) => b.type === "text").map((b) => b.text).join("");
       const answer = {
         text,
