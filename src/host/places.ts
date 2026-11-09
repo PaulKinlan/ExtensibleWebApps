@@ -50,9 +50,9 @@ interface Applied {
 }
 
 /** Elements a place may never match: plugins' views, other places, and the platform's own panels. */
-const OFF_LIMITS = ".place, [data-plugin], #review, #notice, #customize, .customize, .customize-button, #inspect";
+const OFF_LIMITS = ".place, [data-plugin], #review, #notice, #inspect";
 /** The platform's own panels, which a transform can't reach either. */
-const PLATFORM = "#review, #notice, #customize, .customize, .customize-button, #inspect";
+const PLATFORM = "#review, #notice, #inspect";
 const MAX_MATCHES = 200;
 const STRICTNESS = ["open", "review", "locked"];
 

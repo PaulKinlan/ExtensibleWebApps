@@ -31,7 +31,8 @@ export default async function ({ check, context, URL: site, errors }) {
     });
   check("the core imports no plugin, demo or page of the site", !found.length, found.join(", "));
 
-  // An app runs only what it links: habits links habits.js, so that is the only worker its tab starts.
+  // An app runs only what it links: habits links habits.js, so that and Customize (std/customize.js, which
+  // the host adds to every app) are the only workers its tab starts.
   const own = await context.browser().newContext();
   const page = await own.newPage();
   page.on("pageerror", (e) => errors.push(e.message));
@@ -40,7 +41,7 @@ export default async function ({ check, context, URL: site, errors }) {
   // Long enough for any plugin the kernel started on its own to have been spawned too.
   await page.waitForTimeout(1500);
   const running = await page.evaluate(() => [...window.__host.workers.keys()].map((key) => key.split("@")[0]).sort());
-  check("an app runs only the plugins it links", running.length === 1 && running[0] === "habits", running.join(", "));
+  check("an app runs only the plugins it links", running.join() === "customize,habits", running.join(", "));
 
   // With the workbench open in the same browser, one kernel serves both tabs. The workbench's tab-scoped
   // demo plugin (bars) runs in the workbench's tab only, not in the habits tab beside it.
@@ -52,7 +53,7 @@ export default async function ({ check, context, URL: site, errors }) {
   await second.goto(`${site}demos/habits/app.html`);
   await second.waitForSelector('[data-key^="habits:"]', { state: "attached", timeout: 10000 }).catch(() => {});
   await second.waitForTimeout(1500);
-  const beside = await second.evaluate(() => [...window.__host.workers.keys()].filter((key) => key.includes("@")));
+  const beside = await second.evaluate(() => [...window.__host.workers.keys()].filter((key) => key.includes("@") && !key.startsWith("customize@")));
   check("a tab-scoped plugin runs only in the tabs whose app links it", !beside.length, beside.join(", "));
   await own.close();
 }

@@ -72,7 +72,7 @@
     .side { grid-area: playground; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
     .empty { padding: 16px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--fg-2); }
     /* The debug console's bug sits bottom left, so the platform's Customize button goes bottom right. */
-    .customize-button { left: auto; right: 16px; }
+    body slot[name="customize"] > [data-plugin] { left: auto; right: 16px; }
     body > footer { padding: 16px; border-top: 1px solid var(--border); color: var(--fg-2); font-size: var(--text-sm); }
     @media (max-width: 800px) {
       .home { grid-template-columns: minmax(0, 1fr); grid-template-areas: "playground" "chapters"; }

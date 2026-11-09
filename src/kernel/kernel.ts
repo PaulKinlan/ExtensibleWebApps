@@ -132,6 +132,20 @@ services.authoring = authoring(remote, apps, {
   ask: (request, dispatch) => reviews.ask(request, dispatch),
   reopen: (app) => reopen(app),
   turnOn: (ids) => plugins.turnOn(ids),
+  shared: () => spaceShared,
+  origin: where.origin,
+  services: () => Object.keys(services),
+  page: (tab, method, args, dispatch) => {
+    const host = hosts.list.find((h) => h.tab === tab);
+    if (!host) throw new Error("That tab has closed");
+    return hosts.bridge("customize", method, args, dispatch, host);
+  },
+  unlock: async (app, plugin, place, on) => {
+    const grant = `unlock:${app}#${place}`;
+    if (on) await reviews.grant(plugin, grant);
+    else await reviews.forget(plugin, grant);
+    await reopen(app);
+  },
 });
 
 /**

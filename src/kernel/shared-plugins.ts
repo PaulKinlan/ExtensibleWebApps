@@ -71,32 +71,10 @@ async function filesOf(store: Store, userAdded: UserPlugins, app: string, id: st
  * Why a shared plugin can't go in an app's folder, if it can't: it is one plugin, every other file is one
  * its manifest lists, and none of its files belongs to another plugin there (which it would overwrite).
  */
-async function problem(store: Store, userAdded: UserPlugins, app: string, files: SharedFile[]): Promise<string | undefined> {
+async function problem(userAdded: UserPlugins, app: string, files: SharedFile[]): Promise<string | undefined> {
   const plugins = files.filter((f) => f.name.endsWith(".js"));
   if (plugins.length !== 1 || !("text" in plugins[0])) return "Share one plugin (.js) at a time";
-  let manifest;
-  try {
-    manifest = readManifest(plugins[0].text);
-  } catch (error) {
-    return `${plugins[0].name}: ${error instanceof Error ? error.message : error}`;
-  }
-  const listed = new Set(manifest.files ?? []);
-  const badName = files.find((f) => !FILE_NAME.test(f.name));
-  if (badName) return `${badName.name}: a file name is letters, digits, ., - and _`;
-  const extra = files.find((f) => f !== plugins[0] && !listed.has(f.name));
-  if (extra) return `${extra.name} isn't one of the files ${manifest.id} lists`;
-  const ours = new Set([`${manifest.id}.js`, ...listed]);
-  for (const other of await userAdded.list(app)) {
-    if (!other.id || other.id === manifest.id) continue;
-    const source = (await store.readText(`user/${app}/${other.file}`)) ?? "";
-    let theirs: string[] = [];
-    try {
-      theirs = readManifest(source).files ?? [];
-    } catch {}
-    const clash = [other.file, ...theirs].find((name) => ours.has(name));
-    if (clash) return `${clash} belongs to ${other.name ?? other.id}, another plugin for this app`;
-  }
-  return undefined;
+  return userAdded.problem(app, decode(files));
 }
 
 /**
@@ -175,7 +153,7 @@ export function spacePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts,
       if (!wellFormed(m.files)) return { ok: false, error: "A shared plugin is between 1 and 21 files" };
       if (sizeOf(m.files) > MAX_BYTES) return { ok: false, error: "A shared plugin and its files are 700 KB at most" };
       return serially(async () => {
-        const wrong = await problem(store, userAdded, app, m.files);
+        const wrong = await problem(userAdded, app, m.files);
         if (wrong) return { ok: false, error: wrong };
         const added = await put(userAdded, app, m.files);
         if (!added.ok) return { ok: false, error: added.error };
@@ -347,7 +325,7 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts
       if (!got) return;
       if (!got.ok || !got.files) continue;
       // The space checked it, but this device may have a plugin of its own that the files would overwrite.
-      const wrong = await problem(store, userAdded, s.app, got.files);
+      const wrong = await problem(userAdded, s.app, got.files);
       let error = wrong;
       if (!wrong) {
         if (await wasOn(s.app, s.id)) restart.add(s.app);
