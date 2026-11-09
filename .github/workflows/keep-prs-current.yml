@@ -2,7 +2,8 @@
 # time that their branch fell behind.
 #
 # Each time main changes, for every open PR whose branch is in this repo:
-#   - main merges cleanly: push the merge commit.
+#   - main merges cleanly: push the merge commit, and start the checks on it
+#     (a push by this workflow starts none by itself).
 #   - the only conflicts are generated files: take main's docs/api.md (only
 #     main writes it) and drop the registry files (the build makes them, and
 #     they aren't committed), then push. Branches from before they stopped
@@ -21,6 +22,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write # to start the checks on a merge it pushed (see push below)
   contents: write
   pull-requests: write
 
@@ -67,7 +69,13 @@ jobs:
           # GitHub won't let this workflow's token push a change to .github/workflows,
           # so a merge that brings one in is left for a person.
           push() {
-            if git push -q origin "$branch"; then note "$pr" ""
+            if git push -q origin "$branch"; then
+              note "$pr" ""
+              # A push made with this workflow's token starts no other workflow, so the merge commit, now the
+              # pull request's head, would have no checks at all and could be merged untested. Start them here.
+              for checks in platform-checks.yml server-checks.yml; do
+                gh workflow run "$checks" --repo "$REPO" --ref "$branch" || echo "::warning::Couldn't start $checks on $branch"
+              done
             else
               git reset -q --hard "origin/$branch"
               note "$pr" "Main has moved on and merges cleanly into this branch, but this bot couldn't push the merge (main changed \`.github/workflows\`, which its token can't do). Merge main into this branch once by hand."
