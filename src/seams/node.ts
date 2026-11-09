@@ -17,6 +17,9 @@ import { DatabaseSync } from "node:sqlite";
 import { checkPath, type Change, type Email, type Files, type Job, type Records, type Schedule, type Seams, type Secrets, type Stored } from "./index.ts";
 import { memorySchedule } from "./memory.ts";
 
+/** The end of a file's name while it is being written (nodeFiles' write). */
+const PARTIAL = ".partial";
+
 const missing = (error: unknown) => (error as NodeJS.ErrnoException)?.code === "ENOENT";
 
 export function nodeFiles(root: string): Files {
@@ -57,7 +60,16 @@ export function nodeFiles(root: string): Files {
     async write(path, data) {
       const file = await full(path);
       await mkdir(dirname(file), { recursive: true });
-      await writeFile(await full(path), data);
+      // Written beside it, then moved into place: a read at the same moment gets the old file or the new one,
+      // never a half-written one (an account's session, read while it is saved again).
+      const part = `${file}.${randomUUID()}${PARTIAL}`;
+      try {
+        await writeFile(part, data);
+        await rename(part, await full(path));
+      } catch (error) {
+        await rm(part, { force: true });
+        throw error;
+      }
     },
     async remove(path) {
       await rm(await full(path), { force: true });
@@ -76,7 +88,7 @@ export function nodeFiles(root: string): Files {
           const path = join(dir, e.name);
           // Links aren't followed: what they point at isn't in the folder.
           if (e.isDirectory()) await walk(path);
-          else if (e.isFile()) all.push(relative(root, path).split(sep).join("/"));
+          else if (e.isFile() && !e.name.endsWith(PARTIAL)) all.push(relative(root, path).split(sep).join("/"));
         }
       };
       await walk(root);

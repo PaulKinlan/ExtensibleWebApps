@@ -6,7 +6,14 @@
 
 /** Reports each refusal as a console error the watcher below picks up. */
 const listen = () => {
-  addEventListener("securitypolicyviolation", (e) => console.error(`[page policy] ${e.effectiveDirective} refused ${e.blockedURI || "inline"}${e.sample ? `: ${e.sample}` : ""} at ${e.sourceFile || location.pathname}:${e.lineNumber}`));
+  addEventListener("securitypolicyviolation", (e) => {
+    // A plugin's view may hold onclick= (the workbench's checks and the homepage's chapter 9 draw one on purpose).
+    // The host parses it, inert, and its sanitiser drops it; newer Chromium (158) reports the attribute
+    // as it is parsed, from the host's own script, though nothing runs. An inline handler in a page of the
+    // site is reported from that page instead, so it still fails the run.
+    if (e.effectiveDirective === "script-src-attr" && /\/platform\/host\.js$/.test(e.sourceFile)) return;
+    console.error(`[page policy] ${e.effectiveDirective} refused ${e.blockedURI || "inline"}${e.sample ? `: ${e.sample}` : ""} at ${e.sourceFile || location.pathname}:${e.lineNumber}`);
+  });
 };
 
 /** Starts watching `browser`'s contexts, made now or later; returns the refusals seen. @param {import("playwright").Browser} browser */

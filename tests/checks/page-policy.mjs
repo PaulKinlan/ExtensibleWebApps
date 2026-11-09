@@ -33,6 +33,9 @@ export default async function ({ check, context, URL, errors }) {
   const files = execFileSync("git", ["ls-files", "*.html"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter((f) => f && !/^(tests|vendor|elements)\//.test(f));
   const inline = files.filter((f) => [...readFileSync(new globalThis.URL(f, ROOT), "utf8").replace(/<!--[^]*?-->/g, "").matchAll(/<script\b([^>]*)>/gi)].some((m) => !/\bsrc=/i.test(m[1]) && !/type=["']?(speculationrules|application\/(ld\+)?json)/i.test(m[1])));
   check("no page holds an inline script (put it in a file next to the page)", !inline.length, inline.join(", "));
+  // Nor an onclick= or other handler in its markup, which the policy refuses too (a plugin's view may, as the host drops it).
+  const handlers = files.filter((f) => /<[a-z][^>]*\son[a-z]+\s*=/i.test(readFileSync(new globalThis.URL(f, ROOT), "utf8").replace(/<!--[^]*?-->/g, "")));
+  check("no page holds an inline event handler (onclick= and the like)", !handlers.length, handlers.join(", "));
 
   // The development server sends it, as Cloudflare and the Node server do.
   // Through the browser's own request client, so "localhost" resolves as it does for the pages (IPv4 or IPv6).
