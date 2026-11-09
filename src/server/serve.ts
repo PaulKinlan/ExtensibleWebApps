@@ -15,7 +15,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, join, resolve, sep } from "node:path";
 import { type Duplex, Readable } from "node:stream";
 import { MessageChannel, Worker } from "node:worker_threads";
+import type { Email } from "../seams/index.ts";
 import { nodeFiles } from "../seams/node.ts";
+import { smtpFromEnv } from "./smtp.ts";
 import { accounts } from "./auth/accounts.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
 import { signed } from "./signed.ts";
@@ -52,6 +54,8 @@ export interface Options {
    * (src/server/network-guard.ts).
    */
   allowPrivate?: string[];
+  /** How the server sends the mail server plugins send (src/server/smtp.ts); without it, mail stays in each space's outbox. */
+  email?: Email;
 }
 
 /** Starts the server; resolves once it is listening, with a way to stop it. */
@@ -79,10 +83,16 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     let started = spaces.get(name);
     if (!started) {
       started = new Promise<Worker>((ready, fail) => {
-        const worker = new Worker(resolve(options.kernel), { workerData: { dir: join(resolve(options.spaces), name), origin: url, allowPrivate: options.allowPrivate ?? [] } });
+        const worker = new Worker(resolve(options.kernel), { workerData: { dir: join(resolve(options.spaces), name), origin: url, allowPrivate: options.allowPrivate ?? [], email: !!options.email } });
         worker.on("message", (m) => {
           if (m?.t === "ready") ready(worker);
           // The kernel asks about its members: their email addresses (the only ones its plugins may email) and names.
+          // Mail the email module wrote to the outbox, to send.
+          if (m?.t === "deliver" && options.email)
+            void options.email.send(m.message).then(
+              (value) => worker.postMessage({ t: m.t, id: m.id, value }),
+              (error) => worker.postMessage({ t: m.t, id: m.id, value: { ok: false, error: String(error?.message ?? error) } }),
+            );
           if (m?.t === "addresses" || m?.t === "members") {
             const asked: Promise<unknown> = m.t === "addresses" ? auth.addresses(name) : auth.members(name);
             void asked.then(
@@ -393,6 +403,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     providers: providersFrom(process.env),
     origin: arg("origin", process.env.PUBLIC_ORIGIN ?? "") || undefined,
     allowPrivate: arg("allow-private", process.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean),
+    email: smtpFromEnv(process.env),
   });
   console.log(`Serving ${arg("site", "dist")} at ${url}; spaces at ${url.replace("http", "ws")}/s/<space>/kernel, kept in ${arg("spaces", ".spaces")}/`);
 }
