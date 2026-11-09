@@ -27,7 +27,9 @@ function check(name, ok, detail = "") {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? `  (${detail})` : ""}`);
 }
 
-const server = spawn(process.execPath, [fileURLToPath(new globalThis.URL("../node_modules/vite/bin/vite.js", import.meta.url)), "preview", "--port", String(PORT), "--strictPort"], { stdio: "pipe" });
+// On 127.0.0.1, whatever "localhost" resolves to first on this machine (::1 on GitHub's runners): pages use localhost, and
+// tests/checks/service-worker.mjs reaches the same server as another origin at 127.0.0.1.
+const server = spawn(process.execPath, [fileURLToPath(new globalThis.URL("../node_modules/vite/bin/vite.js", import.meta.url)), "preview", "--port", String(PORT), "--strictPort", "--host", "127.0.0.1"], { stdio: "pipe" });
 await new Promise((resolve, reject) => {
   server.stdout.on("data", (d) => String(d).includes(String(PORT)) && resolve());
   server.on("exit", (code) => reject(new Error(`vite preview exited with ${code}`)));
