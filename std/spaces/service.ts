@@ -24,7 +24,7 @@
 import { env } from "../../src/kernel/env";
 import type { ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
-import { thisDevice } from "./device";
+import { thisDevice } from "./this-device";
 import { askSpace, READS } from "./reflect";
 import { checkTopic, LIVE_HOOK, type LiveSpace } from "./live";
 import type { SyncToDevice } from "../../src/shared/sync";

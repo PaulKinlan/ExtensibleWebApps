@@ -20,7 +20,9 @@
 //
 // Each app has its own folder: the app a call comes from (the tab it was made
 // in, or the tabs that have the plugin's app open) picks which, so the
-// Markdown editor's site and another app's folder never mix. Before folders
+// Markdown editor's site and another app's folder never mix. A plugin two
+// apps both link, with both open, must say which tab a call is for (appOf
+// below): a call that doesn't fails, rather than guess. Before folders
 // were per app there was one for the browser profile; the first app to use
 // the service after that keeps it, picked folder and private files alike.
 // Spaces' servers have none.
@@ -252,15 +254,23 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   };
 
   /**
-   * The app a call is for: the app of the tab it was made in, if that app links the plugin, or else the
-   * app of the plugin's own tab, or of the first tab whose app links it. A plugin no app links has the workbench's.
+   * The app a call is for: the app of the tab it was made in, if that app links the plugin (an action's
+   * trace, and a hook's that the action set off, start with that tab), or else the app of the plugin's
+   * own tab, or the one app that every tab linking it has open. A plugin no app links has the workbench's.
+   *
+   * One copy of a plugin serves every app that links it. When two different apps both have it open and
+   * the call doesn't say which tab it came from (a plugin's own start, or a timer), the folder can't be
+   * known, so the call fails rather than use whichever app opened first: a guess could write one app's
+   * files into the other's folder.
    */
   const appOf = (plugin: string, dispatch: Dispatch = {}) => {
     const [id, own] = plugin.split("@");
     const tabs = own ? [own] : apps.tabsWith(id);
     const from = dispatch.trace?.split("-")[0];
-    const tab = from && tabs.includes(from) ? from : tabs[0];
-    return (tab && kernel.appIn(tab)) || NO_APP;
+    if (from && tabs.includes(from)) return kernel.appIn(from) || NO_APP;
+    const open = [...new Set(tabs.map((tab) => kernel.appIn(tab) || NO_APP))];
+    if (open.length > 1) throw new Error(`${id} is open in more than one app (${open.join(", ")}), and this call doesn't say which app's folder it is for. Make it while handling something the person did in one of them, or with ctx.traced()`);
+    return open[0] ?? NO_APP;
   };
 
   /** A file's bytes as a base64 data: URL, or null if there is no such file. */
