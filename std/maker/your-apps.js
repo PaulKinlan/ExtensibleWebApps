@@ -19,7 +19,8 @@
 //
 // In a space (/s/<space>/new/) it also lists the apps the space's members
 // shared, each to accept before it runs here (a review of its files), and
-// offers "Share with the space" for the person's own.
+// offers "Share with the space" for the person's own, and to copy in one
+// they made outside the space.
 
 export const manifest = {
   id: "your-apps",
@@ -54,6 +55,8 @@ export default function (ctx) {
   /** In a space: the apps its members shared, and what the last share or accept said. */
   let shared = { space: false, apps: [] };
   let sharing = null;
+  /** In a space: the apps the person made outside it, on this device, to copy in. */
+  let own = [];
 
   const draw = () => {
     const app = apps.find((a) => a.name === picked);
@@ -69,7 +72,7 @@ export default function (ctx) {
     const waiting = shared.apps.filter((a) => a.state !== "same");
     views.render("apps", "apps", {
       none: !apps.length,
-      space: inSpace ? { name: shared.space, offline: !!shared.offline, waiting: waiting.map((a) => ({ ...a, changed: a.state === "changed", when: new Date(a.at).toLocaleString(), label: a.state === "new" ? "Accept" : a.state === "changed" ? "Accept the new version" : "Accept, replacing yours" })), sharedHere: !!mine } : null,
+      space: inSpace ? { name: shared.space, offline: !!shared.offline, waiting: waiting.map((a) => ({ ...a, changed: a.state === "changed", when: new Date(a.at).toLocaleString(), label: a.state === "new" ? "Accept" : a.state === "changed" ? "Accept the new version" : "Accept, replacing yours" })), sharedHere: !!mine, own: own.filter((a) => !a.here) } : null,
       sharing,
       apps: apps.map((a) => ({ ...a, picked: a.name === picked })),
       app: app ? { ...app, revision } : null,
@@ -80,6 +83,7 @@ export default function (ctx) {
 
   const loadShared = async () => {
     shared = await ctx.call("maker", "shared").catch(() => ({ space: false, apps: [] }));
+    own = shared.space ? await ctx.call("maker", "ownApps").catch(() => []) : [];
   };
   const load = async () => {
     apps = await ctx.call("maker", "list").catch(() => []);
@@ -185,6 +189,12 @@ export default function (ctx) {
     if (action === "unshare" && picked) {
       const result = await ctx.call("maker", "unshare", picked).catch((error) => ({ ok: false, error: error.message }));
       sharing = result.ok ? { text: `No longer shared. Members who accepted it keep their copy.`, tone: "ok" } : { text: `Still shared: ${result.error}`, tone: "warn" };
+      return load();
+    }
+    if (action === "copy-in") {
+      const result = await ctx.call("maker", "copyIn", String(value)).catch((error) => ({ ok: false, error: error.message }));
+      sharing = result.ok ? { text: `Copied into this space. Share it with the space when you're ready.`, tone: "ok" } : { text: `Not copied: ${result.error}`, tone: "warn" };
+      if (result.ok) picked = String(value);
       return load();
     }
     if (action === "accept") {
