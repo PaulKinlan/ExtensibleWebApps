@@ -6,6 +6,7 @@
 // Each file's default export takes what it needs from the host and returns its
 // methods.
 
+import type { Opened } from "../../shared/protocol";
 import type { places } from "../places";
 
 export interface BridgeHost {
@@ -17,6 +18,10 @@ export interface BridgeHost {
   declared: (plugin: string, name: string) => { data: Record<string, string> }[];
   /** Runs a page command in the kernel, as the workbench does: a bridge that hears from the page (a WebMCP tool's call) answers through it. */
   command: (name: string, arg?: unknown) => Promise<unknown>;
+  /** The plugins running for this tab's app, as the kernel last said. */
+  running: () => Opened[];
+  /** Starts inspect mode (inspect.ts), on a page that has it. */
+  inspect?: () => void;
 }
 
 type Methods = Record<string, (...args: any[]) => unknown>;

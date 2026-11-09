@@ -35,7 +35,7 @@ The plugins in the top two layers reach an app at three levels. The level says w
 | **Space plugins** | A member, sharing one of their own with a space | Browsers only, never the server | Every member of that space, turned off until each turns it on |
 | **User plugins** | A person, in Customize, or their agent ([the registry](guide/plugin-registry.md) is one place to find them) | Their browser only | Them, on that device |
 
-Customize keeps user plugins ([`user-plugins.ts`](../src/kernel/user-plugins.ts)), and a space keeps its space plugins ([`shared-plugins.ts`](../src/kernel/shared-plugins.ts)). [Servers and spaces](server.md#space-plugins) says how a plugin is shared, turned on and removed.
+Customize ([`std/customize.js`](../std/customize.js), a standard plugin the host adds to every app) works on them through the core `authoring` service. The kernel keeps user plugins ([`user-plugins.ts`](../src/kernel/user-plugins.ts)), and a space keeps its space plugins ([`shared-plugins.ts`](../src/kernel/shared-plugins.ts)). [Servers and spaces](server.md#space-plugins) says how a plugin is shared, turned on and removed.
 
 ## Cordis
 
