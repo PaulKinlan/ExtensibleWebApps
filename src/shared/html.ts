@@ -5,14 +5,17 @@
 // reference prints these tables, so the builder reads the same list the
 // sanitiser enforces.
 
-/** The attributes of a <canvas> in a view (each side at most 4096 pixels). */
-export const CANVAS_ATTRIBUTES = ["id", "width", "height", "pointer"];
+// What is allowed, by name, is html-allowed.ts: the page's sanitiser reads only that, so no page carries the
+// words below, which are for the reference. The types hold the two to each other: an element or component
+// named there and not described here, or the other way round, doesn't compile.
+import { COMPONENT_NAMES, ELEMENT_NAMES } from "./html-allowed";
+export { CANVAS_ATTRIBUTES, COMPONENT_NAMES, DROPPED_WITH_CONTENT, ELEMENT_ATTRIBUTES, ELEMENT_NAMES, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "./html-allowed";
 
-/** The largest HTML view the kernel passes on, in characters. */
-export const HTML_MAX = 200_000;
+// The most HTML a view may be: kept in a file of its own (html-max.ts), so the kernel, which only needs the number, doesn't carry this whole list.
+export { HTML_MAX } from "./html-max";
 
 /** Plain HTML elements, and what each is for. */
-export const ELEMENTS: Record<string, string> = {
+export const ELEMENTS: Record<(typeof ELEMENT_NAMES)[number], string> = {
   div: "A block",
   span: "An inline run",
   p: "A paragraph",
@@ -77,41 +80,8 @@ export const ELEMENTS: Record<string, string> = {
   slot: "A room in this view that other plugins fill: `<slot name=\"<your plugin id>.<room>\" data-id=\"…\">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md",
 };
 
-/**
- * Attributes allowed on every element. `aria-*` and `data-*` are allowed too.
- * `class` is for the plugin's own stylesheet, which only reaches its own views.
- */
-export const GLOBAL_ATTRIBUTES = ["title", "role", "hidden", "lang", "dir", "tabindex", "key", "class"];
-
-/** Attributes allowed on particular elements. */
-export const ELEMENT_ATTRIBUTES: Record<string, string[]> = {
-  a: ["href"],
-  img: ["src", "alt", "width", "height", "loading"],
-  ol: ["start", "reversed"],
-  th: ["colspan", "rowspan", "scope"],
-  td: ["colspan", "rowspan"],
-  details: ["open"],
-  form: ["novalidate"],
-  label: ["for"],
-  input: ["type", "name", "value", "placeholder", "checked", "disabled", "readonly", "required", "min", "max", "step", "minlength", "maxlength", "pattern", "autocomplete", "id"],
-  select: ["name", "disabled", "required", "multiple", "id"],
-  option: ["value", "selected", "disabled"],
-  textarea: ["name", "placeholder", "disabled", "readonly", "required", "rows", "minlength", "maxlength", "id"],
-  button: ["type", "disabled", "name", "value"],
-  fieldset: ["disabled"],
-  progress: ["value", "max"],
-  meter: ["value", "min", "max", "low", "high", "optimum"],
-  time: ["datetime"],
-  slot: ["name"],
-  svg: ["viewBox", "preserveAspectRatio", "width", "height", "focusable"],
-  canvas: CANVAS_ATTRIBUTES,
-};
-
-/** Input types a plugin may use. */
-export const INPUT_TYPES = ["text", "search", "email", "url", "tel", "number", "range", "date", "time", "datetime-local", "month", "week", "color", "checkbox", "radio", "hidden"];
-
 /** The host's own components. Any attribute is allowed on these except event handlers, `style` and `data-plugin`. */
-export const COMPONENTS: Record<string, { attributes: string; about: string }> = {
+export const COMPONENTS: Record<(typeof COMPONENT_NAMES)[number], { attributes: string; about: string }> = {
   "ui-stack": { attributes: "direction=\"row\", gap=\"1\"…\"6\", align=\"start|center|end|stretch\", justify=\"start|center|end|between\", wrap", about: "Lays its children out in a column (or a row) with even spacing." },
   "ui-grid": { attributes: "min=\"12rem\", gap=\"1\"…\"6\"", about: "As many columns as fit, each at least `min` wide." },
   "ui-card": { attributes: "tone=\"accent|ok|warn|danger\"", about: "A bordered surface for one thing." },
@@ -135,8 +105,6 @@ export const COMPONENTS: Record<string, { attributes: string; about: string }> =
   "ui-summarizer": { attributes: "action, label, kind, length, context, lang, subject", about: "A button that summarises its text content on the device, sending `action` with { text } or { error } (see elements/ui-summarizer.html)." },
   "ui-waveform": { attributes: "peaks=\"-12,30,…\", duration, select=\"from,to\", action, playing=\"at,from,to\", label", about: "A sound's waveform, from `peaks` (a low and a high from -100 to 100 for each column) and its `duration` in seconds. Dragging across it (or Shift and the arrow keys) picks a part, sent as `action` with { from, to } in seconds; a click sends a cursor. `select` sets the part shown as picked; `playing` runs a playhead from `from` to `to` starting at `at` (ms since the epoch)." },
 };
-
-export const DROPPED_WITH_CONTENT = new Set(["script", "style", "template", "iframe", "frame", "frameset", "object", "embed", "link", "meta", "base", "noscript", "math", "video", "audio", "source", "track", "portal"]);
 
 /** How a plugin's view reports what the person did. */
 export const ACTIONS = [

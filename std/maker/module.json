@@ -1,0 +1,10 @@
+{
+  "services": [
+    "maker"
+  ],
+  "hooks": [
+    "maker:changed",
+    "maker:check",
+    "maker:shared"
+  ]
+}

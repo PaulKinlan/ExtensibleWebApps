@@ -4,7 +4,10 @@
 // is dropped: elements that hold code or load things go with their content,
 // unknown elements are unwrapped so their text survives.
 
-import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../shared/html";
+import { COMPONENT_NAMES, DROPPED_WITH_CONTENT, ELEMENT_ATTRIBUTES, ELEMENT_NAMES, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../shared/html-allowed";
+
+const ELEMENTS = new Set<string>(ELEMENT_NAMES);
+const COMPONENTS = new Set<string>(COMPONENT_NAMES);
 import { drawing, type DrawScope } from "./drawing-hooks";
 import { html as trusted } from "./trusted";
 
@@ -56,7 +59,7 @@ export function customProperties(value: string): string | undefined {
 function allowedAttribute(tag: string, name: string): boolean {
   // data-plugin marks which plugin's stylesheet applies to a view, so only the host sets it.
   if (name.startsWith("on") || name === "style" || name === "slot" || name === "is" || name === "data-plugin") return false;
-  if (tag in COMPONENTS) return true;
+  if (COMPONENTS.has(tag)) return true;
   if (name.startsWith("aria-") || name.startsWith("data-")) return true;
   return GLOBAL_ATTRIBUTES.includes(name) || (ELEMENT_ATTRIBUTES[tag] ?? []).includes(name);
 }
@@ -111,7 +114,7 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       copy(el, into, owner, remote, base);
       continue;
     }
-    if (!(tag in ELEMENTS) && !(tag in COMPONENTS)) {
+    if (!ELEMENTS.has(tag) && !COMPONENTS.has(tag)) {
       copy(el, into, owner, remote, base); // unwrap: keep the text, lose the element
       continue;
     }

@@ -22,7 +22,7 @@ import { themeCss } from "../shared/theme";
 import { isAgentFile, runnerHref } from "../shared/agent-runner";
 import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
-import { audioProbe, audioStats } from "./bridges/audio";
+import { audioProbe, audioStats } from "./audio-stats";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn, loadElement, onElementError } from "./elements";
 import { morphChildren } from "./morph";

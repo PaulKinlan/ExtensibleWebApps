@@ -15,7 +15,8 @@ import { capabilityFor, hookOwners, hooks, type Mode } from "./hooks";
 import { ACTIONS, COMPONENTS, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, HTML_MAX, INPUT_TYPES } from "../shared/html";
 import { SVG_ATTRIBUTES } from "../shared/svg";
 import { ELEMENT_NOTES, SVG_ELEMENTS } from "../shared/svg-docs";
-import { MANIFEST_FIELDS, RESERVED } from "./manifest";
+import { RESERVED } from "./manifest";
+import { MANIFEST_FIELDS } from "./manifest-fields";
 import { RECORD_FIELDS } from "./records";
 import { SCHEMA_KEYWORDS } from "./schema";
 import { PLATFORM } from "./paths";
@@ -183,6 +184,8 @@ export const COMMANDS: Record<Command, string> = {
   trace: "() The most recent trace events.",
   changes: "() The change log.",
   sync: "() In a page at /s/<space>/…: this copy of the space's sync, as { seq, connected, pending, drafts }; elsewhere { space: false }.",
+  fetched: "() The addresses of the files the kernel itself has fetched (its modules, mostly), so a page on its first visit can have the service worker keep them for offline.",
+  modules: "() Each kernel module the site lists (kernel.json): { name, running, unused }. A module runs once something it adds is used; `unused` is what its manifest lists that it hasn't added.",
   reference: "() This reference, as { data, markdown }.",
   "user:list": "({ app }) The person's own plugins for an app: each file, its manifest's id, name, permissions and places, and whether it is on.",
   "user:add": "({ app, files: [{ name, data }] } or { app, url }) Adds plugins (.js) and the files they bring to an app's user folder; from a URL on this site, the files its manifest lists come too. They start off.",

@@ -1,0 +1,13 @@
+{
+  "services": [
+    "agents"
+  ],
+  "hooks": [
+    "agent:beforeTool",
+    "agent:budget",
+    "agent:done",
+    "agent:run",
+    "agent:toolResult",
+    "agent:wake"
+  ]
+}

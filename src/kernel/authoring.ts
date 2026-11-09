@@ -21,7 +21,6 @@
 // plugins (a security reviewer) may stop it with { block: reason }, which
 // the caller gets back as the error, or let it through to the review.
 
-import { defineHook } from "./hooks";
 import { readManifest } from "./manifest";
 import type { Dispatch } from "../shared/protocol";
 import type { RemotePlugins, ServiceProvider } from "./remote";
@@ -31,16 +30,6 @@ import type { UserPlugin, UserPlugins } from "./user-plugins";
 import { asMove, movable, type Moved } from "./moves";
 
 type Apps = { linkedBy(tab: string): string[] | undefined; tabsWith?(id: string): string[] };
-
-defineHook("plugins:beforeAdd", {
-  mode: "serial",
-  timeoutMs: 2000,
-  agentTimeoutMs: 20_000,
-  onFailure: "open",
-  args: "{ app, id, name, permissions, code, how, by }",
-  description:
-    "Before one of the person's own plugins is added or changed (how: save, add or pick), and before they see its review card: a checker gets its code and the permissions it asks for, and may return { block: reason } to stop it. by is the plugin that asked. It carries the code, so listening needs hook:intercept:plugins:beforeAdd.",
-});
 
 /** What saving needs from the kernel: the person's plugins, the app open in each tab, and the review. */
 export interface Saving {

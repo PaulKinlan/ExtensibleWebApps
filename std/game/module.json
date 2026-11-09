@@ -1,0 +1,15 @@
+{
+  "services": [
+    "game"
+  ],
+  "hooks": [
+    "game:ended",
+    "game:frame",
+    "game:rules",
+    "game:started",
+    "game:update"
+  ],
+  "commands": [
+    "game-state"
+  ]
+}

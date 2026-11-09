@@ -60,7 +60,7 @@ function mayNeed(caps: Set<string>, needs: string): boolean {
   return false;
 }
 
-const make = ({ remote }: ModuleKernel): ServiceProvider => {
+const make = ({ remote, whole }: ModuleKernel): ServiceProvider => {
   /**
    * The names a `names` argument may take for this caller, by the gate's own
    * prefix rules; null when a wildcard covers the whole prefix. For `data:`
@@ -97,6 +97,8 @@ const make = ({ remote }: ModuleKernel): ServiceProvider => {
 
   async function toolsFor(instance: string, dispatch: { trace?: string }): Promise<Entry[]> {
     const caps = remote.installed.get(base(instance))?.caps ?? new Set<string>();
+    // Every service's methods are read below, so every module the site lists is running first.
+    await whole();
     const collections = new Map<string, Collection>();
     if (remote.services.data) for (const c of ((await remote.services.data.call(instance, "collections", [], dispatch)) ?? []) as Collection[]) collections.set(c.name, c);
     const entries: Entry[] = [];

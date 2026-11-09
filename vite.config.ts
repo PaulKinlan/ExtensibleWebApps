@@ -151,9 +151,14 @@ function notFoundPage(): Plugin {
 
 export default defineConfig({
   // The kernel's modules: in the worker build, and in development, where Vite serves the kernel through this pipeline.
-  plugins: [kernelModules(), workerPolicy(), siteHeaders(), asWritten(), notFoundPage()],
-  // The kernel is a worker: its modules are the ones kernel.json lists.
-  worker: { format: "es", plugins: () => [kernelModules()] },
+  plugins: [kernelModules({ split: true }), workerPolicy(), siteHeaders(), asWritten(), notFoundPage()],
+  // The kernel is a worker: its modules are the ones kernel.json lists, each a file of its own it fetches when first used.
+  worker: {
+    format: "es",
+    plugins: () => [kernelModules({ split: true })],
+    // A module's file says which it is: /assets/kernel-router-<hash>.js.
+    rollupOptions: { output: { chunkFileNames: (chunk) => `assets/${/\/std\/([a-z][a-z0-9-]*)\/module\.ts$/.exec(chunk.facadeModuleId ?? (chunk.name === "module" ? chunk.moduleIds.find((id) => id.endsWith("/module.ts")) : undefined) ?? "")?.[1]?.replace(/^/, "kernel-") ?? "[name]"}-[hash].js` } },
+  },
   build: {
     target: "es2022",
     // The host is the one entry: /platform/host.js, which every page loads. Pages themselves are copied as written.

@@ -1,0 +1,10 @@
+{
+  "services": [
+    "llm"
+  ],
+  "hooks": [
+    "llm:complete",
+    "llm:models",
+    "llm:providers"
+  ]
+}

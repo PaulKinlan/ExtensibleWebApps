@@ -28,8 +28,10 @@ export function serviceWorker(command: (name: Command, arg?: unknown) => Promise
   navigator.serviceWorker.register("/sw.js", { type: "module", scope: "/" }).catch((error) => report("service-worker", `Couldn't start the service worker: ${error instanceof Error ? error.message : error}`));
   // On the first visit the page loaded before the service worker started, so it kept nothing: tell it what this page loaded.
   if (first) {
-    void navigator.serviceWorker.ready.then((registration) => {
-      const urls = [location.href, ...performance.getEntriesByType("resource").map((entry) => entry.name)].filter((u) => new URL(u).origin === location.origin);
+    void navigator.serviceWorker.ready.then(async (registration) => {
+      // And what the kernel fetched in its own worker, which this page's list doesn't have: the kernel modules its app uses.
+      const kernel = (await command("fetched").catch(() => [])) as unknown;
+      const urls = [location.href, ...performance.getEntriesByType("resource").map((entry) => entry.name), ...(Array.isArray(kernel) ? kernel.filter((u): u is string => typeof u === "string") : [])].filter((u) => new URL(u).origin === location.origin);
       registration.active?.postMessage({ t: "sw:warm", urls });
     });
   }
