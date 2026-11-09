@@ -282,7 +282,15 @@ Registers an AudioWorklet processor, from its source, under a name.
 
 ### authoring
 
-Helps a plugin editor: reads the code of the plugins in the caller's app and files next to the caller, checks a draft's manifest, and saves the person's own plugins, after they review each one. The caller must be tab-scoped.
+The person's own plugins for an app, for a plugin editor, a Customize panel or an agent: reads the code of the plugins in the caller's app and files next to the caller, checks a draft's manifest, and adds, saves, turns on and off, removes and shares the person's own plugins. Every change but on and off waits for them to accept a review. The caller must be tab-scoped, or linked by an open app.
+
+#### authoring.add
+
+`authoring.add(url)` → { ok: true, id } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn().
 
 #### authoring.check
 
@@ -308,13 +316,53 @@ Needs: `plugins:author`.
 
 A .js file in the caller's own folder or below it, such as the starting templates beside std/plugin-editor.js.
 
-#### authoring.mine
+#### authoring.inspect
 
-`authoring.mine()` → [{ id, name, on, error? }]
+`authoring.inspect()` → true
+
+Needs: `plugins:read`.
+
+Starts the page's inspect mode, where the person points at a part to see which plugin drew it.
+
+#### authoring.lock
+
+`authoring.lock(plugin, place)` → { ok: true }
 
 Needs: `plugins:author`.
 
-The person's own plugins for the caller's app.
+Locks a part of the page again, for a plugin that was let into it.
+
+#### authoring.mine
+
+`authoring.mine()` → [{ id, name, description, permissions, places, on, shared, error? }]
+
+Needs: `plugins:author`.
+
+The person's own plugins for the caller's app. In a space, shared says which are the space's plugins.
+
+#### authoring.packages
+
+`authoring.packages()` → [{ id, name, description, href, permissions, added, adds: [href] }]
+
+Needs: `plugins:read`.
+
+The site's plugin registry (/packages/): each package, whether the person has added it to this app, and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.
+
+#### authoring.page
+
+`authoring.page()` → { space, places: [{ plugin, name, at, put, each, state, matches, fragile }], running: [{ id, name, user, unlocked }], samples: [{ href, title }], inspect }
+
+Needs: `plugins:read`.
+
+The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample), and whether it has inspect mode.
+
+#### authoring.pick
+
+`authoring.pick()` → { ok: true, ids } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+Opens the file chooser, right after the person clicks, and adds the plugin they pick (with any files it lists) to their own for the caller's app, once they accept a review of its code. It is added off.
 
 #### authoring.remove
 
@@ -332,6 +380,14 @@ Needs: `plugins:author`.
 
 Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins.
 
+#### authoring.share
+
+`authoring.share(id)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+In a space: shares one of the person's own plugins with the other members, once they accept a review that shows its code. It reaches the others' devices turned off.
+
 #### authoring.source
 
 `authoring.source(id)` → { id, name, code }
@@ -339,6 +395,30 @@ Saves a plugin as one of the person's own for the caller's app, and turns it on,
 Needs: `plugins:read`.
 
 The code of a plugin the caller's app links, or of one of the person's own for it, on or off.
+
+#### authoring.turn
+
+`authoring.turn(id, on)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:manage`.
+
+Turns one of the person's own plugins for the caller's app on or off. The app's own plugins are switched with plugins.setEnabled.
+
+#### authoring.unlock
+
+`authoring.unlock(plugin, place)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+Lets a plugin into a part of the page the app's author locked, once the person accepts a review that says so.
+
+#### authoring.unshare
+
+`authoring.unshare(id)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+In a space: stops sharing a space plugin, once the person accepts a review. It goes from the other members' devices and stays here as theirs.
 
 ### bus
 
@@ -1214,9 +1294,9 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `members` | Call sync.members. |
 | `network:<host>` | Call net.fetch. |
-| `plugins:author` | Call authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file. |
-| `plugins:manage` | Call plugins.setEnabled. |
-| `plugins:read` | Call authoring.source, authoring.check, plugins.app. |
+| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
+| `plugins:manage` | Call authoring.turn, plugins.setEnabled. |
+| `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.inspect, authoring.check, plugins.app. |
 | `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
@@ -1338,6 +1418,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-diagram>` | label | A Mermaid diagram: its text content is the diagram, in Mermaid's language (flowchart, sequenceDiagram, …). `label` says what it shows, for screen readers. Mermaid loads the first time one is drawn. |
 | `<ui-markdown>` | src, pages="/docs/", repo, sets-title, compact | A Markdown file in the template's folder (or below it), drawn as a page, with ```mermaid blocks as diagrams. Raw HTML in it shows as text. `pages` is a folder whose .md files are this app's screens (links to them drop .md); `repo` is where links to source go; `sets-title` makes its first heading the page's title; `compact` is for a list of contents. |
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
+| `<ui-panel>` | label, toggle | A button labelled `label` that opens a panel above the page, holding the element's content; where the button sits is up to the slot. `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-close` closes the panel as well as sending its action. |
 
 ### Actions
 

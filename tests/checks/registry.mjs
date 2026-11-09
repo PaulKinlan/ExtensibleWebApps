@@ -13,14 +13,19 @@ export default async function ({ check, openTab, URL }) {
   const list = () => page.evaluate((app) => window.__host.command("user:list", { app }), app);
   const turn = (id, on) => page.evaluate(([app, id, on]) => window.__host.command(on ? "user:on" : "user:off", { app, id }), [app, id, on]);
   try {
-    await page.click(".customize-button");
+    await page.click("ui-panel .launch");
     const listed = await page.waitForSelector('[data-package="world-clock"]', { timeout: 8000 }).then(() => true, () => false);
     check("Customize lists the plugins in the site's registry", listed);
     await page.click('[data-package="world-clock"]');
+    // Customize is a plugin, so each package it adds waits for the person to accept a review of its code.
+    for (const name of ["adds Clock", "adds World clock"]) {
+      await page.waitForSelector(`[data-key^="review:"] >> text=${name}`, { timeout: 15000 }).catch(() => {});
+      await page.click('[data-key^="review:"] >> text=Accept', { timeout: 5000 }).catch(() => {});
+    }
     // Waits for Customize to say it is done, rather than asking the kernel while it writes.
     const status = await page
-      .waitForFunction(() => /^Added /.test(document.querySelector("dialog [role=status]")?.textContent ?? ""), null, { timeout: 20000 })
-      .then(() => page.evaluate(() => document.querySelector("dialog [role=status]").textContent), () => "");
+      .waitForFunction(() => /^Added /.test(document.querySelector("ui-panel [role=status]")?.textContent ?? ""), null, { timeout: 20000 })
+      .then(() => page.evaluate(() => document.querySelector("ui-panel [role=status]").textContent), () => "");
     const ids = (await list()).map((p) => p.id).sort();
     check("adding a package adds the package that provides the service it needs", ids.join() === "clock,world-clock" && /Clock and World clock/.test(status), `${ids.join()}: ${status}`);
     await turn("clock", true);

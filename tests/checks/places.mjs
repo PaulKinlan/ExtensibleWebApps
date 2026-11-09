@@ -25,7 +25,7 @@ export default async function ({ a, check, openTab, URL }) {
 
   // The trip: no slots, no plugins, and still a person can add to it.
   const trip = await withSamples("demos/trip", ["countdown", "packing"]);
-  check("an app with no slots and no plugins still gets the Customize button", !!(await trip.$(".customize-button")));
+  check("an app with no slots and no plugins still gets the Customize button", !!(await trip.waitForSelector("ui-panel .launch", { timeout: 8000 }).catch(() => null)));
   const listed = await trip.evaluate(() => window.__host.command("user:list", { app: "demos/trip" }));
   check("a plugin a person adds starts off, until they turn it on", listed.length === 2 && listed.every((p) => !p.on), JSON.stringify(listed.map((p) => [p.id, p.on])));
   await turn(trip, "demos/trip", "countdown", true);
