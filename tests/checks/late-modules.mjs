@@ -117,7 +117,7 @@ export default async (ctx) => {
       missing = await notKept();
     }
     // The last tab closes, so the kernel stops: the next tab's kernel starts with no module's file in memory.
-    await first.page.close({ runBeforeUnload: true });
+    await first.page.close();
     await visit.setOffline(true);
     const { page, opened } = await open();
     const bench = opened ? await page.evaluate(() => window.__host.command("bench", 5)).catch((e) => ({ error: String(e.message ?? e).split("\n")[0] })) : { error: "the app didn't open offline" };

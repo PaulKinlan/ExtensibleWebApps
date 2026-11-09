@@ -36,7 +36,8 @@ const drawn = () => {
   };
   return {
     plugins: document.querySelectorAll('link[rel="plugin"], link[rel="agent"]').length,
-    views: [...document.querySelectorAll("[data-key]")].filter(seen).length,
+    // Customize is on every app's page, whatever the app links: it doesn't show that the app drew.
+    views: [...document.querySelectorAll('[data-key]:not([data-key^="customize"])')].filter(seen).length,
     words: text(document.body).trim().split(/\s+/).filter(Boolean).length,
   };
 };
@@ -71,9 +72,9 @@ export default async function ({ check, context, URL: site }) {
         });
         try {
           await page.goto(`${site}${path}`, { waitUntil: "load", timeout: 30000 });
-          // An app page has drawn once a plugin's view is on it; any page, once it has something to read.
+          // An app page has drawn once a view of a plugin it links is on it; any page, once it has something to read.
           const isApp = await page.evaluate(() => !!document.querySelector('link[rel="plugin"], link[rel="agent"]'));
-          if (isApp) await page.waitForFunction(() => [...document.querySelectorAll("[data-key]")].some((el) => el.getBoundingClientRect().height > 0), null, { timeout: 15000 }).catch(() => {});
+          if (isApp) await page.waitForFunction(() => [...document.querySelectorAll('[data-key]:not([data-key^="customize"])')].some((el) => el.getBoundingClientRect().height > 0), null, { timeout: 15000 }).catch(() => {});
           await page.waitForTimeout(700);
           const shown = await page.evaluate(drawn);
           if (shown.plugins && !shown.views) found.push(`never drew: it links ${shown.plugins} plugins and no view is on the page`);
