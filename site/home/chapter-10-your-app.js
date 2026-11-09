@@ -1,7 +1,7 @@
 // Chapter 10, an app of your own. Its words are in chapter-10-your-app.html:
 // what an app is, the one command that makes a project of your own
 // (scripts/create-app.mjs), and how to put the app online by itself
-// (scripts/deploy-app.mjs). It only draws, so it asks for nothing but ui.
+// (scripts/extensible-app.mjs deploy). It only draws, so it asks for nothing but ui.
 
 export const manifest = {
   id: "chapter-10-your-app",
