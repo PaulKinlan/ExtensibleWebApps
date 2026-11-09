@@ -18,6 +18,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Contacts</title>
   <meta name="description" content="People, and their birthdays.">
+  <meta name="gallery" content="slots">
+  <meta name="gallery-about" content="People, with a live search and their birthdays. A vCard importer asks before it adds anyone.">
+  <meta name="gallery-shows" content="live search, review.">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="people.js">
@@ -43,6 +46,6 @@
   <aside>
     <slot name="side"></slot>
   </aside>
-  <slot name="debug"></slot>
+  <slot name="debug" float></slot>
 </body>
 </html>

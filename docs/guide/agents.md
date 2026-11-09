@@ -40,6 +40,7 @@ fill in what's missing ...
 | `if-unsure` | Optional, for checks: `allow` (the default) or `block`, what happens to an action the agent couldn't check in time, within its limits, or with an answer. |
 | `limits` | Optional: `runs-per-hour` (30), `tokens-per-day` (200000) and `steps`, the model turns in one run (12). |
 | `acts-as` | Optional: `self` (the default), the agent acts under its own name; or `person`, it may [act for the person](#acting-for-the-person) once they let it. |
+| `runner` | Optional: the [agent loop](#a-different-loop) to run, as an address relative to the file, such as `./plan-then-act.js`. Without one, the standard loop, [`/std/agents/runner.js`](../../std/agents/runner.js). |
 
 The frontmatter is a small part of YAML: `key: value`, lists as `[a, b]` or `- item` lines, maps as `{ a: 1 }` or indented lines, and `#` comments. The file's name ends in `.agent.md`. An agent can't own a collection, so waking on `data:changed:<collection>` needs `data:read:<collection>` in `permissions`. `npm run check` reads the file the way the kernel does and says what is wrong.
 
@@ -66,6 +67,16 @@ flowchart LR
 A change the agent makes wakes other plugins as usual, but not the agent itself: the `data:changed` its own committed write causes is skipped. Anyone else's change to the same record still wakes it.
 
 The loop reaches the model and its tools through the `agents` service, not `llm` and `tools` directly. So the kernel, not the agent, counts each run and token against its limits, and the kernel tells the app what happened.
+
+## A different loop
+
+The loop above is a file the site serves, [`std/agents/runner.js`](../../std/agents/runner.js), not part of the kernel. An agent can run another one, such as a loop that plans first and then acts, or one that reviews its own answer, by naming it in its frontmatter:
+
+```yaml
+runner: ./plan-then-act.js
+```
+
+The page fetches the loop next to the agent file, and the kernel puts it after the manifest it makes from the frontmatter and a constant, `AGENT`, holding what the file says (its instructions, what wakes it, its limits). So a loop is ordinary plugin code: its `export default async function (ctx)` runs in the agent's own worker, held to the agent's manifest, and it reaches the model and tools through the `agents` service, which counts its runs and tokens whatever the loop does. Copy the standard loop to start. If the loop doesn't load, the agent doesn't start, and the page says why: it never falls back to another loop.
 
 ## The agent:* events
 

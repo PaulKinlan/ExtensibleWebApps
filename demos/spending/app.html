@@ -15,6 +15,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Spending</title>
   <meta name="description" content="A monthly spending dashboard.">
+  <meta name="gallery" content="slots">
+  <meta name="gallery-about" content="What you spent, against a budget, by category. Undo takes back any change, and a spreadsheet can come in or go out.">
+  <meta name="gallery-shows" content="plugins reading one collection, undo, import and export.">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="budget.js">
@@ -46,6 +49,6 @@
     <slot name="import-export"></slot>
     <p><small>To try Import, download <a href="bank-statement.csv" download>a sample bank statement</a>.</small></p>
   </aside>
-  <slot name="debug"></slot>
+  <slot name="debug" float></slot>
 </body>
 </html>

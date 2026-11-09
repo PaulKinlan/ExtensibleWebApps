@@ -79,7 +79,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `provide:<service>` | Provide a service other plugins call, such as `provide:mail`: answer every call any app's plugins make to it. The manifest's `provides` describes it. | A plugin that adds a capability the site doesn't build in. See [the layers](layers.md#plugins-that-provide-services). |
 | `provide:llm` | Be a language model: answer the `llm` service's requests for one vendor. | What the plugins in [`/std/llm/`](../std/llm/README.md) ask for, beside their vendor's host and key. |
 | `share` | Hand something to the system's share sheet, or take what was shared to the app. | |
-| `email` | Send an email (`email.send`), to up to 10 addresses. | Only on a space's server; refused in a browser. At most 50 a day. Written to the space's outbox until the site sets up delivery. |
+| `email` | Send an email (`email.send`), to up to 10 addresses. | Only on a space's server, and only to the space's members; refused in a browser. At most 50 a day. Written to the space's outbox, and delivered when the site sends mail. |
 
 ## Editor permissions
 

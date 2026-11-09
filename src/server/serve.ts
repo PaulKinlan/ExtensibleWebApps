@@ -11,19 +11,21 @@
 //   node src/server/serve.ts [--port 8787] [--spaces .spaces] [--site dist] [--host 127.0.0.1]
 
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse, STATUS_CODES } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { type Duplex, Readable } from "node:stream";
 import { MessageChannel, Worker } from "node:worker_threads";
+import type { Email } from "../seams/index.ts";
 import { nodeFiles } from "../seams/node.ts";
+import { smtpFromEnv } from "./smtp.ts";
 import { accounts } from "./auth/accounts.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
 import { signed } from "./signed.ts";
-import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, spaceRoute, tooLarge } from "./routes.ts";
+import { type Accounts, type Decision, frontDoor, type Knock, SPACE, unrouted } from "./front-door.ts";
+import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "./routes.ts";
 import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
 import { accept } from "./websocket.ts";
 
-const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -52,6 +54,8 @@ export interface Options {
    * (src/server/network-guard.ts).
    */
   allowPrivate?: string[];
+  /** How the server sends the mail server plugins send (src/server/smtp.ts); without it, mail stays in each space's outbox. */
+  email?: Email;
 }
 
 /** Starts the server; resolves once it is listening, with a way to stop it. */
@@ -79,10 +83,16 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     let started = spaces.get(name);
     if (!started) {
       started = new Promise<Worker>((ready, fail) => {
-        const worker = new Worker(resolve(options.kernel), { workerData: { dir: join(resolve(options.spaces), name), origin: url, allowPrivate: options.allowPrivate ?? [] } });
+        const worker = new Worker(resolve(options.kernel), { workerData: { dir: join(resolve(options.spaces), name), origin: url, allowPrivate: options.allowPrivate ?? [], email: !!options.email } });
         worker.on("message", (m) => {
           if (m?.t === "ready") ready(worker);
           // The kernel asks about its members: their email addresses (the only ones its plugins may email) and names.
+          // Mail the email module wrote to the outbox, to send.
+          if (m?.t === "deliver" && options.email)
+            void options.email.send(m.message).then(
+              (value) => worker.postMessage({ t: m.t, id: m.id, value }),
+              (error) => worker.postMessage({ t: m.t, id: m.id, value: { ok: false, error: String(error?.message ?? error) } }),
+            );
           if (m?.t === "addresses" || m?.t === "members") {
             const asked: Promise<unknown> = m.t === "addresses" ? auth.addresses(name) : auth.members(name);
             void asked.then(
@@ -220,11 +230,24 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     }
   };
 
+  /** The front door's view of a request (src/server/front-door.ts). */
+  const knock = (request: IncomingMessage, url: URL): Knock => ({
+    method: request.method ?? "GET",
+    url,
+    origin: typeof request.headers.origin === "string" ? request.headers.origin : null,
+    cookie: typeof request.headers.cookie === "string" ? request.headers.cookie : "",
+    upgrade: request.headers.upgrade?.toLowerCase() === "websocket",
+  });
+  const door: Accounts = {
+    exists: (space) => auth.exists(space),
+    member: async (cookie, space) => (await auth.member(new Request("http://localhost/", { headers: { cookie } }), space))?.user.id ?? null,
+  };
+  /** Where a page or file request is addressed: this server's public origin, if it has one. */
+  const addressOf = (request: IncomingMessage) => new URL(request.url ?? "/", options.origin ?? `http://${request.headers.host ?? "localhost"}`);
+
   /** A request to /s/<space>/<path> that a server plugin's route answers; false when none does. */
-  const publicRoute = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
-    const url = new URL(request.url ?? "/", options.origin ?? `http://${request.headers.host ?? "localhost"}`);
-    const at = spaceRoute(url);
-    if (!at || !SPACE.test(at.space) || !(await auth.exists(at.space))) return false;
+  const publicRoute = async (request: IncomingMessage, response: ServerResponse, at: { space: string; path: string }): Promise<boolean> => {
+    const url = addressOf(request);
     const headers = new Headers();
     for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
     const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
@@ -240,61 +263,63 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     return true;
   };
 
+  /** Sends what the door decided for a request that isn't the space's socket. */
+  const answer = async (request: IncomingMessage, response: ServerResponse, decision: Decision): Promise<void> => {
+    // Moving a space (src/server/transfer.ts) is under /auth/ too; anything else there is the accounts'.
+    if (decision.door === "auth") return void ((await transfer(request, response)) || (await signIn(request, response)));
+    if (decision.door === "route") {
+      if (!(await publicRoute(request, response, decision))) await answer(request, response, unrouted(request.method ?? "GET"));
+      return;
+    }
+    if (decision.door === "asset") return file(request, response);
+    // A join comes only on an upgrade (below), and the door refuses one over plain HTTP.
+    const refused = decision.door === "refuse" ? decision : { status: 426, text: "Expected a WebSocket" };
+    response.writeHead(refused.status, { "content-type": "text/plain; charset=utf-8" }).end(refused.text);
+  };
+
   const server = createServer((request, response) => {
-    if (request.url?.startsWith("/auth/")) {
-      return void transfer(request, response)
-        .then((answered) => answered || signIn(request, response))
-        .catch((error) => {
-          console.error("Sign-in:", error);
-          if (!response.headersSent) response.writeHead(500);
-          response.end();
-        });
+    let url: URL;
+    try {
+      url = addressOf(request);
+    } catch {
+      return void response.writeHead(400).end();
     }
-    if (request.url?.startsWith("/s/")) {
-      return void publicRoute(request, response)
-        .then((answered) => {
-          if (answered) return;
-          if (request.method !== "GET" && request.method !== "HEAD") return void response.writeHead(405).end();
-          file(request, response);
-        })
-        .catch((error) => {
-          console.error("Route:", error);
-          if (!response.headersSent) response.writeHead(500);
-          response.end();
-        });
-    }
-    if (request.method !== "GET" && request.method !== "HEAD") return void response.writeHead(405).end();
-    file(request, response);
+    void frontDoor(knock(request, url), door)
+      .then((decision) => answer(request, response, decision))
+      .catch((error) => {
+        console.error(`${request.method} ${request.url}:`, error);
+        if (!response.headersSent) response.writeHead(500);
+        response.end();
+      });
   });
 
   /** Open WebSockets, which server.close() would otherwise wait for. */
   const open = new Set<Duplex>();
 
   server.on("upgrade", async (request, raw: Duplex) => {
-    let match: RegExpExecArray | null;
+    let where: URL;
     try {
-      match = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url ?? "/", "http://x").pathname);
+      // The Origin a browser sends is the host it reached, so that is what it's checked against.
+      where = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     } catch {
       return void raw.end("HTTP/1.1 400 Bad Request\r\n\r\n");
     }
-    if (!match || !SPACE.test(match[1])) return void raw.end("HTTP/1.1 404 Not Found\r\n\r\n");
-    // A page on another site may open a WebSocket here (they aren't bound by CORS), so a browser's
-    // client must come from this server's own pages. A client that isn't a browser sends no Origin.
-    if (!sameOrigin(request.headers.origin, request.headers.host)) return void raw.end("HTTP/1.1 403 Forbidden\r\n\r\n");
-    // Only the space's members may join it.
-    const cookie = typeof request.headers.cookie === "string" ? request.headers.cookie : "";
-    const member = await auth.member(new Request("http://localhost/", { headers: { cookie } }), match[1]).catch(() => null);
-    if (!member) return void raw.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+    const decision = await frontDoor(knock(request, where), door).catch(() => ({ door: "refuse", status: 500, text: "" }) as const);
+    if (decision.door !== "join") {
+      const status = decision.door === "refuse" ? decision.status : 404;
+      return void raw.end(`HTTP/1.1 ${status} ${STATUS_CODES[status] ?? ""}\r\n\r\n`);
+    }
+    const { space: name, member } = decision;
     let kernel: Worker;
     try {
-      kernel = await space(match[1]);
+      kernel = await space(name);
     } catch {
       return void raw.end("HTTP/1.1 500 Internal Server Error\r\n\r\n");
     }
     const socket = accept(request, raw);
     if (!socket) return;
     open.add(raw);
-    clients.set(socket, { space: match[1], user: member.user.id });
+    clients.set(socket, { space: name, user: member });
     raw.on("close", () => {
       open.delete(raw);
       clients.delete(socket);
@@ -312,7 +337,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     socket.onMessage = (text) => {
       try {
         // The kernel learns who this client is from its hello, which only the server may say.
-        port1.postMessage(signed(JSON.parse(text), member.user.id));
+        port1.postMessage(signed(JSON.parse(text), member));
       } catch {
         socket.close(1007, "JSON only");
       }
@@ -368,16 +393,6 @@ export function headerRules(file: string): { path: RegExp; headers: Record<strin
   return rules;
 }
 
-/** Whether a WebSocket's Origin, if it sent one, is this server (as the client reached it). */
-export function sameOrigin(origin: string | undefined, host: string | undefined): boolean {
-  if (origin === undefined) return true;
-  try {
-    return new URL(origin).host === host;
-  } catch {
-    return false;
-  }
-}
-
 // Run directly: read the options and start.
 if (import.meta.url === `file://${process.argv[1]}`) {
   const arg = (name: string, fallback: string) => {
@@ -393,6 +408,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     providers: providersFrom(process.env),
     origin: arg("origin", process.env.PUBLIC_ORIGIN ?? "") || undefined,
     allowPrivate: arg("allow-private", process.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean),
+    email: smtpFromEnv(process.env),
   });
   console.log(`Serving ${arg("site", "dist")} at ${url}; spaces at ${url.replace("http", "ws")}/s/<space>/kernel, kept in ${arg("spaces", ".spaces")}/`);
 }

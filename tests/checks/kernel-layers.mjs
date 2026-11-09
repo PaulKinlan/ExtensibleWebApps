@@ -48,7 +48,6 @@ const CORE = [
 /** Kernel services an app may not use, and the files that belong to them, being split out of the core. */
 const SERVICES = [
   "agents/file.ts",
-  "agents/runner.js",
   "routes.ts",
   "server-apps.ts",
   "services/sync.ts",

@@ -2,8 +2,9 @@
   ui-debug: a bug button that stays on screen and opens a panel. What the
   view puts inside the element is the panel's content.
   Attributes: corner="bottom-left|bottom-right|top-left|top-right|inline"
-  (where the bug floats when drawn in the "debug" slot, which the platform
-  pins to a corner; inline leaves it in the page's flow), problems (a count
+  (where the bug floats when drawn in a slot the app marks float, such as
+  <slot name="debug" float>, which the platform pins to that corner; inline
+  leaves it in the page's flow), problems (a count
   shown on the bug, which turns red above 0), label (the button's name),
   toggle (an action sent with true or false when the panel opens or closes).
 
@@ -16,7 +17,7 @@
 <template>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
-    /* The bug sits where its view is drawn. The platform keeps the "debug" slot in a corner of the screen (see host.css). */
+    /* The bug sits where its view is drawn. A slot marked float keeps it in a corner of the screen (see host.css). */
     :host { display: inline-block; }
 
     .bug { display: inline-flex; align-items: center; gap: var(--space-1); height: 40px; min-width: 40px; padding: 0 var(--space-2); justify-content: center; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--fg-2); box-shadow: var(--shadow-1), 0 4px 12px rgb(0 0 0 / 0.12); cursor: pointer; font: 600 var(--text-sm) var(--font); }
