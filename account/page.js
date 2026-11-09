@@ -32,14 +32,32 @@ export const create = (options) => asked(navigator.credentials.create({ publicKe
 /** Uses a passkey the browser has for this site. */
 export const get = (options) => asked(navigator.credentials.get({ publicKey: passkeys().parseRequestOptionsFromJSON(options) }));
 
-/** The path of the page on this site that linked here, or null. */
+/** Where the app the person came from is kept for this tab, since signing in with another site comes back without it. */
+const KEPT = "account:app";
+
+/**
+ * The path of the page on this site that linked here, or else the app kept for this tab (keep), or null.
+ * Coming back from another site's sign-in, the referrer is that site.
+ */
 export function referrer() {
   try {
     const from = new URL(document.referrer);
-    return from.origin === location.origin ? from.pathname : null;
+    if (from.origin === location.origin && !/^\/(account|auth)\//.test(from.pathname)) return from.pathname;
+  } catch {}
+  try {
+    return sessionStorage.getItem(KEPT);
   } catch {
     return null;
   }
+}
+
+/** Keeps the app the person came from for this tab (or forgets it, given ""). */
+export function keep(path) {
+  try {
+    if (path) sessionStorage.setItem(KEPT, path);
+    else sessionStorage.removeItem(KEPT);
+  } catch {}
+  return true;
 }
 
 /** Leaves for another site to sign in: only the server's own sign-in starts. */

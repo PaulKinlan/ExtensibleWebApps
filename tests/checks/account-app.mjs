@@ -17,7 +17,7 @@ export default async function ({ check, context, errors }) {
   } catch (error) {
     checked = `${error.stdout ?? ""}${error.message}`;
   }
-  check("npm run check finds nothing wrong with the account app", /0 errors/.test(checked), checked.trim().split("\n").slice(-4).join(" | "));
+  check("npm run check finds nothing wrong with the account app", /^0 errors, 0 warnings$/m.test(checked), checked.trim().split("\n").slice(-4).join(" | "));
 
   const spaces = await mkdtemp(join(tmpdir(), "account-app-"));
   const server = await serve({ port: 0, host: "localhost", spaces, site: "dist", kernel: ".build/server/space.js" });
@@ -63,6 +63,15 @@ export default async function ({ check, context, errors }) {
       named.includes(`${server.url}/s/ada-home/mcp/survey-agents`) && named.includes("Bearer ") && unnamed.includes("/s/ada-home/mcp/<plugin>") && !/reading-list/.test(named + unnamed),
       JSON.stringify({ named, unnamed }),
     );
+
+    // Coming back from signing in with another site, the address has no ?app= and the referrer is that site:
+    // the tab keeps the app it was opened for.
+    const surveys = '.space-list a:has-text("Open Surveys in it")';
+    await page.goto(`${server.url}/account/?app=/demos/survey/`);
+    const offered = await page.locator(surveys).waitFor({ timeout: 8000 }).then(() => true, () => false);
+    await page.goto(`${server.url}/account/`);
+    const kept = await page.locator(surveys).waitFor({ timeout: 8000 }).then(() => true, () => false);
+    check("the account page keeps the app it was opened for, in that tab, when it comes back without ?app= (from another site's sign-in)", offered && kept, JSON.stringify({ offered, kept }));
   } finally {
     await own.close();
     await server.stop();

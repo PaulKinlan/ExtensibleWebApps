@@ -68,6 +68,12 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
 
   /** The app a person came to this page from, to open in a space: ?app=/demos/x/, or the app page that linked here. */
   const cameFrom = async (host: Host, dispatch: Parameters<ServiceProvider["call"]>[3]) => {
+    // The tab keeps what was found, as signing in with another site comes back with no ?app= and that site as the referrer.
+    const found = await lookUp(host, dispatch);
+    if (found?.path || found?.error) await hosts.bridge("account", "keep", [found.path ?? ""], dispatch, host);
+    return found;
+  };
+  const lookUp = async (host: Host, dispatch: Parameters<ServiceProvider["call"]>[3]): Promise<{ path?: string; title?: string; error?: string } | null> => {
     if (!host.url) throw new Error("The tab hasn't said its address yet: ask again once it has (router:changed)");
     const asked = host.url.query?.app;
     const exact = typeof asked === "string";

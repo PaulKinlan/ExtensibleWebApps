@@ -3,6 +3,6 @@
 // account app uses it, so its code is the app's own (account/page.js), loaded when first asked.
 
 const PAGE = "/account/page.js";
-const METHODS = ["create", "get", "referrer", "go", "pick"];
+const METHODS = ["create", "get", "referrer", "keep", "go", "pick"];
 
 export default () => Object.fromEntries(METHODS.map((name) => [name, async (...args: unknown[]) => (await import(/* @vite-ignore */ PAGE))[name](...args)]));

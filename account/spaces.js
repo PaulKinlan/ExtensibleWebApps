@@ -39,12 +39,13 @@ export default async function (ctx) {
 
   const draw = async () => {
     const { user, site } = await ctx.call("account", "get", "/auth/me");
+    // Asked signed out too, so the app is kept for the tab before the person leaves to sign in with another site.
+    const app = await cameFrom();
     if (!user) {
       invite = "";
       return views.render("spaces", "spaces", { user: null });
     }
     const { spaces = [] } = await ctx.call("account", "get", "/auth/spaces");
-    const app = await cameFrom();
     views.render("spaces", "spaces", {
       user: true,
       app,
