@@ -3,6 +3,9 @@
 // reads an app's files from one. Picking a folder needs a page and a recent
 // click, so the kernel asks the tab the person clicked in. The kernel checks
 // what comes back: which files an app may have, and a review before any save.
+//
+// In a space, `own` reads the apps the person made outside it (/new/, kept in
+// their own data folder, beside the space's), so one can be copied in.
 
 type Entry = FileSystemHandle & { getFile?(): Promise<File> };
 type Folder = FileSystemDirectoryHandle & { entries(): AsyncIterableIterator<[string, Entry]> };
@@ -22,6 +25,30 @@ async function choose(mode: "read" | "readwrite"): Promise<Folder | null> {
 }
 
 export default () => ({
+  /**
+   * The person's own made apps (made/apps/ in their data folder, not a space's), from a page in a space: with no
+   * name, each app's name and page; with one, the files at the top of its folder, each at most `max` characters.
+   * The kernel checks names and files again.
+   */
+  async own(name: unknown, max: unknown): Promise<{ name: string; page?: string; text?: string }[]> {
+    const out: { name: string; page?: string; text?: string }[] = [];
+    try {
+      let apps = (await navigator.storage.getDirectory()) as Folder;
+      for (const part of ["made", "apps"]) apps = (await apps.getDirectoryHandle(part)) as Folder;
+      for await (const [app, entry] of apps.entries()) {
+        if (entry.kind !== "directory" || (name !== undefined && app !== name)) continue;
+        for await (const [file, f] of (entry as Folder).entries()) {
+          const got = f.getFile && (await f.getFile());
+          // Bytes, at most four to a character: the kernel checks the length in characters.
+          if (!got || got.size > 4 * Number(max)) continue;
+          if (name !== undefined) out.push({ name: file, text: await got.text() });
+          else if (file === "app.html") out.push({ name: app, page: await got.text() });
+        }
+      }
+    } catch {}
+    return out;
+  },
+
   /** Writes each file into a folder the person picks, replacing a file there with the same name. */
   async write(files: unknown): Promise<{ folder: string; written: string[] } | null> {
     const list = Array.isArray(files) ? (files as { name: string; text: string }[]) : [];
