@@ -25,16 +25,16 @@
 // - On a space's server, the tools are an MCP server at /s/<space>/mcp/<plugin>,
 //   which the server's host lets only a member's agent key reach. The host
 //   hands the kernel the request at the door `mcp` (ModuleKernel.door), and
-//   this answers it: MCP's JSON-RPC over plain HTTP, with no
-//   streaming, which is all its tools need.
+//   this answers it: MCP's JSON-RPC over plain HTTP.
 //
 // An MCP client gets a session (Mcp-Session-Id) when it connects. When the
 // door's tools change (a plugin starts or stops, a collection comes or goes),
-// the server says so with notifications/tools/list_changed: there is no stream
-// open between requests, so the notice goes ahead of the answer to the
-// session's next request, as a short event stream (Streamable HTTP lets a POST
-// be answered that way). A client that only takes JSON gets plain JSON, and
-// lists the tools again when it chooses.
+// the server says so with notifications/tools/list_changed: on the session's
+// GET stream if it keeps one open (the host asks this door now and then
+// whether anything changed, src/server/mcp.ts mcpStream), else ahead of the
+// answer to its next request, as a short event stream (Streamable HTTP lets a
+// POST be answered that way). A client that only takes JSON gets plain JSON,
+// and lists the tools again when it chooses.
 //
 // On the server, a review is sent to the members' devices that have the space
 // open (std/spaces/reviews.ts), since the server has no screen. An MCP
@@ -77,6 +77,8 @@ interface Session {
   /** The fingerprint of the tools when the client last listed them (or connected). */
   seen?: string;
   used: number;
+  /** The GET stream the client has open now: a newer one takes over, and the older one is closed. */
+  stream?: string;
 }
 
 /** Sessions kept at once, across doors; the least recently used goes first. */
@@ -260,7 +262,12 @@ export default {
      * An MCP request (JSON-RPC, one message or a batch) to the door of the plugin `plugin`, from a member's agent.
      * `session` is the Mcp-Session-Id it sent, and `streams` whether it takes an event stream as the answer.
      */
-    async function mcp(plugin: string, member: string | undefined, body: unknown, options: { method?: string; session?: string; streams?: boolean } = {}): Promise<{ status: number; json?: McpAnswer }> {
+    async function mcp(
+      plugin: string,
+      member: string | undefined,
+      body: unknown,
+      options: { method?: string; session?: string; streams?: boolean; stream?: string; first?: boolean } = {},
+    ): Promise<{ status: number; json?: McpAnswer }> {
       const door = [...doors.values()].find((d) => base(d.instance) === plugin);
       const session = sessionOf(options.session, plugin, member);
       if (session === null) return { status: 404, json: { reply: { jsonrpc: "2.0", id: null, error: { code: -32001, message: "That session isn't yours, or has ended: connect again" } } } };
@@ -271,6 +278,19 @@ export default {
         ended.add(options.session);
         if (ended.size > 500) ended.delete(ended.values().next().value!);
         return { status: 200 };
+      }
+      // The host asks, for a client's GET stream, whether its tools changed since it last heard.
+      if (options.method === "GET") {
+        if (!session || !options.stream) return { status: 400, json: { reply: { jsonrpc: "2.0", id: null, error: { code: -32600, message: "A stream needs a session: connect first" } } } };
+        if (options.first) session.stream = options.stream;
+        else if (session.stream !== options.stream) return { status: 409, json: { reply: { jsonrpc: "2.0", id: null, error: { code: -32000, message: "A newer stream for this session took over" } } } };
+        const json: McpAnswer = {};
+        if (door) {
+          const now = fingerprint(await toolsOf(door, { trace: "mcp:stream" }).catch(() => []));
+          if (session.seen !== now) json.notices = [{ jsonrpc: "2.0", method: "notifications/tools/list_changed" }];
+          session.seen = now;
+        }
+        return { status: 200, json };
       }
       let started: string | undefined;
       const one = async (rpc: Rpc): Promise<unknown> => {
@@ -340,6 +360,8 @@ export default {
         method: request.method,
         session: request.query?.session || undefined,
         streams: request.query?.streams === "1",
+        stream: request.query?.stream || undefined,
+        first: request.query?.first === "1",
       });
       return json === undefined ? { status } : { status, json };
     });
