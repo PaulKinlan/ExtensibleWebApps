@@ -30,6 +30,7 @@ An app is three kinds of thing, each in its own place:
 
 - `<link rel="plugin" href>` names a plugin, relative to the page. The kernel starts it when the first tab opens the app and stops it when the last one closes.
 - `<slot name>` is where plugins draw. What you put inside it shows until a plugin draws there. A plugin picks the slot by name (`main`, `side`, `nav`, `status`, or any name your page uses).
+- `<slot name float>` keeps what is drawn there in a corner of the screen, above the page (the debug console's bug uses `<slot name="debug" float>`). The element drawn there picks the corner with `corner="bottom-left|bottom-right|top-left|top-right"`. Only your page can make a slot float, so a plugin can't lift itself over the rest.
 - The page is yours: any HTML and CSS. Plugins fill the slots; they never change the rest.
 
 ## What moves between them

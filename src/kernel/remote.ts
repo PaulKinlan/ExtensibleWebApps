@@ -792,6 +792,11 @@ export class Remote {
 
   private async call(id: number, service: string, method: string, args: unknown[], trace?: string): Promise<void> {
     const reply = (ok: boolean, value?: unknown, error?: string) => this.post({ t: "result", id, ok, value, error });
+    // An agent reaches its model and its tools only through the agents service, which counts its runs and
+    // tokens and asks agent:beforeTool first. Its loop is a file the app chose (std/agents/runner.js or its
+    // own `runner:`), so the kernel holds it to that here, rather than trusting the loop to.
+    const mediated = (service === "llm" && method === "complete") || (service === "tools" && method === "call");
+    if (mediated && made.has(this.plugin.source)) return reply(false, undefined, `An agent calls ${service}.${method} through the agents service (agents.${service === "llm" ? "complete" : "tool"}), so its limits and checks hold`);
     try {
       reply(true, await callService(this.manager.services, this.instance, this.caps, service, method, args, { trace }));
     } catch (error) {

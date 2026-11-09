@@ -152,7 +152,7 @@ services.authoring = authoring(remote, apps, {
  * Opens an app in a tab: the plugins its app.html links, and the person's own plugins for it that are
  * on. The tab hears each plugin's places, and which locked places the person let it into.
  */
-async function openApp(host: (typeof hosts.list)[number], links: { href: string; source: string }[], app?: string) {
+async function openApp(host: (typeof hosts.list)[number], links: { href: string; source: string; runner?: string }[], app?: string) {
   // A device new to a space gets what the space has before its app starts, so the app sees the space's data.
   await device?.ready;
   if (!hosts.list.includes(host)) return;
@@ -322,9 +322,9 @@ hosts.onMessage = async (host, message) => {
         // An app's plugins may read collections whose owners aren't running: know those first.
         // Opened with ?reset: the app's plugins the person turned off come back on first.
         // Only plugins this app may load: not one whose id belongs to a different running plugin.
-        if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ href, source: linked }) => {
+        if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ href, source: linked, runner }) => {
           try {
-            const source = asPlugin(href, linked);
+            const source = asPlugin(href, linked, runner);
             const id = readManifest(source).id;
             const running = remote.installed.get(id);
             return !running || running.source === source ? [id] : [];

@@ -140,10 +140,9 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
 [hidden] { display: none !important; }
 .place-pending { outline: 2px dashed var(--accent); outline-offset: 4px; }
-/* The Customize button (std/customize.js, in a <ui-panel>), on every app page: its slot is pinned to a corner. */
-slot[name="customize"] > [data-plugin] { position: fixed; left: 16px; bottom: 16px; z-index: 10; }
-/* The debug console's bug sits in the same corner by default, and grows with its count: the button goes above it. */
-body:has(slot[name="debug"] ui-debug:not([corner]), slot[name="debug"] ui-debug[corner="bottom-left"]) slot[name="customize"] > [data-plugin] { bottom: 68px; }
+/* The Customize button (std/customize.js, in a <ui-panel>), on every app page: the host marks its slot pinned, and
+   pins it to the bottom-left corner, above any floating chrome there (--chrome-bottom-left, see "Floating slots" below). */
+slot[pinned] > [data-plugin] { position: fixed; left: 16px; bottom: calc(16px + var(--chrome-bottom-left, 0px)); z-index: 10; }
 
 /* Inspect mode (inspect.ts): every plugin's view is outlined, the part under the pointer more so, and a panel says who drew it. */
 body.inspecting [data-plugin][data-key] { outline: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 2px; }
@@ -209,12 +208,17 @@ body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; o
    !important here, in the first layer, beats any other declaration, so no plugin and no page can take it off. */
 [data-plugin] { contain: layout paint !important; overflow-clip-margin: 4px; }
 
-/* The "debug" slot floats: what is drawn there (std/debug-console.js's bug) stays in a corner of the screen, where <ui-debug corner> says. */
-slot[name="debug"] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); }
-slot[name="debug"] > [data-plugin]:has(ui-debug[corner="bottom-right"]) { inset: auto var(--space-4) var(--space-4) auto; }
-slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-left"]) { inset: var(--space-4) auto auto var(--space-4); }
-slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-right"]) { inset: var(--space-4) var(--space-4) auto auto; }
-slot[name="debug"] > [data-plugin]:has(ui-debug[corner="inline"]) { position: static; }
+/* Floating slots: a slot the app marks float (<slot name="debug" float>) keeps what is drawn there in a corner of
+   the screen. The view's element says which with corner="bottom-left|bottom-right|top-left|top-right" (bottom-left
+   if it doesn't say); corner="inline" leaves it in the page's flow. The app decides which slots may float, so a
+   plugin can't lift itself over the page. Nothing here names a plugin, slot or element. */
+slot[float] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); }
+slot[float] > [data-plugin]:has([corner="bottom-right"]) { inset: auto var(--space-4) var(--space-4) auto; }
+slot[float] > [data-plugin]:has([corner="top-left"]) { inset: var(--space-4) auto auto var(--space-4); }
+slot[float] > [data-plugin]:has([corner="top-right"]) { inset: var(--space-4) var(--space-4) auto auto; }
+slot[float] > [data-plugin]:has([corner="inline"]) { position: static; }
+/* Floating chrome in the bottom-left corner takes room there, and says so for other chrome (the Customize button). */
+body:has(slot[float] > [data-plugin] > [corner="bottom-left"], slot[float] > [data-plugin] > :not([corner])) { --chrome-bottom-left: 52px; }
 }
 
 /* The site's own links in an app's header (Home, All demos, Docs, Workbench), pushed to the end. */

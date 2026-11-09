@@ -36,6 +36,7 @@ async function loadKernelRules() {
     'export { capabilities, grants } from "./src/kernel/gate.ts";',
     'export * from "./src/shared/html.ts";',
     'export { fromAgentFile } from "./src/kernel/agents/file.ts";',
+    'export { runnerName, DEFAULT_RUNNER } from "./src/shared/agent-runner.ts";',
   ].join("\n");
   // `?raw` imports (the agent loop's source) as text, as Vite does.
   const raw = { name: "raw", setup(b) {
@@ -231,7 +232,13 @@ function checkApp(file, rules, reference) {
     if (!/\.agent\.md$/i.test(agentFile)) report("error", file, link.line, `${href}: an agent file's name ends in .agent.md, or the kernel reads it as a plugin`);
     let id;
     try {
-      id = rules.readManifest(rules.fromAgentFile(readFileSync(agentFile, "utf8"))).id;
+      const text = readFileSync(agentFile, "utf8");
+      // The agent loop it runs, from the frontmatter's `runner:` (next to the agent file) or the standard one.
+      const named = rules.runnerName(text) ?? rules.DEFAULT_RUNNER;
+      const loopFile = /^[a-z]+:/i.test(named) ? undefined : local(named, agentFile);
+      if (!loopFile) report("warning", agentFile, 1, `Its agent loop ${named} is on another site, so it isn't checked here`);
+      else if (!existsSync(loopFile)) throw new Error(`Its agent loop ${named} doesn't exist`);
+      id = rules.readManifest(rules.fromAgentFile(text, loopFile ? readFileSync(loopFile, "utf8") : "// elsewhere")).id;
     } catch (error) {
       report("error", agentFile, Number(/Line (\d+)/.exec(error.message)?.[1]) || 1, error.message);
       continue;

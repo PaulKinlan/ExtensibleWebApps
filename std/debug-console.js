@@ -5,7 +5,7 @@
 // Add it to any app with two lines in its app.html:
 //
 //   <link rel="plugin" href="/std/debug-console.js">
-//   <slot name="debug"></slot>
+//   <slot name="debug" float></slot>
 //
 // It reads the kernel's trace, which names every plugin and what it did, so
 // it needs `debug:read`. Errors from the page itself (a file that didn't

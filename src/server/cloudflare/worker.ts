@@ -29,11 +29,11 @@ import { durableFiles, type Sql } from "../../seams/durable.ts";
 import type { Message } from "../../seams/index.ts";
 import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
-import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, spaceRoute, tooLarge } from "../routes.ts";
+import { type Decision, frontDoor, unrouted } from "../front-door.ts";
+import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
 import { transferRoute } from "../transfer.ts";
 
-const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
 /** A new kernel build gets a new isolate; spaces on the old one move over as they restart. */
 const KERNEL_VERSION = kernelSource.version;
 
@@ -294,21 +294,36 @@ export class Accounts extends DurableObject<Env> {
 }
 
 /** A request to /s/<space>/<path> that one of the space's server plugins answers; undefined when none does. */
-async function publicRoute(request: Request, env: Env): Promise<Response | undefined> {
-  const url = new URL(request.url);
-  const at = spaceRoute(url);
-  if (!at || !SPACE.test(at.space) || !(await env.ACCOUNTS.getByName("accounts").exists(at.space))) return undefined;
+async function publicRoute(request: Request, env: Env, at: { space: string; path: string }): Promise<Response | undefined> {
   const route = await routeRequest(request, at.path);
   if (!route) return tooLarge();
+  const url = new URL(request.url);
   const result = await env.SPACE.getByName(at.space).route(at.space, url.origin, route);
-  if (result) return routeResponse(result, url, at.space);
-  // Its body is read, so the site's files can't have it: they answer only GET and HEAD anyway.
-  return request.method === "GET" || request.method === "HEAD" ? undefined : new Response("Method not allowed", { status: 405 });
+  return result ? routeResponse(result, url, at.space) : undefined;
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (new URL(request.url).pathname.startsWith("/auth/")) {
+    // The front door (src/server/front-door.ts) decides; this only reaches the Durable Objects and the assets.
+    // The accounts are reached only when the door asks: a request it settles alone (a bad space name) needs none.
+    const accounts = () => env.ACCOUNTS.getByName("accounts");
+    const decision = await frontDoor(
+      {
+        method: request.method,
+        url: new URL(request.url),
+        origin: request.headers.get("origin"),
+        cookie: request.headers.get("cookie") ?? "",
+        upgrade: request.headers.get("upgrade")?.toLowerCase() === "websocket",
+      },
+      { exists: (space) => accounts().exists(space), member: (cookie, space) => accounts().member(cookie, space) },
+    );
+    return answer(request, env, decision);
+  },
+} satisfies ExportedHandler<Env>;
+
+async function answer(request: Request, env: Env, decision: Decision): Promise<Response> {
+  switch (decision.door) {
+    case "auth": {
       // Moving a space (src/server/transfer.ts): its folder is the space's, which the accounts can't reach.
       const moved = await transferRoute(request, {
         role: (req, space) => env.ACCOUNTS.getByName("accounts").role(req.headers.get("cookie") ?? "", space),
@@ -317,17 +332,16 @@ export default {
       });
       return moved ?? env.ACCOUNTS.getByName("accounts").fetch(request);
     }
-    const space = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url).pathname)?.[1];
-    if (space === undefined) return (await publicRoute(request, env)) ?? env.ASSETS.fetch(request);
-    if (!SPACE.test(space)) return new Response("Not a space", { status: 404 });
-    // A page on another site may open a WebSocket here (they aren't bound by CORS), so a browser's
-    // client must come from this site's own pages. A client that isn't a browser sends no Origin.
-    const origin = request.headers.get("origin");
-    if (origin !== null && origin !== new URL(request.url).origin) return new Response("Not from this site", { status: 403 });
-    const member = await env.ACCOUNTS.getByName("accounts").member(request.headers.get("cookie") ?? "", space);
-    if (!member) return new Response("Only the space's members may join it", { status: 403 });
-    const forward = new Request(request);
-    forward.headers.set(MEMBER, member);
-    return env.SPACE.getByName(space).fetch(forward);
-  },
-} satisfies ExportedHandler<Env>;
+    case "join": {
+      const forward = new Request(request);
+      forward.headers.set(MEMBER, decision.member);
+      return env.SPACE.getByName(decision.space).fetch(forward);
+    }
+    case "route":
+      return (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
+    case "asset":
+      return env.ASSETS.fetch(request);
+    case "refuse":
+      return new Response(decision.text, { status: decision.status });
+  }
+}
