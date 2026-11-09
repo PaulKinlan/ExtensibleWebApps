@@ -8,12 +8,12 @@
 // provide, and the app maker's checks count a service the app's own plugin
 // provides as there.
 import { readFileSync } from "node:fs";
-import { buildIndex, renderPage } from "../../scripts/packages.mjs";
+import { expected } from "../../scripts/packages.mjs";
 
 export default async function ({ check, openTab, URL }) {
   const { packages } = JSON.parse(readFileSync(new globalThis.URL("../../packages/index.json", import.meta.url), "utf8"));
   const listing = readFileSync(new globalThis.URL("../../packages/index.html", import.meta.url), "utf8");
-  check("the registry's page at /packages/ lists every package in the index (run npm run packages)", listing === renderPage(await buildIndex()) && packages.every((p) => listing.includes(`id="${p.id}"`)));
+  check("the registry's page at /packages/ lists every package in the index (run npm run packages)", listing === (await expected())["index.html"] && packages.every((p) => listing.includes(`id="${p.id}"`)));
 
   const app = "demos/trip";
   const page = await openTab(`${URL}${app}/app.html`);
