@@ -26,6 +26,7 @@
   1. [Editors, and a folder of files](guide/editors.md)
   1. [How the Markdown editor is built](guide/markdown-editor.md)
   1. [Games and sound](guide/games-and-audio.md)
+  1. [An app of your own](guide/your-own-app.md)
 - Reference
   - [API reference](api.md)
   - [Permissions](permissions.md)

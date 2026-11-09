@@ -38,7 +38,7 @@ The top of the repo is the platform; everything else has a folder that says what
 | **This website** | |
 | [`site/`](site/README.md) | The site's own pages, served at its root: the front page and its chapters (`site/home/`), and the workbench with its demo plugins (`site/workbench/`). Not part of the platform. |
 | **Tooling** | |
-| [`scripts/`](scripts/), [`tests/`](tests/), [`public/`](public/) | Commands (`check`, `new-app`, `deploy:app`, create), the checks, and files copied to the site as they are (`404.html`, `_headers`, `llms.txt`) |
+| [`scripts/`](scripts/), [`tests/`](tests/), [`public/`](public/) | Commands (`check`, `new-app`, `deploy:app`, create, and `extensible-app`, which a project of your own runs), the checks, and files copied to the site as they are (`404.html`, `_headers`, `llms.txt`) |
 
 ## How it fits together
 
@@ -140,7 +140,7 @@ npm test           # build, then every check in Chromium, and the measurements (
 npm run reference  # rewrite docs/api.md from the running kernel (CI also does this on every PR branch and on main)
 npm run check      # find mistakes in every app in demos/ (or the folders you name) without a browser; --json for tools
 npm run new-app -- my-app   # copy starter/ to demos/my-app/, a small app to begin from
-npm create extensible-app my-app   # no checkout needed (or npx github:PaulKinlan/ExtensibleWebApps my-app): a my-app/ folder with the platform, installed, and the app in demos/my-app/
+npm create extensible-app my-app   # no checkout needed (or npx github:PaulKinlan/ExtensibleWebApps my-app): a project of your own, my-app/, with the app's files at the top and the platform as a dependency; served at / (docs/guide/your-own-app.md)
 npm run deploy:app -- demos/my-app   # deploy just that app as its own Cloudflare Worker (docs/guide/deploying-an-app.md)
 npm run serve      # the site and its spaces on this machine, at http://127.0.0.1:8787 (sign in at /account/)
 npm run test:server  # the server checks, on Node and wrangler dev
