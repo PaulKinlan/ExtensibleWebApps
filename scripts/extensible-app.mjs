@@ -59,9 +59,10 @@ export function siteEntries(project, { platform = PLATFORM } = {}) {
   /** @type {Record<string, string>} */
   const entries = {};
   for (const name of readdirSync(dist)) if (!SITE_PAGES.includes(name) && name !== "index.html") entries[name] = join(dist, name);
+  const platformNames = Object.keys(entries).sort().join(", ");
   for (const name of readdirSync(project)) {
     if (name.startsWith(".") || NOT_SERVED.includes(name)) continue;
-    if (entries[name]) throw new Error(`Your project's ${name} has the same address as the platform's /${name}: rename it (the platform's are ${Object.keys(entries).sort().join(", ")})`);
+    if (entries[name]) throw new Error(`Your project's ${name} has the same address as the platform's /${name}: rename it (the platform's are ${platformNames})`);
     entries[name] = join(project, name);
   }
   // The front page is the app, unless the project has a front page of its own.
