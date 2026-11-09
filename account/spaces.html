@@ -5,9 +5,13 @@
   last invite link made.
 -->
 <style>
-  .spaces form { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .spaces { display: grid; gap: var(--space-3); }
+  .spaces form { display: flex; flex-direction: row; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
   .spaces input { flex: 1 1 12rem; }
-  .spaces ul { display: grid; gap: var(--space-2); padding-left: 1.2rem; }
+  .spaces ul { display: grid; gap: var(--space-3); padding: 0; list-style: none; }
+  .spaces li { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .spaces li .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .spaces li .actions a:not(.button) { margin-right: var(--space-2); }
   .spaces .status:empty { display: none; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
@@ -19,17 +23,21 @@
       <ul class="space-list">
         <template for="s of spaces">
           <li key="{{s.name}}">
-            <strong>{{s.name}}</strong> ({{s.role}})
-            <template if="s.open"><a href="{{s.open}}">Open {{app.title}} in it</a></template>
-            <a href="/s/{{s.name}}/">Open the site in it</a>
-            <template if="s.owner">
-              <button type="button" data-action="invite:{{s.name}}">Invite someone</button>
-              <a href="/auth/spaces/{{s.name}}/export" class="button">Download a copy</a>
-              <button type="button" data-action="load:{{s.name}}">Load a copy</button>
-            </template>
-            <template if="!s.owner">
-              <button type="button" data-action="leave:{{s.name}}">Leave</button>
-            </template>
+            <span><strong>{{s.name}}</strong> ({{s.role}})</span>
+            <span class="actions">
+              <template if="s.open"><a href="{{s.open}}">Open {{app.title}} in it</a></template>
+              <a href="/s/{{s.name}}/">Open the site in it</a>
+            </span>
+            <span class="actions">
+              <template if="s.owner">
+                <button type="button" data-action="invite:{{s.name}}">Invite someone</button>
+                <a href="/auth/spaces/{{s.name}}/export" class="button">Download a copy</a>
+                <button type="button" data-action="load:{{s.name}}">Load a copy</button>
+              </template>
+              <template if="!s.owner">
+                <button type="button" data-action="leave:{{s.name}}">Leave</button>
+              </template>
+            </span>
           </li>
         </template>
         <template if="!spaces.length"><li>None yet.</li></template>
