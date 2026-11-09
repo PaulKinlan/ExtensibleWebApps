@@ -47,6 +47,10 @@ export default async function ({ check, context, URL, errors }) {
   await page.click(toggle);
   check("the hook tracer says which plugin switched another off", await seen(`${inspect} ${tracer} .action >> text=Switchboard called plugins.setEnabled`));
   await page.click(toggle);
+  // Switching it back on is an action of its own: wait for it, so it can't arrive after Clear.
+  await page
+    .waitForFunction((s) => [...document.querySelectorAll(s)].filter((a) => a.textContent.includes("Switchboard called plugins.setEnabled")).length >= 2, `${inspect} ${tracer} .action`, { timeout: 3000 })
+    .catch(() => {});
 
   // Turning note-stats back on starts it, and its start runs hooks of its own a moment later: Clear
   // once the tracer has stopped changing, or those arrive after it and the check reads them as kept.

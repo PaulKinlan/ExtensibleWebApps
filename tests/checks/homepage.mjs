@@ -15,10 +15,10 @@ export default async function ({ check, context, URL, errors }) {
   const ids = ["learning-notes", "note-stats", "chapter-1-core", "chapter-2-plugins", "chapter-3-hooks", "switchboard"];
   const drawn = await Promise.all(ids.map((id) => page.waitForSelector(key(id), { state: "attached", timeout: 8000 }).then(() => true, () => false)));
   check("the homepage draws its notes, stats, chapters and switchboard", drawn.every(Boolean), ids.filter((_, i) => !drawn[i]).join(", "));
-  // As many switches as the page links plugins, so adding one to the homepage doesn't change this check,
-  // and one more for Customize (std/customize.js), which the host adds to every app.
+  // As many switches as the page links plugins and agents, so adding one to the homepage doesn't change this
+  // check, and one more for Customize (std/customize.js), which the host adds to every app.
   const listsAll = (p) =>
-    p.waitForFunction(() => document.querySelectorAll('slot[name="switchboard"] input[data-action^="switch:"]').length === document.querySelectorAll('link[rel~="plugin"]').length + 1, null, { timeout: 8000 }).then(() => true, () => false);
+    p.waitForFunction(() => document.querySelectorAll('slot[name="switchboard"] input[data-action^="switch:"]').length === document.querySelectorAll('link[rel~="plugin"], link[rel~="agent"]').length + 1, null, { timeout: 8000 }).then(() => true, () => false);
   check("the switchboard lists every plugin the homepage links", await listsAll(page));
 
   // A note is saved, and Quiet please stops one written in capitals.

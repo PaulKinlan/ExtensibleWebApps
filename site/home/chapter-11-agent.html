@@ -1,0 +1,52 @@
+<!--
+  Chapter 11's words, and the recorded run it replays. The chat box to the
+  builder (/std/agents/chat.js) draws in its own slot just below.
+-->
+<style>
+  .chapter h2 { margin-top: 0; }
+  .chapter ol { padding-left: 1.25em; }
+  .chapter li { margin-bottom: var(--space-1); }
+  .run { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
+  .run li { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); gap: var(--space-2); align-items: baseline; }
+  .run .who { color: var(--fg-2); font-size: var(--text-sm); }
+  .run code { overflow-wrap: anywhere; }
+  .run .answer { display: block; color: var(--fg-2); font-size: var(--text-sm); }
+  .recorded { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
+  .outcome { margin: 0; padding: var(--space-2) var(--space-3); border-left: 3px solid var(--ok); background: var(--bg-2); }
+  .outcome[data-tone="warn"] { border-left-color: var(--warn); }
+  .code pre { max-height: 18em; overflow: auto; font-size: var(--text-sm); }
+</style>
+<template id="chapter">
+  <ui-card class="chapter" tone="accent">
+    <h2><ui-badge tone="accent">11</ui-badge> Let an agent change it</h2>
+    <p>An agent is a plugin that asks a model what to do next, and does it with tools. Here, the builder takes what you describe and writes a plugin for it. You stay in charge the whole way.</p>
+    <ol>
+      <li><strong>An agent is a Markdown file.</strong> <code>/std/agents/builder.agent.md</code> has its permissions at the top and its instructions below, and the page links it with <code>&lt;link rel="agent"&gt;</code>. The kernel runs it like any plugin, and it's on the switchboard with the rest.</li>
+      <li><strong>It may do one thing.</strong> Its only permission is <code>plugins:author</code>: it can read the page's plugins and save plugins of your own, nothing else. Its tools are the same <code>authoring</code> calls the plugin editor in chapter 4 uses.</li>
+      <li><strong>Every save is yours to accept.</strong> When it saves, you get the same review card you'd get from the editor, with the code and what it may do. Nothing it writes runs until you accept. After that, it's a plugin like any other: switch it off, read it, or change it.</li>
+    </ol>
+    <p>With your key, ask the builder below: "Show how long my notes would take to read aloud", or something of your own. Without one, watch a run we recorded.</p>
+    <ui-toolbar>
+      <button type="button" data-action="replay" disabled="{{playing}}">Replay a recorded run</button>
+    </ui-toolbar>
+    <template if="started">
+      <p class="recorded">A recording: no model is asked while it plays. The last step is real, so you get the review card.</p>
+      <ol class="run" aria-live="polite">
+        <template for="s of steps">
+          <li key="{{s.n}}">
+            <span class="who">{{s.who}}</span>
+            <span>
+              <template if="s.said">{{s.text}}</template>
+              <template if="s.called"><code>{{s.call}}</code><span class="answer">{{s.answer}}</span></template>
+              <template if="s.last"><span class="answer">Waiting for you: the review card shows the code it wrote.</span></template>
+            </span>
+          </li>
+        </template>
+      </ol>
+      <template if="done">
+        <p class="outcome" data-tone="{{tone}}" role="status">{{outcome}}</p>
+        <details class="code"><summary>The code it wrote</summary><pre><code>{{code}}</code></pre></details>
+      </template>
+    </template>
+  </ui-card>
+</template>
