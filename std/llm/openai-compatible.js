@@ -15,7 +15,7 @@
 // For OpenAI itself, use openai.js.
 //
 // This file translates between the platform's request and answer
-// (src/kernel/services/llm.ts) and the Chat Completions API.
+// (std/llm/module.ts) and the Chat Completions API.
 
 export const manifest = {
   id: "llm-openai-compatible",

@@ -26,7 +26,6 @@ import { RemotePlugins, type ServiceProvider } from "./remote";
 import { loadServices } from "./services";
 import { loadModules } from "./modules";
 import modules from "virtual:kernel-modules";
-import { routed } from "./services/router";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
@@ -105,6 +104,8 @@ const plugins = catalog(remote, store, hosts, log, reviews);
 remote.onDispose = (instance) => {
   reviews.cancelInstance(instance);
   secrets.cancelInstance(instance);
+  // Kernel modules hear it as internal/stopped on their own context (root.on), so their listener goes with them.
+  root.emit("internal/stopped", instance);
 };
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
@@ -329,7 +330,8 @@ hosts.onMessage = async (host, message) => {
     }
     case "url":
       await opening.get(host.tab);
-      return routed(host, message.path, message.query, openApps.get(host.tab)?.app);
+      // The router module, if the site runs it, keeps the screen with the tab and tells plugins (std/router/module.ts).
+      return void root.emit("internal/url", host, message.path, message.query, openApps.get(host.tab)?.app);
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
     case "sync":

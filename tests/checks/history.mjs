@@ -1,4 +1,4 @@
-// The history service (src/kernel/services/history.ts): undo and redo across
+// The history service (std/history/module.ts): undo and redo across
 // every write to an app's collections. The spending demo's checks cover the
 // Undo and Redo buttons (std/undo.js); these cover the service itself.
 

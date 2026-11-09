@@ -18,7 +18,7 @@
 // list: best is Opus, balanced is Sonnet, fast is Haiku.
 //
 // This file translates between the platform's request and answer
-// (src/kernel/services/llm.ts) and Anthropic's Messages API.
+// (std/llm/module.ts) and Anthropic's Messages API.
 
 export const manifest = {
   id: "llm-anthropic",

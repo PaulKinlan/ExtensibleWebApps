@@ -2,17 +2,17 @@
 // debuggers (demos/debugger/). Every plugin installed, its manifest, what it
 // asked for and what it was given; every hook, who defined it and who listens;
 // every worker and the tab it runs in; every tab and the app open there.
-// Found by name: this file is src/kernel/services/reflect.ts, so it is `ctx.call("reflect", …)`.
+// A kernel module (docs/layers.md): a site that lists `reflect` in kernel.json has it, as `ctx.call("reflect", …)`.
 //
 // It only reads. It sees every app open in this kernel (every tab of this
 // site, or of this space), not just the caller's, so it needs its own
 // capability, `reflect:read`, which no app's plugins need unless they are a
 // developer tool. It never returns a secret's value, only whether one is set.
 
-import { capabilityFor, hooks } from "../hooks";
-import { startedAt } from "../trace";
-import type { Kernel } from "./index";
-import type { RemotePlugins, ServiceProvider } from "../remote";
+import { capabilityFor, hooks } from "../../src/kernel/hooks";
+import { startedAt } from "../../src/kernel/trace";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
+import type { RemotePlugins, ServiceProvider } from "../../src/kernel/remote";
 
 /** A hook's kind, by who defines it and so how long it lasts. */
 type Kind = "kernel" | "plugin" | "collection";
@@ -41,7 +41,8 @@ function pendingCapability(name: string): string {
   return `hook:listen:${name} or hook:intercept:${name}, by its mode`;
 }
 
-export default ({ root, store, hosts, remote, apps }: Kernel): ServiceProvider => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { root, store, hosts, remote, apps } = kernel;
   const tabOf = (instance: string) => instance.split("@")[1];
 
   /** Every hook defined now, and every name some plugin listens to (it may be waiting for the hook to be defined). */
@@ -196,3 +197,5 @@ export default ({ root, store, hosts, remote, apps }: Kernel): ServiceProvider =
     },
   };
 };
+
+export default service("reflect", make);

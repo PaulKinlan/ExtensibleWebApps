@@ -2,7 +2,7 @@
 // (/demos/habits/) gets that page, so an app's address doesn't need the file
 // name. So does a visit to a screen inside it (/demos/reading-list/book/42):
 // the nearest folder up with an app.html answers, and the router service
-// tells the app's plugins which screen it is (src/kernel/services/router.ts).
+// tells the app's plugins which screen it is (std/router/module.ts).
 //
 // The page gets a <base> naming the app's folder, so its relative links
 // (library.js, book/42) resolve as they do at /demos/reading-list/app.html,

@@ -2,7 +2,7 @@
 // to a CSV or JSON file they keep, open in a spreadsheet or take to another
 // app, and a file they choose (a bank's statement, a list from a spreadsheet,
 // an earlier export) into a collection.
-// Found by name: this file is src/kernel/services/transfer.ts, so it is `ctx.call("transfer", …)`.
+// A kernel module (docs/layers.md): a site that lists `transfer` in kernel.json has it, as `ctx.call("transfer", …)`.
 //
 // The page does what only a page can (src/host/bridges/transfer.ts): the
 // browser's file chooser, and saving a download. The kernel does the rest:
@@ -21,27 +21,19 @@
 // file chooser opens only right after the person clicks, so a plugin calls
 // `import` from a button.
 
-import { formatCsv, parseCsv, unguard } from "../csv";
-import { defineHook } from "../hooks";
-import { RECORD_FIELDS, type Fields } from "../records";
-import { validate, type Schema } from "../schema";
-import { record } from "../trace";
-import type { Host } from "../hosts";
-import type { Kernel } from "./index";
-import type { ServiceProvider } from "../remote";
+import { formatCsv, parseCsv, unguard } from "./csv";
+import { RECORD_FIELDS, type Fields } from "../../src/kernel/records";
+import { validate, type Schema } from "../../src/kernel/schema";
+import { record } from "../../src/kernel/trace";
+import type { Host } from "../../src/kernel/hosts";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
+import type { ServiceProvider } from "../../src/kernel/remote";
 
 /** The largest file an import reads, and the most rows it writes. */
 const MAX_BYTES = 5_000_000;
 const MAX_ROWS = 2_000;
 /** How many rows the review shows. */
 const SHOWN = 20;
-
-defineHook("transfer:changed", {
-  mode: "emit",
-  needs: "transfer",
-  args: "{}",
-  description: "A record in a collection transfer.collections listed was written or deleted, so the counts may have changed: call transfer.collections() again.",
-});
 
 type Format = "csv" | "json";
 const loose = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -99,7 +91,14 @@ function rowsOf(name: string, text: string): { csv: boolean; rows: (Record<strin
   return { csv: true, rows: lines.map((line) => Object.fromEntries(header.map((h, i) => [h.trim(), line[i] ?? ""]))) };
 }
 
-export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServiceProvider => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { root, hosts, apps, collections, reviewed } = kernel;
+  kernel.hook("transfer:changed", {
+    mode: "emit",
+    needs: "transfer",
+    args: "{}",
+    description: "A record in a collection transfer.collections listed was written or deleted, so the counts may have changed: call transfer.collections() again.",
+  });
   /** The collections whose changes are passed on as transfer:changed, once each has been listed. */
   const watched = new Set<string>();
   const watch = (name: string) => {
@@ -278,3 +277,4 @@ export default ({ root, hosts, apps, collections, reviewed }: Kernel): ServicePr
   };
 };
 
+export default service("transfer", make);

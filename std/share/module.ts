@@ -2,7 +2,7 @@
 // link or some text to the system's share sheet (Web Share), and an app
 // installed from the browser can be a place to share to (a share target), so
 // a page shared from the browser lands in the reading list.
-// Found by name: this file is src/kernel/services/share.ts, so it is `ctx.call("share", …)`.
+// A kernel module (docs/layers.md): a site that lists `share` in kernel.json has it, as `ctx.call("share", …)`.
 //
 // Sharing in needs no code of its own: an app's manifest names a screen to
 // receive shares at, with the shared fields in its query —
@@ -21,17 +21,9 @@
 // just after a click; where there is none (most desktop browsers), the link
 // or text is copied instead, and the answer says so.
 
-import { defineHook } from "../hooks";
-import type { Host } from "../hosts";
-import type { Kernel } from "./index";
-import type { ServiceProvider } from "../remote";
-
-defineHook("share:received", {
-  mode: "emit",
-  needs: "share",
-  args: "{}",
-  description: "Something was shared to an app from elsewhere (it is installed as a share target). Call share.take() to have it, if it was shared to your app. It carries nothing itself, as every plugin with `share` hears it.",
-});
+import type { Host } from "../../src/kernel/hosts";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
+import type { ServiceProvider } from "../../src/kernel/remote";
 
 /** What a share carries: any of a title, some text and a link. */
 interface Shared {
@@ -55,7 +47,14 @@ function fieldsOf(value: unknown): Shared | undefined {
   return Object.keys(out).length ? out : undefined;
 }
 
-export default ({ root, hosts, apps }: Kernel): ServiceProvider => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { root, hosts, apps } = kernel;
+  kernel.hook("share:received", {
+    mode: "emit",
+    needs: "share",
+    args: "{}",
+    description: "Something was shared to an app from elsewhere (it is installed as a share target). Call share.take() to have it, if it was shared to your app. It carries nothing itself, as every plugin with `share` hears it.",
+  });
   /** What was shared into each tab and not taken yet, by tab. */
   const pending = new Map<string, Shared & { app?: string }>();
 
@@ -113,3 +112,5 @@ export default ({ root, hosts, apps }: Kernel): ServiceProvider => {
     },
   };
 };
+
+export default service("share", make);

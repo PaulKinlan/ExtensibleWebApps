@@ -116,11 +116,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     }
     for (const q of [...questions.values()]) if (q.instance === instance) q.answer(null);
   }
-  const before = remote.onDispose;
-  remote.onDispose = (instance) => {
-    before?.(instance);
-    forget(instance);
-  };
+  // A plugin instance stopped (kernel.ts): what it waited for, or was asked, is forgotten.
+  root.on("internal/stopped", (instance: string) => forget(instance));
   /** The plugins in the board's app: those its tab's app links, or (with no tab) those beside it. */
   const appOf = (instance: string): Set<string> | undefined => {
     const tab = instance.split("@")[1];

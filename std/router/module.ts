@@ -1,7 +1,7 @@
 // The `router` service. A screen for every address: the reading list opened
 // at /demos/reading-list/book/42 shows the screen `/book/42`, so a person can
 // bookmark or share it, and back and forward move between screens.
-// Found by name: this file is src/kernel/services/router.ts, so it is `ctx.call("router", …)`.
+// A kernel module (docs/layers.md): a site that lists `router` in kernel.json has it, as `ctx.call("router", …)`.
 //
 // A screen is an address inside the app's folder. The service worker answers
 // it with the app's page (sw/routes/apps.js), and the page moves between
@@ -16,44 +16,38 @@
 // plugin gets the screen of the tab with its app open that changed most
 // recently.
 
-import { defineHook } from "../hooks";
-import type { Host } from "../hosts";
-import type { Kernel } from "./index";
-import type { ServiceProvider } from "../remote";
+import type { Host } from "../../src/kernel/hosts";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
+import type { ServiceProvider } from "../../src/kernel/remote";
 
 const base = (instance: string) => instance.split("@")[0];
 
-defineHook("router:changed", {
-  mode: "emit",
-  needs: "router",
-  args: "{ app, tab, path, query }",
-  description: "A tab moved to another screen of its app: a link to one, back or forward, or router.go. Read router.current() for the screen your instance shows.",
-});
-
 type Query = Record<string, string>;
-
-/** Set when the service is made: what happens when a tab says where it is. */
-let changed: ((host: Host, path: string, query: Query, app?: string) => void) | undefined;
 
 /** A screen the kernel keeps: a path, and at most 50 query values of text. `router.go` holds to the same, so the page and the kernel can't disagree. */
 function isScreen(path: unknown, fields: [string, unknown][]): path is string {
   return typeof path === "string" && path.startsWith("/") && path.length <= 2000 && fields.length <= 50 && fields.every(([, v]) => typeof v === "string" && v.length <= 2000);
 }
 
-/** The tab's address changed (kernel.ts hears it from the page). Anything that isn't a path and some text values is ignored. */
-export function routed(host: Host, path: unknown, query: unknown, app?: string): void {
-  const fields = query && typeof query === "object" ? Object.entries(query as Record<string, unknown>) : [];
-  if (!isScreen(path, fields)) return;
-  changed?.(host, path, Object.fromEntries(fields) as Query, app);
-}
-
-export default ({ root, hosts, apps }: Kernel): ServiceProvider => {
-  changed = (host, path, query, app) => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { root, hosts, apps } = kernel;
+  kernel.hook("router:changed", {
+    mode: "emit",
+    needs: "router",
+    args: "{ app, tab, path, query }",
+    description: "A tab moved to another screen of its app: a link to one, back or forward, or router.go. Read router.current() for the screen your instance shows.",
+  });
+  // The tab's address changed: kernel.ts hears it from the page and passes it on as internal/url, which only
+  // trusted code hears. Anything that isn't a path and some text values is ignored.
+  root.on("internal/url", (host: Host, path: unknown, rawQuery: unknown, app?: string) => {
+    const fields = rawQuery && typeof rawQuery === "object" ? Object.entries(rawQuery as Record<string, unknown>) : [];
+    if (!isScreen(path, fields)) return;
+    const query = Object.fromEntries(fields) as Query;
     const before = host.url;
     host.url = { path, query, at: Date.now() };
     if (before && before.path === path && JSON.stringify(before.query) === JSON.stringify(query)) return;
     root.emit({}, "router:changed", { app, tab: host.tab, path, query });
-  };
+  });
 
   /** The tab a plugin instance draws for: its own, or for a shared plugin, the one whose screen changed last among the tabs with its app open. */
   function tabOf(instance: string): Host {
@@ -98,3 +92,5 @@ export default ({ root, hosts, apps }: Kernel): ServiceProvider => {
     },
   };
 };
+
+export default service("router", make);
