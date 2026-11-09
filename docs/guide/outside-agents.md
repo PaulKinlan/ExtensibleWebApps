@@ -23,7 +23,27 @@ export default async function (ctx) {
 - **`outside`** lets it open the door. **`services: ["outside", "tools"]`** says it needs the [kernel modules](../layers.md) that do the work, so it fails to start on a site that doesn't run them.
 - **The rest of `permissions`** is everything outside agents may do. Here that's reading the library and asking to change it. The library belongs to `library.js`, so the person reviews every change, the same way they review any plugin's change to data it doesn't own.
 - **`runs: "both"`** opens the door in the browser and on a space's server.
-- **`instructions`** tells the agents what the app is for. WebMCP puts them in front of each tool's description. MCP sends them as the server's `instructions` when an agent connects.
+- **`instructions`** tells the agents what the app is for. WebMCP has no place for them of its own, so each tool's description ends with them. MCP sends them as the server's `instructions` when an agent connects.
+
+### Or with an agent file
+
+The plugin above has no code of its own beyond opening the door, so an app can link an [agent file](agents.md) instead, with `outside: true`. Its frontmatter says what outside agents may do, and the Markdown after it is their instructions:
+
+```markdown
+---
+id: reading-list-agents
+name: Outside agent
+outside: true
+permissions: [data:read:library, data:write:library]
+---
+This is a reading list. Each book in the library has a title, an author, ...
+```
+
+```html
+<link rel="agent" href="outside.agent.md">
+```
+
+The kernel makes it the same door plugin: `runs: "both"`, `outside` added to its permissions, and the two kernel modules in `services`. The agent lives elsewhere and brings its own model, so the file has no `model`, `on`, `limits` or `runner`, and one that names any of them is refused. A space's server opens the door for an outside agent file as it does for a plugin. An app's other agent files still run only in the browser.
 
 The tools are exactly what [`tools.list`](tools.md) gives the plugin: `data_list_library`, `data_put_library` with the library's own fields, and so on. A method the manifest doesn't grant isn't there. `llm` and `tools` are never offered.
 
@@ -65,6 +85,25 @@ claude mcp add --transport http reading-list https://<site>/s/<space>/mcp/readin
 
 The agent acts as that member, and only in that space. Revoking the key or leaving the space shuts it out at once. The server keeps only a hash of each key.
 
+### Signing in instead of pasting a key
+
+An MCP client that can sign in with OAuth, as MCP's [authorization spec](https://modelcontextprotocol.io/specification/2025-06-18/basic/authorization) has it, needs only the address:
+
+```sh
+claude mcp add --transport http reading-list https://<site>/s/<space>/mcp/reading-list-agents
+```
+
+1. Without a key, the server answers 401, pointing at the address's metadata, `/.well-known/oauth-protected-resource/s/<space>/mcp/<plugin>`, which names the site as the server that signs agents in.
+2. The client registers itself at `/auth/mcp/register`, sends the member to `/auth/mcp/authorize` in their browser, and uses PKCE.
+3. Signed in on the site, the member sees which agent wants which space, as them, and answers. Someone who isn't in the space can't say yes.
+4. The client trades the code for an agent key at `/auth/mcp/token`, and sends it as above.
+
+The key is an ordinary agent key, named after the client: `/account/` lists it, and revoking it there shuts the agent out. Connecting the same client again replaces its key. The sign-in is [`src/server/auth/mcp-oauth.ts`](../../src/server/auth/mcp-oauth.ts). A client registers without a secret, and nothing is stored for it: its id carries its name and the addresses it may be sent back to.
+
+### When the tools change
+
+A plugin starting or stopping can change the door's tools: a collection the door may read comes or goes. An MCP client gets a session (`Mcp-Session-Id`) when it connects, and the server's `initialize` answer says `tools.listChanged`. The server keeps no stream open between requests, so when the tools have changed since a session last listed them, the answer to its next request is a short event stream: `notifications/tools/list_changed`, then the answer. The client lists the tools again. A client that takes only JSON gets plain JSON, and finds new tools when it next lists them. A client ends its session with `DELETE`. In a tab, WebMCP needs none of this: the page registers the new tools as they change.
+
 The space's server has no screen of its own, so a review goes to the members whose devices have the space open. They see the usual card, marked "on the space's server", and the first answer settles it. "Always allow" is kept by the space. An MCP tool call waits up to 100 seconds for an answer. If nobody answers in time, the tool's result says the change is still waiting. If nobody ever answers, the review is cancelled after five minutes, as any review is.
 
 ```mermaid
@@ -92,6 +131,7 @@ The space starts the plugin when a member first opens the app there, as it does 
 - In a page, a tool call has to carry the key the kernel gave that tab, so a tool from one door can't run as another.
 - On a server, the host lets in only a member's key for that space, and refuses a call a browser makes from another site's page.
 - A door takes 600 tool calls an hour from all its agents together.
+- An agent that signs in gets a key only after a member of the space says yes on the site's own page, and only with PKCE. The page refuses to be framed, and only a form from the site itself can answer it.
 - The `outside:called` hook says each time an outside agent called a tool: which tool, whether through WebMCP or MCP, the member on a server, and whether it worked. It never carries the arguments or the answer.
 
-The checks are [`tests/checks/outside-agents.mjs`](../../tests/checks/outside-agents.mjs) for WebMCP and [`tests/server/mcp.mjs`](../../tests/server/mcp.mjs) for MCP on both hosts.
+The checks are [`tests/checks/outside-agents.mjs`](../../tests/checks/outside-agents.mjs) and [`tests/checks/outside-file.mjs`](../../tests/checks/outside-file.mjs) for WebMCP, and [`tests/server/mcp.mjs`](../../tests/server/mcp.mjs) and [`tests/server/mcp-more.mjs`](../../tests/server/mcp-more.mjs) for MCP, signing in and tool changes on both hosts.

@@ -30,6 +30,7 @@
 //
 // And the keys members give agents outside the browser, to reach a space's MCP server (agent-keys.ts):
 //   GET  /auth/keys, POST /auth/keys { space, name }, POST /auth/keys/revoke { id }
+// or that an MCP client gets by signing in with OAuth (mcp-oauth.ts): /auth/mcp/* and /.well-known/oauth-*.
 //
 // A host lets a client join a space's kernel only if `member()` says it's in it.
 //
@@ -39,6 +40,7 @@
 import { isAddress } from "../../kernel/address.ts";
 import type { Email, Files } from "../../seams/index.ts";
 import { agentKeys } from "./agent-keys.ts";
+import { mcpOAuth } from "./mcp-oauth.ts";
 import { isFlow, type OAuthProvider, type Provider } from "./providers.ts";
 import { ALGORITHMS, b64url, unb64url, type CredentialJSON, type PublicKey, verifyAssertion, verifyRegistration } from "./webauthn.ts";
 
@@ -322,6 +324,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   const spaceOf = (name: string) => (SPACE_NAME.test(name) ? read<Space>(`spaces/${name}.json`) : Promise.resolve(null));
 
   const keys = agentKeys(files, { isMember: async (name, user) => !!(await spaceOf(name))?.members[user] });
+  const mcpSignIn = mcpOAuth(files, { user: async (request) => (await session(request))?.user ?? null, isMember: async (name, user) => !!(await spaceOf(name))?.members[user], keys, serial });
 
   const join = async (space: Space, user: string, role: Role) => {
     space.members[user] = role;
@@ -436,6 +439,9 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     async handle(request: Request): Promise<Response | undefined> {
       const url = new URL(request.url);
       const route = `${request.method} ${url.pathname}`;
+      // An MCP client signing in (mcp-oauth.ts): its own checks, since its forms and clients aren't this site's pages.
+      const signingIn = await mcpSignIn.handle(request);
+      if (signingIn) return signingIn;
 
       if (route === "GET /auth/me") {
         const current = await session(request);

@@ -1,0 +1,16 @@
+<!doctype html>
+<!--
+  An app that lets agents outside it in with an agent file alone (`outside:
+  true`, src/kernel/agents/file.ts), with no plugin of its own to write. The
+  space's server opens its MCP door at /s/<space>/mcp/jots-door
+  (tests/server/mcp-more.mjs). The door may read any collection whose name
+  starts jot-, so its tools change when more/app.html brings one.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Outside agent file check</title>
+  <link rel="agent" href="door.agent.md">
+</head>
+<body><slot name="main"></slot></body>
+</html>

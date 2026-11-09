@@ -28,6 +28,14 @@
 //   this answers it: MCP's JSON-RPC over plain HTTP, with no
 //   streaming, which is all its tools need.
 //
+// An MCP client gets a session (Mcp-Session-Id) when it connects. When the
+// door's tools change (a plugin starts or stops, a collection comes or goes),
+// the server says so with notifications/tools/list_changed: there is no stream
+// open between requests, so the notice goes ahead of the answer to the
+// session's next request, as a short event stream (Streamable HTTP lets a POST
+// be answered that way). A client that only takes JSON gets plain JSON, and
+// lists the tools again when it chooses.
+//
 // On the server, a review is sent to the members' devices that have the space
 // open (std/spaces/reviews.ts), since the server has no screen. An MCP
 // call waits for the answer for up to REVIEW_WAIT_MS, then says it is still
@@ -62,6 +70,39 @@ interface Door {
   calls: number[];
 }
 
+/** An MCP client's session: who it is for, and which tools it was last told about. */
+interface Session {
+  plugin: string;
+  member?: string;
+  /** The fingerprint of the tools when the client last listed them (or connected). */
+  seen?: string;
+  used: number;
+}
+
+/** Sessions kept at once, across doors; the least recently used goes first. */
+const MAX_SESSIONS = 200;
+/** A session nobody used for a day is forgotten. */
+const SESSION_IDLE_MS = 24 * 3_600_000;
+const SESSION_ID = /^[0-9a-f]{32}$/;
+
+/**
+ * What the door answers the host (src/server/mcp.ts) for an MCP request: the JSON-RPC answer, the session the
+ * client should send from now on, and any notifications to send ahead of the answer.
+ */
+export interface McpAnswer {
+  reply?: unknown;
+  session?: string;
+  notices?: unknown[];
+}
+
+/** A short fingerprint of a list of tools: changes whenever a name, description or schema does. */
+const fingerprint = (tools: Tool[]) => {
+  const text = JSON.stringify(tools.map((t) => [t.name, t.description, t.parameters]));
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return `${tools.length}-${(h >>> 0).toString(36)}`;
+};
+
 /** A JSON-RPC message from an MCP client. */
 interface Rpc {
   jsonrpc?: string;
@@ -89,6 +130,10 @@ export default {
     const { root, hosts, remote, apps } = kernel;
     /** The doors open now, by plugin instance. */
     const doors = new Map<string, Door>();
+    /** MCP clients' sessions, by id. */
+    const sessions = new Map<string, Session>();
+    /** Sessions their clients ended, which aren't taken up again (the latest few hundred). */
+    const ended = new Set<string>();
 
     kernel.hook("outside:called", {
       mode: "emit",
@@ -179,9 +224,49 @@ export default {
       }
     });
 
-    /** An MCP request (JSON-RPC, one message or a batch) to the door of the plugin `plugin`, from a member's agent. */
-    async function mcp(plugin: string, member: string | undefined, body: unknown): Promise<{ status: number; json?: unknown }> {
+    /**
+     * The session a request names: kept, or taken up again after the kernel restarted (a client isn't made to
+     * connect again for that). Undefined if it names none, null if it names one that isn't this member's.
+     */
+    function sessionOf(id: string | undefined, plugin: string, member: string | undefined): Session | null | undefined {
+      if (!id) return undefined;
+      if (!SESSION_ID.test(id) || ended.has(id)) return null;
+      const now = Date.now();
+      for (const [key, s] of sessions) if (now - s.used > SESSION_IDLE_MS) sessions.delete(key);
+      let session = sessions.get(id);
+      if (session && (session.plugin !== plugin || session.member !== member)) return null;
+      if (!session) sessions.set(id, (session = { plugin, member, used: now }));
+      session.used = now;
+      return session;
+    }
+
+    function newSession(plugin: string, member: string | undefined, seen: string): string {
+      if (sessions.size >= MAX_SESSIONS) {
+        const oldest = [...sessions.entries()].sort((a, b) => a[1].used - b[1].used)[0];
+        if (oldest) sessions.delete(oldest[0]);
+      }
+      const id = random();
+      sessions.set(id, { plugin, member, seen, used: Date.now() });
+      return id;
+    }
+
+    /**
+     * An MCP request (JSON-RPC, one message or a batch) to the door of the plugin `plugin`, from a member's agent.
+     * `session` is the Mcp-Session-Id it sent, and `streams` whether it takes an event stream as the answer.
+     */
+    async function mcp(plugin: string, member: string | undefined, body: unknown, options: { method?: string; session?: string; streams?: boolean } = {}): Promise<{ status: number; json?: McpAnswer }> {
       const door = [...doors.values()].find((d) => base(d.instance) === plugin);
+      const session = sessionOf(options.session, plugin, member);
+      if (session === null) return { status: 404, json: { reply: { jsonrpc: "2.0", id: null, error: { code: -32001, message: "That session isn't yours, or has ended: connect again" } } } };
+      // The client ends its session.
+      if (options.method === "DELETE") {
+        if (!options.session) return { status: 400, json: { reply: { jsonrpc: "2.0", id: null, error: { code: -32600, message: "DELETE ends a session: send its Mcp-Session-Id" } } } };
+        sessions.delete(options.session);
+        ended.add(options.session);
+        if (ended.size > 500) ended.delete(ended.values().next().value!);
+        return { status: 200 };
+      }
+      let started: string | undefined;
       const one = async (rpc: Rpc): Promise<unknown> => {
         const reply = (result: unknown) => ({ jsonrpc: "2.0", id: rpc.id ?? null, result });
         const fail = (code: number, message: string) => ({ jsonrpc: "2.0", id: rpc.id ?? null, error: { code, message } });
@@ -192,18 +277,22 @@ export default {
         const dispatch = { trace: `mcp-${random().slice(0, 8)}` };
         switch (rpc.method) {
           case "initialize":
+            started = newSession(plugin, member, fingerprint(await toolsOf(door, dispatch)));
             return reply({
               protocolVersion: MCP_VERSION,
-              capabilities: { tools: { listChanged: false } },
+              capabilities: { tools: { listChanged: true } },
               serverInfo: { name: door.name, version: "1.0.0" },
               ...(door.instructions ? { instructions: door.instructions } : {}),
             });
           case "ping":
             return reply({});
-          case "tools/list":
+          case "tools/list": {
+            const tools = await toolsOf(door, dispatch);
+            if (session) session.seen = fingerprint(tools);
             return reply({
-              tools: (await toolsOf(door, dispatch)).map((t) => ({ name: t.name, description: t.description, inputSchema: t.parameters, annotations: { readOnlyHint: readOnly(t) } })),
+              tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.parameters, annotations: { readOnlyHint: readOnly(t) } })),
             });
+          }
           case "tools/call": {
             const name = rpc.params?.name;
             if (typeof name !== "string") return fail(-32602, "tools/call needs the tool's name");
@@ -223,18 +312,29 @@ export default {
             return fail(-32601, `This server has no method ${rpc.method}`);
         }
       };
-      if (Array.isArray(body)) {
-        const answers = (await Promise.all(body.slice(0, 20).map((m) => one(m as Rpc)))).filter((a) => a !== undefined);
-        return answers.length ? { status: 200, json: answers } : { status: 202 };
+      const messages = Array.isArray(body) ? body.slice(0, 20) : [body];
+      const answers = (await Promise.all(messages.map((m) => one(m as Rpc)))).filter((a) => a !== undefined);
+      if (!answers.length) return { status: 202 };
+      const json: McpAnswer = { reply: Array.isArray(body) ? answers : answers[0] };
+      if (started) json.session = started;
+      // The tools changed since this session was last told: say so ahead of the answer, if the client takes a stream.
+      if (door && session && options.streams && !answers.some((a) => (a as { result?: { tools?: unknown } })?.result?.tools)) {
+        const now = fingerprint(await toolsOf(door, { trace: "mcp:changed" }).catch(() => []));
+        if (session.seen && session.seen !== now) json.notices = [{ jsonrpc: "2.0", method: "notifications/tools/list_changed" }];
+        session.seen = now;
       }
-      const answer = await one(body as Rpc);
-      return answer === undefined ? { status: 202 } : { status: 200, json: answer };
+      return { status: 200, json };
     }
 
     // The server's host hands the kernel an MCP request it has let in (src/server/mcp.ts): /mcp/<plugin>.
+    // The host passes the session it was sent, and whether the client takes an event stream, as the query.
     kernel.door("mcp", async (request) => {
       if (hosts.mode !== "server") return null;
-      const { status, json } = await mcp(request.path.split("/")[2] ?? "", request.member, request.form);
+      const { status, json } = await mcp(request.path.split("/")[2] ?? "", request.member, request.form, {
+        method: request.method,
+        session: request.query?.session || undefined,
+        streams: request.query?.streams === "1",
+      });
       return json === undefined ? { status } : { status, json };
     });
 

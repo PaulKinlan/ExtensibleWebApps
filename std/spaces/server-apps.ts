@@ -5,6 +5,10 @@
 // starts each plugin it links that runs on the server. They keep running with
 // no app open anywhere, and start again when the space's kernel does.
 //
+// An agent file the app links (rel="agent") runs here only when it is for
+// agents outside the app (`outside: true`, src/kernel/agents/file.ts): it opens
+// the space's MCP door. An app's own agents run in the browser.
+//
 // Only an app's own plugins run here, the files the site serves: the
 // author's, which the deployment chose to serve. A person's own plugins stay
 // in their browser. The app's browser plugins don't run here, but their
@@ -13,6 +17,7 @@
 // Kept in the space's folder:
 //   server/apps.json   the apps opened in the space
 
+import { fromAgentFile, isAgentFile, isOutsideFile } from "../../src/kernel/agents/file";
 import { readManifest } from "../../src/kernel/manifest";
 import type { RemotePlugins } from "../../src/kernel/remote";
 import type { Store } from "../../src/kernel/store";
@@ -24,13 +29,13 @@ const MAX_APPS = 50;
 const LINK = /<link\b[^>]*>/gi;
 const attr = (tag: string, name: string) => new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(tag)?.slice(1).find((v) => v !== undefined);
 
-/** The plugin files an app.html links with <link rel="plugin">, as absolute URLs on the site. */
-export function pluginLinks(html: string, base: string): string[] {
+/** The plugin files an app.html links with <link rel="plugin"> (or, with `rels`, others), as absolute URLs on the site. */
+export function pluginLinks(html: string, base: string, rels: string[] = ["plugin"]): string[] {
   const site = new URL(base).origin;
   const out: string[] = [];
   // A commented-out link is off, in the browser and here.
   for (const [tag] of html.replace(/<!--[\s\S]*?(?:-->|$)/g, "").matchAll(LINK)) {
-    if ((attr(tag, "rel") ?? "").toLowerCase() !== "plugin") continue;
+    if (!rels.includes((attr(tag, "rel") ?? "").toLowerCase())) continue;
     const href = attr(tag, "href");
     if (!href) continue;
     const url = new URL(href, base);
@@ -92,7 +97,7 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
     // Read every plugin first, then start the ones that run here together, so one that needs a service
     // another of them provides isn't refused for starting first (remote.expect).
     const starting: { href: string; source: string }[] = [];
-    for (const href of pluginLinks(await page.text(), base)) {
+    for (const href of pluginLinks(await page.text(), base, ["plugin", "agent"])) {
       if (loadedPlugins.has(href)) continue;
       const answer = await fetcher(href).catch((error) => new Response(String(error), { status: 599 }));
       if (!answer.ok) {
@@ -100,9 +105,17 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
         record({ kind: "error", name: "server:plugin", detail: `${href}: ${answer.status}` });
         continue;
       }
-      const source = await answer.text();
+      let source = await answer.text();
       let manifest: ReturnType<typeof readManifest>;
       try {
+        if (isAgentFile(href)) {
+          // An app's own agent runs in the browser; only an outside agent file opens a door here.
+          if (!isOutsideFile(source)) {
+            loadedPlugins.add(href);
+            continue;
+          }
+          source = fromAgentFile(source);
+        }
         manifest = readManifest(source);
       } catch (error) {
         record({ kind: "error", name: "server:plugin", detail: `${href}: ${error instanceof Error ? error.message : error}` });
