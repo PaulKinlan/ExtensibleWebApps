@@ -145,19 +145,9 @@ class PluginHost extends RpcTarget {
     return this.env.ACCOUNTS.getByName("accounts").addresses(this.space);
   }
 
-  /**
-   * Sends a message a server plugin sent, which the email module checked and wrote to the outbox: through
-   * Cloudflare Email Service, from EMAIL_FROM. Null when the deployment hasn't set both up.
-   */
-  async deliver(message: Message): Promise<{ ok: true; id: string } | { ok: false; error: string } | null> {
-    if (!this.env.EMAIL || !this.env.EMAIL_FROM) return null;
-    try {
-      const sent = await this.env.EMAIL.send({ to: message.to, from: this.env.EMAIL_FROM, subject: message.subject, text: message.text, ...(message.html !== undefined ? { html: message.html } : {}) });
-      return { ok: true, id: sent.messageId };
-    } catch (error) {
-      const e = error as { code?: string; message?: string };
-      return { ok: false, error: `${e.code ? `${e.code}: ` : ""}${e.message ?? String(error)}` };
-    }
+  /** Sends a message a server plugin sent, which the email module checked and wrote to the outbox. */
+  deliver(message: Message): Promise<Delivery> {
+    return send(this.env, message);
   }
 
   /** The space's members, with the names on their accounts (sync.ts tells each device, to show who changed what). */
@@ -168,6 +158,20 @@ class PluginHost extends RpcTarget {
   site(url: string): Promise<Response> {
     const { pathname, search } = new URL(url);
     return this.env.ASSETS.fetch(new Request(`https://assets${pathname}${search}`));
+  }
+}
+
+type Delivery = { ok: true; id: string } | { ok: false; error: string } | null;
+
+/** Sends a message through Cloudflare Email Service, from EMAIL_FROM. Null when the deployment hasn't set both up. */
+async function send(env: Env, message: Message): Promise<Delivery> {
+  if (!env.EMAIL || !env.EMAIL_FROM) return null;
+  try {
+    const sent = await env.EMAIL.send({ to: message.to, from: env.EMAIL_FROM, subject: message.subject, text: message.text, ...(message.html !== undefined ? { html: message.html } : {}) });
+    return { ok: true, id: sent.messageId };
+  } catch (error) {
+    const e = error as { code?: string; message?: string };
+    return { ok: false, error: `${e.code ? `${e.code}: ` : ""}${e.message ?? String(error)}` };
   }
 }
 
@@ -261,6 +265,7 @@ export class Accounts extends DurableObject<Env> {
   // Other sites to sign in with come from the Worker's vars (AUTH_PROVIDERS) and secrets (<ID>_CLIENT_SECRET).
   private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql), providersFrom(this.env as unknown as Record<string, unknown>), {
     left: (space, user) => this.env.SPACE.getByName(space).revoke(user),
+    mail: (message) => send(this.env, message),
   });
 
   async fetch(request: Request): Promise<Response> {

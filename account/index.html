@@ -59,6 +59,7 @@
           <label for="email-address" class="visually-hidden">Your email address</label>
           <input id="email-address" name="email" type="email" autocomplete="email" placeholder="you@example.com" maxlength="254" />
           <button type="submit">Save</button>
+          <button type="button" id="email-test">Send me a test message</button>
         </form>
 
         <h2>Your spaces</h2>
@@ -257,6 +258,10 @@
         const answer = await call("/auth/me/email", { email: $("email-address").value.trim() });
         if (answer.status === 401) throw new Error("You're signed out: sign in again, then save it");
       }, "Your email is saved.", false));
+      $("email-test").addEventListener("click", run(async () => {
+        const answer = await call("/auth/me/email/test", {});
+        if (answer.status !== 200) throw new Error(answer.error ?? "The test message couldn't be sent");
+      }, "A test message is on its way: look in your inbox (and spam).", false));
       $("new-space").addEventListener("submit", run(() => call("/auth/spaces", { name: $("space-name").value.trim() }), "Your space is made.", false));
       $("signout").addEventListener("click", run(() => call("/auth/signout", {}), "You're signed out.", false));
 
