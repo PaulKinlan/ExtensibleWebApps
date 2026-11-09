@@ -1,0 +1,8 @@
+{
+  "services": [
+    "transfer"
+  ],
+  "hooks": [
+    "transfer:changed"
+  ]
+}

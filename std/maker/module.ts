@@ -126,8 +126,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     });
 
   /** The kernel's rules for the checks: its manifest reader, gate, HTML allowlist and API reference. */
-  const rules = (name: string) => {
-    const reference = kernel.describe();
+  const rules = async (name: string) => {
+    const reference = await kernel.describe();
     const methods = new Map<string, string | undefined>();
     for (const s of reference.services) for (const m of s.methods) methods.set(`${s.name}.${m.name}`, m.needs);
     return {
@@ -174,7 +174,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
    */
   const checked = async (name: string, files: Map<string, string>) => {
     const { checkFiles, siteFiles } = await loadChecks();
-    const r = rules(name);
+    const r = await rules(name);
     const site = new Map<string, string>();
     const origin = (globalThis as { location?: Location }).location?.origin;
     if (origin) {

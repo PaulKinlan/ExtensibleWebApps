@@ -26,6 +26,7 @@
     "reference": "vite build && node scripts/reference.mjs",
     "packages": "node scripts/packages.mjs",
     "gallery": "node scripts/gallery.mjs",
+    "sizes": "node scripts/sizes.mjs",
     "prepare": "npm run build && npm run build:server"
   },
   "dependencies": {

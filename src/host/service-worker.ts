@@ -11,7 +11,8 @@ import type { Command } from "../shared/protocol";
 /** What the service worker may ask the kernel. Everything else is refused. */
 const ALLOWED = new Set<Command>(["route"]);
 
-export function serviceWorker(command: (name: Command, arg?: unknown) => Promise<unknown>, report: (source: string, text: string) => void): void {
+/** `introduced` settles once the kernel knows this tab (it answers no command before then). */
+export function serviceWorker(command: (name: Command, arg?: unknown) => Promise<unknown>, report: (source: string, text: string) => void, introduced: Promise<void>): void {
   if (!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.addEventListener("message", (e: MessageEvent) => {
     const reply = e.ports[0];
@@ -28,9 +29,23 @@ export function serviceWorker(command: (name: Command, arg?: unknown) => Promise
   navigator.serviceWorker.register("/sw.js", { type: "module", scope: "/" }).catch((error) => report("service-worker", `Couldn't start the service worker: ${error instanceof Error ? error.message : error}`));
   // On the first visit the page loaded before the service worker started, so it kept nothing: tell it what this page loaded.
   if (first) {
-    void navigator.serviceWorker.ready.then((registration) => {
-      const urls = [location.href, ...performance.getEntriesByType("resource").map((entry) => entry.name)].filter((u) => new URL(u).origin === location.origin);
-      registration.active?.postMessage({ t: "sw:warm", urls });
+    /** Addresses already sent, so each is fetched again and kept once. */
+    const sent = new Set<string>();
+    const warm = (registration: ServiceWorkerRegistration, list: unknown[]) => {
+      const urls = list.filter((u): u is string => typeof u === "string" && new URL(u, location.href).origin === location.origin && !sent.has(u));
+      for (const url of urls) sent.add(url);
+      if (urls.length) registration.active?.postMessage({ t: "sw:warm", urls });
+    };
+    void navigator.serviceWorker.ready.then(async (registration) => {
+      warm(registration, [location.href, ...performance.getEntriesByType("resource").map((entry) => entry.name)]);
+      // And what the kernel fetched in its own worker, which this page's list doesn't have: the kernel modules its
+      // app uses. The kernel answers once this tab has said hello; and it is asked again a little later, for a
+      // module whose file was still on its way (fetched before the service worker was there to keep it).
+      await introduced;
+      for (const wait of [0, 3000, 15000]) {
+        await new Promise((resolve) => setTimeout(resolve, wait));
+        warm(registration, [...(((await command("fetched").catch(() => [])) as unknown[] | undefined) ?? [])]);
+      }
     });
   }
 }

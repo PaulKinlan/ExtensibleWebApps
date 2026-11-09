@@ -1,0 +1,8 @@
+{
+  "services": [
+    "router"
+  ],
+  "hooks": [
+    "router:changed"
+  ]
+}

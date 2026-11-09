@@ -1,0 +1,11 @@
+{
+  "services": [
+    "launch"
+  ],
+  "hooks": [
+    "launch:received"
+  ],
+  "commands": [
+    "launch:arrived"
+  ]
+}

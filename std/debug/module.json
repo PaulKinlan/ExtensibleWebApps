@@ -1,0 +1,12 @@
+{
+  "services": [
+    "debug"
+  ],
+  "hooks": [
+    "bench:ping"
+  ],
+  "commands": [
+    "bench",
+    "reload-test"
+  ]
+}

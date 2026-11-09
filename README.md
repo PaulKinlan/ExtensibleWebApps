@@ -95,7 +95,7 @@ Each kind of code has its own place:
     - [`apps.ts`](src/kernel/apps.ts) runs the plugins an open app links, while a tab has it open
     - [`routes.ts`](src/kernel/routes.ts) answers requests for plugin routes, which the service worker passes on
     - [`hosts.ts`](src/kernel/hosts.ts) keeps the open tabs and picks the spawner, the tab that starts plugin workers
-    - [`services/`](src/kernel/services/) holds one file per core service (`files`, `hooks`, `kernel`, `storage`), found by name; optional services are kernel modules in `std/<name>/module.ts`
+    - [`services/`](src/kernel/services/) holds one file per core service (`files`, `hooks`, `kernel`, `storage`), found by name; optional services are kernel modules in `std/<name>/module.ts`, each a file of its own the kernel fetches when an app first uses it ([the kernel stays small](docs/layers.md#the-kernel-stays-small))
     - [`agents/`](src/kernel/agents/) runs an agent's Markdown file as a plugin
   - **Data:**
     - [`store.ts`](src/kernel/store.ts) is the data folder

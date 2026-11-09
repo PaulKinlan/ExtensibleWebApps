@@ -39,13 +39,15 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   });
   // The tab's address changed: kernel.ts hears it from the page and passes it on as internal/url, which only
   // trusted code hears. Anything that isn't a path and some text values is ignored.
-  root.on("internal/url", (host: Host, path: unknown, rawQuery: unknown, app?: string) => {
+  // (When the router starts after a tab said where it is, the core says it again, with the time the tab said it: `at`.)
+  root.on("internal/url", (host: Host, path: unknown, rawQuery: unknown, app?: string, at?: number) => {
     const fields = rawQuery && typeof rawQuery === "object" ? Object.entries(rawQuery as Record<string, unknown>) : [];
     if (!isScreen(path, fields)) return;
     const query = Object.fromEntries(fields) as Query;
     const before = host.url;
-    host.url = { path, query, at: Date.now() };
+    // The same screen again is no move: the tab keeps the time it moved there, which says which tab moved last.
     if (before && before.path === path && JSON.stringify(before.query) === JSON.stringify(query)) return;
+    host.url = { path, query, at: at ?? Date.now() };
     root.emit({}, "router:changed", { app, tab: host.tab, path, query });
   });
 

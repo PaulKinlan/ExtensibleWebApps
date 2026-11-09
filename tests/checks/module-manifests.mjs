@@ -1,0 +1,108 @@
+// The kernel never becomes one big file (docs/layers.md, "The kernel stays
+// small"). A kernel module is a file of its own that the browser's kernel
+// fetches the first time something it adds is used, so an app's kernel is the
+// core and the modules that app uses. The kernel knows what each module adds
+// from the manifest beside it (std/<name>/module.json), without running it.
+//
+// Checked here: the build keeps each module out of the kernel's own file; a
+// manifest the build doesn't understand stops it; an app that uses no module
+// starts none; a module starts when its service is called, its hook is
+// listened to or its command is run; and no manifest lists something its
+// module never adds.
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { moduleManifest, moduleManifests } from "../../vite.kernel-modules.ts";
+
+const ROOT = fileURLToPath(new URL("../../", import.meta.url));
+
+export default async function ({ check, context, URL: site }) {
+  const { modules } = JSON.parse(readFileSync(join(ROOT, "kernel.json"), "utf8"));
+
+  // The build: one file per module, and none of them inside the kernel's.
+  const assets = join(ROOT, "dist", "assets");
+  const built = existsSync(assets) ? readdirSync(assets) : [];
+  const kernelFile = built.find((f) => /^browser-[\w-]+\.js$/.test(f));
+  const kernel = kernelFile ? readFileSync(join(assets, kernelFile), "utf8") : "";
+  const noFile = modules.filter((name) => !built.some((f) => f.startsWith(`kernel-${name}-`)));
+  check("the build makes each kernel module a file of its own", !!kernelFile && !noFile.length, `no file for: ${noFile.join(", ")}`);
+  // Each module's file is fetched by name from the kernel, never copied into it: the kernel only names the file.
+  const named = modules.filter((name) => !new RegExp(`import\\("\\./kernel-${name}-[\\w-]+\\.js"\\)`).test(kernel));
+  check("the kernel's own file only names each module's file, to fetch when it is used", !named.length, `not fetched on demand: ${named.join(", ")}`);
+
+  // A manifest the build doesn't understand stops it.
+  const root = mkdtempSync(join(tmpdir(), "module-json-"));
+  for (const name of ["bus", "llm"]) {
+    mkdirSync(join(root, "std", name), { recursive: true });
+    writeFileSync(join(root, "std", name, "module.ts"), "export default {};\n");
+  }
+  writeFileSync(join(root, "kernel.json"), JSON.stringify({ modules: ["bus", "llm"] }));
+  const outcome = (bus, llm = { services: ["llm"] }) => {
+    if (bus === undefined) rmSync(join(root, "std", "bus", "module.json"), { force: true });
+    else writeFileSync(join(root, "std", "bus", "module.json"), JSON.stringify(bus));
+    writeFileSync(join(root, "std", "llm", "module.json"), JSON.stringify(llm));
+    try {
+      moduleManifest("bus", root);
+      return { ok: moduleManifests(root) };
+    } catch (error) {
+      return { error: error.message };
+    }
+  };
+  const good = outcome({ services: ["bus"], hooks: ["bus:posted"], starts: "space" });
+  const none = outcome(undefined);
+  const unknown = outcome({ services: ["bus"], provides: ["bus"] });
+  const notList = outcome({ services: "bus" });
+  const badStart = outcome({ services: ["bus"], starts: "sometimes" });
+  const twice = outcome({ services: ["llm"] });
+  rmSync(root, { recursive: true, force: true });
+  check("a kernel module's manifest says what it adds", good.ok?.bus?.hooks?.[0] === "bus:posted", JSON.stringify(good));
+  check(
+    "a module with no manifest, a manifest with a setting the kernel doesn't know or a wrong value, or two modules that add the same service, stops the build",
+    /has no manifest/.test(none.error) && /isn't a setting/.test(unknown.error) && /must be a list/.test(notList.error) && /starts must be/.test(badStart.error) && /both add llm/.test(twice.error),
+    JSON.stringify({ none, unknown, notList, badStart, twice }),
+  );
+
+  // A kernel of its own (another browser context has its own shared worker), so what other checks used doesn't count.
+  const fresh = await context.browser().newContext();
+  const page = await fresh.newPage();
+  try {
+    // A small app: its kernel runs the modules its plugins use, and no others.
+    await page.goto(`${site}demos/habits/`);
+    await page.waitForFunction(() => window.__host);
+    const running = async () => (await page.evaluate(() => window.__host.command("modules"))).filter((m) => m.running).map((m) => m.name).sort();
+    const settled = async () => {
+      await page.waitForFunction(() => window.__host.traces.some((e) => e.name === "kernel:start"), null, { timeout: 10000 }).catch(() => {});
+      await page.waitForTimeout(500);
+    };
+    await settled();
+    const atStart = await running();
+    const unwanted = ["spaces", "maker", "game", "audio", "folder", "outside", "email", "transfer"].filter((name) => atStart.includes(name));
+    check("an app's kernel starts only the modules its plugins use: Habits starts no spaces, app maker, game, audio, folder, email or MCP module", !unwanted.length && atStart.length < modules.length / 2, `running at the start: ${atStart.join(", ") || "none"}`);
+
+    // A page command of a module starts it (debug's bench), and only it.
+    const before = await running();
+    const bench = await page.evaluate(() => window.__host.command("bench", 5));
+    const afterBench = await running();
+    check("running a module's command starts that module", bench?.n === 5 && afterBench.includes("debug") && afterBench.filter((n) => !before.includes(n)).every((n) => n === "debug"), JSON.stringify({ before, afterBench }));
+
+    // Describing the whole kernel starts every module, and then every manifest must be true: nothing listed that was never added.
+    const reference = await page.evaluate(() => window.__host.command("reference"));
+    const state = await page.evaluate(() => window.__host.command("modules"));
+    const stopped = state.filter((m) => !m.running).map((m) => m.name);
+    check("the kernel's reference describes every module the site lists, so asking for it starts them all", !stopped.length && modules.every((name) => state.some((m) => m.name === name)), `not running: ${stopped.join(", ")}`);
+    // What a module adds only on a space's server (a door, the spaces module's server hooks) is checked there (tests/server/).
+    const SERVER_ONLY = /^(doors |hooks sync:)/;
+    const untrue = state.flatMap((m) => m.unused.filter((n) => !SERVER_ONLY.test(n)).map((n) => `${m.name}: ${n}`));
+    check("no module's manifest lists a service, hook, command or message the module doesn't add", !untrue.length, untrue.join("; "));
+    const services = new Set(reference.data.services.map((s) => s.name));
+    const hooks = new Set(reference.data.hooks.map((h) => h.name));
+    const manifests = moduleManifests(ROOT);
+    const absent = Object.entries(manifests).flatMap(([name, m]) => [...(m.services ?? []).filter((s) => !services.has(s)), ...(m.hooks ?? []).filter((h) => !hooks.has(h) && !SERVER_ONLY.test(`hooks ${h}`))].map((n) => `${name}: ${n}`));
+    check("every service and hook the manifests list is in the reference once the modules run", !absent.length, absent.join("; "));
+    const empty = reference.data.services.filter((s) => !s.description || !s.methods.length).map((s) => s.name);
+    check("the reference has every service's own description and methods, never a stand-in's", !empty.length, empty.join(", "));
+  } finally {
+    await fresh.close();
+  }
+}

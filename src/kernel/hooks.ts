@@ -50,6 +50,13 @@ export const PLUGIN_HOOKS = {
 /** The plugin that defined each plugin hook, `<plugin>:<key>`. The kernel's own hooks aren't in here. */
 export const hookOwners = new Map<string, string>();
 
+/**
+ * Hooks a kernel module says it defines (its manifest's `hooks`) while the module isn't running yet, and how to
+ * start it (modules.ts). They are the kernel's hooks as much as the ones in `hooks`: a plugin can't take their
+ * names, and listening to one starts its module first.
+ */
+export const declaredHooks = new Map<string, () => Promise<unknown>>();
+
 /** Hook names the kernel reads in its own way: a plugin with one of these ids can't define hooks. */
 const SPECIAL = ["command", "schedule", "route", "internal", "service"];
 
@@ -57,6 +64,7 @@ const SPECIAL = ["command", "schedule", "route", "internal", "service"];
 export function kernelPrefix(id: string): boolean {
   if (SPECIAL.includes(id)) return true;
   for (const name of hooks.keys()) if (name.startsWith(`${id}:`) && !hookOwners.has(name)) return true;
+  for (const name of declaredHooks.keys()) if (name.startsWith(`${id}:`)) return true;
   return false;
 }
 
