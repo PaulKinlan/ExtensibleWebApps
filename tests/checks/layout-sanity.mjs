@@ -106,15 +106,32 @@ export default async function ({ check, context, URL, errors }) {
       if (!ALLOWED.some(([allowed]) => allowed.test(line))) broken.push(line);
     }
   };
-  const settle = (page) => page.waitForFunction(() => document.readyState === "complete" && !document.querySelector("slot .fallback:not([hidden])"), null, { timeout: 6000 }).catch(() => {}).then(() => page.waitForTimeout(400));
+  // An app is ready once its plugins have drawn and stopped drawing: at least one view, and the same number of
+  // views twice in a row. A page that never gets there is a finding, not a pass on an empty shell.
+  const settle = async (page, isApp) => {
+    await page.waitForFunction(() => document.readyState === "complete", null, { timeout: 8000 }).catch(() => {});
+    if (isApp && !(await page.waitForSelector("[data-plugin]", { state: "attached", timeout: 10000 }).then(() => true, () => false))) return "no plugin drew a view within 10 seconds";
+    for (let last = -1, same = 0, tries = 0; same < 2 && tries < 20; tries++) {
+      await page.waitForTimeout(250);
+      const now = await page.evaluate(() => document.querySelectorAll("[data-plugin]").length + document.querySelectorAll("input, select, textarea, button").length).catch(() => -1);
+      same = now === last ? same + 1 : 0;
+      last = now;
+    }
+    return "";
+  };
 
   for (const [size, viewport] of Object.entries(SIZES)) {
     const own = await context.browser().newContext({ viewport });
     const page = await own.newPage();
     for (const path of pages) {
-      await page.goto(`${URL}${path}`, { waitUntil: "load" }).catch(() => {});
-      await settle(page);
-      await look(page, `/${path}`, size);
+      const answer = await page.goto(`${URL}${path}`, { waitUntil: "load" }).catch((error) => String(error?.message ?? error).split("\n")[0]);
+      if (typeof answer === "string" || !answer?.ok()) {
+        broken.push(`/${path} ${size}: couldn't be opened (${typeof answer === "string" ? answer : `the server answered ${answer?.status()}`})`);
+        continue;
+      }
+      const unready = await settle(page, path.endsWith("app.html"));
+      if (unready) broken.push(`/${path} ${size}: ${unready}`);
+      else await look(page, `/${path}`, size);
     }
     await own.close();
   }
@@ -137,7 +154,8 @@ export default async function ({ check, context, URL, errors }) {
       await page.fill('form[data-action="make"] input[name="name"]', `layout-${size}`);
       await page.click('form[data-action="make"] button[type="submit"]');
       await page.waitForSelector(".space-list strong", { timeout: 8000 });
-      await page.waitForSelector(".keys form", { timeout: 8000 }).catch(() => {});
+      await page.waitForSelector(".keys form", { timeout: 8000 });
+      await settle(page, true);
       await look(page, "/account/ signed in", size);
       await own.close();
     }
