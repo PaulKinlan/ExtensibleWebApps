@@ -252,7 +252,8 @@ async function publicRoute(request: Request, env: Env, at: { space: string; path
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     // The front door (src/server/front-door.ts) decides; this only reaches the Durable Objects and the assets.
-    const accounts = env.ACCOUNTS.getByName("accounts");
+    // The accounts are reached only when the door asks: a request it settles alone (a bad space name) needs none.
+    const accounts = () => env.ACCOUNTS.getByName("accounts");
     const decision = await frontDoor(
       {
         method: request.method,
@@ -261,7 +262,7 @@ export default {
         cookie: request.headers.get("cookie") ?? "",
         upgrade: request.headers.get("upgrade")?.toLowerCase() === "websocket",
       },
-      { exists: (space) => accounts.exists(space), member: (cookie, space) => accounts.member(cookie, space) },
+      { exists: (space) => accounts().exists(space), member: (cookie, space) => accounts().member(cookie, space) },
     );
     return answer(request, env, decision);
   },
