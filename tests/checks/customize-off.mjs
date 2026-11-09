@@ -15,7 +15,7 @@ export default async function ({ check, context, URL, errors }) {
   const button = async (address) => {
     await page.goto(address);
     await page.waitForSelector('[data-key^="habits:"]', { state: "attached", timeout: 10000 }).catch(() => {});
-    return !!(await page.$(".customize-button"));
+    return !!(await page.waitForSelector("ui-panel .launch", { timeout: 3000 }).catch(() => null));
   };
   check("an app that says customize off has no Customize button", !(await button(`${URL}demos/habits/app.html`)));
   check("?customize brings the button back for the person", await button(`${URL}demos/habits/app.html?customize`));
@@ -24,7 +24,7 @@ export default async function ({ check, context, URL, errors }) {
   // Every other app still has it.
   const plain = await context.newPage();
   await plain.goto(`${URL}demos/habits/app.html`);
-  const shown = await plain.waitForSelector(".customize-button", { timeout: 10000 }).then(() => true, () => false);
+  const shown = await plain.waitForSelector("ui-panel .launch", { timeout: 10000 }).then(() => true, () => false);
   check("an app that says nothing has the Customize button", shown);
   await plain.close();
 }
