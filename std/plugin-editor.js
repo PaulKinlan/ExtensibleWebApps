@@ -6,7 +6,7 @@
 //   <link rel="plugin" href="/std/plugin-editor.js">
 //   <slot name="editor"></slot>
 //
-// It starts from a template in plugin-editor/templates/, or from the code of
+// It starts from a template in plugin-editor.templates/, or from the code of
 // a plugin the app links (the `authoring` service reads both, and needs
 // `plugins:author`). Before anything runs, it shows the draft's manifest the
 // way the kernel reads it, and says in plain words what each permission lets
@@ -30,7 +30,7 @@ export const manifest = {
   // On an app with no slot for it (added from the registry), it draws at the end of the page's main part.
   places: { editor: { at: "main", put: "append" } },
   // Copied with it when a person adds it to an app: its view, and the starting templates in the folder beside it.
-  files: ["plugin-editor.html", "plugin-editor/templates/card.js", "plugin-editor/templates/listen.js", "plugin-editor/templates/block.js", "plugin-editor/templates/button.js"],
+  files: ["plugin-editor.html", "plugin-editor.templates/card.js", "plugin-editor.templates/listen.js", "plugin-editor.templates/block.js", "plugin-editor.templates/button.js"],
 };
 
 /** The starting templates: files next to this one. */
@@ -88,7 +88,7 @@ export default async function (ctx) {
   const start = async (value) => {
     const [kind, name] = [value.slice(0, value.indexOf(":")), value.slice(value.indexOf(":") + 1)];
     if (kind === "template") {
-      code = await ctx.call("authoring", "file", `plugin-editor/templates/${name}`);
+      code = await ctx.call("authoring", "file", `plugin-editor.templates/${name}`);
       from = TEMPLATES.find((t) => t.file === name)?.label ?? name;
     } else if (kind === "plugin") {
       // The kernel gives the copy an id and name of its own, and points its templates at the original's.

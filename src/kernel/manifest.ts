@@ -57,12 +57,16 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   provides:
     'Optional. Up to 5 services the plugin provides, by name: { mail: { description, methods: { send: { args?, returns?, description, needs? } } } }. Each needs the permission provide:<name>, and the plugin answers its calls with ctx.provide (shared plugins only, not scope "tab"). Other plugins call it with ctx.call(name, method, ...args) and the permission <name>, or what a method\'s `needs` says. A name the kernel or another plugin already has is refused. See docs/layers.md.',
   files:
-    "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, or paths in a folder beside it like plugin-editor/templates/card.js (up to four folders deep). They are copied with it when a person adds it to an app.",
+    "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, or paths in a folder beside it like plugin-editor.templates/card.js (up to four folders deep, and the first folder's name has a dot in it, so it can never be another app's folder). They are copied with it when a person adds it to an app.",
 };
 
 export const PUTS = ["before", "after", "prepend", "append", "replace", "hide"] as const;
-/** A file a plugin lists: a name, or a path into folders beside it. No part starts with a dot, so none climbs out. */
-export const FILE_PATH = /^(?:[\w-][\w.-]{0,63}\/){0,4}[\w-][\w.-]{0,63}$/;
+/**
+ * A file a plugin lists: a name, or a path into folders beside it. No part starts with a dot, so none climbs
+ * out. A person's plugins for an app are kept in that app's folder, and an app's folder may hold another app's
+ * (user/demos/ and user/demos/trip/), so the first folder has a dot in its name, which no app's folder has.
+ */
+export const FILE_PATH = /^(?:[\w-][\w-]{0,30}\.[\w.-]{1,32}\/(?:[\w-][\w.-]{0,63}\/){0,3})?[\w-][\w.-]{0,63}$/;
 
 export function readManifest(source: string): Manifest {
   const parser = new LiteralParser(source, 0);
@@ -87,7 +91,7 @@ function validate(value: unknown): Manifest {
   if (m.places !== undefined) validatePlaces(m.places, m.permissions as string[], m.id);
   if (m.theme !== undefined) validateTheme(m.theme, m.permissions as string[]);
   if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 20 || m.files.some((f) => typeof f !== "string" || !FILE_PATH.test(f))))
-    throw new ManifestError("`files` must be a list of up to 20 file names or paths beside the plugin, such as card.html or templates/card.js");
+    throw new ManifestError("`files` must be a list of up to 20 file names or paths beside the plugin, such as card.html or card.templates/card.js (the first folder's name has a dot in it)");
   if (m.hooks !== undefined) validateHooks(m.hooks, m.id);
   if (m.provides !== undefined) validateProvides(m.provides, m.permissions as string[], m.scope);
   if (m.services !== undefined && (!Array.isArray(m.services) || m.services.length > 30 || m.services.some((s) => typeof s !== "string" || !ID.test(s))))

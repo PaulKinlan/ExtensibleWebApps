@@ -200,7 +200,7 @@ export function checkApp(app, rules) {
         report("error", app.page, link.line, href ? `${href} doesn't exist` : '<link rel="agent"> has no href');
         continue;
       }
-      if (!/\.agent\.md$/i.test(href ?? "")) report("error", app.page, link.line, `${href}: an agent file's name ends in .agent.md, or the kernel reads it as a plugin`);
+      if (!/\.agent\.md$/i.test((href ?? "").replace(/[?#].*$/, ""))) report("error", app.page, link.line, `${href}: an agent file's name ends in .agent.md, or the kernel reads it as a plugin`);
       let manifest;
       try {
         // The agent loop it runs, from the frontmatter's `runner:` (next to the agent file) or the standard one.
@@ -477,6 +477,8 @@ export function checkFiles(files, rules, app, site = new Map()) {
     },
     rules,
   );
-  // The app's own plugins: the ones elsewhere on the site are checked, and run, where they live.
-  return { problems, plugins: plugins.filter((p) => !p.file.startsWith("/")) };
+  // The app's own plugins: the ones elsewhere on the site are checked, and run, where they live. Its agents
+  // are left out too: what runs is the plugin the kernel makes from the file, so the running check (module.ts)
+  // can't compare it with the file, as it does a plugin's.
+  return { problems, plugins: plugins.filter((p) => !p.file.startsWith("/") && !p.file.endsWith(".agent.md")) };
 }

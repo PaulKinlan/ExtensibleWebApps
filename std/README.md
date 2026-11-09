@@ -14,7 +14,7 @@ written, and asks only for the permissions in its manifest.
 | [`customize.js`](customize.js) | The Customize button in a corner of every app, and its panel: the person's own plugins for the app (add from the [registry](../docs/guide/plugin-registry.md), the app's samples, picked files, pasted code or a URL; turn on and off; remove; share with a space), how every plugin's places went, unlocking a locked area for one plugin, and inspect mode. It is a plugin like any other, so every add, removal and share waits for a review card (turning on and off doesn't). | Nothing: the host adds it to every app. `<meta name="customize" content="off">` in the head leaves it out, and `?customize` in the address brings it back |
 | [`debug-console.js`](debug-console.js) | A bug button in a corner of the page. It counts problems (errors, refused permissions, failed calls) and opens a log of them, or of everything the kernel traced, with a Copy button that puts the log on the clipboard, headed with the page's address, browser and time, ready for a bug report. | `<link rel="plugin" href="/std/debug-console.js">` in the head, and `<slot name="debug" float></slot>` anywhere in the body (`float` keeps it in a corner of the screen) |
 | [`hook-tracer.js`](hook-tracer.js) | Follows each thing a person does: who started it, each hook it ran in order, and what every plugin listening said (let it through, stopped it, or only heard it). Pause and Clear sit beside it. | `<link rel="plugin" href="/std/hook-tracer.js">` in the head, and `<slot name="inspect"></slot>` in the body |
-| [`plugin-editor.js`](plugin-editor.js) | An editor for the person's own plugins: start from a template in [`plugin-editor/templates/`](plugin-editor/templates/) or a copy of a plugin on the page, see what it asks for in plain words, then save and run it after a review card that shows its code. Its logs and errors show beside it. | `<link rel="plugin" href="/std/plugin-editor.js">` in the head, and `<slot name="editor"></slot>` in the body |
+| [`plugin-editor.js`](plugin-editor.js) | An editor for the person's own plugins: start from a template in [`plugin-editor.templates/`](plugin-editor.templates/) or a copy of a plugin on the page, see what it asks for in plain words, then save and run it after a review card that shows its code. Its logs and errors show beside it. | `<link rel="plugin" href="/std/plugin-editor.js">` in the head, and `<slot name="editor"></slot>` in the body |
 | [`reset.js`](reset.js) | When any of the app's plugins is off, a card that names them and turns them all back on. If it is switched off itself, opening the page with `?reset` does the same. | `<link rel="plugin" href="/std/reset.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
 | [`switchboard.js`](switchboard.js) | A switch for each plugin the app links, with its name and description, so people can see what the page is made of and turn parts of it off. | `<link rel="plugin" href="/std/switchboard.js">` in the head, and `<slot name="switchboard"></slot>` in the body |
 | [`undo.js`](undo.js) | Undo and Redo buttons for the whole app. They take back the most recent change to the app's data, whichever plugin made it (a row deleted, a form saved, a list imported), and put it back again. Each button's title says what it would do. | `<link rel="plugin" href="/std/undo.js">` in the head, and `<slot name="history"></slot>` in the body |
@@ -107,10 +107,10 @@ Until a person's plugin can stand in for one of the app's own, a copy gets
 an id of its own (`note-stats-copy`) and runs beside the original. Switch the
 original off on the switchboard to try the copy instead.
 
-The templates are plain plugins: [`card.js`](plugin-editor/templates/card.js)
-draws, [`listen.js`](plugin-editor/templates/listen.js) shows the latest note by hearing a hook,
-[`block.js`](plugin-editor/templates/block.js) stops a write, and
-[`button.js`](plugin-editor/templates/button.js) writes data it doesn't own,
+The templates are plain plugins: [`card.js`](plugin-editor.templates/card.js)
+draws, [`listen.js`](plugin-editor.templates/listen.js) shows the latest note by hearing a hook,
+[`block.js`](plugin-editor.templates/block.js) stops a write, and
+[`button.js`](plugin-editor.templates/button.js) writes data it doesn't own,
 which the person reviews. They use the homepage's `learning` notes; on
 another page, change the collection to one it has.
 

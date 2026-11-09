@@ -176,6 +176,12 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
 
 /** Opens an app again in every tab that has it open, after its user plugins or places changed. */
 async function reopen(app: string) {
+  // Every tab lets go of what the app no longer links first, so nothing a plugin replaces is still held by another tab.
+  const mine = await userAdded.links(app).catch(() => []);
+  for (const host of hosts.list) {
+    const open = openApps.get(host.tab);
+    if (open?.app === app) apps.drop(host, [...open.links, ...mine]);
+  }
   for (const host of hosts.list) {
     const open = openApps.get(host.tab);
     if (open?.app === app) {
@@ -412,7 +418,7 @@ async function customize(name: string, arg: unknown): Promise<unknown> {
     case "user:on":
     case "user:off":
       // As in Customize (authoring.ts): the person's plugins that provide what it needs come on with it.
-      await (name === "user:on" ? userAdded.onWithNeeds(app, id, (service) => Object.hasOwn(services, service)) : userAdded.offWithDependents(app, id, (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not));
+      await (name === "user:on" ? userAdded.onWithNeeds(app, id, (service) => Object.hasOwn(services, service), (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not) : userAdded.offWithDependents(app, id, (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not));
       await reopen(app);
       return true;
     case "user:remove": {
