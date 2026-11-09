@@ -687,6 +687,7 @@ const bridge = bridges({
     slotWatchers.set(name, (slotWatchers.get(name) ?? new Set()).add(plugin));
     return slotData(name);
   },
+  command: (name, arg) => command(name as Command, arg),
 });
 
 function notice(text: string, reported = true) {

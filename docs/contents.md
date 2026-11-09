@@ -22,6 +22,7 @@
   1. [Deploying one app on its own](guide/deploying-an-app.md)
   1. [Loading fast, without jumping](guide/loading-fast.md)
   1. [The plugin registry](guide/plugin-registry.md)
+  1. [Outside agents: WebMCP and MCP](guide/outside-agents.md)
   1. [Editors, and a folder of files](guide/editors.md)
   1. [How the Markdown editor is built](guide/markdown-editor.md)
 - Reference

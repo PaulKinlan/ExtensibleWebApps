@@ -10,6 +10,8 @@
                  book has an address to bookmark or share
   book-share.js  adds a page shared to the app (once it is installed) as a
                  book to read; manifest.webmanifest makes it a share target
+  outside-agents.js  lets agents outside the app (WebMCP in the browser, MCP on
+                 a space's server) read the library and ask to change it
 
   It also links two standard plugins: a debug console, and a command palette
   that lists the commands library.js adds.
@@ -35,6 +37,7 @@
   <link rel="plugin" href="book-import.js">
   <link rel="plugin" href="book-page.js">
   <link rel="plugin" href="book-share.js">
+  <link rel="plugin" href="outside-agents.js">
   <!-- A plugin the person may add themselves, in Customize; it draws in a place, as the app has no slot for it. -->
   <link rel="plugin-sample" href="samples/goal.js" title="Reading goal">
   <!-- A standard plugin: opened in a space (/s/<space>/…), whether this page reaches it, and the drafts it kept. -->

@@ -103,7 +103,7 @@ jobs:
 
           $list
 
-          After merging, run \`npm run reference\` rather than hand-merging \`$GENERATED\`."
+          If \`$GENERATED\` is among them, take either side: it is regenerated on this branch after you push."
               fi
             fi
             echo "::endgroup::"

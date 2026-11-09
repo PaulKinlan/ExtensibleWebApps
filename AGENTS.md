@@ -10,6 +10,7 @@ Instructions for AI agents (and people) building apps and plugins on this platfo
 - A **plugin** is one ES module, run in its own worker. It has a manifest and a default export that gets `ctx`. Its views are `<template id>` elements in an `.html` file next to it.
 - An **agent** is a Markdown file linked with `<link rel="agent" href="x.agent.md">`: frontmatter for its id, permissions and what wakes it, then its instructions. The kernel runs it as a plugin that asks a model and calls tools: [agents](docs/guide/agents.md).
 - A plugin that should keep working with no app open (a public form, a scheduled job, a check on every change people send) says `runs: "server"` in its manifest. It runs on the server of a space the app is opened in (`/s/<space>/…`), with `routes`, `schedule` and `email`: [spaces and server plugins](docs/guide/spaces-and-servers.md).
+- To let **agents outside the app** use it (the browser's own assistant through WebMCP, or Claude Code and other MCP clients through a space's server), link a plugin that calls `ctx.call("outside", "open")`: they act as that plugin, with its permissions and the person's reviews: [outside agents](docs/guide/outside-agents.md).
 - A plugin can define **hooks of its own** in its manifest (`hooks: { open: { mode: "emit" } }`, heard by others as `<id>:open`) and run them with `ctx.hooks.emit` or `ctx.hooks.call`: [hooks of your own](docs/guide/plugin-hooks.md).
 - **No build step.** Write plain JavaScript (JSDoc and `// @ts-check` are welcome), HTML and CSS. The browser runs the files as written. Don't add bundlers, frameworks or npm dependencies to apps or plugins.
 
@@ -45,7 +46,7 @@ npm run dev          # open http://localhost:5173/demos/<app>/app.html; the work
 npm test             # builds, then opens every app in demos/ and checks each linked plugin draws
 npm run test:server  # after changing anything a space's server runs: the server checks on Node and wrangler dev
 npm run typecheck
-npm run reference    # after changing the kernel's API: rewrites docs/api.md (the tests check it)
+npm run reference    # after changing the kernel's API: rewrites docs/api.md (the tests check it; CI also does it for you)
 ```
 
 A new app in `demos/` is picked up by the tests automatically. Put checks for what it does in a new file, `tests/demos/<app>.mjs` (copy [`tests/demos/habits.mjs`](tests/demos/habits.mjs)), and checks for a platform feature in `tests/checks/<feature>.mjs`. The runner finds both, so you never edit [`tests/platform.test.mjs`](tests/platform.test.mjs) to add a check.
@@ -58,7 +59,7 @@ Many people and agents work on this repo, and on the sites built with it, at onc
 - **Keep shared lists merge-friendly.** When a change has to add to a list (a JS array or object, `<link>` lines in HTML, imports, a docs table), put one entry per line with a trailing comma, and sorted where order doesn't matter. Then two changes that each add an entry touch different lines.
 - **No running totals in prose.** Don't write counts that every change bumps, like the number of checks; the test run prints it.
 - **Keep old APIs working.** Add a new call beside the old one, so a demo only has to change when the change is about that demo. When a demo does need to change for the tests to pass, change it in the same PR.
-- **Generated files are regenerated, not hand-merged.** If `docs/api.md` conflicts, take either side and run `npm run reference`.
+- **Generated files are regenerated, not hand-merged.** If `docs/api.md` conflicts, take either side and push: the [Regenerate API reference](.github/workflows/regenerate-reference.yml) workflow runs `npm run reference` on every PR branch and on main, and commits the file when it changed, so pull before pushing again. Running it yourself still works.
 - **Base each PR on `main`.** If a PR has to stack on another, merge the parent with a merge commit, not a squash, so the child still merges cleanly.
 
 ## Where to look

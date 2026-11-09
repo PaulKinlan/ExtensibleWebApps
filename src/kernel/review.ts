@@ -44,6 +44,11 @@ export interface Request {
   kind?: "place";
   /** Asked every time: the card offers no "always allow", and no earlier grant answers it. */
   once?: boolean;
+  /**
+   * Asked for a space's server (space-reviews.ts): the answer goes back there, which keeps any grant, so
+   * none is kept here and none here answers it.
+   */
+  elsewhere?: boolean;
 }
 
 type Pending = { request: Request; resolve: (o: Outcome) => void; timer: ReturnType<typeof setTimeout>; dispatch: Dispatch };
@@ -66,6 +71,12 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
   const api = {
     /** Told when a plugin's grants change, so its panel can redraw. */
     onGrants: undefined as ((plugin: string) => void) | undefined,
+    /**
+     * On a space's server, which has no screen: told of each request as it is asked, and when it is settled,
+     * to show it on members' devices instead (space-reviews.ts).
+     */
+    relay: undefined as ((id: string, request: Request) => void) | undefined,
+    relayDone: undefined as ((id: string) => void) | undefined,
   };
 
   const persist = () => store.writeJson(FILE, grants).catch((error) => record({ kind: "error", name: "grants:write-failed", detail: String(error) }));
@@ -139,7 +150,8 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     pending.delete(id);
     clearTimeout(p.timer);
     hosts.render("review", "main", `review:${id}`, null, 0);
-    if (outcome === "allowed-always" && !p.request.once) {
+    api.relayDone?.(id);
+    if (outcome === "allowed-always" && !p.request.once && !p.request.elsewhere) {
       const list = (grants[p.request.plugin] ??= []);
       if (!list.includes(p.request.place)) list.push(p.request.place);
       void persist();
@@ -155,7 +167,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     /** Asks the person about a write, unless an earlier grant covers it. */
     async ask(request: Request, dispatch: Dispatch): Promise<Outcome> {
       await loaded;
-      if (!request.once && grants[request.plugin]?.includes(request.place)) {
+      if (!request.once && !request.elsewhere && grants[request.plugin]?.includes(request.place)) {
         if (request.place !== ACTS_AS) void log.append({ kind: "write", plugin: request.plugin, detail: request.target, outcome: "granted", ...(forPerson(request, dispatch) ? { as: "person" as const } : {}), trace: dispatch.trace });
         return "granted";
       }
@@ -165,7 +177,18 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
         const timer = setTimeout(() => settle(id, "cancelled"), TIMEOUT);
         pending.set(id, { request, resolve, timer, dispatch });
         hosts.render("review", "main", `review:${id}`, card(id, request, dispatch), 0);
+        api.relay?.(id, request);
       });
+    },
+
+    /** An answer from elsewhere (a member's device, for a space's server): allowed once, always, or declined. */
+    answer(id: string, outcome: Outcome, trace?: string) {
+      if (outcome === "allowed-once" || outcome === "allowed-always" || outcome === "rejected") settle(id, outcome, trace);
+    },
+
+    /** The requests waiting for an answer, by id: for a device that comes after they were asked. */
+    waiting(): [string, Request][] {
+      return [...pending].map(([id, p]) => [id, p.request]);
     },
 
     event(action: string, trace: string) {
