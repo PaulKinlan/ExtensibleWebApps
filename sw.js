@@ -16,16 +16,21 @@
 
 import routes from "./sw/routes/index.js";
 import { renderBlocking } from "./sw/render-blocking.js";
+import { onNotificationClick, onNotifyMessage } from "./sw/notifications.js";
 
 const CACHE = "platform-v1";
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+// A click on a notification the worker showed, even after every tab closed (sw/notifications.js).
+self.addEventListener("notificationclick", onNotificationClick);
 
 // The first visit loads before this worker starts, so nothing it loaded was kept. The page then
 // sends what it loaded (src/host/service-worker.ts), and it is fetched again and kept, so the
 // app opens offline after one visit.
 self.addEventListener("message", (event) => {
+  // A page's notification, shown by the worker so it outlives the page (sw/notifications.js).
+  if (event.data?.t === "sw:notify") return onNotifyMessage(event);
   if (event.data?.t !== "sw:warm" || !Array.isArray(event.data.urls)) return;
   const urls = event.data.urls.filter((u) => typeof u === "string" && new URL(u, location.href).origin === location.origin).slice(0, 200);
   event.waitUntil(Promise.all(urls.map((u) => cached(new Request(u), event).catch(() => {}))));

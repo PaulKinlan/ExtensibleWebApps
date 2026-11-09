@@ -371,9 +371,9 @@ sequenceDiagram
 
 ### …you dictate, paste a picture, or preview
 
-Four features need something only the page or the person's computer has:
-the microphone, a file's bytes, a server on their machine, and their
-notifications. Each is still a plugin; the platform lends it the piece it
+Five features need something only the page or the person's computer has:
+the microphone, the browser's on-device model, a file's bytes, a server on
+their machine, and their notifications. Each is still a plugin; the platform lends it the piece it
 can't reach from its worker.
 
 - **Dictation.** `dictation.js` draws a `<ui-dictation>` button. The
@@ -385,10 +385,21 @@ can't reach from its worker.
 - **Images.** `images.js` intercepts `posts:paste` and `posts:drop`. A
   picture in the paste reaches the hook as a token, not its bytes (a hook's
   value is limited to 1 MB). The plugin hands the token to
-  `document.saveImage`, and `posts.js` writes the picture to
-  `static/images/<post>/` (one at a time, never over a file that is there: a
-  second `image.png` is `image-2.png`). The plugin answers with the Markdown
-  link to put in instead.
+  `document.saveImage`, and `posts.js` writes the picture (one at a time,
+  never over a file that is there: a second `image.png` is `image-2.png`).
+  When the post is a page bundle (an `index.md` in a folder of its own), the
+  picture goes next to it, as one of the bundle's resources, linked by its
+  name; otherwise it goes in `static/images/<post>/`. The plugin answers with
+  a Markdown image to put in instead, or Hugo's `{{< figure >}}`
+  shortcode: both are choices in its settings, in Customize.
+- **Draft description.** The front matter form puts a `<ui-summarizer>`
+  under the description and summary fields (and offers "Draft a
+  description" when there is none). The element runs Chrome's on-device
+  Summarizer in the page, on the post's prose (`front-matter.js` strips the
+  code, shortcodes and link addresses first), and sends the draft back as an
+  action; the plugin sets the field with `document.setFrontMatter`, so Undo
+  takes it out. Nothing leaves the device, and in a browser without the
+  Summarizer the button isn't there.
 - **Spell check.** `spell-check.js` calls `document.setOption("spellcheck",
   true)`, which turns the browser's own checker on in the `<ui-editor>`, and
   `setOption("words", …)` with every tag and category the site uses and the
@@ -398,10 +409,17 @@ can't reach from its worker.
   pointing at the post's address on your `hugo server` (localhost:1313 unless
   you change it). The element shows only a server on your own device. If
   nothing answers, the panel says how to start Hugo; Hugo reloads the page
-  when you save, and the panel does too.
+  when you save, and the panel does too. If the page in the frame goes
+  anywhere else (a link you click in it, or the server sending it on), the
+  element hides the frame and offers to show the post again: it never shows
+  another page under the editor.
 - **Notifications.** `notifications.js` hears `agent:done` and calls the
-  `notify` kernel module, which shows your computer's notification from one
-  tab, only while you aren't looking at the editor.
+  `notify` kernel module, which shows your computer's notification, only
+  while you aren't looking at the editor. The service worker shows it, so it
+  stays in your notification centre after you close the editor's tab, and a
+  click on it opens the editor again (`sw/notifications.js`). Something
+  still has to be running to send one: with every tab closed the browser
+  stops the kernel, and the writer with it.
 
 ```mermaid
 sequenceDiagram
@@ -422,7 +440,12 @@ rest on `document.modelContext` (WebMCP). Its edits arrive in the editor
 like the writer's, unsaved.
 
 Each app has its own folder: the editor's private folder (and the one you
-open) is not the one another app using the `folder` service sees.
+open) is not the one another app using the `folder` service sees. One copy
+of a plugin serves every app that links it, so when two apps that both link
+it are open, a `folder` call has to come from something the person did in
+one of them (a click, or a hook it set off) to know which folder it means.
+One that doesn't, such as a plugin's own start or a timer, fails rather
+than guess: a guess could put one app's files in the other's folder.
 
 ## The plugins, one by one
 
@@ -450,7 +473,7 @@ services it uses.
 | [`autosave`](../../demos/markdown-editor/autosave.js) (sample) | "Autosave" | change, close | `document.save` | (a setting: when) |
 | [`alerts`](../../demos/markdown-editor/alerts.js) | "Writer is done" notices | `agent:done` | | (toolbar toggle) |
 | [`notifications`](../../demos/markdown-editor/notifications.js) | Your computer's notification when the writer is done, while you're away | `agent:done` | `notify` | (toolbar toggle) |
-| [`front-matter`](../../demos/markdown-editor/front-matter.js) | A form over the front matter | open, change, save, close | `document.setFrontMatter` | Show or hide the form |
+| [`front-matter`](../../demos/markdown-editor/front-matter.js) | A form over the front matter, with Draft description on the device | open, change, save, close | `document.setFrontMatter` | Show or hide the form |
 | [`dictation`](../../demos/markdown-editor/dictation.js) | Dictate button; "● Listening…" | open, close | `document.insert` | |
 | [`spell-check`](../../demos/markdown-editor/spell-check.js) | Spelling on/off | open, save | `document.setOption`, `document.list`, `folder.read` | Turn spell check on or off |
 | [`images`](../../demos/markdown-editor/images.js) | (pasted and dropped images) | paste, drop (intercepts) | `document.saveImage` | |
@@ -520,7 +543,7 @@ flowchart LR
 ```
 
 - Only `posts` writes files (including the pictures `images` asks it to
-  save, only under `static/` or `assets/`). Another plugin that wants a file changed would ask with `folder.propose`,
+  save, only under `static/` or `assets/`, or next to a page bundle's `index.md`). Another plugin that wants a file changed would ask with `folder.propose`,
   which shows you a diff to allow.
 - Only `link-checker` may use the network, to see whether external links
   answer.
@@ -577,7 +600,6 @@ in the same page as the editor. Here:
 - the assistant is an agent file that uses the features' commands as tools;
 - files come from the `folder` service: your own folder, or a private one.
 
-Its dictation, Hugo preview, spell check, image, front matter form, WebMCP
-and notification features are plugins here too, each in its own file. The
-original's raw front matter view is the editor itself, and its on-device
-summarizer for the description field isn't ported.
+Its dictation, Hugo preview, spell check, image, front matter form, on-device
+summarizer, WebMCP and notification features are plugins here too, each in
+its own file. The original's raw front matter view is the editor itself.
