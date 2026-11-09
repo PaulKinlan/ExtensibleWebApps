@@ -9,6 +9,7 @@
 
 import type { Dispatch } from "../shared/protocol";
 import type { Accepted, Outgoing, PluginRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, Verdict } from "../shared/sync";
+import { env } from "./env";
 import { hooks } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import type { Collections, StoredRecord } from "./records";
@@ -180,6 +181,18 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     });
   }
 
+  /** The space's members' names by id, from the host's accounts; undefined where the host can't say. */
+  async function names(): Promise<Record<string, string> | undefined> {
+    try {
+      const list = await env().members?.();
+      if (!list) return undefined;
+      return Object.fromEntries(list.filter((m) => typeof m?.id === "string" && typeof m.name === "string").map((m) => [m.id, m.name]));
+    } catch (error) {
+      trace({ kind: "error", name: "sync:members", detail: String(error) });
+      return undefined;
+    }
+  }
+
   const api = {
     /** Members' plugins (shared-plugins.ts): the space's kernel sets this. */
     plugins: undefined as ((host: Host, message: PluginRequest) => unknown) | undefined,
@@ -195,10 +208,12 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       await loaded;
       if (message.op === "hello") {
         const after = Number.isInteger(message.since) && message.since >= 0 ? message.since : 0;
+        // Each member's name, by id, so the device can show who made a change (`by`) by name.
+        const members = await names();
         // Ordered with pushes, so a change accepted while this device catches up isn't missed or sent twice.
         await serially(async () => {
           // Only what has gone to every device: anything later comes to this one as it does to them.
-          hosts.send(host, { t: "sync", op: "changes", changes: (await since(after)).filter((c) => c.seq <= sent), seq: sent, ...(host.member ? { member: host.member } : {}) });
+          hosts.send(host, { t: "sync", op: "changes", changes: (await since(after)).filter((c) => c.seq <= sent), seq: sent, ...(host.member ? { member: host.member } : {}), ...(members ? { members } : {}) });
           listening.add(host);
         });
         return;

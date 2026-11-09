@@ -46,7 +46,8 @@ let site;
  */
 async function siteWithFixtures() {
   const site = await mkdtemp(join(tmpdir(), "ewa-site-"));
-  for (const name of readdirSync("dist")) symlinkSync(resolve("dist", name), join(site, name));
+  // dist/server-app is the Cloudflare host's copy of the fixture, there while it runs.
+  for (const name of readdirSync("dist")) if (name !== "server-app") symlinkSync(resolve("dist", name), join(site, name));
   symlinkSync(resolve("tests/fixtures/server-app"), join(site, "server-app"));
   return site;
 }
@@ -297,6 +298,27 @@ async function syncChecks(base, check, owner, restart) {
   check("sync: a device can't say it is another member: the server says who it is", byBea?.by === ids.bea, JSON.stringify(byBea));
   const told = (d) => d.heard.find((m) => m.op === "changes")?.member;
   check("sync: the space's answer to hello tells each device which member it is", told(phone) === ids.owner && told(laptop) === ids.bea, JSON.stringify({ phone: told(phone), laptop: told(laptop) }));
+  const names = phone.heard.find((m) => m.op === "changes")?.members;
+  check("sync: the space's answer to hello names its members, by the names on their accounts", names?.[ids.owner] === "Owner" && names?.[ids.bea] === "Bea" && Object.keys(names).length === 2, JSON.stringify(names));
+  // Household's stamps.js, on the space's server: a stamp must be the member who sent the change. A space of its own, so the sequence numbers below stay as they are.
+  await owner.call("/auth/spaces", { name: "house" });
+  await bea.call("/auth/invites/accept", { token: (await owner.call("/auth/spaces/house/invite", {})).body?.token });
+  const annPhone = await device(base, "house", owner.cookie);
+  const beaPhone = await device(base, "house", bea.cookie);
+  await annPhone.hello(0);
+  await beaPhone.hello(0);
+  annPhone.app("demos/household");
+  await new Promise((r) => setTimeout(r, 1500));
+  const forged = await beaPhone.push([{ collection: "groceries", id: "forged", base: 0, after: { id: "forged", item: "Caviar", addedBy: ids.owner } }]);
+  const honest = await beaPhone.push([{ collection: "groceries", id: "honest", base: 0, after: { id: "honest", item: "Tea", addedBy: ids.bea } }]);
+  const kept = await annPhone.push([{ collection: "groceries", id: "honest", base: honest?.[0]?.seq ?? 0, after: { id: "honest", item: "Green tea", addedBy: ids.bea } }]);
+  annPhone.close();
+  beaPhone.close();
+  check(
+    "household: the space refuses a change signed with another member's id, and takes one signed by its sender, or that leaves someone's stamp as it was",
+    /signed by the member who makes it/.test(forged?.[0]?.error ?? "") && honest?.[0]?.ok && kept?.[0]?.ok,
+    JSON.stringify({ forged, honest, kept }),
+  );
   const stamped = laptop.changes().find((c) => c.seq === 1)?.after;
   check("sync: a record sent without timestamps is stored with them, as every record has", typeof stamped?.createdAt === "string" && typeof stamped?.updatedAt === "string", JSON.stringify(stamped));
 
@@ -986,9 +1008,122 @@ async function suite(name, make) {
   }
 }
 
+/**
+ * Moving a space (src/server/transfer.ts): the feed reader's space, made on Cloudflare, is downloaded by its
+ * owner and loaded into an empty space on Node, where it keeps its feeds and the feed reader's server plugin
+ * starts again and reads them. Both hosts run at once, each with its own accounts.
+ */
+async function moveChecks() {
+  const check = (what, ok, detail = "") => results.push({ what: `move: ${what}`, ok: !!ok, detail });
+  const folders = [await mkdtemp(join(tmpdir(), "move-cf-")), await mkdtemp(join(tmpdir(), "move-node-"))];
+  const tls = await mkdtemp(join(tmpdir(), "move-tls-"));
+  let cf;
+  let node;
+  let feeds;
+  try {
+    try {
+      execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", join(tls, "key.pem"), "-out", join(tls, "cert.pem"), "-days", "1", "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1"], { stdio: "ignore" });
+    } catch {
+      return check("openssl makes a certificate for the https feed server (skipped: no openssl)", true);
+    }
+    // The feed reader's plugin runs in a process of its own, which takes the certificate from here.
+    process.env.NODE_EXTRA_CA_CERTS = join(tls, "cert.pem");
+    const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>Moved news</title><item><title>Still here</title><link>https://example.com/moved</link><guid>m1</guid></item></channel></rss>`;
+    feeds = createHttpsServer({ key: readFileSync(join(tls, "key.pem")), cert: readFileSync(join(tls, "cert.pem")) }, (req, res) => res.writeHead(200, { "content-type": "application/rss+xml" }).end(rss));
+    await new Promise((r) => feeds.listen(0, "127.0.0.1", r));
+    const feedUrl = `https://127.0.0.1:${feeds.address().port}/rss.xml`;
+
+    // On Cloudflare: Ana makes the space, opens the feed reader in it and adds a feed and a note of her own.
+    cf = await hosts.cloudflare(folders[0]).start();
+    const ana = await person(cf.url).account("Ana");
+    await ana.call("/auth/spaces", { name: "news" });
+    const phone = await device(cf.url, "news", ana.cookie);
+    await phone.hello(0);
+    phone.app("demos/feeds");
+    const added = await phone.push([{ collection: "feeds", id: "moved", base: 0, after: { id: "moved", url: feedUrl } }]);
+    await new Promise((r) => setTimeout(r, 1500));
+    phone.close();
+
+    const guest = await person(cf.url).account("Gus");
+    await guest.call("/auth/invites/accept", { token: (await ana.call("/auth/spaces/news/invite", {})).body?.token });
+    const notOwner = await guest.call("/auth/spaces/news/export");
+    const outsider = await person(cf.url).call("/auth/spaces/news/export");
+    check("only a space's owner can download it: a member can't, nor someone signed out", notOwner.status === 403 && outsider.status === 401, `${notOwner.status} ${outsider.status}`);
+
+    const exported = await ana.call("/auth/spaces/news/export");
+    const copy = exported.body;
+    const paths = Object.keys(copy?.files ?? {});
+    check(
+      "the owner downloads the space from Cloudflare: one file with its collections, change log and the apps opened in it",
+      added?.[0]?.ok && exported.status === 200 && copy.format === "extensible-web-apps/space" && copy.space === "news" && paths.length > 0 && paths.some((p) => /apps/.test(p)),
+      JSON.stringify({ added, status: exported.status, paths }),
+    );
+
+    // On Node: Ana has an account of her own there. A copy goes only into an empty space she owns.
+    node = await hosts.node(folders[1]).start();
+    const there = await person(node.url).account("Ana");
+    await there.call("/auth/spaces", { name: "news" });
+    await there.call("/auth/spaces", { name: "busy" });
+    const busy = await client(node.url, "busy", there.cookie);
+    await busy.command("user:add", { app: "demos/contacts", files: [{ name: "busy.js", data: 'export const manifest = { id: "busy", name: "Busy", permissions: [] };\nexport default () => {};' }] });
+    busy.close();
+    const intoBusy = await there.call("/auth/spaces/busy/import", copy);
+    const garbled = await there.call("/auth/spaces/news/import", { format: "something else" });
+    const sneaky = await there.call("/auth/spaces/news/import", { ...copy, files: { "../escape.json": "e30=" } });
+    const elsewhere = await there.call("/auth/spaces/news/import", copy, { origin: "https://elsewhere.example" });
+    const badData = await there.call("/auth/spaces/news/import", { ...copy, files: { ...copy.files, "zz-last.json": "A" } });
+    check(
+      "a copy is refused for a space that has things in it, when it isn't a copy, when a path leads out of the folder or a file isn't base64, and from another site's page, writing nothing",
+      intoBusy.status === 409 && garbled.status === 400 && sneaky.status === 400 && elsewhere.status === 403 && badData.status === 400,
+      JSON.stringify([intoBusy, garbled, sneaky, elsewhere, badData].map((r) => `${r.status} ${r.body?.error}`)),
+    );
+    const imported = await there.call("/auth/spaces/news/import", copy);
+    check("the owner loads the copy into an empty space on Node", imported.status === 200 && imported.body?.files === paths.length, JSON.stringify(imported));
+
+    // The space on Node has the feed, and its server plugin, started by the move with no one connected, reads it.
+    const laptop = await device(node.url, "news", there.cookie);
+    let items = [];
+    let fetched;
+    for (let i = 0; i < 60 && !(items.length && fetched && !fetched.error); i++) {
+      await laptop.hello(0);
+      items = laptop.changes().filter((c) => c.collection === "items" && c.after?.feed === "moved");
+      fetched = laptop.changes().filter((c) => c.collection === "fetched" && c.id === "moved").at(-1)?.after;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    const feed = laptop.changes().find((c) => c.collection === "feeds" && c.id === "moved")?.after;
+    laptop.close();
+    check(
+      "after the move, the space on Node keeps its feed, and the feed reader's server plugin starts again by itself and reads it",
+      feed?.url === feedUrl && fetched?.title === "Moved news" && !fetched.error && items.some((c) => c.after.title === "Still here" && c.by === "plugin:fetch"),
+      JSON.stringify({ feed, fetched, items: items.length }),
+    );
+    const again = await there.call("/auth/spaces/news/import", copy);
+    check("a copy can't go into the same space twice", again.status === 409, JSON.stringify(again));
+
+    // And back: the space as Node has it now, stories and all, goes into a new space on Cloudflare.
+    const back = (await there.call("/auth/spaces/news/export")).body;
+    await ana.call("/auth/spaces", { name: "news-back" });
+    const loaded = await ana.call("/auth/spaces/news-back/import", back);
+    const tablet = await device(cf.url, "news-back", ana.cookie);
+    await tablet.hello(0);
+    const story = tablet.changes().find((c) => c.collection === "items" && c.after?.title === "Still here");
+    tablet.close();
+    check("and back: a copy from Node loads into a new space on Cloudflare, with what the space gained on Node", loaded.status === 200 && !!story, JSON.stringify({ loaded, story: !!story }));
+  } catch (error) {
+    check("the checks ran to the end", false, error?.stack ?? String(error));
+  } finally {
+    feeds?.close();
+    await cf?.stop().catch(() => {});
+    await node?.stop().catch(() => {});
+    delete process.env.NODE_EXTRA_CA_CERTS;
+    for (const folder of [...folders, tls]) await rm(folder, { recursive: true, force: true });
+  }
+}
+
 const only = process.argv[2];
 process.on("exit", () => (fake.close(), atproto.close()));
 for (const [name, make] of Object.entries(hosts)) if (!only || only === name) await suite(name, make);
+if (!only || only === "move") await moveChecks();
 
 for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.what}${r.detail && !r.ok ? `  (${r.detail})` : ""}`);
 const failed = results.filter((r) => !r.ok).length;

@@ -91,7 +91,7 @@ export type SyncToDevice =
    * Changes in order. `seq` is the space's latest, so a device knows it has caught up. The first, the
    * answer to hello, says which member the device is signed in as.
    */
-  | { t: "sync"; op: "changes"; changes: Accepted[]; seq: number; member?: string }
+  | { t: "sync"; op: "changes"; changes: Accepted[]; seq: number; member?: string; members?: Record<string, string> }
   | { t: "sync"; op: "pushed"; id: number; results: Verdict[] }
   | { t: "sync"; op: "refused"; error: string }
   /** The answer to a PluginRequest: the list, one plugin's files, or a shared plugin's new hash. */

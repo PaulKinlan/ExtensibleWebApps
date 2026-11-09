@@ -14,7 +14,7 @@ Ask for exactly what you use. The person sees the list in Customize, view source
 
 ```mermaid
 flowchart LR
-    A["Shows things<br/>ui, router, commands, ui:theme"] --> B["Reads<br/>data:read, plugins:read, debug:read, sync"]
+    A["Shows things<br/>ui, router, commands, ui:theme"] --> B["Reads<br/>data:read, plugins:read, debug:read, sync, members"]
     B --> C["Takes part<br/>hook:intercept, bus"]
     C --> D["Changes things<br/>data:write, files, plugins:manage,<br/>plugins:author, history, transfer, schedule"]
     D --> E["Leaves the browser<br/>network, network:host, secret, llm, share, email"]
@@ -44,6 +44,7 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 | `reflect:read` | Read what runs in the kernel: every plugin's manifest and permissions, every hook and its listeners, every worker and tab, and plugins' code. | It sees every app open on this site, not just the caller's: give it only to developer tools such as the [debugger](../demos/debugger/app.html). |
 | `bus:read:<topic>` | Read the messages posted to a topic. | See [Agents](guide/agents.md). |
 | `sync` | Know whether the tab's copy of a space is in step, and keep or let go of the drafts kept from a conflict. | What [`std/sync.js`](../std/sync.js) uses. Only means something in a space. |
+| `members` | Read the space's members, each with the name on their account, and which of them this page is signed in as (`sync.members()`), and hear `members:changed`. | Lets a plugin show who changed what: `by` on a change is a member's id. What [`demos/household`](../demos/household/) uses. Only means something in a space. |
 | `hook:listen:<hook>` | Hear an `emit` or `parallel` hook: something happened. | It can't change what happened. |
 
 ## Taking part

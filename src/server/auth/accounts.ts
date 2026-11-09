@@ -104,7 +104,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "cache-control": "no-store", ...headers } });
 
 /** A request's body, read only up to `limit` bytes: null if it's longer. */
-async function bodyOf(request: Request, limit: number): Promise<string | null> {
+export async function bodyOf(request: Request, limit: number): Promise<string | null> {
   if (Number(request.headers.get("content-length") ?? 0) > limit) return null;
   if (!request.body) return "";
   const reader = request.body.getReader();
@@ -396,6 +396,14 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
 
     /** Which member of a space an agent's key (an `Authorization` header) is for: for a host to ask before an MCP request. */
     agent: (authorization: string | null, name: string) => keys.member(authorization, name),
+
+    /** A space's members, each with the name on their account: what a page shows for a change's `by`. */
+    async members(name: string): Promise<{ id: string; name: string }[]> {
+      const space = await spaceOf(name);
+      if (!space) return [];
+      const users = await Promise.all(Object.keys(space.members).map((id) => read<User>(`users/${id}.json`)));
+      return users.flatMap((u) => (u ? [{ id: u.id, name: u.name }] : []));
+    },
 
     /** Whether a space by this name exists: for a host to ask before waking it for a public route. */
     async exists(name: string): Promise<boolean> {
