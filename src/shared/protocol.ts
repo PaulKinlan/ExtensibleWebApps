@@ -107,6 +107,8 @@ export type Command =
   | "changes"
   | "sync"
   | "reference"
+  | "modules"
+  | "fetched"
   | "route"
   | "user:list"
   | "user:add"

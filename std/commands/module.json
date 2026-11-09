@@ -1,0 +1,10 @@
+{
+  "services": [
+    "commands"
+  ],
+  "hooks": [
+    "commands:before",
+    "commands:changed",
+    "commands:ran"
+  ]
+}

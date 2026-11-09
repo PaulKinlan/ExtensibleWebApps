@@ -1,0 +1,11 @@
+{
+  "services": [
+    "bus"
+  ],
+  "hooks": [
+    "bus:answered",
+    "bus:asked",
+    "bus:message",
+    "bus:posted"
+  ]
+}

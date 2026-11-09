@@ -49,6 +49,9 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     pending.set(tab, app);
     root.emit({}, "launch:received", {});
   });
+  // The module starts when it is first used, which may be after a tab opened at the screen: that tab's files are
+  // waiting from the start (the router, which this module uses, keeps each tab's screen).
+  for (const host of hosts.list) if (host.url?.path.replace(/\/$/, "") === SCREEN) pending.set(host.tab, kernel.appIn(host.tab));
   // The page tells the kernel each time the browser hands it files: the first time, and again when an
   // installed app the browser reuses gets another file, at whatever screen it is on (src/host/bridges/launch.ts).
   kernel.command("launch:arrived", (arg) => {
@@ -90,4 +93,5 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   };
 };
 
-export default service("launch", make);
+// It hears of the screen from the router (router:changed), and reads the tab's screen it keeps, so the router runs whenever it does.
+export default service("launch", make, ["router"]);

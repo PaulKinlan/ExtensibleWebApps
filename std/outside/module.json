@@ -1,0 +1,14 @@
+{
+  "services": [
+    "outside"
+  ],
+  "hooks": [
+    "outside:called"
+  ],
+  "commands": [
+    "outside:call"
+  ],
+  "doors": [
+    "mcp"
+  ]
+}

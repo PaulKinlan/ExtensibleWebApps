@@ -22,7 +22,7 @@ import { themeCss } from "../shared/theme";
 import { isAgentFile, runnerHref } from "../shared/agent-runner";
 import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
-import { audioProbe, audioStats } from "./bridges/audio";
+import { audioProbe, audioStats } from "./audio-stats";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn, loadElement, onElementError } from "./elements";
 import { morphChildren } from "./morph";
@@ -737,7 +737,10 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
 
 /** The trace, benchmarks and demo links, on the workbench page only. */
 const bench = document.getElementById("devtools") ? workbench(command) : undefined;
-serviceWorker(command, report);
+/** Settles once the kernel has welcomed this tab: it answers commands from then on. */
+let welcomed!: () => void;
+const welcome = new Promise<void>((resolve) => (welcomed = resolve));
+serviceWorker(command, report, welcome);
 installable();
 const traces: TraceEvent[] = [];
 function showTrace(events: TraceEvent[]) {
@@ -756,6 +759,7 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
   if (receive(message)) return;
   switch (message.t) {
     case "welcome":
+      welcomed();
       spawner = message.spawner;
       bench?.mode(`Kernel in a ${message.mode} worker · tab ${tab}${spawner ? " · runs the plugin workers" : ""}`);
       return;

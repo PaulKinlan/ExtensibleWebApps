@@ -62,18 +62,31 @@ The core is what every app and every space server needs to run any plugin at all
 | Keys and the network | [`secrets.ts`](../src/kernel/secrets.ts), [`net.ts`](../src/kernel/net.ts), [`address.ts`](../src/kernel/address.ts) | Secrets a plugin can use but never read, the requests made with them, and what counts as an email address (for the `email` module and the servers' accounts) |
 | Which plugins run | [`apps.ts`](../src/kernel/apps.ts), [`catalog.ts`](../src/kernel/catalog.ts), [`switches.ts`](../src/kernel/switches.ts) | An app's linked plugins, installed plugins, and their on/off switches |
 | Plugins' routes | [`routes.ts`](../src/kernel/routes.ts) | Requests for the routes plugins add: the site's, which the service worker passes on, and a space's public ones on its server |
-| The person's own plugins | [`user-plugins.ts`](../src/kernel/user-plugins.ts), [`authoring.ts`](../src/kernel/authoring.ts) | Plugins a person (or their agent) adds to an app, and the help to write them |
+| The person's own plugins | [`user-plugins.ts`](../src/kernel/user-plugins.ts), [`authoring.ts`](../src/kernel/authoring.ts) | Plugins a person (or their agent) adds to an app, and the help to write them. `authoring.ts` is fetched when Customize first calls it |
 | Where the person moved things | [`moves.ts`](../src/kernel/moves.ts) | The spots a person moved plugins' views to in an app (Customize's Arrange), used in place of the manifest's |
-| Describing itself | [`reference.ts`](../src/kernel/reference.ts) | The [API reference](api.md), built from the tables the kernel enforces |
+| Describing itself | [`reference.ts`](../src/kernel/reference.ts), [`manifest-fields.ts`](../src/kernel/manifest-fields.ts) | The [API reference](api.md), built from the tables the kernel enforces. Fetched when someone asks for the reference |
+| An app's links | [`agents/linked.ts`](../src/kernel/agents/linked.ts) | An app's linked files as plugin sources, and fetching the agent file reader (below) once an app links an agent |
 | Wiring | [`kernel.ts`](../src/kernel/kernel.ts) | Puts the pieces together |
-| Kernel modules | [`modules.ts`](../src/kernel/modules.ts), [`kernel-modules.d.ts`](../src/kernel/kernel-modules.d.ts) | Runs the modules the site lists in `kernel.json` (below) |
+| Kernel modules | [`modules.ts`](../src/kernel/modules.ts), [`kernel-modules.d.ts`](../src/kernel/kernel-modules.d.ts) | Knows the modules the site lists in `kernel.json` by their manifests, and fetches and runs each when it is first used (below) |
 | Services plugins provide | [`provided.ts`](../src/kernel/provided.ts) | Passes calls to a service a sandboxed plugin provides on to that plugin (below) |
 
 And the services every plugin relies on: `kernel`, `settings`, `plugins`, `storage`, `files`, `data`, `secrets`, `net` and `hooks`. Most are made beside the module they belong to; four are a file each, which [`services/index.ts`](../src/kernel/services/index.ts) finds by name: [`services/files.ts`](../src/kernel/services/files.ts), [`services/hooks.ts`](../src/kernel/services/hooks.ts), [`services/kernel.ts`](../src/kernel/services/kernel.ts) and [`services/storage.ts`](../src/kernel/services/storage.ts).
 
+## The kernel stays small
+
+**This is a rule of the project, not a goal: the kernel never becomes one big file.** Everything is supposed to be a plugin, so what a browser downloads to run an app is Cordis, the core in the table above, and nothing else until the app uses it. A check fails the tests when a change breaks any part of this:
+
+- **A kernel module is a file of its own.** The browser's kernel is built with each module in `kernel.json` as a separate file, `/assets/kernel-<name>-<hash>.js`, and fetches one the first time something it adds is used. An app that never plays a sound never downloads the `audio` module. The kernel knows what each module adds from its manifest, `std/<name>/module.json`, without running it ([Kernel modules](#kernel-modules)).
+- **The core never imports a module**, and never imports the parts of itself that only some apps use: the code that writes the API reference, the authoring service behind Customize, and the agent file reader are each fetched when first needed ([`tests/checks/kernel-layers.mjs`](../tests/checks/kernel-layers.mjs) lists them as `ON_DEMAND`).
+- **The size is held.** [`tests/perf-budget.json`](../tests/perf-budget.json) sets the most the kernel's own file may be, gzipped. Don't raise it to fit a feature: put the feature in a module, a plugin, or a file fetched on demand. If the only way to keep the kernel small is a change to the architecture, make that change.
+
+What is fetched on demand is a file of this site like any other: the service worker keeps it once fetched, so an app that has been opened works offline with the modules it used. A space's server is different on purpose: its kernel is one file with every module in it, started when the space wakes, since there is nothing to download there.
+
+To see what a kernel is running, ask it: `window.__host.command("modules")` in a page answers each module's name and whether it has started.
+
 ## Kernel services
 
-These are capabilities with trusted code in the kernel: an app may use them, but not every app does. They are kernel modules (below), which a site picks, spaces included. One piece is still **built into every kernel**, whether an app uses it or not: the agent file reader.
+These are capabilities with trusted code in the kernel: an app may use them, but not every app does. They are kernel modules (below), which a site picks, spaces included. One piece is still part of the core rather than a module: the agent file reader. It is fetched only once an app links an agent ([`agents/linked.ts`](../src/kernel/agents/linked.ts)).
 
 | Service | Files | Why it is trusted code |
 | --- | --- | --- |
@@ -113,7 +126,38 @@ Most services have moved out of the core into **kernel modules**. A module is a 
 }
 ```
 
-Only the listed modules are built into the kernel, in the browser and on the site's servers ([`vite.kernel-modules.ts`](../vite.kernel-modules.ts)). A name with no `module.ts` stops the build, and a module that `uses` another the site doesn't list stops the kernel: neither quietly goes without. Beside `modules`, `kernel.json` may set `hooks`, the limits on hooks plugins define ([hooks of your own](guide/plugin-hooks.md)); any other setting stops the build. [`src/kernel/modules.ts`](../src/kernel/modules.ts) says how to write one.
+Only the listed modules are part of the site's kernel, in the browser and on its servers ([`vite.kernel-modules.ts`](../vite.kernel-modules.ts)). A name with no `module.ts` stops the build, and a module that `uses` another the site doesn't list stops the kernel: neither quietly goes without. Beside `modules`, `kernel.json` may set `hooks`, the limits on hooks plugins define ([hooks of your own](guide/plugin-hooks.md)); any other setting stops the build. [`src/kernel/modules.ts`](../src/kernel/modules.ts) says how to write one.
+
+#### A module's manifest
+
+Beside each `module.ts` is `module.json`, which says what the module adds, the way a plugin's manifest says what a plugin asks for before any of its code runs:
+
+```json
+{
+  "services": ["router"],
+  "hooks": ["router:changed"]
+}
+```
+
+| Key | What it lists |
+| --- | --- |
+| `services` | The services it provides (`kernel.provide`, or the `service()` helper) |
+| `hooks` | The hooks it defines (`kernel.hook`) |
+| `commands` | The page commands it answers (`kernel.command`) |
+| `messages` | The message types it answers (`kernel.message`) |
+| `doors` | The doors it answers on a space's server (`kernel.door`) |
+| `starts` | `"always"` to start with every kernel, or `"space"` to start with a kernel that is for a space. Left out, the module starts when it is first used |
+
+In the browser the kernel starts with the manifests only. Each listed service has a stand-in in the kernel's table, and each hook's name is the kernel's, so a plugin that needs the service is accepted and nothing else can take the names. The kernel fetches the module's file and runs it the first time:
+
+- a plugin that lists the service in its manifest's `services` is installed (so the module is running, and listening, before the plugin's first line),
+- a plugin calls the service or listens to one of its hooks,
+- the page runs one of its commands or sends one of its messages,
+- or something reads the whole kernel: the API reference, or an agent's tools (the `tools` module offers every service's methods, so it starts them all).
+
+A module that starts after the tabs opened hears each tab's address again (`internal/url`), so the router knows the screen. A module that can't be fetched is an error in the trace, calls to its service fail saying so, and the next use tries again.
+
+The manifest is held to. A module that adds something its manifest doesn't list fails to start. A manifest that lists what its module never adds, a module with no manifest, a key the kernel doesn't know, and two modules listing the same name all fail the build or [`tests/checks/module-manifests.mjs`](../tests/checks/module-manifests.mjs). A site's settings and a module's promises are never quietly ignored.
 
 A module keeps the promise any Cordis plugin keeps. Everything it adds goes through the `kernel` it is given (`provide`, `command`, `hook`, `cleanup`, and `kernel.root`, which is the module's own Cordis context), and each is a Cordis effect on that context. What the core tells modules (a tab's address, a plugin instance stopping, a tab leaving, the data folder ready) it emits as `internal/*` events, which only trusted code hears, so a module's listeners go with it too. So stopping a module takes back its service, commands and hooks, and ends whatever waits on it. The modules that use it stop first, and they start again when it does. The page command `restart-module` does this to one module, and [`tests/checks/module-restart.mjs`](../tests/checks/module-restart.mjs) restarts each one the site runs and checks the kernel looks the same afterwards. A module that calls `defineHook` itself, or sets one of the core's callbacks (`remote.onDispose = …`), fails the layer check, since either would outlive it.
 

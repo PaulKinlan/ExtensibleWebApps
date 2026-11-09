@@ -21,7 +21,6 @@ import { net } from "./net";
 import { grants } from "./gate";
 import { readManifest, RESERVED } from "./manifest";
 import { collections } from "./records";
-import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { loadServices } from "./services";
 import { loadModules, type Seams } from "./modules";
@@ -30,8 +29,7 @@ import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
 import { isolateHost } from "./isolate-host";
-import { asPlugin } from "./agents/file";
-import { authoring } from "./authoring";
+import { agentFiles, asPlugin } from "./agents/linked";
 import { asMove, moves as makeMoves } from "./moves";
 import { record, recent, setSink, startedAt, tap } from "./trace";
 import { checkApp, userPlugins } from "./user-plugins";
@@ -97,6 +95,30 @@ async function reviewed(instance: string, place: string, target: string, before:
 // Services set here belong to a module made below; every other service is a file in services/.
 const services: Record<string, ServiceProvider> = {};
 
+/**
+ * A core service whose code is fetched when it is first used: a stand-in whose `load` makes the real one and puts
+ * it in the table (remote.ts awaits `load` before a call). Only for a service most apps never call.
+ */
+const later = (name: string, make: () => Promise<ServiceProvider>): ServiceProvider => {
+  let loading: Promise<void> | undefined;
+  return {
+    description: "",
+    methods: {},
+    capability: () => undefined,
+    call: () => {
+      throw new Error(`The ${name} service isn't running yet`);
+    },
+    load: () =>
+      (loading ??= make().then(
+        (made) => void (services[name] = made),
+        (error) => {
+          loading = undefined;
+          throw error;
+        },
+      )),
+  };
+};
+
 const remote = new RemotePlugins(root, hosts, services);
 const secrets = makeSecrets(store, hosts, (instance) => remote.installed.get(base(instance))?.manifest.name ?? base(instance));
 services.secrets = secrets.service;
@@ -123,35 +145,51 @@ const space = () => seams.space.current;
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
+/** Each tab's address as it last sent it, for a module that starts later (loadModules' onLate). */
+const addresses = new Map<string, { path: unknown; query: unknown; at: number }>();
 /** Tabs whose app is still opening: their address waits for it (see the `url` message). */
 const opening = new Map<string, Promise<void>>();
-services.authoring = authoring(remote, apps, {
-  check: (value, dispatch) => root.serial(dispatch, "plugins:beforeAdd", value),
-  store,
-  userAdded,
-  appIn: (tab) => openApps.get(tab)?.app,
-  ask: (request, dispatch) => reviews.ask(request, dispatch),
-  reopen: (app) => reopen(app),
-  turnOn: (ids) => plugins.turnOn(ids),
-  shared: () => space()?.sharing,
-  origin: where.origin,
-  services: () => Object.keys(services),
-  page: (tab, method, args, dispatch) => {
-    const host = hosts.list.find((h) => h.tab === tab);
-    if (!host) throw new Error("That tab has closed");
-    return hosts.bridge("customize", method, args, dispatch, host);
-  },
-  unlock: async (app, plugin, place, on) => {
-    const grant = `unlock:${app}#${place}`;
-    if (on) await reviews.grant(plugin, grant);
-    else await reviews.forget(plugin, grant);
-    await reopen(app);
-  },
-  move: async (app, plugin, place, to) => {
-    await moved.set(app, plugin, place, to);
-    await reopen(app);
-  },
+// The authoring service is what Customize works through (authoring.ts). Its code is fetched when it is first
+// called (the panel opening), not with the kernel: until then a stand-in holds its place, as for a kernel module.
+// Its hook is the kernel's from the start, so a checker can listen before anyone opens the panel.
+defineHook("plugins:beforeAdd", {
+  mode: "serial",
+  timeoutMs: 2000,
+  agentTimeoutMs: 20_000,
+  onFailure: "open",
+  args: "{ app, id, name, permissions, code, how, by }",
+  description:
+    "Before one of the person's own plugins is added or changed (how: save, add or pick), and before they see its review card: a checker gets its code and the permissions it asks for, and may return { block: reason } to stop it. by is the plugin that asked. It carries the code, so listening needs hook:intercept:plugins:beforeAdd.",
 });
+services.authoring = later("authoring", async () =>
+  (await import("./authoring")).authoring(remote, apps, {
+    check: (value, dispatch) => root.serial(dispatch, "plugins:beforeAdd", value),
+    store,
+    userAdded,
+    appIn: (tab) => openApps.get(tab)?.app,
+    ask: (request, dispatch) => reviews.ask(request, dispatch),
+    reopen: (app) => reopen(app),
+    turnOn: (ids) => plugins.turnOn(ids),
+    shared: () => space()?.sharing,
+    origin: where.origin,
+    services: () => Object.keys(services),
+    page: (tab, method, args, dispatch) => {
+      const host = hosts.list.find((h) => h.tab === tab);
+      if (!host) throw new Error("That tab has closed");
+      return hosts.bridge("customize", method, args, dispatch, host);
+    },
+    unlock: async (app, plugin, place, on) => {
+      const grant = `unlock:${app}#${place}`;
+      if (on) await reviews.grant(plugin, grant);
+      else await reviews.forget(plugin, grant);
+      await reopen(app);
+    },
+    move: async (app, plugin, place, to) => {
+      await moved.set(app, plugin, place, to);
+      await reopen(app);
+    },
+  }),
+);
 
 /**
  * Opens an app in a tab: the plugins its app.html links, and the person's own plugins for it that are
@@ -159,6 +197,8 @@ services.authoring = authoring(remote, apps, {
  */
 async function openApp(host: (typeof hosts.list)[number], links: { href: string; source: string; runner?: string }[], app?: string) {
   // A device new to a space gets what the space has before its app starts, so the app sees the space's data.
+  // (The modules that start with the kernel are running by then: the spaces module, in a kernel for a space.)
+  await kernelModules.ready;
   await space()?.ready?.();
   if (!hosts.list.includes(host)) return;
   let mine: { href: string; source: string }[] = [];
@@ -175,6 +215,13 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
     }
   } catch {
     app = undefined;
+  }
+  // An app that links an agent has the agent file reader fetched before its links are read (agents/linked.ts).
+  // If it can't be fetched, each agent's link says so when it is read, and the rest of the app opens.
+  const fetching = agentFiles([...links, ...mine]);
+  if (fetching) {
+    await fetching.catch((error) => record({ kind: "error", name: "agents:reader", detail: error instanceof Error ? error.message : String(error) }));
+    if (!hosts.list.includes(host)) return;
   }
   openApps.set(host.tab, { app, links });
   // A person's plugin with the id of one the app links replaces it in this app: the app's copy isn't started.
@@ -200,6 +247,20 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
       if (!id || running?.origin !== "app" || (running.source === asPlugin(link.href, link.source, link.runner) && running.href === link.href)) continue;
       if (apps.tabsWith(id).every((tab) => tab === host.tab || openApps.get(tab)?.app === app)) remote.uninstall(id);
     }
+  }
+  // Every kernel module the app's plugins say they use (their manifests' `services`) is running before the first
+  // plugin starts: a module that keeps what happens (history's undo list) misses nothing an earlier plugin did.
+  const wanted = new Set(linked.flatMap((link) => {
+    try {
+      return readManifest(asPlugin(link.href, link.source, link.runner)).services ?? [];
+    } catch {
+      return [];
+    }
+  }));
+  const starting = [...wanted].filter((name) => Object.hasOwn(services, name) && services[name].load);
+  if (starting.length) {
+    await Promise.all(starting.map((name) => services[name].load?.().catch(() => undefined)));
+    if (!hosts.list.includes(host)) return void openApps.delete(host.tab);
   }
   const describe = (o: Opened): Opened => {
     if (!o.id) return o;
@@ -253,6 +314,7 @@ where.serve?.(async (request) => {
   // A door the host let in (an MCP request from a member's agent, src/server/mcp.ts): the module that answers
   // it answers that door (ModuleKernel.door). Its plugins may still be starting, as for a route.
   if (typeof request.door === "string") {
+    await kernelModules.door(request.door)?.catch(() => {});
     const answer = doors.get(request.door);
     if (!answer) return null;
     const deadline = Date.now() + 10_000;
@@ -287,20 +349,38 @@ services.data = records.service;
 const pluginSwitches = switches(root, remote, apps);
 services.plugins = pluginSwitches.service;
 
-/** The kernel's API reference, built from the registries above as they are now. */
-const describe = () => reference(services, remote);
+/**
+ * The kernel's API reference, built from the registries above. It describes the whole kernel, so every module the
+ * site lists is started first; and the code that writes it is fetched only when someone asks (reference.ts).
+ */
+const describing = () => Promise.all([import("./reference"), whole()]).then(([made]) => made);
+/** Starts every module the site lists, and makes every service whose code waits to be used: the whole kernel, for what describes it. */
+const whole = () => Promise.all([kernelModules.all(), ...Object.values(services).map((s) => s.load?.().catch(() => {}))]).then(() => {});
+const describe = async () => (await describing()).reference(services, remote);
 
 // The rest of the core's services are a file each in services/, found by name.
-const parts = { root, store, hosts, remote, apps, reviewed, describe, collections: records, reviews, userAdded, reopen, appIn: (tab: string) => openApps.get(tab)?.app, started: () => started };
+const parts = { root, store, hosts, remote, apps, reviewed, describe, whole, collections: records, reviews, userAdded, reopen, appIn: (tab: string) => openApps.get(tab)?.app, started: () => started };
 Object.assign(services, loadServices(parts));
 // Then the kernel modules the site lists in kernel.json (docs/layers.md): each may add services and page commands.
 /** The page commands the kernel answers itself; a module's commands (loadModules) can't take these names. */
-const CORE_COMMANDS = new Set(["changes", "install", "reference", "reload", "restart-module", "route", "trace", "uninstall"]);
+const CORE_COMMANDS = new Set(["changes", "fetched", "install", "modules", "reference", "reload", "restart-module", "route", "trace", "uninstall"]);
 
 const commands = new Map<string, (arg: unknown) => unknown>();
 /** What the modules answer at the server's doors (ModuleKernel.door). */
 const doors = new Map<string, (request: RouteRequest) => Promise<RouteResponse | null> | RouteResponse | null>();
-const kernelModules = loadModules(modules, parts, services, commands, doors, (name) => CORE_COMMANDS.has(name) || /^(user|place):/.test(name), seams);
+const kernelModules = loadModules(modules, parts, services, commands, doors, (name) => CORE_COMMANDS.has(name) || /^(user|place):/.test(name), seams, {
+  // A space's server runs every module from the start. A browser's kernel starts each when it is first used
+  // (modules.ts), so an app's kernel is the core and the modules that app uses.
+  eager: where.kind === "server",
+  space: where.kind !== "server" && !!where.space,
+  // A module that started after the tabs said where they are hears it now (the router keeps each tab's screen).
+  onLate: () => {
+    for (const host of hosts.list) {
+      const at = addresses.get(host.tab);
+      if (at) root.emit("internal/url", host, at.path, at.query, openApps.get(host.tab)?.app, at.at);
+    }
+  },
+});
 // A space's server is nothing without its spaces: no module answering sync is a site that can't serve one. Fail, never go without.
 if (hosts.mode === "server") void kernelModules.ready.then(() => {
   if (!seams.messages.has("sync")) record({ kind: "error", name: "kernel:no-spaces", detail: "This is a space's server, but kernel.json lists no module that answers sync (std/spaces)" });
@@ -328,6 +408,7 @@ hosts.onLeave = (host) => {
   apps.hostLeft(host);
   root.emit("internal/left", host);
   openApps.delete(host.tab);
+  addresses.delete(host.tab);
 };
 
 hosts.onSpawnerChange = (host) => {
@@ -373,6 +454,7 @@ hosts.onMessage = async (host, message) => {
       opening.set(host.tab, new Promise<void>((resolve) => (opened = resolve)));
       try {
         // An app's plugins may read collections whose owners aren't running: know those first.
+        await agentFiles(message.plugins)?.catch(() => {});
         // Opened with ?reset: the app's plugins the person turned off come back on first.
         // Only plugins this app may load: not one whose id belongs to a different running plugin.
         if (message.reset) await plugins.turnOn(message.plugins.flatMap(({ href, source: linked, runner }) => {
@@ -397,6 +479,7 @@ hosts.onMessage = async (host, message) => {
     }
     case "url":
       await opening.get(host.tab);
+      if (hosts.list.includes(host)) addresses.set(host.tab, { path: message.path, query: message.query, at: Date.now() });
       // The router module, if the site runs it, keeps the screen with the tab and tells plugins (std/router/module.ts).
       return void root.emit("internal/url", host, message.path, message.query, openApps.get(host.tab)?.app);
     case "report":
@@ -407,18 +490,28 @@ hosts.onMessage = async (host, message) => {
     }
     default: {
       // A message a module answers (ModuleKernel.message): `sync`, from a device in a space.
-      const answer = seams.messages.get((message as { t: string }).t);
+      const type = (message as { t: string }).t;
+      // Its module may not be running yet: it starts, then answers.
+      if (!seams.messages.has(type)) await kernelModules.message(type)?.catch(() => {});
+      const answer = seams.messages.get(type);
       if (answer) return answer(host, message);
     }
   }
 };
 
 async function command(name: string, arg: unknown): Promise<unknown> {
+  // A module's command starts its module, if it isn't running yet.
+  if (!commands.has(name)) await kernelModules.command(name)?.catch(() => {});
   const added = commands.get(name);
   if (added) return added(arg);
   if (name === "reload") return remote.reload(String(arg));
   // Stops a kernel module and the ones that use it, then starts them again: what it added must come and go with it.
   if (name === "restart-module") return kernelModules.restart(String(arg)).then(() => ({ ok: true }), (error) => ({ ok: false, error: String(error?.message ?? error) }));
+  // Which modules are running, for tests and developer tools: an app's kernel runs only the ones it uses.
+  if (name === "modules") return kernelModules.state();
+  // What the kernel fetched itself (the modules it started): on a first visit it did so before the service worker
+  // was there to keep them, so the page asks and has them kept (src/host/service-worker.ts).
+  if (name === "fetched") return (globalThis.performance?.getEntriesByType?.("resource") ?? []).map((entry) => entry.name).filter((url) => url.startsWith(`${where.origin}/`));
   if (name === "install") return plugins.install(String(arg));
   if (name === "uninstall") return plugins.remove(String(arg));
   if (name === "trace") return recent();
@@ -427,7 +520,8 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   // The panel's commands answer { ok: false, error } rather than throw, so the page always hears back.
   if (name.startsWith("user:") || name.startsWith("place:")) return customize(name, arg).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   if (name === "reference") {
-    const data = describe();
+    const { reference, toMarkdown } = await describing();
+    const data = reference(services, remote);
     return { data, markdown: toMarkdown(data), live: toMarkdown(data, { live: true }) };
   }
   return undefined;

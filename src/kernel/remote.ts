@@ -16,10 +16,10 @@
 // Cordis's `thisArg`, so it survives awaits.
 
 import type { Dispatch, KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
-import { HTML_MAX } from "../shared/html";
-import { made } from "./agents/file";
+import { HTML_MAX } from "../shared/html-max";
+import { made } from "./agents/linked";
 import { capabilities, check, grants } from "./gate";
-import { BEFORE_WRITE, capabilityFor, defineHook, hookOwners, hooks, kernelPrefix, PLUGIN_HOOKS, type HookSpec } from "./hooks";
+import { BEFORE_WRITE, capabilityFor, declaredHooks, defineHook, hookOwners, hooks, kernelPrefix, PLUGIN_HOOKS, type HookSpec } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import { ManifestError, readManifest } from "./manifest";
 import type { Schema } from "./schema";
@@ -75,6 +75,20 @@ export interface ServiceProvider {
   /** Capability a plugin needs to call this method. */
   capability(method: string, args: unknown[]): string | undefined;
   call(plugin: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown> | unknown;
+  /**
+   * Set on the stand-in for a service whose kernel module isn't running yet (modules.ts): starts the module,
+   * which puts the real service in its place. A caller that reads a service's methods awaits this first.
+   */
+  load?(): Promise<unknown>;
+}
+
+/** A service from the table, by its own name only; one whose kernel module isn't running yet is started first. */
+export async function serviceNamed(services: Record<string, ServiceProvider>, name: string): Promise<ServiceProvider | undefined> {
+  // Own entries only: `toString` or `__proto__` would find the object's prototype instead.
+  const found = Object.hasOwn(services, name) ? services[name] : undefined;
+  if (!found?.load) return found;
+  await found.load();
+  return Object.hasOwn(services, name) ? services[name] : undefined;
 }
 
 /** Where a plugin came from: bundled with the platform, kept in the data folder, linked by an open app's app.html, or an app's server plugin. */
@@ -143,6 +157,11 @@ export class RemotePlugins {
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }
+    // The services it says it calls whose kernel modules aren't running yet (modules.ts): they start first, so
+    // their hooks are defined and they are listening before the plugin's first line runs. One that fails to
+    // start is in the trace, and the plugin's calls to it fail saying so.
+    const waiting = (manifest.services ?? []).filter((name) => Object.hasOwn(this.services, name) && this.services[name].load);
+    if (waiting.length) await Promise.all(waiting.map((name) => this.services[name].load?.().catch(() => undefined)));
     // On a space's server only the site's own plugins are installed (std/spaces/server-apps.ts) and the kernel's
     // built-in ones: not one a member's client sent (an app's link, a plugin they added), which could
     // otherwise claim a collection before the space's own plugin does.
@@ -631,6 +650,26 @@ export class Remote {
     if (route) return this.route(listener, route[1], route[2]);
     // A collection's change hook is made when its owner first runs. A reader may listen
     // before that (the contacts app hasn't been opened yet), and hears changes once it exists.
+    // A hook of a kernel module that isn't running yet: the module starts, then the plugin listens.
+    const starting = hooks.has(name) ? undefined : declaredHooks.get(name);
+    if (starting) {
+      this.ahead.set(listener, name);
+      void starting().then(
+        () => {
+          // Stopped listening, or stopped, while the module started.
+          if (this.manager.live.get(this.instance) !== this || this.ahead.get(listener) !== name) return;
+          this.ahead.delete(listener);
+          if (hooks.has(name)) return this.listen(listener, name);
+          record({ kind: "error", name: "hook:unknown", plugin: this.instance, detail: name });
+          this.post({ t: "event", action: "kernel:error", value: `No hook named ${name}` });
+        },
+        (error) => {
+          if (this.ahead.get(listener) === name) this.ahead.delete(listener);
+          this.post({ t: "event", action: "kernel:error", value: `The hook ${name} isn't there: ${error instanceof Error ? error.message : error}` });
+        },
+      );
+      return;
+    }
     const spec = hooks.get(name) ?? (name.startsWith("data:changed:") ? ({ mode: "emit" } as HookSpec) : name.startsWith("data:beforeWrite:") ? BEFORE_WRITE : undefined);
     // A plugin's hook (`<plugin>:<key>`) whose plugin isn't installed yet: wait for it, if this plugin may hear it.
     const own = /^([a-z][a-z0-9-]{0,63}):[a-z][a-z0-9-]{0,40}$/.exec(name);
@@ -841,8 +880,7 @@ export const scheduleHook = (plugin: string, name: string) => `schedule:${plugin
  * (std/tools/module.ts), so a tool can never do more than its plugin could.
  */
 export async function callService(services: Record<string, ServiceProvider>, instance: string, caps: Set<string>, service: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown> {
-  // Own entries only: `toString` or `__proto__` would find the object's prototype instead.
-  const provider = Object.hasOwn(services, service) ? services[service] : undefined;
+  const provider = await serviceNamed(services, service);
   if (!provider) throw new Error(`No service named ${service}`);
   if (!Object.hasOwn(provider.methods, method)) throw new Error(`${service}.${method} is not a method`);
   const needed = provider.capability(method, args);

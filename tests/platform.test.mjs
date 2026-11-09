@@ -299,7 +299,8 @@ export default async (ctx) => {
   await a.waitForSelector(`${reviewCard} >> text=Lender wants to change a new record in Books`, { timeout: 5000 });
   await a.click(`${reviewCard} >> text=Accept`);
   await a.waitForSelector(`${books} ui-table >> text=Lent book`, { timeout: 5000 });
-  check("another plugin's write to a collection is reviewed first", /"ok":true/.test(await pluginLog("lender", "lender")));
+  // "lender {": its other line, "lender-proto …", starts with "lender" too, and may be the only one in yet.
+  check("another plugin's write to a collection is reviewed first", /"ok":true/.test(await pluginLog("lender", "lender {")));
   const proto = await pluginLog("lender", "lender-proto");
   check("a field named __proto__ can't satisfy a required field", /"ok":false/.test(proto) && /Title is required/.test(proto), proto);
   check("data:changed:<collection> reaches plugins that may read it", (await pluginLog("shelf", "shelf sees 2")) === "shelf sees 2" && !(await a.evaluate(() => window.__host.traces.some((e) => e.plugin === "nosy" && e.detail === "nosy heard"))));

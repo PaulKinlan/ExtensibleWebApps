@@ -7,7 +7,6 @@
 
 import { fragile } from "../places";
 import { nameOf } from "../names";
-import { COMPONENTS } from "../../shared/html";
 import type { BridgeHost } from "./index";
 
 /** Files a person picks to add as a plugin: the plugin's .js and the files it lists. */
@@ -54,10 +53,11 @@ export default ({ places, running, inspect, arrange }: BridgeHost) => ({
     arrange: !!arrange,
   }),
   /** Where plugins can go on this page, for Customize's Layout: its slots, its named parts and their marks, and the ui-* elements a view can use. */
-  layout: () => ({
+  layout: async () => ({
     slots: slots(),
     parts: parts(),
-    elements: Object.entries(COMPONENTS).map(([tag, c]) => ({ tag, attributes: c.attributes, about: c.about })),
+    // What each element is for is words only this panel shows: fetched when it asks, so no page carries them.
+    elements: Object.entries((await import("../../shared/html")).COMPONENTS).map(([tag, c]) => ({ tag, attributes: c.attributes, about: c.about })),
   }),
   arrange: async (plugin?: string, place?: string) => {
     if (!arrange) throw new Error("This page has no arrange mode");

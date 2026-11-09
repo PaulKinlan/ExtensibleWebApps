@@ -1,0 +1,18 @@
+{
+  "services": [
+    "sync"
+  ],
+  "hooks": [
+    "members:changed",
+    "sync:changed",
+    "sync:live",
+    "sync:trace"
+  ],
+  "commands": [
+    "sync"
+  ],
+  "messages": [
+    "sync"
+  ],
+  "starts": "space"
+}

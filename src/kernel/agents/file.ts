@@ -50,6 +50,7 @@
 
 import { grants } from "../gate";
 import { isAgentFile } from "../../shared/agent-runner";
+import { made } from "./linked";
 
 export { isAgentFile };
 
@@ -92,16 +93,8 @@ const LATER: Record<string, string> = {
 };
 const COMMAND = /^[a-z][a-z0-9-]{0,63}$/;
 
-/** Sources the kernel made from agent files, with what each one runs as: only these may call the agent methods. */
-export const made = new Map<string, AgentConfig>();
-
-/**
- * A linked file as the plugin source to run: an agent file becomes a plugin, running the loop whose source
- * came with it (`runner`, fetched from runnerHref); anything else is left as it is.
- */
-export function asPlugin(href: string, source: string, runner?: string): string {
-  return isAgentFile(href) ? fromAgentFile(source, runner) : source;
-}
+// Kept in linked.ts, which the kernel has from the start: a plugin's source is looked up there on every agent call.
+export { made };
 
 /**
  * Turns an agent file into a plugin's source, running `runner`, the agent loop's source. Throws an

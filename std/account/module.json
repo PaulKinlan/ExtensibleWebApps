@@ -1,0 +1,8 @@
+{
+  "services": [
+    "account"
+  ],
+  "hooks": [
+    "account:changed"
+  ]
+}
