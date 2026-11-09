@@ -46,14 +46,17 @@ the same editor events a textarea sends
 `ui-editor` can also turn the browser's spell checker on (`spellcheck="true"`)
 and hand it words to accept (`words`), for Chrome's custom dictionary.
 
-## Speech and local previews
+## Speech, summaries and local previews
 
 [`ui-dictation`](ui-dictation.html) is a button that listens with the
 browser's speech recognition while it is pressed in, and sends what it hears
 to its plugin. [`ui-site-preview`](ui-site-preview.html) shows a page from a
 server on the person's own device (a site's `hugo server`) in a frame, and
-nothing else. The Markdown editor's dictation and Hugo preview are built on
-them.
+nothing else, hiding the frame if its page goes anywhere else.
+[`ui-summarizer`](ui-summarizer.html) is a button that drafts a short
+summary of its text with the browser's on-device Summarizer and sends it to
+its plugin; the text never leaves the device. The Markdown editor's
+dictation, Hugo preview and "Draft description" are built on them.
 
 ## Sound
 
