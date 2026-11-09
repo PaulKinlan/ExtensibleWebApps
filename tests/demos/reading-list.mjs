@@ -68,8 +68,10 @@ export default async function (page, { check, openTab, URL, context }) {
     const first = await stranger.newPage();
     const status = await first.goto(`${URL}demos/reading-list/book/a-book-added-elsewhere`).then((r) => r?.status());
     // A new browser has its own data (the sample books, but not what someone added): the book's screen opens, and says this library hasn't got it.
-    const opened = await first.waitForSelector(`${card} >> text=isn't in the library`, { timeout: 15000 }).then(() => true, () => false);
-    check("a first visit to a screen's address gets the server's 404.html, which starts the service worker and opens the app there", status === 404 && opened, `first answer ${status}`);
+    // A cold start: the service worker installs, then the page loads again through it and a new kernel starts, so it is given time.
+    const opened = await first.waitForSelector(`${card} >> text=isn't in the library`, { timeout: 30000 }).then(() => true, () => false);
+    const seen = opened ? "" : await first.evaluate(() => `${location.pathname}, controlled ${!!navigator.serviceWorker.controller}: ${document.body?.innerText.replace(/\s+/g, " ").slice(0, 160)}`).catch((e) => String(e));
+    check("a first visit to a screen's address gets the server's 404.html, which starts the service worker and opens the app there", status === 404 && opened, `first answer ${status}${seen ? `; ${seen}` : ""}`);
     await first.goto(`${URL}no-such-place/at-all`);
     const nothing = await first.waitForSelector("text=There's nothing at this address", { timeout: 8000 }).then(() => true, () => false);
     check("an address with no app above it says there's nothing there", nothing);

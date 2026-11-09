@@ -48,6 +48,7 @@ const STATES = {
   locked: "the app's author locked that part of the page",
   "no match": "can't find its spot on this page",
   "bad selector": "its spot can't be read",
+  slot: "showing in the page's own slot",
 };
 
 /** How a place's `put` reads. */
@@ -127,7 +128,7 @@ export default function (ctx) {
         where: whereOf(p),
         state: p.state,
         label: STATES[p.state] + (p.each && p.matches ? ` (${p.matches})` : ""),
-        ok: p.state === "drawn",
+        ok: p.state === "drawn" || p.state === "slot",
         fragile: p.fragile,
         locked: p.state === "locked",
         unlocked: running?.unlocked?.includes(p.name),
