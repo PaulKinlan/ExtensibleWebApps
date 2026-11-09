@@ -76,7 +76,7 @@ Opened in a [space](spaces-and-servers.md), the plugin also runs on the space's 
 https://<site>/s/<space>/mcp/<plugin id>
 ```
 
-as an MCP server, on the Streamable HTTP transport: every POST gets an answer, and a connected client may keep a stream open to hear when the tools change. Only a member's agent gets in. A member makes an **agent key** for the space on [`/account/`](../../account/), names it after the agent, and pastes it into the agent. The agent sends it as `Authorization: Bearer <key>`. For Claude Code:
+as an MCP server, on the Streamable HTTP transport: every POST gets an answer, and a connected client may keep a stream open to hear when the tools change. Only a member's agent gets in. A member makes an **agent key** for the space on [`/account/`](../../account/), names it after the agent and, if they like, the app's agent plugin (its id, like `reading-list-agents`), and pastes what the page shows into the agent. The page fills in that app's address in the command, or leaves `<plugin>` for the member to fill in. The agent sends it as `Authorization: Bearer <key>`. For Claude Code:
 
 ```sh
 claude mcp add --transport http reading-list https://<site>/s/<space>/mcp/reading-list-agents \

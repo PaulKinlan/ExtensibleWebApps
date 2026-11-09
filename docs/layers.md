@@ -85,6 +85,7 @@ Most services have moved out of the core into **kernel modules**. A module is a 
 ```json
 {
   "modules": [
+    "account",
     "agents",
     "audio",
     "bus",
@@ -117,6 +118,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 
 | Module | File | What it adds |
 | --- | --- | --- |
+| `account` | [`std/account/module.ts`](../std/account/module.ts) | The `account` service: the person's account on the site's server (passkeys, other sites to sign in with, email, spaces, agent keys), for the account app's own plugins ([`account/app.html`](../account/app.html)) and no others |
 | `agents` | [`std/agents/module.ts`](../std/agents/module.ts) | The `agents` service: counts each agent's runs and tokens, so an agent can't misreport its own use, and tells the app what agents do (`agent:*` hooks). Uses `tools` |
 | `audio` | [`std/audio/module.ts`](../std/audio/module.ts) | The `audio` service: sound for plugins, played by the tab that runs their workers |
 | `bus` | [`std/bus/module.ts`](../std/bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person, with replies and topics |
