@@ -29,7 +29,6 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { checkApp } from "../std/maker/checks.js";
-import { hookLimits } from "../vite.kernel-modules.ts";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -39,6 +38,8 @@ async function loadKernelRules() {
   const entry = [
     'export { readManifest, RESERVED } from "./src/kernel/manifest.ts";',
     'export { PLUGIN_HOOKS } from "./src/kernel/hooks.ts";',
+    // Through this bundle, not an import: Node won't strip a .ts file's types inside node_modules, where a project's copy of this script is.
+    'export { hookLimits } from "./vite.kernel-modules.ts";',
     'export { capabilities, grants } from "./src/kernel/gate.ts";',
     'export * from "./src/shared/html.ts";',
     'export { fromAgentFile } from "./src/kernel/agents/file.ts";',
@@ -49,10 +50,10 @@ async function loadKernelRules() {
     b.onResolve({ filter: /\?raw$/ }, (a) => ({ path: resolve(a.resolveDir, a.path.slice(0, -4)), namespace: "raw" }));
     b.onLoad({ filter: /.*/, namespace: "raw" }, (a) => ({ contents: readFileSync(a.path, "utf8"), loader: "text" }));
   } };
-  const out = await build({ stdin: { contents: entry, resolveDir: ROOT, loader: "ts" }, bundle: true, write: false, format: "esm", platform: "neutral", logLevel: "silent", plugins: [raw] });
+  const out = await build({ stdin: { contents: entry, resolveDir: ROOT, loader: "ts" }, bundle: true, write: false, format: "esm", platform: "neutral", external: ["node:*"], logLevel: "silent", plugins: [raw] });
   const rules = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
   // The hook limits the site set in kernel.json, as the kernel uses them.
-  Object.assign(rules.PLUGIN_HOOKS, hookLimits(ROOT));
+  Object.assign(rules.PLUGIN_HOOKS, rules.hookLimits(ROOT));
   // The kernel reserves each service's name when it loads src/kernel/services/,
   // so reserve the same names here, read from the same folder.
   for (const name of serviceFiles()) rules.RESERVED.add(name);
