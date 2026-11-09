@@ -1,0 +1,46 @@
+<style>
+  .doodle { display: grid; gap: var(--space-3, 0.75rem); max-inline-size: 40rem; }
+  .doodle .top { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .doodle .badge { inline-size: 1.75rem; block-size: 1.75rem; }
+  .doodle .swatch { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .doodle .swatch[aria-pressed="true"] { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .doodle .chip { inline-size: 0.9rem; block-size: 0.9rem; }
+  .doodle .pad { inline-size: 100%; block-size: auto; aspect-ratio: 16 / 9; border: 1px solid var(--border); border-radius: var(--radius, 0.5rem); cursor: crosshair; }
+  .doodle .chart { inline-size: 100%; max-inline-size: 16rem; block-size: auto; }
+  .doodle .chart .bar { transition: height 200ms ease, y 200ms ease; }
+  .doodle .chart text { font-size: 9px; fill: var(--fg-2); }
+  .doodle .chart .axis { stroke: var(--border); }
+</style>
+
+<template id="doodle">
+  <section class="doodle">
+    <div class="top">
+      <img class="badge" src="/app-icon.svg" alt="">
+      <template for="c of colours">
+        <button class="swatch" data-action="colour" data-value="{{c.name}}" aria-pressed="{{c.pressed}}"><svg class="chip" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5" fill="{{c.hex}}"></circle></svg>{{c.name}}</button>
+      </template>
+      <button data-action="clear" disabled="{{empty}}">Clear</button>
+    </div>
+    <canvas id="pad" class="pad" data-tool="pen" width="640" height="360" pointer role="img" aria-label="The drawing pad: drag to draw"></canvas>
+    <figure>
+      <svg class="chart" viewBox="0 0 210 140" role="img" aria-label="Strokes by colour: {{summary}}">
+        <defs>
+          <linearGradient id="sheen" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#ffffff" stop-opacity="0.45"></stop>
+            <stop offset="1" stop-color="#ffffff" stop-opacity="0"></stop>
+          </linearGradient>
+        </defs>
+        <line class="axis" x1="0" y1="120" x2="210" y2="120"></line>
+        <template for="b of bars">
+          <g class="column">
+            <title>{{b.label}}</title>
+            <rect class="bar" x="{{b.x}}" y="{{b.y}}" width="36" height="{{b.h}}" rx="4" fill="{{b.hex}}"></rect>
+            <rect class="shine" x="{{b.x}}" y="{{b.y}}" width="36" height="{{b.h}}" rx="4" fill="url(#sheen)"></rect>
+            <text x="{{b.x}}" y="134">{{b.name}} {{b.n}}</text>
+          </g>
+        </template>
+      </svg>
+      <figcaption>{{total}} strokes so far.</figcaption>
+    </figure>
+  </section>
+</template>

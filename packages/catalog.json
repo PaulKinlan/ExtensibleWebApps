@@ -36,6 +36,11 @@
       "href": "/demos/debugger/app.html"
     },
     {
+      "path": "demos/doodle",
+      "title": "Doodle",
+      "href": "/demos/doodle/app.html"
+    },
+    {
       "path": "demos/feeds",
       "title": "Feeds",
       "href": "/demos/feeds/app.html"
@@ -137,6 +142,13 @@
     }
   ],
   "services": [
+    {
+      "id": "account",
+      "module": "account",
+      "description": "The person's account on this site's server, for the account app (account/app.html) and only for it.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/account/module.ts",
+      "docs": "/docs/api#account"
+    },
     {
       "id": "agents",
       "module": "agents",
@@ -496,7 +508,7 @@
     {
       "id": "customize",
       "name": "Customize",
-      "description": "A Customize button that adds, turns on and off, removes and shares the person's own plugins for an app.",
+      "description": "A Customize button that adds, makes, arranges, turns on and off, removes and shares plugins for an app.",
       "href": "/std/customize.js",
       "source": "std",
       "kind": "ui",
@@ -1474,6 +1486,23 @@
       ]
     },
     {
+      "id": "doodle",
+      "name": "Doodle",
+      "description": "A pad to draw on, and a chart of the strokes by colour.",
+      "href": "/demos/doodle/doodle.js",
+      "source": "doodle",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/doodle"
+      ]
+    },
+    {
       "id": "feeds",
       "name": "Feeds",
       "description": "Follow RSS and Atom feeds, and read their stories.",
@@ -1484,6 +1513,8 @@
         "ui",
         "data:read:items",
         "data:read:fetched",
+        "data:read:here-items",
+        "data:read:here-fetched",
         "sync"
       ],
       "provides": [],
@@ -1509,6 +1540,28 @@
       "services": [],
       "places": [],
       "runs": "server",
+      "apps": [
+        "demos/feeds"
+      ]
+    },
+    {
+      "id": "feeds-here",
+      "name": "Read feeds here",
+      "description": "Without a space, reads the feeds you follow on this device, through this site, while the app is open.",
+      "href": "/demos/feeds/read-here.js",
+      "source": "feeds",
+      "kind": "background",
+      "permissions": [
+        "network",
+        "schedule",
+        "sync",
+        "data:read:feeds"
+      ],
+      "provides": [],
+      "services": [
+        "sync"
+      ],
+      "places": [],
       "apps": [
         "demos/feeds"
       ]

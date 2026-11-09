@@ -30,6 +30,7 @@ import { serviceWorker } from "./service-worker";
 import { cleanCss } from "./plugin-styles";
 import { watchCanvasTheme } from "./canvas-theme";
 import { fill, forgetFiles, loadedFile, loadFile } from "./templates";
+import { loadDrawing, needsDrawing } from "./drawing-gate";
 import { listenDrag } from "./drag";
 import { listenEditing } from "./editing";
 import { drawView } from "./views";
@@ -595,6 +596,16 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     waitingForFile.set(id, [slot, key, owner, order, view!]);
     void Promise.race([Promise.all(undefinedElements.map(loadElement)), new Promise((resolve) => setTimeout(resolve, ELEMENT_WAIT))]).then(() => {
       for (const name of undefinedElements) if (!customElements.get(name)) gaveUpOn.add(name);
+      const latest = waitingForFile.get(id);
+      waitingForFile.delete(id);
+      if (latest) render(...latest);
+    });
+    return;
+  }
+  // SVG and canvas support, the first time a view has an <svg> or <canvas> (drawing-gate.ts).
+  if (view && needsDrawing(view)) {
+    waitingForFile.set(id, [slot, key, owner, order, view]);
+    void loadDrawing().then(() => {
       const latest = waitingForFile.get(id);
       waitingForFile.delete(id);
       if (latest) render(...latest);
