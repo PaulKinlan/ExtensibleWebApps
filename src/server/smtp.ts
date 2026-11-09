@@ -39,7 +39,8 @@ export function mime(message: Message, from: string, id: string): string {
   const domain = bare(from).split("@")[1] ?? "localhost";
   const headers = [
     `From: ${from}`,
-    `To: ${message.to.join(", ")}`,
+    // One recipient a line (folded), so ten long addresses stay under SMTP's 1,000-byte line limit.
+    `To: ${message.to.join(",\r\n ")}`,
     `Subject: ${word(message.subject)}`,
     `Date: ${new Date().toUTCString()}`,
     `Message-ID: <${id}@${domain}>`,
@@ -99,7 +100,8 @@ export function smtpMailer(options: SmtpOptions): Email {
   const url = new URL(options.url);
   if (url.protocol !== "smtp:" && url.protocol !== "smtps:") throw new Error("SMTP_URL is smtp:// or smtps://");
   const implicit = url.protocol === "smtps:";
-  const host = url.hostname;
+  // URL keeps the brackets around an IPv6 address ([::1]); sockets want it bare.
+  const host = url.hostname.replace(/^\[(.*)\]$/, "$1");
   const port = Number(url.port || (implicit ? 465 : 587));
   const user = decodeURIComponent(url.username);
   const pass = decodeURIComponent(url.password);
@@ -127,7 +129,10 @@ export function smtpMailer(options: SmtpOptions): Email {
             talk.stop();
             socket = secure({ socket, ...tls });
             talk = conversation(socket, timeout);
-            await new Promise<void>((done, fail) => (socket as TLSSocket).once("secureConnect", done).once("error", fail));
+            await new Promise<void>((done, fail) => {
+              const timer = setTimeout(() => fail(new Error("The mail server didn't finish starting TLS in time")), timeout);
+              (socket as TLSSocket).once("secureConnect", () => (clearTimeout(timer), done())).once("error", (e) => (clearTimeout(timer), fail(e)));
+            });
             ehlo = await say(`EHLO ${bare(options.from).split("@")[1] ?? "localhost"}`, [250]);
           } else if (!local(host)) throw new Error("The mail server doesn't offer STARTTLS: use smtps://, or a server that does");
         }

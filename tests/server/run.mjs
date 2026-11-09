@@ -1163,7 +1163,26 @@ async function smtpChecks() {
     const wrong = await smtpMailer({ url: url("apps@example.com", "nope"), from: "apps@example.com", ca: String(cert) }).send({ to: ["ann@example.com"], subject: "x", text: "x" });
     const untrusted = await smtpMailer({ url: url("apps@example.com", "p@ss:word"), from: "apps@example.com" }).send({ to: ["ann@example.com"], subject: "x", text: "x" });
     check("a wrong password, or a mail server whose certificate isn't trusted, is a failure that says so, and nothing is sent", !wrong.ok && /refused/.test(wrong.error) && !untrusted.ok && server.received.length === 1, JSON.stringify({ wrong, untrusted }));
+    const many = Array.from({ length: 10 }, (_, i) => `${"someone-with-a-long-name".repeat(9)}${i}@example.com`);
+    const long = await good.send({ to: many, subject: "Many", text: "Hi" });
+    const lines = server.received.at(-1)?.raw.split("\r\n") ?? [];
+    check("ten long recipients go on folded lines, each under SMTP's 1,000-byte limit", long.ok && lines.every((l) => l.length < 998) && server.received.at(-1).headerTo.split(/,\s*/).length === 10, JSON.stringify({ long, longest: Math.max(...lines.map((l) => l.length)) }));
     server.close();
+    const stalled = await fakeSmtp({ tls: { key, cert }, stall: true });
+    const hung = await smtpMailer({ url: `smtp://localhost:${stalled.port}`, from: "apps@example.com", ca: String(cert), timeout: 500 }).send({ to: ["ann@example.com"], subject: "x", text: "x" });
+    check("a mail server that stops answering while starting TLS is a failure after the timeout, not a send that never ends", !hung.ok && /TLS in time/.test(hung.error), JSON.stringify(hung));
+    stalled.close();
+    let six;
+    try {
+      six = await fakeSmtp({ host: "::1" });
+    } catch {
+      check("an IPv6 address in SMTP_URL (skipped: no IPv6 here)", true);
+    }
+    if (six) {
+      const viaSix = await smtpMailer({ url: `smtp://[::1]:${six.port}`, from: "apps@example.com" }).send({ to: ["ann@example.com"], subject: "Six", text: "x" });
+      check("an IPv6 address in SMTP_URL ([::1]) connects", viaSix.ok && six.received[0]?.subject === "Six", JSON.stringify(viaSix));
+      six.close();
+    }
   } finally {
     await rm(tls, { recursive: true, force: true });
   }

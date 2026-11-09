@@ -5,8 +5,8 @@
 import { createServer } from "node:net";
 import { TLSSocket } from "node:tls";
 
-/** Starts it. `tls` ({ key, cert }) offers STARTTLS and then requires it; `login` ({ user, pass }) requires AUTH. */
-export async function fakeSmtp({ tls, login } = {}) {
+/** Starts it. `tls` ({ key, cert }) offers STARTTLS and then requires it; `login` ({ user, pass }) requires AUTH; `host` is where it listens; `stall` answers STARTTLS and then says nothing more. */
+export async function fakeSmtp({ tls, login, host = "127.0.0.1", stall = false } = {}) {
   const received = [];
   const server = createServer((raw) => {
     let socket = raw;
@@ -43,6 +43,7 @@ export async function fakeSmtp({ tls, login } = {}) {
           if (!tls) return say("502 No");
           say("220 Go ahead");
           raw.removeAllListeners("data");
+          if (stall) return;
           socket = new TLSSocket(raw, { isServer: true, key: tls.key, cert: tls.cert });
           secured = true;
           buffer = "";
@@ -87,13 +88,15 @@ export async function fakeSmtp({ tls, login } = {}) {
     raw.on("error", () => {});
     say("220 fake.smtp ready");
   });
-  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  await new Promise((r, fail) => server.once("error", fail).listen(0, host, r));
   return { port: server.address().port, received, close: () => server.close() };
 }
 
 /** The headers and the text (and HTML) of a message as smtp.ts writes it: base64 parts. */
 function decode(raw) {
-  const [head, ...body] = raw.split("\r\n\r\n");
+  const [folded, ...body] = raw.split("\r\n\r\n");
+  // A long header goes on over lines that start with a space.
+  const head = folded.replace(/\r\n[ \t]+/g, " ");
   const header = (name) => new RegExp(`^${name}: (.*)$`, "mi").exec(head)?.[1] ?? "";
   const words = (v) => v.replace(/=\?UTF-8\?B\?([^?]*)\?=/g, (_, b) => Buffer.from(b, "base64").toString());
   const parts = {};

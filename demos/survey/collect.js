@@ -105,7 +105,9 @@ export default async function (ctx) {
       const n = answers.filter((a) => a.survey === s.id && Date.parse(a.createdAt) > since(s.id)).length;
       if (!n || !s.notify) continue;
       try {
-        await ctx.call("email", "send", { to: s.notify, subject: `${n} new answer${n === 1 ? "" : "s"} to “${s.title.replace(/[\r\n]+/g, " ")}”`, text: `${n} people answered “${s.title}” since the last digest. Open the survey app in your space to see them.` });
+        const sent = await ctx.call("email", "send", { to: s.notify, subject: `${n} new answer${n === 1 ? "" : "s"} to “${s.title.replace(/[\r\n]+/g, " ")}”`, text: `${n} people answered “${s.title}” since the last digest. Open the survey app in your space to see them.` });
+        // Kept in the outbox (no mail set up) counts as done; a delivery that failed is tried again tomorrow.
+        if (sent?.error) throw new Error(sent.error);
         digested[s.id] = now;
       } catch (error) {
         ctx.log(`Digest for ${s.title}: ${error?.message ?? error}`, "error");
