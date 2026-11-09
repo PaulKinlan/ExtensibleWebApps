@@ -36,5 +36,10 @@
     { "tag": "v2", "new_sqlite_classes": ["Accounts"] }
   ],
   "worker_loaders": [{ "binding": "LOADER" }],
+  // Cloudflare Email Service, for mail server plugins send to a space's members (std/email/module.ts). It
+  // delivers once the site's domain is onboarded for Email Sending and the Worker has an EMAIL_FROM
+  // variable or secret on that domain (docs/server.md); until then mail stays in each space's outbox.
+  // `wrangler dev` only logs what it would send.
+  "send_email": [{ "name": "EMAIL" }],
   "previews": {}
 }

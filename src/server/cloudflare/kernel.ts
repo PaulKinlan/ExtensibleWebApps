@@ -16,7 +16,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { setEnv } from "../../kernel/env";
-import type { Files } from "../../seams/index.ts";
+import type { Files, Message } from "../../seams/index.ts";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { type IsolateHost, remoteIsolates } from "../../seams/remote-isolates.ts";
 import type { RouteRequest, RouteResponse } from "../routes.ts";
@@ -33,6 +33,8 @@ export interface SpaceHost extends IsolateHost {
   addresses(): Promise<string[]>;
   /** The space's members, with the names on their accounts. */
   members(): Promise<{ id: string; name: string }[]>;
+  /** Sends a message through Cloudflare Email Service; null when the deployment hasn't set it up. */
+  deliver(message: Message): Promise<{ ok: true; id: string } | { ok: false; error: string } | null>;
   /** Sets the space's alarm for the earliest scheduled job, or clears it. */
   wake(at: number | undefined): Promise<void>;
 }
@@ -99,6 +101,7 @@ export class SpaceKernel extends DurableObject {
           site: (url: string) => host.site(url),
           addresses: () => host.addresses(),
           members: () => host.members(),
+          deliver: (message: Message) => host.deliver(message),
         }),
         onError: (report) => {
           addEventListener("error", (e) => report("kernel:error", String((e as ErrorEvent).message ?? e)));
