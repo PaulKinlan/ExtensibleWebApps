@@ -133,7 +133,9 @@ export default function (ctx) {
     const asked = await page.waitForSelector(`${review} >> text=makes Tide times`, { timeout: 15000 }).then(() => true, () => false);
     if (asked) await page.click(`${review} >> text="Accept"`);
     const opened = await page.waitForSelector(`${yours} button[data-action="pick"]:has-text("Tide times")`, { timeout: 10000 }).then(() => true, () => false);
-    check("an app is made from a folder the person picks, after one review, named after the folder", asked && opened && (await page.isVisible(`${yours} >> text=Opened picked-1`)));
+    // The message is drawn once the save's checks are back, a moment after the app is listed: wait for it.
+    const said = opened && (await page.waitForSelector(`${yours} >> text=Opened picked-1`, { timeout: 10000 }).then(() => true, () => false));
+    check("an app is made from a folder the person picks, after one review, named after the folder", asked && opened && said, `asked ${asked}, listed ${opened}, said ${said}`);
 
     await page.click(`${yours} button[data-action="folder"]`);
     const saved = await page.waitForSelector(`${yours} >> text=Saved 2 files to the folder picked-2`, { timeout: 10000 }).then(() => true, () => false);

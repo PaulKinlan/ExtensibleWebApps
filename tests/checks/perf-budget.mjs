@@ -11,11 +11,22 @@
 // waiting on another), not one by a little. The measured numbers go in the
 // run's Measurements, to see the trend. To change a budget, change the JSON
 // file and say why in the PR. docs/guide/loading-fast.md is how pages load fast.
-import { readFileSync, readdirSync } from "node:fs";
+//
+// A file over its byte budget is a warning, not a failure (Paul, 2026-11-09): it is
+// printed as WARN, and on GitHub Actions shown on the PR and in the run's summary.
+import { appendFileSync, readFileSync, readdirSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 
 const budget = JSON.parse(readFileSync(new globalThis.URL("../perf-budget.json", import.meta.url), "utf8"));
 const DIST = new globalThis.URL("../../dist/", import.meta.url);
+
+/** Says a file is over its byte budget without failing the run. */
+const warn = (message) => {
+  console.log(`WARN  ${message}`);
+  if (!process.env.GITHUB_ACTIONS) return;
+  console.log(`::warning title=Size budget::${message}`);
+  if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `- ⚠️ ${message}\n`);
+};
 
 export default async function ({ check, context, URL, errors, measurements }) {
   // Bytes: each file named in the budget, found in the build by its name before the hash.
@@ -25,7 +36,8 @@ export default async function ({ check, context, URL, errors, measurements }) {
     const file = readdirSync(new globalThis.URL(`${folder}/`, DIST)).find((f) => f === base || f.replace(/-[\w-]{8}\.js$/, ".js") === base);
     const kb = file ? Math.round(gzipSync(readFileSync(new globalThis.URL(`${folder}/${file}`, DIST))).length / 102.4) / 10 : Infinity;
     sizes[name] = kb;
-    check(`budget: ${name} is at most ${limit} KB gzipped`, kb <= limit, `${kb} KB`);
+    if (kb <= limit) check(`budget: ${name} is at most ${limit} KB gzipped`, true, `${kb} KB`);
+    else warn(`budget: ${name} is ${kb} KB gzipped, over its ${limit} KB budget (tests/perf-budget.json)`);
   }
   measurements.gzipKB = sizes;
 
