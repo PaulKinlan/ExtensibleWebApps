@@ -21,7 +21,7 @@ import { net } from "./net";
 import { grants } from "./gate";
 import { readManifest, RESERVED } from "./manifest";
 import { collections } from "./records";
-import { reference, toMarkdown } from "./reference";
+import { loadSvgReference, reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { loadServices } from "./services";
 import { loadModules, type Seams } from "./modules";
@@ -288,7 +288,10 @@ const pluginSwitches = switches(root, remote, apps);
 services.plugins = pluginSwitches.service;
 
 /** The kernel's API reference, built from the registries above as they are now. */
-const describe = () => reference(services, remote);
+const describe = async () => {
+  await loadSvgReference();
+  return reference(services, remote);
+};
 
 // The rest of the core's services are a file each in services/, found by name.
 const parts = { root, store, hosts, remote, apps, reviewed, describe, collections: records, reviews, userAdded, reopen, appIn: (tab: string) => openApps.get(tab)?.app, started: () => started };
@@ -427,7 +430,7 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   // The panel's commands answer { ok: false, error } rather than throw, so the page always hears back.
   if (name.startsWith("user:") || name.startsWith("place:")) return customize(name, arg).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   if (name === "reference") {
-    const data = describe();
+    const data = await describe();
     return { data, markdown: toMarkdown(data), live: toMarkdown(data, { live: true }) };
   }
   return undefined;

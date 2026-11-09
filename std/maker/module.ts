@@ -40,13 +40,10 @@ import { readManifest } from "../../src/kernel/manifest";
 import type { Param, ServiceProvider } from "../../src/kernel/remote";
 import { recent, record } from "../../src/kernel/trace";
 import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENTS, ELEMENT_ATTRIBUTES, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../../src/shared/html";
-import { SVG_ATTRIBUTES } from "../../src/shared/svg";
-import { SVG_ELEMENTS } from "../../src/shared/svg-docs";
 import { fromAgentFile } from "../../src/kernel/agents/file";
 import { DEFAULT_RUNNER, runnerName } from "../../src/shared/agent-runner";
 import { env } from "../../src/kernel/env";
 import { service, type MadeAppsSeam, type ModuleKernel } from "../../src/kernel/modules";
-import { checkFiles, siteFiles } from "./checks.js";
 import { APP_NAME, FILE_NAME, appUrl, pageParts, pageProblems } from "../../sw/made-page.js";
 
 /** Where made apps and their versions are kept in the data folder. `made` is one of the platform's folders (paths.ts), so no plugin can write there itself. */
@@ -127,8 +124,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     });
 
   /** The kernel's rules for the checks: its manifest reader, gate, HTML allowlist and API reference. */
-  const rules = (name: string) => {
-    const reference = kernel.describe();
+  const rules = async (name: string) => {
+    const reference = await kernel.describe();
     const methods = new Map<string, string | undefined>();
     for (const s of reference.services) for (const m of s.methods) methods.set(`${s.name}.${m.name}`, m.needs);
     return {
@@ -141,8 +138,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       ELEMENT_ATTRIBUTES,
       DROPPED_WITH_CONTENT,
       INPUT_TYPES,
-      SVG_ELEMENTS,
-      SVG_ATTRIBUTES,
+      SVG_ELEMENTS: Object.fromEntries(reference.html.svg.elements.map((e) => [e.tag, e.about])),
+      SVG_ATTRIBUTES: reference.html.svg.attributes,
       fromAgentFile,
       runnerName,
       DEFAULT_RUNNER,
@@ -165,7 +162,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
    * a link to one that isn't there is found.
    */
   const checked = async (name: string, files: Map<string, string>) => {
-    const r = rules(name);
+    // The checks load the first time an app is checked, so the kernel doesn't carry them until then.
+    const [r, { checkFiles, siteFiles }] = await Promise.all([rules(name), import("./checks.js")]);
     const site = new Map<string, string>();
     const origin = (globalThis as { location?: Location }).location?.origin;
     if (origin) {

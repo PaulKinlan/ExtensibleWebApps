@@ -13,13 +13,19 @@ import type { Api, ApiMember } from "../shared/api";
 import type { Command, Slot, View } from "../shared/protocol";
 import { capabilityFor, hookOwners, hooks, type Mode } from "./hooks";
 import { ACTIONS, COMPONENTS, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, HTML_MAX, INPUT_TYPES } from "../shared/html";
-import { SVG_ATTRIBUTES } from "../shared/svg";
-import { ELEMENT_NOTES, SVG_ELEMENTS } from "../shared/svg-docs";
 import { MANIFEST_FIELDS, RESERVED } from "./manifest";
 import { RECORD_FIELDS } from "./records";
 import { SCHEMA_KEYWORDS } from "./schema";
 import { PLATFORM } from "./paths";
 import type { RemotePlugins, ServiceProvider } from "./remote";
+
+/** The SVG list and its notes, loaded the first time the reference is asked for, so the kernel doesn't carry them until then. */
+let svg: { attributes: string[]; elements: Record<string, string>; notes: Record<string, string> } | undefined;
+export async function loadSvgReference(): Promise<void> {
+  if (svg) return;
+  const [{ SVG_ATTRIBUTES }, { SVG_ELEMENTS, ELEMENT_NOTES }] = await Promise.all([import("../shared/svg"), import("../shared/svg-docs")]);
+  svg = { attributes: SVG_ATTRIBUTES, elements: SVG_ELEMENTS, notes: ELEMENT_NOTES };
+}
 
 /** `needs` is Markdown: capabilities in backticks, or empty for nothing. */
 type Doc = { signature: string; needs: string; description: string };
@@ -260,12 +266,12 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
     views: Object.entries(VIEWS).map(([type, about]) => ({ type, about })),
     html: {
       maxLength: HTML_MAX,
-      elements: Object.entries(ELEMENTS).map(([tag, about]) => ({ tag, attributes: ELEMENT_ATTRIBUTES[tag] ?? [], about: about || ELEMENT_NOTES[tag] || "" })),
+      elements: Object.entries(ELEMENTS).map(([tag, about]) => ({ tag, attributes: ELEMENT_ATTRIBUTES[tag] ?? [], about: about || svg?.notes[tag] || "" })),
       globalAttributes: GLOBAL_ATTRIBUTES,
       inputTypes: INPUT_TYPES,
       components: Object.entries(COMPONENTS).map(([tag, c]) => ({ tag, ...c })),
       actions: ACTIONS,
-      svg: { elements: Object.entries(SVG_ELEMENTS).map(([tag, about]) => ({ tag, about })), attributes: SVG_ATTRIBUTES },
+      svg: { elements: Object.entries(svg?.elements ?? {}).map(([tag, about]) => ({ tag, about })), attributes: svg?.attributes ?? [] },
     },
     slots: Object.entries(SLOTS).map(([slot, about]) => ({ slot, about })),
     commands: Object.entries(COMMANDS).map(([name, about]) => ({ name, about })),
