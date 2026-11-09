@@ -87,7 +87,10 @@
     .toolbar { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-inline-start: auto; }
     .files { grid-area: files; }
     main { grid-area: main; min-width: 0; }
-    .side { grid-area: side; display: grid; gap: var(--space-3); align-content: start; }
+    /* One column that can shrink: a bare grid's column is as wide as its longest word, so a long address in a
+       panel pushed the whole column off the screen. Long words wrap instead. */
+    .side { grid-area: side; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); align-content: start; overflow-wrap: anywhere; }
+    .files { min-width: 0; overflow-wrap: anywhere; }
     body > footer { grid-area: footer; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: var(--text-sm); color: var(--fg-2); }
     @media (max-width: 60rem) {
       body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "header" "main" "side" "files" "footer"; }
