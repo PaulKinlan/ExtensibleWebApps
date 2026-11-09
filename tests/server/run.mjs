@@ -81,7 +81,7 @@ const hosts = {
     async start() {
       cpSync("tests/fixtures/server-app", "dist/server-app", { recursive: true });
       const port = await freePort();
-      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries({ ...fake.env, EMAIL_FROM: FROM }).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
+      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries({ ...fake.env, EMAIL_FROM: FROM, ALLOW_PRIVATE_HOSTS: "127.0.0.1" }).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
       let log = "";
       await new Promise((ready, fail) => {
         const timer = setTimeout(() => fail(new Error(`wrangler dev didn't start: ${log.slice(-500)}`)), 60_000);
@@ -675,8 +675,12 @@ async function surveyChecks(base, check, owner) {
   laptop.close();
 }
 
-/** On Node, a server plugin with `network` reaches the internet but not the server's own network (src/server/network-guard.ts). */
-async function networkGuardChecks(base, check) {
+/**
+ * A server plugin with `network` reaches the internet but not the server's own network: on Node
+ * (src/server/network-guard.ts) and on Cloudflare (src/server/cloudflare/network-guard.ts), the same cases.
+ * Going around fetch is Node's alone: a Worker has no dispatcher or sockets to go around it with.
+ */
+async function networkGuardChecks(base, check, host) {
   // A server on this machine: / says hello, and /hop redirects to the same server by the name localhost.
   const local = createHttpServer((req, res) => {
     if (req.url === "/hop") return res.writeHead(302, { location: `http://localhost:${local.address().port}/` }).end();
@@ -696,7 +700,7 @@ async function networkGuardChecks(base, check) {
     allowed: await probe(`http://127.0.0.1:${port}/`),
   };
   // Around fetch: the dispatcher it uses, and an Agent the plugin makes itself, are refused where the socket connects.
-  const around = {
+  const around = host !== "node" ? {} : {
     dispatcher: await probe(`http://[::ffff:7f00:1]:${port}/`, "dispatcher"),
     agent: await probe(`http://[::ffff:7f00:1]:${port}/`, "agent"),
     metadata: await probe("http://169.254.169.254/latest/meta-data/", "agent"),
@@ -705,16 +709,17 @@ async function networkGuardChecks(base, check) {
   local.close();
   const refused = (r) => r?.ok === false && /server's own network/.test(r.error);
   check(
-    "network guard: a server plugin with network can't reach the server's own network: localhost, ::1, a mapped address, the metadata service, or a redirect inside",
+    `network guard (${host}): a server plugin with network can't reach the server's own network: localhost, ::1, a mapped address, the metadata service, or a redirect inside`,
     refused(seen.byName) && refused(seen.ipv6) && refused(seen.mapped) && refused(seen.metadata) && refused(seen.redirect) && refused(seen.redirectToIp),
     JSON.stringify(seen),
   );
-  check(
-    "network guard: going around fetch, through its dispatcher or an Agent of the plugin's own, or after replacing Set.prototype.has and other built-ins, is refused too",
-    Object.values(around).every((r) => r?.ok === false && (r.code === "EACCES" || r.code === "EPRIVATE")),
-    JSON.stringify(around),
-  );
-  check("network guard: a private host the deployment allows is reached", seen.allowed?.ok && seen.allowed.text === "hello from inside", JSON.stringify(seen.allowed));
+  if (host === "node")
+    check(
+      "network guard: going around fetch, through its dispatcher or an Agent of the plugin's own, or after replacing Set.prototype.has and other built-ins, is refused too",
+      Object.values(around).every((r) => r?.ok === false && (r.code === "EACCES" || r.code === "EPRIVATE")),
+      JSON.stringify(around),
+    );
+  check(`network guard (${host}): a private host the deployment allows is reached`, seen.allowed?.ok && seen.allowed.text === "hello from inside", JSON.stringify(seen.allowed));
 }
 
 /**
@@ -1136,8 +1141,8 @@ async function suite(name, make) {
     await mcpChecks(server.url, check, owner, stranger);
     await mcpMoreChecks(server.url, check, owner, stranger);
 
-    // Workers can't reach a private network in production; wrangler's local runtime isn't a guide to that.
-    if (name === "node") await networkGuardChecks(server.url, check);
+    // The same cases on both hosts. (On Cloudflare in production, the Worker's own egress refuses them too.)
+    await networkGuardChecks(server.url, check, name);
     if (name === "node") await feedChecks(server.url, check, owner);
 
     // Names that aren't a space are refused.

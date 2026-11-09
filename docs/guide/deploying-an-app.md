@@ -12,9 +12,11 @@ npm run new-app -- packing-list             # make the app (skip this to deploy 
 npm run deploy:app -- demos/packing-list    # build, lay out, deploy
 ```
 
-That is two commands for each new app, and one more the first time on a machine. The last one prints the address, `https://packing-list.<your subdomain>.workers.dev/`, which goes straight to the app.
+That is two commands for each new app, and one more the first time on a machine. The last one prints the address, `https://packing-list.<your subdomain>.workers.dev/`, where the app is.
 
-Some demos are deployed this way, for example [Habits](https://habits.kinlan-test.workers.dev/) and the [Markdown editor](https://extensible-markdown.kinlan-test.workers.dev/) (`--name extensible-markdown`, because a Worker called `markdown-editor` already exists in that account). Pick a name no other Worker in the account has: deploying under an existing name replaces that Worker.
+Some demos are deployed this way, for example [Habits](https://habits.kinlan-test.workers.dev/) and the [Markdown editor](https://extensible-markdown.kinlan-test.workers.dev/) (`--name extensible-markdown`, because a Worker called `markdown-editor` already exists in that account).
+
+Before it deploys, it asks the account what already has the name ([`scripts/deploy-guard.mjs`](../../scripts/deploy-guard.mjs)). Each Worker it makes carries the app's path in a variable, `EXTENSIBLE_APP`, so a deploy goes ahead under a name no Worker has, or over the Worker it made for the same app. Any other Worker by that name (one it didn't make, or one serving another app) stops the deploy, naming what is there: pick another `--name`, or add `--replace` if replacing it is what you want. Workers deployed before this check have no mark, so their next deploy needs `--replace` once. The check reads the account with `CLOUDFLARE_API_TOKEN` if it is set, or else the sign-in `wrangler login` keeps; if it can't read the account, nothing is deployed.
 
 With no checkout, `npm create extensible-app packing-list` (or `npx github:PaulKinlan/ExtensibleWebApps packing-list`) makes one: a `packing-list/` folder with a copy of the platform, installed, and the app already made in `demos/packing-list/` ([`scripts/create-app.mjs`](../../scripts/create-app.mjs)). Then `cd packing-list` and run the last command.
 
@@ -24,14 +26,14 @@ To try it on this machine first, with no account, add `--dev`: it runs `wrangler
 
 [`scripts/deploy-app.mjs`](../../scripts/deploy-app.mjs) builds the site (`npm run build`), then writes `.build/apps/<name>/`:
 
-- `site/`, what the Worker serves: the built site without the site's own pages (`demos/`, `docs/`, `home/`, `workbench/`, `starter/`, the front page), the app's folder at the same path it has here, any folder its `app.html` links with `../` (the security demo uses the reading list's `library.js`), and an `index.html` that sends `/` to the app.
-- `wrangler.jsonc`, the root [`wrangler.jsonc`](../../wrangler.jsonc) with the app's name and `site/` as its assets. It runs the same Worker code, with the same Durable Objects and Dynamic Workers, so an app's spaces and server plugins work as they do on the main site.
+- `site/`, what the Worker serves: the built site without the site's own pages (`demos/`, `docs/`, `home/`, `workbench/`, `starter/`, the front page), the app's folder at the same path it has here, any folder its `app.html` links with `../` (the security demo uses the reading list's `library.js`), and an `index.html` that is the app's page with a `<base>` naming its folder, so the Worker's own address is the app.
+- `wrangler.jsonc`, the root [`wrangler.jsonc`](../../wrangler.jsonc) with the app's name, `site/` as its assets, and the variable `EXTENSIBLE_APP` naming the app. It runs the same Worker code, with the same Durable Objects and Dynamic Workers, so an app's spaces and server plugins work as they do on the main site.
 
 The deployed copy of `app.html` leaves out the main site's navigation (`<nav class="site">`, with Home, All demos, Docs and Workbench), since those pages aren't on the app's Worker. The file in the repo is unchanged.
 
 Then it runs `npx wrangler deploy -c .build/apps/<name>/wrangler.jsonc`.
 
-The app keeps its path, so the packing list lives at `/demos/packing-list/`, and nothing in it is rewritten. It warns when `app.html` links to a page the Worker won't have, such as a demo's header links to `/docs/`.
+The app's files keep their path, so the packing list's are in `/demos/packing-list/`, and nothing in them is rewritten. People open it at `/`: the front page is the app's own page, whose `<base>` makes its plugins, templates and links resolve in its folder, as the service worker does for an app's screens. A screen (`book/42` in the reading list) opens at its address in the folder, `/demos/reading-list/book/42`, and the app works at `/demos/packing-list/` too. Installed, it opens at its folder. It warns when `app.html` links to a page the Worker won't have, such as a demo's header links to `/docs/`.
 
 ## Deploying from GitHub instead
 
@@ -40,7 +42,7 @@ The app keeps its path, so the packing list lives at `/demos/packing-list/`, and
 1. In Cloudflare, make an API token from the **Edit Cloudflare Workers** template (My Profile → API Tokens → Create Token), for the account the Workers go in.
 2. In the repo's Settings → Secrets and variables → Actions, add `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (from the Workers overview page in Cloudflare).
 
-Then each deploy is one step: Actions → **Deploy one app** → Run workflow, with the app's folder. Or from a terminal: `gh workflow run deploy-app.yml -f app=demos/habits`. The run's summary shows the address.
+Then each deploy is one step: Actions → **Deploy one app** → Run workflow, with the app's folder. Tick **replace** only to deploy over a Worker by that name that isn't this app's. Or from a terminal: `gh workflow run deploy-app.yml -f app=demos/habits`. The run's summary shows the address.
 
 ## Deploying on every push instead
 
