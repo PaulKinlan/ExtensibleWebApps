@@ -5,6 +5,9 @@
 # Run it from the Actions tab ("Deploy one app" → Run workflow), or with
 #   gh workflow run deploy-app.yml -f app=demos/habits
 #
+# A Worker with the same name is replaced only if it serves this same app
+# (scripts/deploy-guard.mjs); tick "replace" to deploy over any other.
+#
 # It needs two repository secrets, set once:
 #   CLOUDFLARE_API_TOKEN    a token made from the "Edit Cloudflare Workers" template
 #   CLOUDFLARE_ACCOUNT_ID   the account the Workers go in
@@ -22,6 +25,11 @@ on:
         description: "The Worker's name (and so its address). Empty: the folder's name"
         required: false
         default: ""
+      replace:
+        description: "Replace a Worker with that name even if it isn't this app's (otherwise the deploy stops)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -49,13 +57,14 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           APP: ${{ inputs.app }}
           NAME: ${{ inputs.name }}
+          REPLACE: ${{ inputs.replace && '--replace' || '' }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets first (docs/guide/deploying-an-app.md)"
             exit 1
           fi
           set -o pipefail
-          npm run deploy:app -- "$APP" ${NAME:+--name "$NAME"} 2>&1 | tee deploy.log
+          npm run deploy:app -- "$APP" ${NAME:+--name "$NAME"} $REPLACE 2>&1 | tee deploy.log
           url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | tail -1 || true)
           {
             echo "### Deployed \`$APP\`"

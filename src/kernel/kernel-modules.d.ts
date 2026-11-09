@@ -2,4 +2,6 @@
 declare module "virtual:kernel-modules" {
   const modules: import("./modules").KernelModule[];
   export default modules;
+  /** The hook limits kernel.json sets (its `hooks`), checked by the build; the rest keep PLUGIN_HOOKS' defaults. */
+  export const hookLimits: Partial<typeof import("./hooks").PLUGIN_HOOKS>;
 }

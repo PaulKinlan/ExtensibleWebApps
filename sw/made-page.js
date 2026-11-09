@@ -95,8 +95,8 @@ export function pageProblems(html) {
       problems.push({ line, message: `<${name}> isn't allowed in an app's page. Lay out slots in plain HTML, and draw with plugins` });
       continue;
     }
-    if (name === "meta" && ("http-equiv" in attributes || ("name" in attributes && !["viewport", "description", "color-scheme", "theme-color"].includes(attributes.name.toLowerCase())))) {
-      problems.push({ line, message: '<meta> may only be charset, or name="viewport", "description", "color-scheme" or "theme-color"' });
+    if (name === "meta" && ("http-equiv" in attributes || ("name" in attributes && !["viewport", "description", "color-scheme", "theme-color", "short-name"].includes(attributes.name.toLowerCase())))) {
+      problems.push({ line, message: '<meta> may only be charset, or name="viewport", "description", "color-scheme", "theme-color" or "short-name"' });
     }
     for (const attribute of tag.names) {
       const value = attributes[attribute];

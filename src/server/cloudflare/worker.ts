@@ -35,6 +35,8 @@ import { mcpAddress, mcpRequest, mcpResponse } from "../mcp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
 import { transferRoute } from "../transfer.ts";
+// Server plugins' way out to the network: an entrypoint of this Worker, so it is exported here.
+export { NetworkGuard } from "./network-guard.ts";
 
 /** A new kernel build gets a new isolate; spaces on the old one move over as they restart. */
 const KERNEL_VERSION = kernelSource.version;
@@ -47,6 +49,8 @@ interface Env {
   /** Cloudflare Email Service (the send_email binding), and the address mail comes from: both, or mail stays in the outbox. */
   EMAIL?: { send(message: { to: string[]; from: string; subject: string; text: string; html?: string }): Promise<{ messageId: string }> };
   EMAIL_FROM?: string;
+  /** Private hosts server plugins may reach anyway, comma-separated, as on Node (network-guard.ts). For tests under wrangler dev. */
+  ALLOW_PRIVATE_HOSTS?: string;
 }
 
 interface KernelStub {
@@ -110,12 +114,20 @@ class PluginHost extends RpcTarget {
       mainModule: isolateSource.main,
       modules: { ...isolateSource.modules, "plugin.js": source },
       env: {},
-      // No fetch() or connect() reaches anywhere, unless the plugin has `network`.
-      ...(network ? {} : { globalOutbound: null }),
+      // No fetch() or connect() reaches anywhere, unless the plugin has `network`; then its requests go through
+      // the guard, which refuses the server's own network as Node's does (network-guard.ts).
+      globalOutbound: network ? this.guard() : null,
     }));
     const stub = this.ctx.facets.get(`plugin:${name}`, () => ({ class: worker.getDurableObjectClass("PluginIsolate") })) as unknown as IsolateStub;
     this.running.set(name, { stub, send: kept });
     await stub.start(source, network, kept);
+  }
+
+  /** The plugins' way out to the network: this Worker's NetworkGuard, with the hosts the deployment allows. */
+  private guard(): Fetcher {
+    const allow = (this.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean);
+    const exports = (this.ctx as unknown as { exports: { NetworkGuard(options: { props: { allow: string[] } }): Fetcher } }).exports;
+    return exports.NetworkGuard({ props: { allow } });
   }
 
   async post(name: string, message: unknown): Promise<void> {
