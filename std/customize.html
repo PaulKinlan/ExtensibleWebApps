@@ -1,0 +1,148 @@
+<!--
+  The Customize panel. customize.js sends { open, message, space, inspect,
+  mine, shared, app, packages, registry, samples, busy }, and draws the
+  panel's content only while it is open. Each of the person's plugins is
+  { id, name, description, on, off, error, asks, draws, places, share };
+  each place is { key, plugin, name, where, label, ok, fragile, locked,
+  unlocked }. Every button sends an action with the plugin's id (or
+  "plugin/place") as its value.
+-->
+<style>
+  .customize { display: grid; gap: var(--space-2); }
+  .customize h3 { margin: var(--space-2) 0 0; font-size: var(--text-md); }
+  .customize p { margin: 0; }
+  .customize .muted { color: var(--fg-2); font-size: var(--text-sm); }
+  .customize .ok { color: var(--ok, var(--accent)); }
+  .customize .error { color: var(--danger); }
+  .customize [role="status"] { padding: var(--space-2); border-radius: var(--radius); background: var(--bg-2); }
+  .customize .entries { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .customize .entries > li { padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); display: grid; gap: var(--space-1); }
+  .customize .places { margin: 0; padding-left: var(--space-3); font-size: var(--text-sm); display: grid; gap: var(--space-1); }
+  .customize .actions, .customize .row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+  .customize textarea { width: 100%; font-family: var(--font-mono, monospace); }
+  .customize .row input { flex: 1; min-width: 12rem; }
+</style>
+<template id="panel">
+  <ui-panel label="Customize" toggle="panel">
+    <template if="open">
+      <div class="customize">
+        <template if="space"><p class="muted">Your plugins are yours, on this device, until you share one with the space. The space's plugins reach every member turned off, and each person turns them on for themselves. Plugins can add to this page, replace parts of it or hide them, except where the app's author locked it.</p></template>
+        <template if="!space"><p class="muted">Your plugins are kept on this device. They can add to this page, replace parts of it or hide them, except where the app's author locked it.</p></template>
+        <template if="message"><p role="status">{{message}}</p></template>
+        <template if="inspect">
+          <p><button type="button" data-action="inspect" data-close data-inspect-start>Inspect the page</button> <span class="muted">Point at any part to see which plugin drew it, then hide it or add a note beside it.</span></p>
+        </template>
+
+        <h3>Your plugins</h3>
+        <template if="!mine.length"><p class="muted">None yet. Add one below.</p></template>
+        <ul class="entries">
+          <template for="p of mine">
+            <li key="{{p.id}}" data-plugin-id="{{p.id}}">
+              <p><strong>{{p.name}}</strong> <template if="p.on"><span class="ok">on</span></template><template if="p.off"><span class="muted">off</span></template></p>
+              <template if="p.description"><p class="muted">{{p.description}}</p></template>
+              <template if="p.error"><p class="error">{{p.error}}</p></template>
+              <template if="p.asks"><p class="muted">{{p.asks}}</p></template>
+              <template if="p.draws"><p class="muted">{{p.draws}}</p></template>
+              <template if="p.places.length">
+                <ul class="places">
+                  <template for="pl of p.places">
+                    <li key="{{pl.key}}" data-place="{{pl.key}}" data-state="{{pl.state}}">
+                      <code>{{pl.where}}</code>
+                      <template if="pl.ok"><span class="ok">{{pl.label}}</span></template>
+                      <template if="!pl.ok"><span class="muted">{{pl.label}}</span></template>
+                      <template if="pl.fragile"><span class="muted">· this selector leans on the page's layout, so an update to the app may break it</span></template>
+                      <template if="pl.locked"><button type="button" data-action="unlock" data-value="{{pl.key}}" data-unlock="{{pl.key}}">Unlock for this plugin</button></template>
+                      <template if="pl.unlocked"><button type="button" data-action="lock" data-value="{{pl.key}}">Lock again</button></template>
+                    </li>
+                  </template>
+                </ul>
+              </template>
+              <div class="actions">
+                <template if="p.on"><button type="button" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn off</button></template>
+                <template if="p.off"><button type="button" class="primary" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn on</button></template>
+                <template if="p.share"><button type="button" data-action="share" data-value="{{p.id}}" data-share="{{p.id}}">{{p.share}}</button></template>
+                <button type="button" data-action="remove" data-value="{{p.id}}" data-remove="{{p.id}}">Remove</button>
+              </div>
+            </li>
+          </template>
+        </ul>
+
+        <template if="space">
+          <h3>This space's plugins</h3>
+          <template if="!shared.length"><p class="muted">None yet. Share one of yours, and everyone in the space gets it.</p></template>
+          <ul class="entries">
+            <template for="p of shared">
+              <li key="{{p.id}}" data-plugin-id="{{p.id}}">
+                <p><strong>{{p.name}}</strong> <template if="p.on"><span class="ok">on</span></template><template if="p.off"><span class="muted">off</span></template></p>
+                <template if="p.description"><p class="muted">{{p.description}}</p></template>
+                <template if="p.error"><p class="error">{{p.error}}</p></template>
+                <template if="p.asks"><p class="muted">{{p.asks}}</p></template>
+                <template if="p.draws"><p class="muted">{{p.draws}}</p></template>
+                <div class="actions">
+                  <template if="p.on"><button type="button" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn off</button></template>
+                  <template if="p.off"><button type="button" class="primary" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn on</button></template>
+                  <button type="button" data-action="share" data-value="{{p.id}}" data-share="{{p.id}}">{{p.share}}</button>
+                  <button type="button" data-action="remove" data-value="{{p.id}}" data-remove="{{p.id}}">Remove</button>
+                </div>
+              </li>
+            </template>
+          </ul>
+        </template>
+
+        <h3>The app's plugins</h3>
+        <template if="!app.length"><p class="muted">This app links no plugins of its own.</p></template>
+        <ul class="entries">
+          <template for="p of app">
+            <li key="{{p.id}}">
+              <strong>{{p.name}}</strong>
+              <template if="p.places.length">
+                <ul class="places">
+                  <template for="pl of p.places">
+                    <li key="{{pl.key}}" data-place="{{pl.key}}" data-state="{{pl.state}}">
+                      <code>{{pl.where}}</code>
+                      <template if="pl.ok"><span class="ok">{{pl.label}}</span></template>
+                      <template if="!pl.ok"><span class="muted">{{pl.label}}</span></template>
+                      <template if="pl.fragile"><span class="muted">· this selector leans on the page's layout, so an update to the app may break it</span></template>
+                      <template if="pl.locked"><button type="button" data-action="unlock" data-value="{{pl.key}}" data-unlock="{{pl.key}}">Unlock for this plugin</button></template>
+                      <template if="pl.unlocked"><button type="button" data-action="lock" data-value="{{pl.key}}">Lock again</button></template>
+                    </li>
+                  </template>
+                </ul>
+              </template>
+            </li>
+          </template>
+        </ul>
+
+        <h3>Add a plugin</h3>
+        <template if="registry">
+          <p>From this site's plugin registry:</p>
+          <ul class="entries">
+            <template for="p of packages">
+              <li key="{{p.id}}">
+                <strong>{{p.name}}</strong>
+                <template if="p.description"><p class="muted">{{p.description}}</p></template>
+                <p class="muted">{{p.asks}} {{p.also}}</p>
+                <div class="actions"><button type="button" data-action="package" data-value="{{p.id}}" data-package="{{p.id}}" disabled="{{p.disabled}}">{{p.label}}</button></div>
+              </li>
+            </template>
+          </ul>
+        </template>
+        <template if="samples.length">
+          <p>Samples for this app:</p>
+          <div class="actions">
+            <template for="s of samples"><button type="button" data-action="sample" data-value="{{s.href}}" data-sample="{{s.href}}" disabled="{{busy}}">{{s.title}}</button></template>
+          </div>
+        </template>
+        <p class="row"><button type="button" data-action="pick" data-pick>Pick a plugin's files…</button> <span class="muted">Its .js file, and any files it lists.</span></p>
+        <form data-action="paste">
+          <textarea name="code" rows="6" placeholder="export const manifest = { … }" aria-label="Plugin code"></textarea>
+          <p class="row"><button type="submit">Add this code</button> <span class="muted">It is turned on once you accept its review.</span></p>
+        </form>
+        <form data-action="url" class="row">
+          <input name="url" type="text" placeholder="/demos/trip/samples/countdown.js" aria-label="Plugin URL">
+          <button type="submit" disabled="{{busy}}">Add from URL</button>
+        </form>
+      </div>
+    </template>
+  </ui-panel>
+</template>

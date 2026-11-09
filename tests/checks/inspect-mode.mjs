@@ -9,7 +9,7 @@ export default async function ({ check, openTab, URL }) {
   const target = `[data-key^="birthdays:"] li[data-name="${name}"]`;
 
   // From Customize, as a person would.
-  await page.click(".customize-button");
+  await page.click("ui-panel .launch");
   await page.click("[data-inspect-start]");
   await page.hover(target);
   const told = (await page.textContent("#inspect")) ?? "";

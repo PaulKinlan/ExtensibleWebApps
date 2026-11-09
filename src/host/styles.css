@@ -140,26 +140,10 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
 [hidden] { display: none !important; }
 .place-pending { outline: 2px dashed var(--accent); outline-offset: 4px; }
-/* The Customize button and panel, on every app page. */
-.customize-button { position: fixed; left: 16px; bottom: 16px; z-index: 10; box-shadow: var(--shadow-2); background: var(--surface); border-radius: 999px; }
+/* The Customize button (std/customize.js, in a <ui-panel>), on every app page: its slot is pinned to a corner. */
+slot[name="customize"] > [data-plugin] { position: fixed; left: 16px; bottom: 16px; z-index: 10; }
 /* The debug console's bug sits in the same corner by default, and grows with its count: the button goes above it. */
-body:has(slot[name="debug"] ui-debug:not([corner]), slot[name="debug"] ui-debug[corner="bottom-left"]) .customize-button { bottom: 68px; }
-dialog.customize { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); font: var(--text-md)/1.5 var(--font); box-shadow: var(--shadow-2); }
-dialog.customize::backdrop { background: rgb(10 10 20 / 0.4); backdrop-filter: blur(2px); }
-dialog.customize h2 { font-size: var(--text-lg); }
-dialog.customize h3 { font-size: var(--text-md); margin: var(--space-4) 0 var(--space-2); }
-dialog.customize p { margin: var(--space-1) 0; }
-.customize-list, .customize-places { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-3); }
-.customize-list > li { padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
-.customize-places { gap: var(--space-1); margin-top: var(--space-2); font-size: var(--text-sm); }
-.customize-places code { font: var(--text-sm) var(--mono); }
-.customize-places button { margin-left: var(--space-2); height: 24px; }
-.customize-actions, .customize-url { display: flex; gap: var(--space-2); margin-top: var(--space-2); flex-wrap: wrap; }
-.customize-add { display: grid; gap: var(--space-2); justify-items: start; }
-.customize-add textarea, .customize-add .customize-url { justify-self: stretch; }
-.customize-add textarea { min-height: 96px; font: var(--text-sm)/1.5 var(--mono); }
-.customize-url input { flex: 1; min-width: 0; font: inherit; height: 28px; padding: 0 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
-.customize-close { margin-top: var(--space-4); }
+body:has(slot[name="debug"] ui-debug:not([corner]), slot[name="debug"] ui-debug[corner="bottom-left"]) slot[name="customize"] > [data-plugin] { bottom: 68px; }
 
 /* Inspect mode (inspect.ts): every plugin's view is outlined, the part under the pointer more so, and a panel says who drew it. */
 body.inspecting [data-plugin][data-key] { outline: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 2px; }

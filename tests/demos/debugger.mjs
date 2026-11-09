@@ -13,10 +13,11 @@ export default async function (page, { check, openTab, URL }) {
   const focused = await page
     .waitForFunction((sel) => {
       const names = [...document.querySelectorAll(`${sel} details.plugin > summary strong`)].map((s) => s.textContent.trim());
-      return names.length === 1 && names[0] === "Habits";
+      // Customize is one of every app's plugins too (the host adds std/customize.js).
+      return names.sort().join() === "Customize,Habits";
     }, plugins, { timeout: 8000 })
     .then(() => true, () => false);
-  check("focused on an app, the debugger shows only that app's plugins", focused);
+  check("focused on an app, the debugger shows only that app's plugins", focused, await page.evaluate((sel) => [...document.querySelectorAll(`${sel} details.plugin > summary strong`)].map((s) => s.textContent.trim()).join(), plugins));
 
   await page.locator(`${plugins} details.plugin > summary`, { hasText: "Habits" }).click();
   const detail = await page.locator(`${plugins} details.plugin`, { hasText: "collection habits" }).waitFor({ timeout: 5000 }).then(() => true, () => false);

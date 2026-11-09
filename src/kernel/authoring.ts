@@ -38,6 +38,25 @@ export interface Saving {
   turnOn(ids: string[]): Promise<void>;
   /** In a kernel for a space: its plugins on this device (shared-plugins.ts), which the person's own can be shared with. */
   shared(): Sharing | undefined;
+  /** The site's address, where the plugin registry is (/packages/index.json). */
+  origin: string;
+  /** The services this kernel has now, from a module or a running plugin: a registry package that needs one adds no provider for it. */
+  services(): string[];
+  /** Asks the page in a tab (src/host/bridges/customize.ts). */
+  page(tab: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown>;
+  /** Lets a plugin into a place the app's author locked, or locks it again, and opens the app again so it shows. */
+  unlock(app: string, plugin: string, place: string, on: boolean): Promise<void>;
+}
+
+/** A plugin in the registry's index (packages/index.json, built by scripts/packages.mjs). */
+interface Package {
+  id: string;
+  name: string;
+  description: string;
+  href: string;
+  permissions: string[];
+  provides: string[];
+  services: string[];
 }
 
 /** Sharing the person's own plugins with a space. */
@@ -151,7 +170,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       mine: {
         args: "()",
-        returns: "[{ id, name, description, permissions, on, shared, error? }]",
+        returns: "[{ id, name, description, permissions, places, on, shared, error? }]",
         needs: "plugins:author",
         description: "The person's own plugins for the caller's app. In a space, shared says which are the space's plugins.",
         params: [],
@@ -172,6 +191,46 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           { name: "id", schema: { type: "string", description: "The id of one of the person's own plugins" } },
           { name: "on", schema: { type: "boolean", description: "true to turn it on, false to turn it off" } },
         ],
+      },
+      page: {
+        args: "()",
+        returns: "{ space, places: [{ plugin, name, at, put, each, state, matches, fragile }], running: [{ id, name, user, unlocked }], samples: [{ href, title }], inspect }",
+        needs: "plugins:read",
+        description: "The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample), and whether it has inspect mode.",
+        params: [],
+      },
+      packages: {
+        args: "()",
+        returns: "[{ id, name, description, href, permissions, added, adds: [href] }]",
+        needs: "plugins:read",
+        description: "The site's plugin registry (/packages/): each package, whether the person has added it to this app, and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.",
+        params: [],
+      },
+      pick: {
+        args: "()",
+        returns: "{ ok: true, ids } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Opens the file chooser, right after the person clicks, and adds the plugin they pick (with any files it lists) to their own for the caller's app, once they accept a review of its code. It is added off.",
+        params: [],
+      },
+      unlock: {
+        args: "(plugin, place)",
+        returns: "{ ok: true } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Lets a plugin into a part of the page the app's author locked, once the person accepts a review that says so.",
+      },
+      lock: {
+        args: "(plugin, place)",
+        returns: "{ ok: true }",
+        needs: "plugins:author",
+        description: "Locks a part of the page again, for a plugin that was let into it.",
+      },
+      inspect: {
+        args: "()",
+        returns: "true",
+        needs: "plugins:read",
+        description: "Starts the page's inspect mode, where the person points at a part to see which plugin drew it.",
+        params: [],
       },
       share: {
         args: "(id)",
@@ -216,7 +275,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
     },
     // Reading code and checking a manifest only look, so a viewer such as std/view-source.js needs no more than plugins:read (plugins:author includes it).
-    capability: (method) => (method === "source" || method === "check" ? "plugins:read" : method === "turn" ? "plugins:manage" : "plugins:author"),
+    capability: (method) => (["source", "check", "page", "packages", "inspect"].includes(method) ? "plugins:read" : method === "turn" ? "plugins:manage" : "plugins:author"),
     call: async (instance, method, args, dispatch) => {
       const tab = tabOf(instance);
       if (method === "source") {
@@ -279,10 +338,63 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           name: p.name ?? p.file,
           description: p.description ?? "",
           permissions: p.permissions ?? [],
+          places: Object.values(p.places ?? {}).map((at) => `${at.put}${at.each ? " each" : ""} ${at.at}`),
           on: p.on,
           shared: !!p.shared,
           ...(p.error ? { error: p.error } : {}),
         }));
+      }
+      if (method === "page") {
+        return { space: !!saving.shared(), ...((await saving.page(tab, "state", [], dispatch)) as object) };
+      }
+      if (method === "inspect") return saving.page(tab, "inspect", [], dispatch);
+      if (method === "packages") {
+        const app = saving.appIn(tab);
+        let packages: Package[] = [];
+        try {
+          const response = await fetch(new URL("/packages/index.json", saving.origin));
+          if (response.ok) packages = ((await response.json()) as { packages?: Package[] }).packages ?? [];
+        } catch {
+          // No registry on this site.
+        }
+        const have = new Set(app ? (await saving.userAdded.list(app)).map((p) => p.id) : []);
+        const running = new Set(saving.services());
+        const providerOf = (service: string) => (running.has(service) ? undefined : packages.find((p) => p.provides.includes(service)));
+        /** The package and, first, every package that provides a service it needs and isn't here yet. */
+        const withNeeds = (pkg: Package, seen = new Set<string>()): Package[] => {
+          if (seen.has(pkg.id)) return [];
+          seen.add(pkg.id);
+          const needs = pkg.services.map(providerOf).filter((p): p is Package => !!p && !have.has(p.id));
+          return [...needs.flatMap((p) => withNeeds(p, seen)), pkg];
+        };
+        return packages.map((pkg) => ({
+          id: pkg.id,
+          name: pkg.name,
+          description: pkg.description,
+          href: pkg.href,
+          permissions: pkg.permissions,
+          added: have.has(pkg.id),
+          adds: withNeeds(pkg).filter((p) => !have.has(p.id)).map((p) => ({ id: p.id, name: p.name, href: p.href })),
+        }));
+      }
+      if (method === "unlock" || method === "lock") {
+        const [plugin, place] = args;
+        const app = appOf(tab);
+        const at = typeof plugin === "string" && typeof place === "string" ? remote.installed.get(plugin)?.manifest.places?.[place] : undefined;
+        if (!at || !(apps.linkedBy(tab) ?? []).concat([...(await saving.userAdded.ids(app))]).includes(plugin as string)) return { ok: false, error: `${String(plugin)} has no place ${String(place)} in this app` };
+        if (method === "unlock") {
+          const caller = instance.split("@")[0];
+          const name = remote.installed.get(plugin as string)?.manifest.name ?? plugin;
+          const yes = allowed(
+            await saving.ask(
+              { plugin: caller, instance, name: remote.installed.get(caller)?.manifest.name ?? caller, place: `author:${app}`, target: `the page: lets ${name} ${at.put} ${at.at}`, before: "", after: "", reason: "The app's author locked this part of the page, so plugins can't change it.", once: true },
+              dispatch,
+            ),
+          );
+          if (!yes) return { ok: false, error: "Still locked" };
+        }
+        await saving.unlock(app, plugin as string, place as string, method === "unlock");
+        return { ok: true };
       }
       if (method === "turn") {
         const [id, on] = args;
@@ -293,7 +405,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         await saving.reopen(app);
         return { ok: true };
       }
-      if (method === "save" || method === "remove" || method === "add" || method === "share" || method === "unshare") {
+      if (["save", "remove", "add", "pick", "share", "unshare"].includes(method)) {
         const app = appOf(tab);
         const caller = instance.split("@")[0];
         const mine = await saving.userAdded.list(app);
@@ -341,6 +453,33 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
             // Adding a plugin again turns it off: stop the copy that was running.
             await saving.reopen(app);
             return { ok: true, id: manifest.id };
+          });
+        }
+
+        if (method === "pick") {
+          const files = (await saving.page(tab, "pick", [], dispatch)) as { name: string; data: string | Blob }[] | null;
+          if (!files?.length) return { ok: false, error: "No file chosen" };
+          const main = files.filter((f) => f.name.endsWith(".js") && typeof f.data === "string");
+          if (main.length !== 1) return { ok: false, error: "Pick one plugin's .js file, and any files it lists" };
+          const source = main[0].data as string;
+          let m;
+          try {
+            m = readManifest(source);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : String(error) };
+          }
+          const taken = takenCollection(m);
+          if (taken) return { ok: false, error: taken };
+          if (!mine.some((p) => p.id === m.id) && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page` };
+          const manifest = m;
+          return once(manifest.id, async () => {
+            const before = await current(manifest.id);
+            if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
+            if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
+            const added = await saving.userAdded.add(app, files);
+            if (!added.ok) return added;
+            await saving.reopen(app);
+            return { ok: true, ids: added.ids };
           });
         }
 
