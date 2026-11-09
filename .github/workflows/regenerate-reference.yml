@@ -1,15 +1,18 @@
-# Keeps docs/api.md matching the code, so no one has to run
-# `npm run reference` by hand or merge the file.
+# Keeps docs/api.md matching the code, without it ever being part of a pull
+# request, so pull requests can't conflict over it.
 #
-# docs/api.md is generated: the kernel prints its own reference. Whenever a
-# PR branch in this repo or main changes, this runs `npm run reference` on it
-# and, if the file comes out different, commits the new one to that branch.
-# So when docs/api.md conflicts, take either side, finish the merge and push:
-# the right version follows a minute later.
+# docs/api.md is generated: the kernel prints its own reference. It is kept in
+# the repo so it reads on GitHub, but only main writes it: each time main
+# changes, this runs `npm run reference` and commits the file if it came out
+# different. A pull request that changes the kernel's API leaves the file alone;
+# it is rewritten a few minutes after the merge.
 #
-# It only adds a commit when the file changed (never rebases or force-pushes),
-# so anyone working on the branch just pulls before pushing again. Commits made
-# with this workflow's token don't start other workflows, so it can't loop.
+# On a pull request, the `untouched` job fails if the branch changes any
+# generated file (docs/api.md, or the registry and gallery files the build
+# makes: scripts/generated.mjs), and says how to put it back.
+#
+# Commits made with this workflow's token don't start other workflows, so it
+# can't loop. Cloudflare's Git integration still deploys the commit.
 
 name: Regenerate API reference
 
@@ -27,15 +30,38 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  untouched:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generated files are left to main
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          base=$(git merge-base "$BASE" HEAD)
+          changed=$(git diff --name-only "$base" HEAD -- docs/api.md packages/index.html packages/index.json packages/catalog.json)
+          if [ -z "$changed" ]; then echo "No generated file changed."; exit 0; fi
+          echo "::error::This branch changes generated files: $(echo $changed). They are made on main (docs/api.md) or by the build (the rest), never in a pull request, so pull requests can't conflict over them."
+          echo "Put them back with:"
+          echo "  git fetch origin main && git merge origin/main"
+          echo "  git checkout origin/main -- docs/api.md"
+          echo "  git rm -q --cached --ignore-unmatch packages/index.html packages/index.json packages/catalog.json"
+          echo "  git commit -m 'Leave generated files to main and the build'"
+          exit 1
+
   reference:
-    # A fork's branch can't be pushed to with this token.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.ref_name }}
+          ref: main
 
       - uses: actions/setup-node@v4
         with:
@@ -54,5 +80,10 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/api.md
           git commit -q -m "Regenerate docs/api.md"
-          # If the branch moved on while this ran, the run for the newer commit does the work.
-          git push -q origin "HEAD:${{ github.head_ref || github.ref_name }}" || echo "::notice::Branch moved on; the next run regenerates it."
+          # If main moved on while this ran, the run for the newer commit does the work (it cancels this one).
+          # Any other refusal (main protected against this token, say) fails the run, so it is seen.
+          if git push -q origin HEAD:main; then exit 0; fi
+          git fetch -q origin main
+          if [ "$(git rev-parse origin/main)" != "$(git rev-parse HEAD~1)" ]; then echo "::notice::Main moved on; the next run regenerates it."; exit 0; fi
+          echo "::error::Couldn't push docs/api.md to main. Let github-actions[bot] push to main, or run npm run reference and commit it there."
+          exit 1

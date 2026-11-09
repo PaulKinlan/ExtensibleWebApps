@@ -1,5 +1,6 @@
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
+import { pathToFileURL } from "node:url";
 import { kernelModules } from "./vite.kernel-modules";
 import { siteHeaders } from "./vite.site-headers";
 import { defineConfig, type Plugin } from "vite";
@@ -67,6 +68,13 @@ const asWrittenEntries = (root: string): { url: string; disk: string }[] => {
 const HOST_CSS = "src/host/styles.css";
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".md": "text/markdown", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp" };
 
+// Files made from other files (scripts/generated.mjs): the plugin registry and the demo gallery's lists.
+// They are never committed, so they never conflict: made here as they are served in development, and
+// written into the build. Loaded when first needed, as plain Node (it reads the repo, it isn't bundled).
+type Generated = { PATHS: string[]; generated(): Promise<Record<string, string>> };
+let generatedModule: Promise<Generated> | undefined;
+const generatedFiles = (root: string) => (generatedModule ??= import(pathToFileURL(join(root, "scripts/generated.mjs")).href));
+
 /** A kernel module's source, std/<name>/module.ts: built into the kernel, never served as a file. */
 const KERNEL_MODULE = /^\/std\/[a-z][a-z0-9-]*\/module\.ts$/;
 
@@ -89,6 +97,17 @@ function asWritten(): Plugin {
           return res.end();
         }
         if (path === "/platform/host.css") return serve(res, resolve(root, HOST_CSS));
+        // A generated file, made now from what is on disk (a folder's address is its index.html).
+        const wanted = path.slice(1) + (path.endsWith("/") ? "index.html" : "");
+        if (/^(demos|packages)\//.test(wanted))
+          return void generatedFiles(root)
+            .then(async ({ PATHS, generated }) => {
+              if (!PATHS.includes(wanted)) return next();
+              const text = (await generated())[wanted];
+              res.setHeader("Content-Type", TYPES[extname(wanted)] ?? "application/octet-stream");
+              res.end(text);
+            })
+            .catch((error) => next(error));
         // site/ is served at the root, never under /site/, as in the build.
         if (path === `/${SITE}` || path.startsWith(`/${SITE}/`)) {
           res.statusCode = 404;
@@ -116,9 +135,17 @@ function asWritten(): Plugin {
         return serve(res, file);
       });
     },
-    generateBundle() {
+    async generateBundle() {
+      // The generated files, made from the repo as it is now. A copy left on disk from before they were
+      // generated is skipped: what is built is always what the manifests say.
+      const { generated } = await generatedFiles(root);
+      const made = await generated();
       for (const { url, disk } of asWrittenEntries(root))
-        for (const file of files(disk)) if (!KERNEL_MODULE.test(`/${file.split(sep).join("/")}`)) this.emitFile({ type: "asset", fileName: url + file.slice(disk.length).split(sep).join("/"), source: readFileSync(join(root, file)) });
+        for (const file of files(disk)) {
+          const fileName = url + file.slice(disk.length).split(sep).join("/");
+          if (!KERNEL_MODULE.test(`/${file.split(sep).join("/")}`) && !(fileName in made)) this.emitFile({ type: "asset", fileName, source: readFileSync(join(root, file)) });
+        }
+      for (const [fileName, source] of Object.entries(made)) this.emitFile({ type: "asset", fileName, source });
       this.emitFile({ type: "asset", fileName: "platform/host.css", source: readFileSync(join(root, HOST_CSS)) });
     },
   };

@@ -56,7 +56,7 @@ if (import.meta.url === pathToFileURL(process.argv[1]).href) {
     const where = relative(ROOT, folder);
     console.log(`Made ${where}/`);
     if (!where.startsWith("..")) console.log(`Run \`npm run dev\` and open http://localhost:5173/${where}/app.html`);
-    if (where.startsWith("demos/")) console.log("Change its <meta name=\"gallery-…\"> card text, then run `npm run gallery` to list it in demos/index.html.");
+    if (where.startsWith("demos/")) console.log("Change its <meta name=\"gallery-…\"> card text: the demo gallery lists it from those tags.");
     else console.log("It's outside this repo: serve it next to the platform's /platform/ and /std/ files to open it.");
   } catch (error) {
     console.error(error.message);
