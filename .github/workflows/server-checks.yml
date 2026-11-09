@@ -17,8 +17,10 @@ on:
 permissions:
   contents: read
 
+# Grouped by branch name, so a pull request's run and a run the keep-prs-current bot starts on the same branch
+# stop each other: only the newest head is checked.
 concurrency:
-  group: server-checks-${{ github.ref }}
+  group: server-checks-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:

@@ -18,8 +18,11 @@ on:
 permissions:
   contents: read
 
+# Runs are grouped by branch name, which is the same for a pull request's run and for a run the keep-prs-current
+# bot starts on that branch, so a newer head stops the run on the older one whichever way it started. On main
+# every merge's run finishes, so each merge has a result of its own, and a merge that broke main shows red.
 concurrency:
-  group: platform-checks-${{ github.ref }}
+  group: platform-checks-${{ github.head_ref || github.ref_name }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: true
 
 jobs:
