@@ -20,6 +20,11 @@ export interface HookSpec {
   args?: string;
   /** The capability listening needs, when it isn't the usual `hook:listen:<name>` or `hook:intercept:<name>`. */
   needs?: string;
+  /**
+   * A hot path, run many times a second (a game's tick, std/game/module.ts): its dispatches and its listeners'
+   * answers aren't traced, so they don't push everything else out of the trace. A listener that fails is.
+   */
+  quiet?: boolean;
 }
 
 export const hooks = new Map<string, HookSpec>();

@@ -781,7 +781,7 @@ export class Remote {
       this.post({ t: "hook", id, listener, name, args, trace });
     }).then((value) => {
       const failed = value && typeof value === "object" && "failed" in value ? String((value as { failed: unknown }).failed) : undefined;
-      record({
+      if (!spec.quiet || failed) record({
         kind: "remote",
         name,
         plugin: this.instance,

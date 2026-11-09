@@ -7,6 +7,7 @@
 // `debug:read` (through the `debug:trace` hook).
 
 import type { Dispatch, TraceEvent } from "../shared/protocol";
+import { hooks } from "./hooks";
 
 const start = performance.now();
 /** When the kernel started, as wall-clock time: an event's `at` counts from here. */
@@ -48,6 +49,8 @@ export function tap(root: any): void {
   root.on("internal/dispatch", (mode: string, name: string | symbol, _args: unknown[], thisArg: Dispatch | null) => {
     // `debug:` hooks carry the trace itself; recording them would trace the trace, forever.
     if (typeof name !== "string" || name.startsWith("internal/") || name.startsWith("debug:")) return;
+    // A quiet hook runs many times a second (a game's tick): tracing each would leave room for nothing else.
+    if (hooks.get(name)?.quiet) return;
     record({ kind: "dispatch", name, detail: mode, trace: thisArg?.trace });
   });
 }

@@ -157,6 +157,34 @@ up to date, so prefer them to hand-made forms and tables. Schema types:
   `<style>` at the top of the template file, using the design tokens such as
   `var(--space-2)`, `var(--fg-2)`, `var(--accent)`.
 
+## Games and sound
+
+Two apps on this site are engines to build on, so a game or a sound tool
+needs only the part that is new. Link their plugins from your app.html, and
+write a plugin for the new part; never copy or change theirs.
+
+- **A game.** `/demos/glowfall/` is a game on the `game` service's loop:
+  link `sky.js`, `jar.js`, `catch.js`, `meadow.js` and `controls.js` from it,
+  with slots `main`, `side` and `commands`. A new rule is a *system*: a
+  plugin with `permissions: ["hook:intercept:game:update"]` (or
+  `game:rules`, for judging what happened) and `services: ["game"]` that
+  does `ctx.on("game:update", ({ game, dt, time, input, state }) => …)` and
+  returns `{ state: { ...state, …changes } }`. Glowfall's game is named
+  `"glowfall"`; its state has `lanes`, `jar` (a lane), `things` (each
+  `{ id, kind: "firefly" | "drop", x, y }`, x a lane and y from 0 at the top
+  to 1 at the bottom), `score`, `lives` and `speed`. Leave what you don't
+  change as it is, and return nothing when `state.done`.
+- **A sound effect.** `/demos/audio-editor/editor.js` is a sound editor
+  (slot `main`, and `commands` for its keys); its effects are plugins. An
+  effect has `permissions: ["audio", "hook:intercept:sound-editor:effects"]`
+  and `services: ["audio"]`. It registers an AudioWorklet processor,
+  `await ctx.call("audio", "registerProcessor", "<name>", source)`, whose
+  `process(inputs, outputs)` reads `inputs[0][0]` (missing once the sound
+  has ended) and writes `outputs[0][0]`, and offers it:
+  `ctx.on("sound-editor:effects", ({ effects }) => ({ effects: [...effects, { id, name, description, processor: "<name>", options, tail? }] }))`.
+  Link it beside the editor and any of its effects you want (`echo.js`,
+  `crusher.js`, `tremolo.js`).
+
 ## How to work
 
 1. `maker_list` first. If the person names an app they made, or says

@@ -27,7 +27,8 @@ flowchart LR
 | `ui` | Draw views in the page's slots and places, and ask whether a selector matches the page (`page.matches`). | Views are sanitised; see [Views and templates](guide/views-and-templates.md). |
 | `router` | Know which screen of the app the tab shows, hear when it changes, and move to another. | Usually with `scope: "tab"`. See [Routes](guide/routes.md). |
 | `commands` | List the app's commands and run them. | Each command runs with its own plugin's rights, not the caller's. See [Commands](guide/commands.md). |
-| `audio` | Register an AudioWorklet processor and play it, in the tab that runs the plugins. | |
+| `audio` | Register an AudioWorklet processor and play it, in the tab that runs the plugins; play, render and save clips, and open a sound file the person picks. | See [Games and audio](guide/games-and-audio.md). |
+| `game` | Start, pause and stop a game loop, send it what the person pressed, and read its state. | A system that changes the game listens with `hook:intercept:game:update` or `hook:intercept:game:rules`; one that draws it with `hook:listen:game:frame`. See [Games and audio](guide/games-and-audio.md). |
 | `routes` | Answer requests for paths in its own folder (`ctx.routes.add`). | See [Routes and the service worker](guide/routes.md). On a space's server the routes are public: see [Spaces, and plugins on a server](guide/spaces-and-servers.md). |
 | `ui:theme` | Set design tokens for the whole app, with the manifest's `theme`. | Colours, corners, shadows and typefaces only, as plain values. See [Styling](guide/styling.md#themes-a-plugin-that-sets-the-tokens). |
 | `ui:transform:<plugin>` | Change that plugin's views with a place whose `in` names it: add to them, replace or hide parts. | See [Slots in views, and view transforms](guide/slots-and-transforms.md). |

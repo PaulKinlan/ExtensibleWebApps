@@ -1,0 +1,49 @@
+<!--
+  ui-waveform: a sound drawn as its waveform, where the person picks a part
+  of it by dragging (or with the keyboard), and a playhead runs while it
+  plays. The audio editor (demos/audio-editor/) is built on it.
+
+  Attributes:
+    peaks     the shape, as numbers from -100 to 100, a low and a high for
+              each column: "-12,30,-40,41,…". A plugin works these out from
+              its samples (a few hundred pairs is plenty); the element never
+              gets the sound itself.
+    duration  how long the sound is, in seconds, for the time marks and for
+              what a selection means.
+    select    the selection, "from,to" in seconds; one number, or from equal
+              to to, is a cursor.
+    action    sent with { from, to } in seconds when the person picks a part
+              (a click alone sends a cursor, from equal to to).
+    playing   "at,from,to": the playhead runs from `from` to `to` (seconds),
+              starting at `at` (ms since the epoch, as audio.playClip gives
+              it). Leave it out when nothing plays.
+    label     what it is, for screen readers.
+
+  Keys, once it has focus: Left and Right move the cursor a tenth of a
+  second (Shift picks as it goes), Home and End go to the ends, Escape picks
+  nothing.
+
+  It draws on a canvas in the page, in the page's colours (--accent for the
+  selection and playhead, --fg-2 for the wave), and draws again when its
+  size changes. The behaviour is in ui-waveform.js, linked below.
+-->
+<template>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :host { display: block; position: relative; height: 160px; border-radius: var(--radius); background: var(--bg-2); border: 1px solid var(--border); touch-action: none; user-select: none; cursor: text; }
+    .surface { position: absolute; inset: 0; border-radius: inherit; outline: none; }
+    .surface:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 2px; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+    .probe-wave { color: var(--fg-2); }
+    .probe-accent { color: var(--accent); }
+    .probe-fg { color: var(--fg); }
+    .probe { position: absolute; width: 0; height: 0; overflow: hidden; }
+    .time { position: absolute; right: var(--space-2); bottom: var(--space-1); font: 500 var(--text-sm) var(--mono); color: var(--fg-2); pointer-events: none; }
+  </style>
+  <!-- The part that takes focus and speaks to screen readers is inside, so a redraw of the view (which sets the
+       element's own attributes to the template's) never takes its tabindex or role away. -->
+  <div class="surface" tabindex="0" role="slider"><canvas aria-hidden="true"></canvas></div>
+  <span class="probe probe-wave"></span><span class="probe probe-accent"></span><span class="probe probe-fg"></span>
+  <span class="time" aria-live="polite"></span>
+</template>
+<script type="module" src="ui-waveform.js"></script>

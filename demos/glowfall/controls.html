@@ -1,0 +1,34 @@
+<!-- The controls beside the meadow, and under it on a phone: Start and Pause,
+     the two big steering buttons, and the best scores. -->
+<style>
+  .pad { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); }
+  .pad button { min-height: 72px; touch-action: manipulation; font-size: 1.75rem; border-radius: var(--radius-lg); }
+  .game { display: flex; gap: var(--space-2); }
+  .game button { flex: 1; min-height: 48px; }
+  .game button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .best { display: flex; align-items: baseline; gap: var(--space-2); }
+  .best strong { font-size: 2.25rem; line-height: 1; color: var(--accent); }
+  ol { margin: 0; padding-left: 1.5rem; color: var(--fg-2); font-size: var(--text-sm); }
+  .muted { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
+</style>
+<template id="controls">
+  <ui-stack gap="3">
+    <div class="game">
+      <button type="button" class="primary" data-action="start"><template if="running">Start again</template><template if="!running">Start</template></button>
+      <button type="button" data-action="pause" disabled="{{stopped}}"><template if="paused">Carry on</template><template if="!paused">Pause</template></button>
+    </div>
+    <div class="pad" aria-label="Steer the jar">
+      <button type="button" data-action="left" aria-label="Jar left">◀</button>
+      <button type="button" data-action="right" aria-label="Jar right">▶</button>
+    </div>
+    <p class="muted">Keys: ◀ and ▶ to steer, Enter to start, P to pause.</p>
+    <ui-card>
+      <div class="best"><strong>{{best}}</strong><span>best, of {{played}} games</span></div>
+      <template if="top.length">
+        <ol>
+          <template for="s of top"><li key="{{s.id}}">{{s.score}} fireflies</li></template>
+        </ol>
+      </template>
+    </ui-card>
+  </ui-stack>
+</template>
