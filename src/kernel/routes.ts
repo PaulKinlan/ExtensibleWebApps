@@ -15,6 +15,10 @@ export interface RouteRequest {
   path: string;
   query?: Record<string, string>;
   form?: unknown;
+  /** Set by the host, never by a client: a door it let in (`mcp`, src/server/mcp.ts), which a kernel module answers. */
+  door?: string;
+  /** With a door: the member of the space the host let in. */
+  member?: string;
 }
 
 /** What a handler may return. Anything else is dropped. */

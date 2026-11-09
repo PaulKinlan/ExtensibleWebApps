@@ -20,7 +20,7 @@ export default async function ({ check, a }) {
   const after = await shape();
   check("a restarted module gives back the same services and hooks, with none left over or twice", before === after, after === before ? "" : `${before}\n→ ${after}`);
 
-  // agents uses tools, so restarting tools stops agents first and starts it again after.
+  // agents (and outside) use tools, so restarting tools stops them first and starts them again after.
   // From the kernel's own trace buffer, which the page hears of a moment later.
   const trace = () => a.evaluate(() => window.__host.command("trace"));
   const mark = Math.max(0, ...(await trace()).map((e) => e.seq));
@@ -28,7 +28,12 @@ export default async function ({ check, a }) {
   const order = (await trace()).filter((e) => e.seq > mark && /^module:(start|stop)$/.test(e.name)).map((e) => `${e.name.slice(7)} ${e.plugin}`);
   check(
     "stopping a module stops the modules that use it, and they start again when it does",
-    restarted?.ok && JSON.stringify(order) === JSON.stringify(["stop agents", "stop tools", "start tools", "start agents"]),
+    // Every module that uses tools (agents, outside) stops before it and starts after it, in whichever order among themselves.
+    restarted?.ok &&
+      order.indexOf("stop tools") > order.indexOf("stop agents") &&
+      order.indexOf("start agents") > order.indexOf("start tools") &&
+      order.indexOf("start tools") === order.indexOf("stop tools") + 1 &&
+      order.filter((e) => e.startsWith("stop ")).length === order.filter((e) => e.startsWith("start ")).length,
     JSON.stringify(order),
   );
 

@@ -57,9 +57,28 @@ export type PluginRequest =
   | { t: "sync"; op: "plugins"; id: number; action: "add"; app: string; files: SharedFile[] }
   | { t: "sync"; op: "plugins"; id: number; action: "remove"; app: string; plugin: string };
 
+/** A change a space's server asks its members to review (src/kernel/space-reviews.ts), as the card shows it. */
+export interface SpaceReview {
+  plugin: string;
+  name: string;
+  place: string;
+  target: string;
+  before: string;
+  after: string;
+  reason: string;
+  kind?: "place";
+  once?: boolean;
+}
+
+/** A device's side of a space's reviews: the answer to one, or a request for the ones waiting. */
+export type ReviewToSpace =
+  | { t: "sync"; op: "review"; action: "answer"; id: string; outcome: "allowed-once" | "allowed-always" | "rejected" }
+  | { t: "sync"; op: "review"; action: "waiting" };
+
 // device -> space
 export type SyncToSpace =
   | PluginRequest
+  | ReviewToSpace
   /** Start hearing changes, with every one after `since` first. */
   | { t: "sync"; op: "hello"; since: number }
   | { t: "sync"; op: "push"; id: number; changes: Outgoing[] }
@@ -78,4 +97,7 @@ export type SyncToDevice =
   /** The answer to a PluginRequest: the list, one plugin's files, or a shared plugin's new hash. */
   | { t: "sync"; op: "plugins:reply"; id: number; ok: boolean; error?: string; list?: SharedSummary[]; files?: SharedFile[]; hash?: string }
   /** A member shared, changed or removed a plugin: each device asks for the list again. */
-  | { t: "sync"; op: "plugins:changed" };
+  | { t: "sync"; op: "plugins:changed" }
+  /** A change the space's server wants reviewed, for a device to show; `done` once anyone answered it, or it ended. */
+  | { t: "sync"; op: "review"; action: "ask"; id: string; review: SpaceReview }
+  | { t: "sync"; op: "review"; action: "done"; id: string };

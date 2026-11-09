@@ -52,6 +52,7 @@ const SERVICES = [
   "server-apps.ts",
   "services/sync.ts",
   "shared-plugins.ts",
+  "space-reviews.ts",
   "sync-device.ts",
   "sync.ts",
 ];

@@ -30,6 +30,7 @@ import type { Message } from "../../seams/index.ts";
 import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
 import { type Decision, frontDoor, unrouted } from "../front-door.ts";
+import { mcpAddress, mcpRequest, mcpResponse } from "../mcp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
 import { transferRoute } from "../transfer.ts";
@@ -296,6 +297,23 @@ export class Accounts extends DurableObject<Env> {
   async member(cookie: string, space: string): Promise<string | null> {
     return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.user.id ?? null;
   }
+
+  /** Which member of a space an agent's key (an Authorization header) is for, if it's one (src/server/mcp.ts). */
+  async agent(authorization: string | null, space: string): Promise<{ user: string; key: string } | null> {
+    return this.auth.agent(authorization, space);
+  }
+}
+
+/** An MCP request from a member's agent (src/server/mcp.ts); undefined when the address isn't one. */
+async function mcp(request: Request, env: Env): Promise<Response | undefined> {
+  const url = new URL(request.url);
+  // The front door has already found the space (src/server/front-door.ts).
+  const at = mcpAddress(url);
+  if (!at) return undefined;
+  const accounts = env.ACCOUNTS.getByName("accounts");
+  const asked = await mcpRequest(request, at, (authorization, space) => accounts.agent(authorization, space));
+  if (asked instanceof Response) return asked;
+  return mcpResponse(await env.SPACE.getByName(at.space).route(at.space, url.origin, asked));
 }
 
 /** A request to /s/<space>/<path> that one of the space's server plugins answers; undefined when none does. */
@@ -343,7 +361,7 @@ async function answer(request: Request, env: Env, decision: Decision): Promise<R
       return env.SPACE.getByName(decision.space).fetch(forward);
     }
     case "route":
-      return (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
+      return (await mcp(request, env)) ?? (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
     case "asset":
       return env.ASSETS.fetch(request);
     case "refuse":
