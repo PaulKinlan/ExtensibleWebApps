@@ -36,6 +36,7 @@ import { pageParts, pageProblems, tags } from "../../sw/made-page.js";
  *   grants(caps: Set<string>, wanted: string): boolean;
  *   ELEMENTS: Record<string, string>; COMPONENTS: Record<string, unknown>; GLOBAL_ATTRIBUTES: string[];
  *   ELEMENT_ATTRIBUTES: Record<string, string[]>; DROPPED_WITH_CONTENT: Set<string>; INPUT_TYPES?: string[];
+ *   SVG_ELEMENTS?: Record<string, string>; SVG_ATTRIBUTES?: string[];
  *   methods: Map<string, string | string[] | undefined>; hooks: Map<string, string>;
  *   services?: Set<string>;
  *   takenBy?(id: string): string | undefined;
@@ -370,16 +371,39 @@ function checkTemplates(key, raw, rules, report) {
   // Blank out comments and <style> blocks, keeping offsets, so line numbers stay true.
   const html = raw.replace(/<!--[^]*?-->|<style\b[^]*?<\/style>/g, (m) => m.replace(/[^\n]/g, " "));
   const ids = [];
-  for (const m of html.matchAll(/<([a-zA-Z][\w-]*)((?:\s+[^\s=>"']+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?)*)\s*\/?>/g)) {
-    const tag = m[1].toLowerCase();
+  // How many <svg> elements the scan is inside: their content is checked against the SVG list, and an SVG shape outside one is not SVG.
+  let svgDepth = 0;
+  const svgTags = new Set(Object.keys(rules.SVG_ELEMENTS ?? {}).map((t) => t.toLowerCase()));
+  for (const m of html.matchAll(/<(\/?)([a-zA-Z][\w-]*)((?:\s+[^\s=>"']+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?)*)\s*(\/?)>/g)) {
+    const tag = m[2].toLowerCase();
+    if (m[1]) {
+      if (tag === "svg" && svgDepth > 0) svgDepth--;
+      continue;
+    }
     const line = lineOf(html, m.index ?? 0);
-    const attributes = [...m[2].matchAll(/([^\s=>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+)))?/g)].map((a) => ({ name: a[1].toLowerCase(), value: a[2] ?? a[3] ?? a[4] ?? "" }));
+    const attributes = [...m[3].matchAll(/([^\s=>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+)))?/g)].map((a) => ({ name: a[1].toLowerCase(), value: a[2] ?? a[3] ?? a[4] ?? "" }));
     if (tag === "template") {
       const id = attributes.find((a) => a.name === "id")?.value;
       if (id) ids.push(id);
       continue;
     }
     const component = tag in rules.COMPONENTS;
+    // Inside an <svg>, shapes and their attributes come from the SVG list (src/shared/svg.ts). Names are compared
+    // without case, as this reads tags lowercased.
+    if (svgDepth > 0 && tag !== "template" && !svgTags.has(tag)) {
+      report("error", key, line, `<${tag}> isn't on the SVG list, so it is dropped from the <svg> with everything inside it (see "SVG in views" in docs/api.md)`);
+      continue;
+    }
+    if (rules.SVG_ELEMENTS && (tag === "svg" || svgDepth > 0)) {
+      if (tag === "svg" && !m[4]) svgDepth++;
+      const svgAttributes = new Set([...(rules.SVG_ATTRIBUTES ?? []), ...rules.GLOBAL_ATTRIBUTES, "id", "style", "xmlns"].map((a) => a.toLowerCase()));
+      for (const { name, value } of attributes) {
+        if (name.startsWith("on")) report("error", key, line, `${name}= isn't allowed in a view: use data-action for events, and ctx.ui.onEvent in the plugin`);
+        else if (!name.startsWith("aria-") && !name.startsWith("data-") && !svgAttributes.has(name)) report("warning", key, line, `${name}= isn't allowed on <${tag}>, so it is dropped`);
+        else if ((name === "href" || /url\s*\(/i.test(value)) && !value.includes("{{") && !/^\s*(#[\w-]+|url\(\s*#[\w-]+\s*\))\s*$/i.test(value)) report("warning", key, line, `${name}="${value}" is dropped: in an <svg>, href and url() may only name an #id in the same view`);
+      }
+      continue;
+    }
     if (rules.DROPPED_WITH_CONTENT.has(tag)) {
       report("error", key, line, `<${tag}> isn't allowed in a view; it is dropped with everything inside it`);
       continue;

@@ -146,6 +146,20 @@ own under one sky.
   ([`std/spaces/live.ts`](../../std/spaces/live.ts)).
 - Each device draws the frames as Glowfall's meadow does, between the last
   two, and sends taps, drags and keys back as moves.
+- A **referee**, [`referee.js`](../../demos/glowfall-together/referee.js),
+  keeps it fair, and is a plugin like the rest: turn it off and the game
+  plays on unrefereed. The host asks its own hooks before it seats a device
+  (`glowfall-together:join`) and before each move goes to the loop
+  (`glowfall-together:move`, a `quiet` hook, so moves aren't traced); the
+  referee answers `{ block }` to a member's second device (one jar each),
+  to a lane that isn't one, and past 12 moves a second. Then, on every
+  tick, it compares the state with the one it saw a tick before: a score
+  may go up only by fireflies that were near that jar and are gone, the
+  team's only by fireflies gone, no score goes down and no light comes
+  back on. That difference holds whatever every other system did, in
+  whatever order they ran, so a rule someone adds to the space that hands
+  out points is caught as surely as a player who sends too much. What it
+  puts right goes in the state as `referee`, and every lobby shows it.
 
 ## Clips, and effects that are plugins
 
@@ -166,7 +180,7 @@ one in a collection, send it in a hook, or hand it to the service:
 | `audio.mix({ tracks: [{ clip, at?, gain?, pan?, chain? }] })` | Lays clips over each other into one, offline: each track starts `at` seconds in, at its gain, panned from -1 (left) to 1 (right), through its own chain. Stereo unless `channels: 1`. |
 | `audio.open({ channels? })` | Opens the file chooser for a sound file and decodes it into a clip, in stereo with `channels: 2` (only right after a click). |
 | `audio.save({ clip, name })` | Downloads a clip as a WAV file. |
-| `audio.keep({ name, clip })`, `load({ name })`, `forget`, `kept()` | Keeps a clip in the person's data folder, for one too long for a collection (a collection holds 5 MB in all). Each plugin's are its own. |
+| `audio.keep({ name, clip })`, `load({ name, of? })`, `forget`, `kept()` | Keeps a clip in the person's data folder, for one too long for a collection (a collection holds 5 MB in all). Each plugin's are its own; another reads them with `of` and `audio:kept:<plugin>`. |
 
 Effects are processors that take one channel: on a stereo clip, each
 channel goes through a copy of the chain of its own, so every effect works
@@ -247,6 +261,33 @@ clip**, through `audio.mix`), opens sound files in stereo, and keeps a clip
 too long for the collection with `audio.keep`, its record holding the name
 it was kept under.
 
+### A timeline of tracks
+
+Layering mixes a clip in for good. The
+[timeline](../../demos/audio-editor/timeline.js), a plugin beside the
+editor, keeps clips apart as tracks of a mix, so a track that came in late
+or too loud is put right afterwards: drag it along its lane on the canvas,
+or set its start, level, pan and mute. Nothing is mixed until it plays or
+is kept: then `audio.mix` renders the tracks as they are now. A mix is a
+record in the timeline's own collection, `sound-mixes`, holding each
+track's clip (a record in the editor's `sound-clips`, read with
+`data:read:sound-clips`) and how it sits. **Make it a clip** puts the mix
+in `sound-clips` for the editor, a write the person allows on a card. A
+long clip's sound is where the editor kept it: the timeline reads it with
+`audio.load({ name, of: "sound-editor" })` and the permission
+`audio:kept:sound-editor`, which lets it read those clips and not change
+them.
+
+### Clips in a folder
+
+**Save to the folder** writes the clip to the app's folder (the `folder`
+service) as `sounds/<name>.wav`, a WAV file any program opens. The folder
+is one the person picks on their disk (**Pick a folder…**), or until they
+do, a private one in the browser. Whatever is in `sounds/` is listed and
+opens again (`folder.readData`, which gives a file that isn't text as a
+data: URL), so a long clip has a home that isn't one browser's data. The
+folder takes files up to 32 MB that aren't text: five minutes of stereo.
+
 ### The waveform
 
 [`<ui-waveform>`](../../elements/ui-waveform.html) draws a sound's shape
@@ -271,13 +312,14 @@ does both, with a scripted model, and plays each.
 
 ## What isn't there yet
 
-- **Live messages take the server's word for who sent them, not a
-  referee's.** A game played together trusts each device's moves as moves;
-  nothing stops a player sending them faster than a hand could (beyond 60
-  messages a second).
-- **No timeline of tracks.** `audio.mix` lays tracks over each other, and the
-  editor lays one clip over another; there is no view of several tracks to
-  arrange side by side.
-- **Kept clips stay on the device.** A long clip kept with `audio.keep` is in
-  that browser's data folder, not in a space: other members see its record,
-  not its sound.
+- **The referee knows Glowfall.** It judges catches from what the state
+  shows (fireflies near a jar, gone a tick later), so a new rule that scores
+  some other way needs the referee taught too. It can't tell a fast hand
+  from a script that keeps under 12 moves a second.
+- **The timeline doesn't edit inside a track.** Cutting, fading and effects
+  are the editor's, on a whole clip; a track is moved, levelled, panned or
+  muted, and its clip edited in the editor.
+- **Kept clips don't reach a space.** A long clip kept with `audio.keep` is in
+  that browser's data folder, and a space's server has no folder: other
+  members see its record, not its sound, unless it goes through a folder
+  they share.

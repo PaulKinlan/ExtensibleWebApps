@@ -36,6 +36,11 @@
       "href": "/demos/debugger/app.html"
     },
     {
+      "path": "demos/doodle",
+      "title": "Doodle",
+      "href": "/demos/doodle/app.html"
+    },
+    {
       "path": "demos/feeds",
       "title": "Feeds",
       "href": "/demos/feeds/app.html"
@@ -137,6 +142,13 @@
     }
   ],
   "services": [
+    {
+      "id": "account",
+      "module": "account",
+      "description": "The person's account on this site's server, for the account app (account/app.html) and only for it.",
+      "href": "https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/account/module.ts",
+      "docs": "/docs/api#account"
+    },
     {
       "id": "agents",
       "module": "agents",
@@ -496,7 +508,7 @@
     {
       "id": "customize",
       "name": "Customize",
-      "description": "A Customize button that adds, turns on and off, removes and shares the person's own plugins for an app.",
+      "description": "A Customize button that adds, makes, arranges, turns on and off, removes and shares plugins for an app.",
       "href": "/std/customize.js",
       "source": "std",
       "kind": "ui",
@@ -938,12 +950,17 @@
         "ui",
         "audio",
         "commands",
-        "plugins:read"
+        "plugins:read",
+        "audio:kept:sound-timeline",
+        "folder:read",
+        "folder:write",
+        "folder:choose"
       ],
       "provides": [],
       "services": [
         "audio",
-        "commands"
+        "commands",
+        "folder"
       ],
       "places": [],
       "apps": [
@@ -967,6 +984,31 @@
       ],
       "places": [],
       "apps": []
+    },
+    {
+      "id": "sound-timeline",
+      "name": "Timeline",
+      "description": "Clips laid side by side as tracks you can still move, re-level, pan and mute; plays the mix, or keeps it as a clip.",
+      "href": "/demos/audio-editor/timeline.js",
+      "source": "audio-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "audio",
+        "commands",
+        "data:read:sound-clips",
+        "data:write:sound-clips",
+        "audio:kept:sound-editor"
+      ],
+      "provides": [],
+      "services": [
+        "audio",
+        "commands"
+      ],
+      "places": [],
+      "apps": [
+        "demos/audio-editor"
+      ]
     },
     {
       "id": "effect-tremolo",
@@ -1474,6 +1516,23 @@
       ]
     },
     {
+      "id": "doodle",
+      "name": "Doodle",
+      "description": "A pad to draw on, and a chart of the strokes by colour.",
+      "href": "/demos/doodle/doodle.js",
+      "source": "doodle",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/doodle"
+      ]
+    },
+    {
       "id": "feeds",
       "name": "Feeds",
       "description": "Follow RSS and Atom feeds, and read their stories.",
@@ -1484,6 +1543,8 @@
         "ui",
         "data:read:items",
         "data:read:fetched",
+        "data:read:here-items",
+        "data:read:here-fetched",
         "sync"
       ],
       "provides": [],
@@ -1509,6 +1570,28 @@
       "services": [],
       "places": [],
       "runs": "server",
+      "apps": [
+        "demos/feeds"
+      ]
+    },
+    {
+      "id": "feeds-here",
+      "name": "Read feeds here",
+      "description": "Without a space, reads the feeds you follow on this device, through this site, while the app is open.",
+      "href": "/demos/feeds/read-here.js",
+      "source": "feeds",
+      "kind": "background",
+      "permissions": [
+        "network",
+        "schedule",
+        "sync",
+        "data:read:feeds"
+      ],
+      "provides": [],
+      "services": [
+        "sync"
+      ],
+      "places": [],
       "apps": [
         "demos/feeds"
       ]
@@ -1737,6 +1820,30 @@
         "sync"
       ],
       "places": [],
+      "apps": [
+        "demos/glowfall-together"
+      ]
+    },
+    {
+      "id": "glowfall-referee",
+      "name": "Referee",
+      "description": "One jar for each member, moves no faster than a person's, and scores only for fireflies caught.",
+      "href": "/demos/glowfall-together/referee.js",
+      "source": "glowfall-together",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:game:update",
+        "hook:intercept:game:rules",
+        "hook:intercept:glowfall-together:join",
+        "hook:intercept:glowfall-together:move",
+        "hook:listen:game:started"
+      ],
+      "provides": [],
+      "services": [
+        "game"
+      ],
+      "places": [],
+      "runs": "server",
       "apps": [
         "demos/glowfall-together"
       ]
@@ -3417,7 +3524,9 @@
         "tools"
       ],
       "places": [],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "story-view",

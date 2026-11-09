@@ -187,6 +187,13 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       }
       if (method === "begin") {
         const [trigger] = args;
+        // A check holds something up while it runs: with no model that has its key, it doesn't run, rather than
+        // stop to ask the person for a key (the kernel's card) while what they did waits. The agent's
+        // if-unsure decides. So an app can link a checking agent for everyone, and it reads only once a key is set.
+        if (isObject(trigger) && trigger.kind === "check") {
+          const providers = (await callService(remote.services, instance, caps, "llm", "providers", [], dispatch).catch(() => [])) as { ready?: boolean }[];
+          if (!Array.isArray(providers) || !providers.some((p) => p?.ready)) return { ok: false, reason: "no-key" };
+        }
         const u = await usage(config.id);
         if (over(config, u, true, dispatch)) return { ok: false, reason: "budget" };
         u.runs++;

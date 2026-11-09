@@ -51,7 +51,7 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
     'Optional. Up to 20 places in the app\'s page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin\'s view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md.',
   theme:
     `Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only ${Object.keys(THEME_TOKENS).join(", ")}, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md.`,
-  hooks: `Optional. Up to ${PLUGIN_HOOKS.max} hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook \`<id>:<key>\` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (${PLUGIN_HOOKS.defaultTimeoutMs} ms if not given, at most ${PLUGIN_HOOKS.timeoutMs}); an agent that checks it has agentTimeoutMs (at most ${PLUGIN_HOOKS.agentTimeoutMs / 1000} s; without one, agents can't check it). A hook lasts while its plugin is installed. These limits are the defaults; a site may change them in kernel.json's \`hooks\`.`,
+  hooks: `Optional. Up to ${PLUGIN_HOOKS.max} hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure?, quiet? } }. Each is the hook \`<id>:<key>\` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (${PLUGIN_HOOKS.defaultTimeoutMs} ms if not given, at most ${PLUGIN_HOOKS.timeoutMs}); an agent that checks it has agentTimeoutMs (at most ${PLUGIN_HOOKS.agentTimeoutMs / 1000} s; without one, agents can't check it). A hook that runs many times a second (a game's moves) says \`quiet: true\`, and isn't traced unless a listener fails. A hook lasts while its plugin is installed. These limits are the defaults; a site may change them in kernel.json's \`hooks\`.`,
   services:
     'Optional. Up to 30 services the plugin calls that not every site runs, by name: ["llm", "bus"]. The kernel\'s own services (data, storage, settings and the rest) are always there and needn\'t be listed. A plugin that lists a service the site doesn\'t run isn\'t started, and says which one is missing, so an app that needs it fails when it opens rather than on its first call. The site lists the services it runs in kernel.json (docs/layers.md).',
   provides:
@@ -171,7 +171,7 @@ function validateHooks(value: unknown, id: string) {
   for (const [key, spec] of entries) {
     if (!/^[a-z][a-z0-9-]{0,40}$/.test(key)) throw new ManifestError(`Hook ${key}: keys are lowercase letters, digits and dashes, starting with a letter`);
     const h = spec as Record<string, unknown>;
-    if (!h || typeof h !== "object" || Array.isArray(h)) throw new ManifestError(`Hook ${key} must be { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? }`);
+    if (!h || typeof h !== "object" || Array.isArray(h)) throw new ManifestError(`Hook ${key} must be { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure?, quiet? }`);
     if (!MODES.includes(h.mode as string)) throw new ManifestError(`Hook ${key}: mode is one of ${MODES.join(", ")}`);
     for (const field of ["args", "description"]) if (h[field] !== undefined && (typeof h[field] !== "string" || (h[field] as string).length > 500)) throw new ManifestError(`Hook ${key}: ${field} is a string of up to 500 characters`);
     const waits = h.mode !== "emit" && h.mode !== "parallel";
@@ -180,7 +180,8 @@ function validateHooks(value: unknown, id: string) {
     if (h.agentTimeoutMs !== undefined && (!waits || typeof h.agentTimeoutMs !== "number" || !(h.agentTimeoutMs > 0) || h.agentTimeoutMs > PLUGIN_HOOKS.agentTimeoutMs))
       throw new ManifestError(`Hook ${key}: agentTimeoutMs is for hooks that wait for an answer, up to ${PLUGIN_HOOKS.agentTimeoutMs}`);
     if (h.onFailure !== undefined && h.onFailure !== "open" && h.onFailure !== "closed") throw new ManifestError(`Hook ${key}: onFailure is "open" or "closed"`);
-    const unknown = Object.keys(h).find((k) => !["mode", "args", "description", "timeoutMs", "agentTimeoutMs", "onFailure"].includes(k));
+    if (h.quiet !== undefined && typeof h.quiet !== "boolean") throw new ManifestError(`Hook ${key}: quiet is true or false`);
+    const unknown = Object.keys(h).find((k) => !["mode", "args", "description", "timeoutMs", "agentTimeoutMs", "onFailure", "quiet"].includes(k));
     if (unknown) throw new ManifestError(`Hook ${key}: ${unknown} isn't a field of a hook`);
   }
 }

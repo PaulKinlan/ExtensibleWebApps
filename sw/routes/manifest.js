@@ -3,7 +3,9 @@
 // app that has none gets one made from its page here: its <title>, its
 // <meta name="description">, "theme-color" and "short-name" (the name under
 // its icon, when the title is too long for one), and its <link rel="icon">,
-// opening at the app's folder. The host links each app page to
+// opening at the app's folder; and <meta name="file-handlers"> and
+// <meta name="share-target"> make it a place to open files or share to
+// (../launch-meta.js). The host links each app page to
 // manifest.webmanifest in its folder (src/host/install.ts), so the browser
 // can offer to install any app, including one made in the browser
 // (/apps/<name>/, read from the data folder as sw/routes/made.js does).
@@ -11,7 +13,8 @@
 // Installed or not, an app opens offline once it has been opened: sw.js
 // keeps what it served.
 
-import { APP_NAME } from "../made-page.js";
+import { launchManifest } from "../launch-meta.js";
+import { APP_NAME, tags } from "../made-page.js";
 
 /** Used when a page names no icon of its own: the platform's, in public/. */
 const ICON = "/app-icon.svg";
@@ -51,6 +54,14 @@ function meta(html, name) {
   return "";
 }
 
+/** The content of each <meta name="…"> in a page, read as a browser does (any quotes, spaces around =), by lowercased name. @param {string} html */
+function metas(html) {
+  /** @type {Map<string, string>} */
+  const found = new Map();
+  for (const t of tags(html).tags) if (t.name === "meta" && !t.closing && t.attributes.name && !found.has(t.attributes.name.toLowerCase())) found.set(t.attributes.name.toLowerCase(), t.attributes.content ?? "");
+  return found;
+}
+
 /** A page's icon address for its manifest: resolved against the app's folder, keeping its query and fragment; an address on another site as it is. @param {string} href @param {string} folder */
 function iconSrc(href, folder) {
   const base = new URL(folder, "https://app.invalid");
@@ -81,6 +92,8 @@ export function manifestFor(html, folder) {
     display: "standalone",
     ...(/^#[0-9a-f]{3,8}$/i.test(theme) ? { theme_color: theme } : {}),
     icons: [icon ? { src: iconSrc(plain(icon), folder), sizes: "any", purpose: "any" } : { src: ICON, sizes: "any", type: "image/svg+xml", purpose: "any" }],
+    // <meta name="file-handlers"> and <meta name="share-target"> (../launch-meta.js). A line it can't read adds nothing.
+    ...launchManifest((n) => metas(html).get(n)).manifest,
   };
 }
 

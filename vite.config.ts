@@ -157,6 +157,7 @@ export default defineConfig({
   build: {
     target: "es2022",
     // The host is the one entry: /platform/host.js, which every page loads. Pages themselves are copied as written.
-    rollupOptions: { input: { host: "src/host/main.ts" }, output: { entryFileNames: "platform/[name].js" } },
+    // SVG and canvas in views (/platform/drawing.js) is a second entry, loaded by the host only when a view has one (src/host/drawing-gate.ts).
+    rollupOptions: { input: { host: "src/host/main.ts", drawing: "src/host/drawing.ts" }, preserveEntrySignatures: "exports-only", output: { entryFileNames: "platform/[name].js" } },
   },
 });

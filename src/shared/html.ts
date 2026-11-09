@@ -5,6 +5,9 @@
 // reference prints these tables, so the builder reads the same list the
 // sanitiser enforces.
 
+/** The attributes of a <canvas> in a view (each side at most 4096 pixels). */
+export const CANVAS_ATTRIBUTES = ["id", "width", "height", "pointer"];
+
 /** The largest HTML view the kernel passes on, in characters. */
 export const HTML_MAX = 200_000;
 
@@ -31,7 +34,7 @@ export const ELEMENTS: Record<string, string> = {
   hr: "",
   blockquote: "",
   a: "A link; opens in a new tab. href must be https:, http:, mailto:, # or relative. A relative one (book/42, ./) stays on this site and opens in the same tab: a link to a screen of the app moves to it without loading the page (see the router service)",
-  img: "An image; src must be https: (with the network permission), a data: image, or a file next to the plugin's template file",
+  img: "An image; src must be https: (with the network permission), a data: image, or a picture on this site with no ?query",
   figure: "",
   figcaption: "",
   ul: "Lists",
@@ -69,6 +72,8 @@ export const ELEMENTS: Record<string, string> = {
   meter: "",
   time: "",
   abbr: "",
+  svg: "", // what it is for: ELEMENT_NOTES in svg-docs.ts, kept out of the page script
+  canvas: "",
   slot: "A room in this view that other plugins fill: `<slot name=\"<your plugin id>.<room>\" data-id=\"…\">`. The name must start with the plugin's own id and a dot; data-* attributes tell the plugins that fill it which thing it is for (page.slots). What it holds is shown until a plugin draws there. See docs/guide/slots-and-transforms.md",
 };
 
@@ -98,6 +103,8 @@ export const ELEMENT_ATTRIBUTES: Record<string, string[]> = {
   meter: ["value", "min", "max", "low", "high", "optimum"],
   time: ["datetime"],
   slot: ["name"],
+  svg: ["viewBox", "preserveAspectRatio", "width", "height", "focusable"],
+  canvas: CANVAS_ATTRIBUTES,
 };
 
 /** Input types a plugin may use. */
@@ -129,7 +136,7 @@ export const COMPONENTS: Record<string, { attributes: string; about: string }> =
   "ui-waveform": { attributes: "peaks=\"-12,30,…\", duration, select=\"from,to\", action, playing=\"at,from,to\", label", about: "A sound's waveform, from `peaks` (a low and a high from -100 to 100 for each column) and its `duration` in seconds. Dragging across it (or Shift and the arrow keys) picks a part, sent as `action` with { from, to } in seconds; a click sends a cursor. `select` sets the part shown as picked; `playing` runs a playhead from `from` to `to` starting at `at` (ms since the epoch)." },
 };
 
-export const DROPPED_WITH_CONTENT = new Set(["script", "style", "template", "iframe", "frame", "frameset", "object", "embed", "link", "meta", "base", "noscript", "svg", "math", "canvas", "video", "audio", "source", "track", "portal"]);
+export const DROPPED_WITH_CONTENT = new Set(["script", "style", "template", "iframe", "frame", "frameset", "object", "embed", "link", "meta", "base", "noscript", "math", "video", "audio", "source", "track", "portal"]);
 
 /** How a plugin's view reports what the person did. */
 export const ACTIONS = [
