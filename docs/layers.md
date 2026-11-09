@@ -151,6 +151,15 @@ export const manifest = {
 
 The kernel's own services (`data`, `storage`, `settings` and the rest above) are always there and needn't be listed. The standard plugins list theirs, and so does every agent, which needs `agents`, `bus` and `tools`.
 
+### When a person's plugin needs a service
+
+`kernel.json` is the site's, not the person's, and nobody using an app ever edits it. A plugin a person adds (in Customize, from [the registry](guide/plugin-registry.md), or written by their agent) gets each service it lists in one of two ways:
+
+1. **The site runs it.** Every kernel module in `kernel.json` is there for every app, the person's plugins included. Apps don't pick modules, so an app can't leave a person's plugin without one the site runs.
+2. **Another plugin of theirs provides it.** A sandboxed plugin can provide any service the site doesn't run (below), so anything the site didn't build in comes as a plugin. Adding a registry package adds the packages that provide what it needs; turning one of the person's plugins on turns on theirs that provide what it needs (World clock brings Clock); turning a provider off turns off theirs that need it ([`user-plugins.ts`](../src/kernel/user-plugins.ts)). A plugin whose service nothing provides says so in Customize, and names the registry package that provides it if there is one.
+
+What a person's plugin can't do is load a kernel module. A module is trusted code, outside the sandbox, so only whoever deploys the site chooses it ([The trust line](#the-trust-line)); a site that leaves one out has decided its apps run without it. A person who needs that capability anyway brings it as a sandboxed plugin that provides the service, which needs no one's trust. [`tests/checks/user-plugin-services.mjs`](../tests/checks/user-plugin-services.mjs) checks that every service a registry package needs is provided by the registry or a module this site runs, and that the app maker counts a service the app's own plugin provides.
+
 ### Where this is going
 
 The plan, being reviewed now, splits this layer out of the core:
