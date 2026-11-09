@@ -28,14 +28,14 @@
   .fx { display: flex; flex-direction: column; gap: var(--space-2); }
   .fx[data-tunable] { padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: min(16rem, 100%); }
   .knob { display: grid; grid-template-columns: 6rem minmax(0, 1fr) 4.5rem; gap: var(--space-2); align-items: center; font-size: var(--text-sm); color: var(--fg-2); }
-  .knob output { font-variant-numeric: tabular-nums; text-align: right; color: var(--fg); }
+  .knob .value { font-variant-numeric: tabular-nums; text-align: right; color: var(--fg); }
   .knob input { width: 100%; min-width: 0; }
   .badge { font-size: var(--text-sm); padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--fg-2); }
   .effect { display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 0; }
   .effect small { color: var(--fg-2); font-weight: 400; }
-  .layer { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; }
-  .layer label { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); color: var(--fg-2); }
-  .layer input[type="number"] { width: 7rem; }
+  .editor form.layer { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; justify-content: flex-start; justify-items: start; }
+  .editor form.layer label { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); color: var(--fg-2); }
+  .editor form.layer input[type="number"] { width: 7rem; }
   .status { min-height: 1.5em; margin: 0; color: var(--fg-2); font-size: var(--text-sm); }
   .muted { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
 </style>
@@ -112,7 +112,7 @@
           <div class="fx" key="{{e.id}}" data-tunable="{{e.tunable}}">
             <button type="button" class="effect" data-action="effect:{{e.id}}" data-effect="{{e.id}}" title="{{e.description}}"><span>{{e.name}}</span><small>{{e.description}}</small></button>
             <template for="k of e.knobs">
-              <label class="knob" key="{{k.action}}"><span>{{k.label}}</span><input type="range" min="{{k.min}}" max="{{k.max}}" step="{{k.step}}" value="{{k.value}}" data-action="{{k.action}}" data-knob="{{k.action}}" aria-label="{{e.name}}: {{k.label}}"><output>{{k.shown}}</output></label>
+              <label class="knob" key="{{k.action}}"><span>{{k.label}}</span><input type="range" min="{{k.min}}" max="{{k.max}}" step="{{k.step}}" value="{{k.value}}" data-action="{{k.action}}" data-knob="{{k.action}}" aria-label="{{e.name}}: {{k.label}}"><span class="value">{{k.shown}}</span></label>
             </template>
           </div>
         </template>

@@ -7,7 +7,7 @@ export default async function ({ check, openTab, URL }) {
   const view = '[data-key^="sound-editor"]';
   const status = () => page.locator(`${view} .status`).textContent();
   const waitStatus = (re, ms = 15000) => page.waitForFunction((src) => new RegExp(src).test(document.querySelector('[data-key^="sound-editor"] .status')?.textContent ?? ""), re.source, { timeout: ms }).then(() => true, () => false);
-  await page.waitForSelector(`${view} [data-knob]`, { timeout: 10000 }).catch(() => {});
+  await page.waitForSelector(`${view} [data-knob="knob:tremolo:rate"]`, { timeout: 15000 }).catch(() => {});
   const knobs = await page.locator(`${view} [data-knob]`).evaluateAll((els) => els.map((e) => e.dataset.knob));
   check("each effect that describes its options gets a knob for each", ["knob:echo:delay", "knob:lofi:bits", "knob:tremolo:rate"].every((k) => knobs.includes(k)), knobs.join());
 

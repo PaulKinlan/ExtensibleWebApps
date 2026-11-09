@@ -137,6 +137,7 @@ export function explain(permission: string): string {
   if (permission === "plugins:author") return "Read the code of this page's plugins, and add, change, remove or share your own. Each change is shown to you first.";
   if (kind === "provide" && verb) return `Answer every call this page's plugins make to the ${[verb, what].filter(Boolean).join(":")} service.`;
   if (permission === "debug:read") return "See everything every plugin does, as the debug console does.";
+  if (permission === "live") return "Send and hear live messages with the other people in this space and its server, such as a game's moves.";
   return `Use ${permission}.`;
 }
 
