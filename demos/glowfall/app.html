@@ -1,0 +1,95 @@
+<!doctype html>
+<!--
+  Glowfall: catch the fireflies in your jar, dodge the rain. A small game
+  whose every rule is a plugin, run by the game loop (std/game).
+
+  The loop ticks twenty times a second. Each tick it runs the systems:
+
+  sky.js       game:update  drops fireflies and raindrops, moves them down
+  jar.js       game:update  moves the jar for each press since the last tick
+  catch.js     game:rules   scores catches, counts splashes, ends the game
+
+  then sends the state to whatever draws it:
+
+  meadow.js    game:frame   draws the meadow on a canvas in its own worker,
+                            smoothly, between the last two ticks
+  controls.js               starts the game, sends the presses, keeps scores
+
+  Customize offers Wind (a new system: gusts blow things sideways) and Chime
+  (a sound for each catch). Neither needs the game changed. The command
+  palette (Ctrl K, Cmd K on a Mac) lists the keys.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Glowfall</title>
+  <meta name="description" content="A small game made of plugins: catch fireflies, dodge the rain. Every rule is a plugin on the game loop.">
+  <meta name="gallery" content="showcase">
+  <meta name="gallery-about" content="Catch the fireflies, dodge the rain. A game loop runs in the kernel; what falls, the jar and the scoring are each a plugin, and a canvas in its own worker draws it. Add wind or a chime from Customize without touching the game.">
+  <meta name="gallery-shows" content="the game loop service, systems as plugins, a canvas in a worker, commands with keys.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="sky.js">
+  <link rel="plugin" href="jar.js">
+  <link rel="plugin" href="catch.js">
+  <link rel="plugin" href="meadow.js">
+  <link rel="plugin" href="controls.js">
+  <link rel="plugin-sample" href="samples/wind.js" title="Wind">
+  <link rel="plugin-sample" href="samples/chime.js" title="Chime">
+  <link rel="plugin" href="/std/commands/palette.js">
+  <style>
+    @layer platform {
+      :root {
+        color-scheme: dark;
+        --bg: #070a1c;
+        --bg-2: #10162f;
+        --surface: #141b38;
+        --fg: #f4f1ff;
+        --fg-2: #a3a8c9;
+        --border: #262e55;
+        --accent: #ffe27a;
+        --accent-fg: #1b1500;
+        --radius: 12px;
+      }
+    }
+    body {
+      background: radial-gradient(60rem 30rem at 30% -10%, rgb(255 226 122 / 0.12), transparent 60%), var(--bg);
+      background-attachment: fixed;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+    }
+    body > header { align-items: center; background: transparent; border-bottom: 0; }
+    body > header nav.site { margin-left: auto; }
+    body > header nav.site a { color: var(--fg-2); text-decoration: none; }
+    body > header nav.site a:hover { color: var(--accent); }
+    body > aside { border-left: 0; }
+    /* The meadow is drawn at 720 by 960; show it as tall as the screen allows, never wider than the column. */
+    [data-plugin="glowfall-meadow"] canvas { display: block; width: min(100%, calc((100dvh - 120px) * 0.75)); height: auto; aspect-ratio: 3 / 4; margin: 0 auto; border-radius: var(--radius); box-shadow: 0 20px 60px rgb(0 0 0 / 0.5); }
+    @media (max-width: 800px) {
+      body { grid-template-columns: minmax(0, 1fr); }
+      body > header nav.site { margin-left: 0; width: 100%; }
+      body > main { padding: 8px; }
+      [data-plugin="glowfall-meadow"] canvas { width: min(100%, calc((100dvh - 430px) * 0.75)); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Glowfall</h1>
+    <slot name="commands"></slot>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <slot name="main"><p>Lighting the lanterns…</p></slot>
+  </main>
+  <aside>
+    <slot name="side"></slot>
+  </aside>
+</body>
+</html>

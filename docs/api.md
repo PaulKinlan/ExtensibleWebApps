@@ -264,6 +264,14 @@ Needs: `audio`.
 
 Takes back this plugin's sounds in `group` that haven't started yet, as a Stop button wants. One already sounding plays on to its end.
 
+#### audio.open
+
+`audio.open({ rate?, maxSeconds? })` → { name, clip, seconds } or null
+
+Needs: `audio`.
+
+Opens the file chooser for a sound file (WAV, MP3, Ogg…), decodes it to one channel at rate (22050 by default) and gives it back as a clip, at most maxSeconds long (15 by default, 30 at most). Only right after the person clicks; null if they close it.
+
 #### audio.play
 
 `audio.play({ processor, ms?, at?, options? })` → { played, state }
@@ -272,6 +280,14 @@ Needs: `audio`.
 
 Plays a registered processor for `ms` milliseconds (300 by default), passing `options` as its processorOptions. With `at`, a time in ms since the epoch (Date.now()), it starts then on the audio clock: ask about 100 ms ahead. The processor's options get `start`, in the audio clock's seconds; output silence until currentTime reaches it to begin on the exact sample. With `group`, a name of the plugin's own, `cancel` can take it back before it starts.
 
+#### audio.playClip
+
+`audio.playClip({ clip, from?, to?, chain?, group?, at? })` → { played, ms, at }
+
+Needs: `audio`.
+
+Plays a clip, from and to in seconds (the whole clip if not given), through a chain of processors if given. With `group`, `stop` can end it. at is when it starts, in ms since the epoch, so a playhead can follow it.
+
 #### audio.registerProcessor
 
 `audio.registerProcessor(name, source)` → true
@@ -279,6 +295,30 @@ Plays a registered processor for `ms` milliseconds (300 by default), passing `op
 Needs: `audio`.
 
 Registers an AudioWorklet processor, from its source, under a name.
+
+#### audio.render
+
+`audio.render({ clip?, source?: { processor, ms, options? }, rate?, chain?: [{ processor, options? }], tail? })` → { rate, pcm }
+
+Needs: `audio`.
+
+Renders a clip, offline, through a chain of registered processors (effects, each given the sound before it as its input), and gives back the new clip. Without a clip, `source` makes one: a processor played for ms, at rate (22050 by default). tail adds that many ms of silence at the end for an echo to ring into. Each processor's options get start: 0. At most 8 in a chain.
+
+#### audio.save
+
+`audio.save({ clip, name })` → { saved }
+
+Needs: `audio`.
+
+Saves a clip as a WAV file the person downloads, named name.wav.
+
+#### audio.stop
+
+`audio.stop({ group })` → { stopped }
+
+Needs: `audio`.
+
+Stops every sound of this plugin's in `group`, the ones already sounding too: a clip's Stop button.
 
 ### authoring
 
@@ -695,6 +735,50 @@ A file's text, or null if there is no such file. At most 5 MB.
 Needs: `folder:write`.
 
 Writes a file, making its folders. For the plugin that keeps the folder's files: it doesn't ask the person.
+
+### game
+
+A game loop. The game's state is a plain object its plugins agree on; each tick runs game:update, then game:rules (systems answer { state } with their changes), then game:frame for whatever draws it. A new rule is a plugin that listens to one of them.
+
+#### game.input
+
+`game.input({ game?, type, … })` → { queued }
+
+Needs: `game`.
+
+What the person pressed: it goes to the systems on the next tick, in input, with the plugin that sent it as `from`. At most 32 wait for one tick.
+
+#### game.pause
+
+`game.pause({ game?, paused? })` → { paused }
+
+Needs: `game`.
+
+Pauses a game (paused true, the default) or carries on (false). Paused, it doesn't tick, and its time stands still.
+
+#### game.start
+
+`game.start({ game?, hz?, state? })` → { game, hz }
+
+Needs: `game`.
+
+Starts a game with a state (an object, {} if not given), ticking hz times a second (20 by default, 1 to 60). A game of that name already running starts again from this state. The game is named "main" unless given one, and stops when this plugin does.
+
+#### game.state
+
+`game.state({ game? })` → { game, running, paused, tick, time, hz, late, by, state } or { running: false }
+
+Needs: `game`.
+
+A game as it is now.
+
+#### game.stop
+
+`game.stop({ game? })` → { stopped }
+
+Needs: `game`.
+
+Ends a game, as a system's { over } would: game:ended goes out with the reason "stopped".
 
 ### history
 
@@ -1344,6 +1428,46 @@ Mode: `emit`. Listening needs `debug:read`.
 
 Listeners get `[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]`.
 
+### `game:ended`
+
+A game ended: a system answered { over }, its plugin called game.stop, or the plugin that started it stopped.
+
+Mode: `emit`. Listening needs `hook:listen:game:ended`.
+
+Listeners get `{ game, tick, reason, state }`.
+
+### `game:frame`
+
+Each tick, last: the state to draw. at is when the tick ran (Date.now()); a plugin that draws on a canvas goes between the last two frames for smooth movement.
+
+Mode: `emit`. Listening needs `hook:listen:game:frame`.
+
+Listeners get `{ game, tick, hz, at, state }`.
+
+### `game:rules`
+
+Each tick, after game:update: systems that judge what happened (catches, collisions, scores). Answer { state } with your changes, and { over: reason } to end the game.
+
+Mode: `waterfall`, 250 ms per listener, fails open. Listening needs `hook:intercept:game:rules`.
+
+Listeners get `{ game, tick, dt, time, input: [{ type, … }], state }`.
+
+### `game:started`
+
+A game started (game.start), or started again.
+
+Mode: `emit`. Listening needs `hook:listen:game:started`.
+
+Listeners get `{ game, hz, state }`.
+
+### `game:update`
+
+Each tick of a game (std/game), first: systems move things on. dt is the tick's length in seconds; input is what the person pressed since the last tick. Answer { state } with your changes; the next system sees them.
+
+Mode: `waterfall`, 250 ms per listener, fails open. Listening needs `hook:intercept:game:update`.
+
+Listeners get `{ game, tick, dt, time, input: [{ type, … }], state }`.
+
 ### `history:changed`
 
 Something was written, undone or redone, so what Undo and Redo would do may have changed: read history.state().
@@ -1475,7 +1599,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `agents:run:<agent>` | Call agents.run. |
 | `apps:make` | Call maker.save, maker.remove, maker.restore. |
 | `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.check. |
-| `audio` | Call audio.registerProcessor, audio.play, audio.cancel. |
+| `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.playClip, audio.open, audio.save. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |
 | `bus:inbox` | Call bus.receive, bus.reply. |
@@ -1492,6 +1616,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `folder:propose` | Call folder.propose. |
 | `folder:read` | Call folder.about, folder.list, folder.entries, folder.read. |
 | `folder:write` | Call folder.write. |
+| `game` | Call game.start, game.stop, game.pause, game.input, game.state. |
 | `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `members` | Call sync.members. |
@@ -1543,6 +1668,7 @@ Reserved ids, which no plugin can take:
 - `email`
 - `files`
 - `folder`
+- `game`
 - `history`
 - `hooks`
 - `host`
@@ -1619,6 +1745,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
 | `<ui-panel>` | label, toggle | A button labelled `label` that opens a panel above the page, holding the element's content; where the button sits is up to the slot. `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-close` closes the panel as well as sending its action. |
 | `<ui-preview>` | app="<name>", revision, label | A working copy of an app the person made in the browser (std/maker/), from /apps/<name>/, in a frame, with a link to open it in its own tab. Changing `revision` opens it again. |
+| `<ui-waveform>` | peaks="-12,30,…", duration, select="from,to", action, playing="at,from,to", label | A sound's waveform, from `peaks` (a low and a high from -100 to 100 for each column) and its `duration` in seconds. Dragging across it (or Shift and the arrow keys) picks a part, sent as `action` with { from, to } in seconds; a click sends a cursor. `select` sets the part shown as picked; `playing` runs a playhead from `from` to `to` starting at `at` (ms since the epoch). |
 
 ### Actions
 

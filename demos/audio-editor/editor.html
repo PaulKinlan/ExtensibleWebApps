@@ -1,0 +1,89 @@
+<!--
+  The sound editor's view. editor.js sends { has, name, clips: [{ id, name,
+  seconds, current }], peaks, duration, length, select, picked, part,
+  playing, isPlaying, effects: [{ id, name, description }], noEffects,
+  noUndo, noRedo, noPart, status }.
+
+  The waveform sends `select` with { from, to } as the person picks; every
+  button sends its data-action. Effects are listed from whatever effect
+  plugins answered the editor's sound-editor:effects hook.
+-->
+<style>
+  .editor { display: flex; flex-direction: column; gap: var(--space-3); }
+  .top { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; }
+  .top label { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); color: var(--fg-2); }
+  .top select, .top input { min-width: min(14rem, 70vw); }
+  .rename { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: end; }
+  .wave { height: clamp(140px, 28vh, 260px); }
+  .transport { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .transport .play { min-width: 6.5rem; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .part { color: var(--fg-2); font-size: var(--text-sm); font-variant-numeric: tabular-nums; margin-left: auto; }
+  .group { display: flex; flex-direction: column; gap: var(--space-2); }
+  .group h3 { margin: 0; font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-2); }
+  .buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .buttons button { min-height: 40px; }
+  .effect { display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 0; }
+  .effect small { color: var(--fg-2); font-weight: 400; }
+  .status { min-height: 1.5em; margin: 0; color: var(--fg-2); font-size: var(--text-sm); }
+  .muted { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
+</style>
+<template id="editor">
+  <section class="editor">
+    <div class="top">
+      <label>Clip
+        <select data-action="open-clip" aria-label="Clip">
+          <template for="c of clips"><option key="{{c.id}}" value="{{c.id}}" selected="{{c.current}}">{{c.name}} ({{c.seconds}} s)</option></template>
+        </select>
+      </label>
+      <template if="has">
+        <form class="rename" data-action="rename">
+          <label>Name <input name="name" value="{{name}}" required></label>
+          <button type="submit">Rename</button>
+        </form>
+      </template>
+    </div>
+    <div class="buttons">
+      <button type="button" data-action="new:pluck">New: plucked phrase</button>
+      <button type="button" data-action="new:drums">New: drum loop</button>
+      <button type="button" data-action="open-file">Open a sound file…</button>
+      <button type="button" data-action="save-file" disabled="{{noClip}}">Save as WAV</button>
+    </div>
+
+    <ui-waveform class="wave" peaks="{{peaks}}" duration="{{duration}}" select="{{select}}" playing="{{playing}}" action="select" label="{{name}}"></ui-waveform>
+
+    <div class="transport">
+      <button type="button" class="play primary" data-action="play"><template if="isPlaying">■ Stop</template><template if="!isPlaying">▶ Play</template></button>
+      <button type="button" data-action="play-part" disabled="{{noPart}}">Play the part picked</button>
+      <span class="part">{{part}} · {{length}} s</span>
+    </div>
+
+    <div class="group">
+      <h3>Edit {{part}}</h3>
+      <div class="buttons">
+        <button type="button" data-action="edit:cut" disabled="{{noPart}}">Cut</button>
+        <button type="button" data-action="edit:trim" disabled="{{noPart}}">Trim to it</button>
+        <button type="button" data-action="edit:silence">Silence</button>
+        <button type="button" data-action="edit:fadein">Fade in</button>
+        <button type="button" data-action="edit:fadeout">Fade out</button>
+        <button type="button" data-action="edit:reverse">Reverse</button>
+        <button type="button" data-action="edit:louder">Louder</button>
+        <button type="button" data-action="edit:quieter">Quieter</button>
+        <button type="button" data-action="edit:normalize">Normalise</button>
+        <button type="button" data-action="undo" disabled="{{noUndo}}">Undo</button>
+        <button type="button" data-action="redo" disabled="{{noRedo}}">Redo</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Effects</h3>
+      <div class="buttons effects">
+        <template for="e of effects">
+          <button type="button" class="effect" key="{{e.id}}" data-action="effect:{{e.id}}" data-effect="{{e.id}}" title="{{e.description}}"><span>{{e.name}}</span><small>{{e.description}}</small></button>
+        </template>
+      </div>
+      <template if="noEffects"><p class="muted">No effects yet. Each effect is a plugin: turn one on in Customize.</p></template>
+    </div>
+
+    <p class="status" role="status">{{status}}</p>
+  </section>
+</template>

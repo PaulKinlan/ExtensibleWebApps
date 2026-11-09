@@ -1,0 +1,61 @@
+<!doctype html>
+<!--
+  Sound editor: a clip as a waveform. Drag across it to pick a part, then
+  play it, cut it, fade it, or run it through an effect.
+
+  editor.js    the editor: the clips, the waveform (<ui-waveform>), playing,
+               the edits, and undo. It defines one hook of its own,
+               sound-editor:effects, and offers whatever effects answer it
+  echo.js      an effect: an echo
+  crusher.js   an effect: lo-fi, fewer bits
+  tremolo.js   an effect: a wobble in loudness
+
+  Each effect is an AudioWorklet processor its plugin registers with the
+  audio service; the editor renders the clip through it (audio.render) and
+  never knows what it does. Customize offers one more, Telephone, without
+  any change to the editor. The command palette lists the editor's keys.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sound editor</title>
+  <meta name="description" content="A small sound editor made of plugins: a waveform to pick from, edits, and effects that are each a plugin.">
+  <meta name="gallery" content="showcase">
+  <meta name="gallery-about" content="Pick part of a clip on its waveform, then cut, fade, reverse or run it through an effect. Each effect is a plugin with its own AudioWorklet processor; the editor renders through whatever effects answer its hook.">
+  <meta name="gallery-shows" content="the audio service rendering clips through effects, a hook a plugin defines, the ui-waveform element.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="editor.js">
+  <link rel="plugin" href="echo.js">
+  <link rel="plugin" href="crusher.js">
+  <link rel="plugin" href="tremolo.js">
+  <link rel="plugin-sample" href="samples/telephone.js" title="Telephone effect">
+  <link rel="plugin" href="/std/commands/palette.js">
+  <style>
+    body { grid-template-columns: minmax(0, 1fr); }
+    body > main { max-width: 1100px; width: 100%; margin: 0 auto; }
+    body > header nav.site { margin-left: auto; }
+    body > header nav.site a { color: var(--fg-2); text-decoration: none; }
+    @media (max-width: 800px) {
+      body > header nav.site { margin-left: 0; width: 100%; }
+      body > main { padding: 8px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Sound editor</h1>
+    <slot name="commands"></slot>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <slot name="main"><p>Tuning up…</p></slot>
+  </main>
+</body>
+</html>

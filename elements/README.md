@@ -43,6 +43,14 @@ the same editor events a textarea sends
 ([`src/host/editing.ts`](../src/host/editing.ts)). The
 [Markdown editor](../demos/markdown-editor/) is built on it.
 
+## Sound
+
+[`ui-waveform`](ui-waveform.html) draws a sound's waveform from peaks the
+plugin works out, lets the person pick part of it by dragging or with the
+keyboard, and runs a playhead while it plays. It sends the part picked back
+as `{ from, to }` in seconds. The [sound editor](../demos/audio-editor/) is
+built on it; [Games and sound](../docs/guide/games-and-audio.md) explains it.
+
 ## Documents and diagrams
 
 [`ui-markdown`](ui-markdown.html) draws a Markdown file, and

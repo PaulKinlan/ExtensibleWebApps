@@ -92,6 +92,7 @@ Most services have moved out of the core into **kernel modules**. A module is a 
     "debug",
     "email",
     "folder",
+    "game",
     "history",
     "llm",
     "maker",
@@ -121,6 +122,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
 | `email` | [`std/email/module.ts`](../std/email/module.ts) | The `email` service: mail from a space's server to its members, with daily limits |
 | `folder` | [`std/folder/module.ts`](../std/folder/module.ts) | The `folder` service: a folder of files the person works on (a Hugo site), picked on their disk or private in the browser; plugins other than its keeper propose writes, which the person reviews |
+| `game` | [`std/game/module.ts`](../std/game/module.ts) | The `game` service: a game loop whose rules are plugins (`game:update`, `game:rules`, `game:frame` hooks each tick); see [Games and audio](guide/games-and-audio.md) |
 | `history` | [`std/history/module.ts`](../std/history/module.ts) | The `history` service: undo and redo across every plugin's writes |
 | `llm` | [`std/llm/module.ts`](../std/llm/module.ts) | The `llm` service: the one interface to every model; the vendors are std plugins beside it ([`std/llm/`](../std/llm/)) |
 | `maker` | [`std/maker/module.ts`](../std/maker/module.ts) | The `maker` service: apps a person makes in the browser (by describing them to the app maker agent), kept on their device and served at /apps/<name>/, saved after a review, with each file's versions and checks |
