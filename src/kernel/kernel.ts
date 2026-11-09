@@ -132,6 +132,7 @@ services.authoring = authoring(remote, apps, {
   ask: (request, dispatch) => reviews.ask(request, dispatch),
   reopen: (app) => reopen(app),
   turnOn: (ids) => plugins.turnOn(ids),
+  shared: () => spaceShared,
 });
 
 /**

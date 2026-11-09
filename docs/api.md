@@ -282,7 +282,15 @@ Registers an AudioWorklet processor, from its source, under a name.
 
 ### authoring
 
-Helps a plugin editor: reads the code of the plugins in the caller's app and files next to the caller, checks a draft's manifest, and saves the person's own plugins, after they review each one. The caller must be tab-scoped.
+The person's own plugins for an app, for a plugin editor, a Customize panel or an agent: reads the code of the plugins in the caller's app and files next to the caller, checks a draft's manifest, and adds, saves, turns on and off, removes and shares the person's own plugins. Every change but on and off waits for them to accept a review. The caller must be tab-scoped, or linked by an open app.
+
+#### authoring.add
+
+`authoring.add(url)` → { ok: true, id } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn().
 
 #### authoring.check
 
@@ -310,11 +318,11 @@ A .js file in the caller's own folder or below it, such as the starting template
 
 #### authoring.mine
 
-`authoring.mine()` → [{ id, name, on, error? }]
+`authoring.mine()` → [{ id, name, description, permissions, on, shared, error? }]
 
 Needs: `plugins:author`.
 
-The person's own plugins for the caller's app.
+The person's own plugins for the caller's app. In a space, shared says which are the space's plugins.
 
 #### authoring.remove
 
@@ -332,6 +340,14 @@ Needs: `plugins:author`.
 
 Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins.
 
+#### authoring.share
+
+`authoring.share(id)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+In a space: shares one of the person's own plugins with the other members, once they accept a review that shows its code. It reaches the others' devices turned off.
+
 #### authoring.source
 
 `authoring.source(id)` → { id, name, code }
@@ -339,6 +355,22 @@ Saves a plugin as one of the person's own for the caller's app, and turns it on,
 Needs: `plugins:read`.
 
 The code of a plugin the caller's app links, or of one of the person's own for it, on or off.
+
+#### authoring.turn
+
+`authoring.turn(id, on)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:manage`.
+
+Turns one of the person's own plugins for the caller's app on or off. The app's own plugins are switched with plugins.setEnabled.
+
+#### authoring.unshare
+
+`authoring.unshare(id)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+In a space: stops sharing a space plugin, once the person accepts a review. It goes from the other members' devices and stays here as theirs.
 
 ### bus
 
@@ -1197,8 +1229,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `network:<host>` | Call net.fetch. |
-| `plugins:author` | Call authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file. |
-| `plugins:manage` | Call plugins.setEnabled. |
+| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
+| `plugins:manage` | Call authoring.turn, plugins.setEnabled. |
 | `plugins:read` | Call authoring.source, authoring.check, plugins.app. |
 | `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source. |
 | `router` | Call router.current, router.go. |

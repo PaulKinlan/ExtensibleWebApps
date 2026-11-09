@@ -151,9 +151,10 @@ export function userPlugins(store: Store, origin: string, space?: string) {
      * Adds a plugin from a URL on this site, with the files its manifest lists next to it: how the demos'
      * sample plugins are added, and how a person adds one they found elsewhere on the site.
      */
-    async addFromUrl(app: string, url: string) {
+    /** A plugin's file and the files its manifest lists, read from this site, ready for add(). */
+    async fetch(url: string): Promise<{ ok: true; files: { name: string; data: Blob | string }[]; source: string } | { ok: false; error: string }> {
       const href = new URL(url, origin);
-      if (href.origin !== origin || !href.pathname.endsWith(".js")) return { ok: false as const, error: "Add a .js file from this site" };
+      if (href.origin !== origin || !href.pathname.endsWith(".js")) return { ok: false, error: "Add a .js file from this site" };
       const get = async (u: URL) => {
         const response = await fetch(u);
         if (!response.ok) throw new Error(`${u.pathname} answered ${response.status}`);
@@ -164,10 +165,15 @@ export function userPlugins(store: Store, origin: string, space?: string) {
         const manifest = readManifest(source);
         const files: { name: string; data: Blob | string }[] = [{ name: href.pathname.split("/").pop()!, data: source }];
         for (const name of manifest.files ?? []) files.push({ name, data: await get(new URL(name, href)) });
-        return this.add(app, files);
+        return { ok: true, files, source };
       } catch (error) {
-        return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
+    },
+
+    async addFromUrl(app: string, url: string) {
+      const fetched = await this.fetch(url);
+      return fetched.ok ? this.add(app, fetched.files) : fetched;
     },
 
     on: (app: string, id: string) => setOn(checkApp(app), id, true),
