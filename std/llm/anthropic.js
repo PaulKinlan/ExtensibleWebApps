@@ -23,7 +23,7 @@
 export const manifest = {
   id: "llm-anthropic",
   name: "Claude (Anthropic)",
-  description: "Answers the app's llm requests with Claude, using the person's Anthropic API key.",
+  description: "A language model for this app: Claude, from Anthropic. Uses your own Anthropic API key, which goes only to Anthropic.",
   version: "1.1.0",
   permissions: ["provide:llm", "network:api.anthropic.com", "secret:anthropic"],
   services: ["llm"],

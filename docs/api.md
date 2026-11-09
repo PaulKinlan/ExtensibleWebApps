@@ -1028,6 +1028,22 @@ The files opened with the plugin's tab, once: they are gone after, and the tab m
 
 Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js). The caller never holds a key.
 
+#### llm.add
+
+`llm.add(id)` → { ok, id?, error? }
+
+Needs: `llm`.
+
+Adds one of choices() to the person's own plugins for the caller's app, once they accept a review of its code, and turns it on. It asks for its API key the first time it is asked something.
+
+#### llm.choices
+
+`llm.choices()` → [{ id, name, description, added, linked }]
+
+Needs: `llm`.
+
+The language models this site offers (its plugin registry's packages that provide:llm), for a plugin to offer the person when providers() is empty. added: the person has it here already; linked: the app links it.
+
 #### llm.complete
 
 `llm.complete({ messages, system?, tools?, schema?, model?, maxTokens?, provider? })` → { text, json?, toolCalls, stop, usage: { input, output }, provider, model, message }
@@ -1954,7 +1970,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `history` | Call history.state, history.undo, history.redo. |
 | `launch` | Call launch.take. |
 | `live` | Call sync.live. |
-| `llm` | Call llm.providers, llm.models, llm.complete. |
+| `llm` | Call llm.providers, llm.models, llm.choices, llm.add, llm.complete. |
 | `members` | Call sync.members. |
 | `network:<host>` | Call net.fetch. |
 | `notify` | Call notify.state, notify.request, notify.show. |

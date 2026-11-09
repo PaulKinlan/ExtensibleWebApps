@@ -76,7 +76,7 @@ export default async function ({ a, check, plugin, pluginLog, traceHas }) {
     // With no provider in the app, a request says what to add.
     await plugin(`export const manifest = { id: 'lonely', name: 'Lonely', permissions: ['llm'] };
 export default async (ctx) => { ctx.log('lonely ' + await ctx.call('llm', 'complete', { messages: [{ role: 'user', content: 'hi' }] }).then(() => 'answered', (e) => e.message)); };`);
-    check("asking with no provider in the app says to link one", /no language model: link one/.test(await pluginLog("lonely", "lonely").catch(() => "")));
+    check("asking with no provider in the app says to add one from Customize", /no language model yet\. Add one from Customize/.test(await pluginLog("lonely", "lonely").catch(() => "")));
     await plugin(`export const manifest = { id: 'nollm', name: 'No llm', permissions: [] };
 export default async (ctx) => { ctx.log('nollm ' + await ctx.call('llm', 'providers').then(() => 'answered', (e) => e.message)); };`);
     check("calling llm needs the llm permission", /Missing capability llm/.test(await pluginLog("nollm", "nollm").catch(() => "")));

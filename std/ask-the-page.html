@@ -1,7 +1,10 @@
 <!--
   Ask the page. ask-the-page.js sends { providers, none, question, answer,
   error, asking, suggested }: providers is [{ id, label, picked }], the
-  language models the app links; none is true when it links none; answer is
+  language models the app links; none is true when it links none, and then
+  choices is [{ id, name, description, busy }], the models this site offers
+  (offered: there are some), adding the one being added and addError why the
+  last one wasn't. Each choice's button sends "model:<id>". answer is
   null or { text, by, tokens, sent, named }; suggested is [{ n, text }].
   The model picker sends "provider" with an id ("" for the first with a key),
   the form sends "ask" with { question }, and each suggestion "suggest:<n>".
@@ -15,6 +18,9 @@
   .suggested button { height: auto; min-height: 28px; padding: 4px 10px; text-align: left; }
   .answer { white-space: pre-wrap; margin: 0 0 var(--space-1); }
   .about-answer { color: var(--fg-2); font-size: var(--text-sm); margin: 0 0 var(--space-2); }
+  .models { display: grid; gap: var(--space-1); margin: 0 0 var(--space-2); padding: 0; list-style: none; }
+  .models li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1); }
+  .models span { color: var(--fg-2); font-size: var(--text-sm); }
   .sent pre { white-space: pre-wrap; max-height: 320px; overflow: auto; font-size: var(--text-sm); background: var(--bg-2); padding: 8px; border-radius: var(--radius); }
 </style>
 <template id="ask">
@@ -30,7 +36,19 @@
         </label>
       </template>
     </div>
-    <template if="none"><p>This page links no language model. Add one from <code>/std/llm/</code>, such as <code>&lt;link rel="plugin" href="/std/llm/anthropic.js"&gt;</code>.</p></template>
+    <template if="none">
+      <div class="add-model">
+        <p>To answer, Ask the page needs a language model. Pick one to add to this app for you. You'll see its code first, and it asks for your own API key the first time you ask something. The key stays on this device.</p>
+        <template if="offered">
+          <ul class="models" aria-label="Language models you can add">
+            <template for="c of choices"><li key="{{c.id}}"><button type="button" data-action="model:{{c.id}}" disabled="{{c.busy}}">Add {{c.name}}</button> <span>{{c.description}}</span></li></template>
+          </ul>
+        </template>
+        <template if="!offered"><p>This site offers no language models to add. Its developer can link one, such as <code>/std/llm/anthropic.js</code>.</p></template>
+        <template if="adding"><p role="status">Adding it. Answer the review card to go on.</p></template>
+        <template if="addError"><p class="error" role="alert">{{addError}}</p></template>
+      </div>
+    </template>
     <template if="!none">
       <form data-action="ask">
         <input name="question" type="text" value="{{question}}" placeholder="Ask about any plugin on this page" aria-label="Your question" autocomplete="off" maxlength="2000">
