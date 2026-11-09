@@ -2,6 +2,8 @@
 // <meta name="customize" content="off"> leaves out its button (and inspect
 // mode), and ?customize brings it back for a person who wants it anyway.
 
+import { watchErrors } from "../page-errors.mjs";
+
 export default async function ({ check, context, URL, errors }) {
   // The service worker is blocked so the page's own request can be rewritten to carry the meta.
   const own = await context.browser().newContext({ serviceWorkers: "block" });
@@ -11,7 +13,7 @@ export default async function ({ check, context, URL, errors }) {
     await route.fulfill({ response, body: html });
   });
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "customize-off");
   const button = async (address) => {
     await page.goto(address);
     await page.waitForSelector('[data-key^="habits:"]', { state: "attached", timeout: 10000 }).catch(() => {});

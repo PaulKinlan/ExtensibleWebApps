@@ -6,10 +6,12 @@
 // It runs in a browser context of its own, so a kernel and data folder of
 // its own: switching plugins here, and the trace it makes, don't reach the
 // workbench's checks.
+import { watchErrors } from "../page-errors.mjs";
+
 export default async function ({ check, context, URL, errors }) {
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "homepage");
   await page.goto(URL);
   const key = (id) => `slot :is([data-key^="${id}:"], [data-key^="${id}@"])`;
   const ids = ["learning-notes", "note-stats", "chapter-1-core", "chapter-2-plugins", "chapter-3-hooks", "switchboard"];

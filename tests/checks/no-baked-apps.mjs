@@ -4,6 +4,7 @@
 // site/workbench/plugins/ run on the workbench, which links them, and nowhere else.
 // Kernel modules in std/<name>/module.ts reach the kernel only through the
 // site's kernel.json (vite.kernel-modules.ts), never by an import in the core.
+import { watchErrors } from "../page-errors.mjs";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 
 const ROOT = new URL("../../", import.meta.url);
@@ -35,7 +36,7 @@ export default async function ({ check, context, URL: site, errors }) {
   // the host adds to every app) are the only workers its tab starts.
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "no-baked-apps");
   await page.goto(`${site}demos/habits/app.html`);
   await page.waitForFunction(() => window.__host?.workers?.has("habits"), null, { timeout: 10000 }).catch(() => {});
   // Long enough for any plugin the kernel started on its own to have been spawned too.
@@ -49,7 +50,7 @@ export default async function ({ check, context, URL: site, errors }) {
   await bench.goto(`${site}workbench/`);
   await bench.waitForFunction(() => [...(window.__host?.workers?.keys() ?? [])].some((k) => k.startsWith("bars@")), null, { timeout: 10000 }).catch(() => {});
   const second = await own.newPage();
-  second.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(second, errors, "no-baked-apps");
   await second.goto(`${site}demos/habits/app.html`);
   await second.waitForSelector('[data-key^="habits:"]', { state: "attached", timeout: 10000 }).catch(() => {});
   await second.waitForTimeout(1500);

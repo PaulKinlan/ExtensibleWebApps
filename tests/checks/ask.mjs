@@ -5,6 +5,8 @@
 //
 // It runs in a browser context of its own, like the homepage's check.
 
+import { watchErrors } from "../page-errors.mjs";
+
 /** A model that says which plugins it was told about, and whether it got code. */
 const MODEL = `export const manifest = { id: "scripted-model", name: "Scripted model", permissions: ["provide:llm"] };
 export default (ctx) => {
@@ -20,7 +22,7 @@ export default (ctx) => {
 export default async function ({ check, context, URL, errors }) {
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "ask");
   await page.goto(URL);
   const ask = '[data-key^="ask-the-page@"]';
   const seen = (selector, timeout = 8000) => page.waitForSelector(selector, { state: "attached", timeout }).then(() => true, () => false);

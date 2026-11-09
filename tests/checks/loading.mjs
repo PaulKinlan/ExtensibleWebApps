@@ -1,6 +1,7 @@
 // Loading fast without jumping (docs/guide/loading-fast.md): hashed platform scripts are kept,
 // template files load before their plugin draws, views wait for their elements, each slot's height
 // is remembered and held on the next visit, and same-site links are prefetched.
+import { watchErrors } from "../page-errors.mjs";
 import { readFileSync } from "node:fs";
 
 export default async function ({ check, context, URL, errors }) {
@@ -9,7 +10,7 @@ export default async function ({ check, context, URL, errors }) {
 
   const own = await context.browser().newContext({ viewport: { width: 1280, height: 900 } });
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "loading");
   // Every ui-* element in a view, when the view first goes into the page.
   await page.addInitScript(() => {
     window.__undefinedAtDraw = [];
