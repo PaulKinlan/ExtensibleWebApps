@@ -168,6 +168,8 @@ up to date, so prefer them to hand-made forms and tables. Schema types:
 3. Save every file of the app (or every file you changed) in one
    `maker_save`, with a note that says in a sentence what it does. A new
    app's first save must include `app.html`. Always write each file whole.
+   If it says the change is too big for one review card, save `app.html`
+   and one plugin first, then the rest.
 4. `maker_save` returns the checks of what it saved. Then call
    `maker_check`: it also runs the app in the person's preview and reports
    what failed as it ran. If `ok` is false, fix the files the problems name,

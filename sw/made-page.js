@@ -40,7 +40,8 @@ export function tags(html) {
     for (const a of m[3].matchAll(/([^\s=>"'/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']*)))?/g)) {
       const name = a[1].toLowerCase();
       names.push(name);
-      attributes[name] = a[2] ?? a[3] ?? a[4] ?? "";
+      // A browser keeps an attribute's first value and drops the rest: so does this, and pageProblems refuses the repeat.
+      if (!(name in attributes)) attributes[name] = a[2] ?? a[3] ?? a[4] ?? "";
     }
     out.push({ name: m[2].toLowerCase(), closing: m[1] === "/", attributes, names, line: lineOf(blanked, m.index), index: m.index, end: m.index + m[0].length });
   }
@@ -74,6 +75,11 @@ export function pageProblems(html) {
   for (const tag of all) {
     if (tag.closing) continue;
     const { name, attributes, line } = tag;
+    const repeated = tag.names.filter((n, i) => tag.names.indexOf(n) !== i);
+    if (repeated.length) {
+      problems.push({ line, message: `<${name}> has ${[...new Set(repeated)].join(", ")} more than once: give each attribute once` });
+      continue;
+    }
     if (name === "script") {
       const isHost = attributes.src === "/platform/host.js" && attributes.type === "module" && tag.names.every((n) => n === "src" || n === "type" || n === "blocking");
       // Nothing between the tags: a script with a src runs only that file, but say so plainly.

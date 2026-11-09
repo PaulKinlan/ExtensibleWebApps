@@ -72,9 +72,10 @@ function scan(source) {
  * Checks a made app's files without running them.
  * @param {Map<string, string>} files the app's files by name: app.html, x.js, x.html…
  * @param {Rules} rules
+ * @param {string} app the app's name: a link to /apps/<app>/x.js is its own file, like x.js
  * @returns {{ problems: Problem[]; plugins: { file: string; id: string; name: string }[] }}
  */
-export function checkFiles(files, rules) {
+export function checkFiles(files, rules, app) {
   /** @type {Problem[]} */
   const problems = [];
   const report = (/** @type {"error" | "warning"} */ level, /** @type {string} */ file, /** @type {number | undefined} */ line, /** @type {string} */ message) => problems.push({ level, file, ...(line ? { line } : {}), message });
@@ -91,8 +92,9 @@ export function checkFiles(files, rules) {
   if (!page.plugins.length) report("warning", "app.html", undefined, 'The page links no plugins: add <link rel="plugin" href="x.js"> for each');
   const ids = new Map();
   for (const link of page.plugins) {
-    if (link.href.startsWith("/")) continue; // a standard plugin, such as /std/board.js: it is checked where it lives
-    const name = link.href.replace(/^\.\//, "").replace(/[?#].*$/, "");
+    const own = ownFile(link.href, app);
+    if (own === undefined) continue; // a standard plugin, such as /std/board.js: it is checked where it lives
+    const name = own;
     const source = files.get(name);
     if (source === undefined) {
       report("error", "app.html", link.line, `${link.href} doesn't exist: write it, or take out its <link>`);
@@ -105,9 +107,21 @@ export function checkFiles(files, rules) {
     ids.set(plugin.id, name);
   }
   for (const name of files.keys()) {
-    if (name.endsWith(".js") && !page.plugins.some((l) => l.href.replace(/^\.\//, "") === name)) report("warning", name, undefined, `${name} isn't linked from app.html, so it doesn't run: add <link rel="plugin" href="${name}">, or remove it`);
+    if (name.endsWith(".js") && !page.plugins.some((l) => ownFile(l.href, app) === name)) report("warning", name, undefined, `${name} isn't linked from app.html, so it doesn't run: add <link rel="plugin" href="${name}">, or remove it`);
   }
   return { problems, plugins };
+}
+
+/**
+ * The name of the app's own file a link points to (library.js, ./library.js, /apps/<app>/library.js), or
+ * undefined for a file elsewhere on the site, such as /std/board.js.
+ * @param {string} href @param {string} app
+ */
+function ownFile(href, app) {
+  const url = new URL(href, `http://site/apps/${app}/`);
+  const folder = `/apps/${app}/`;
+  if (url.origin !== "http://site" || !url.pathname.startsWith(folder)) return undefined;
+  return decodeURIComponent(url.pathname.slice(folder.length));
 }
 
 /** The calls a plugin's source makes, as written, and what each needs. */

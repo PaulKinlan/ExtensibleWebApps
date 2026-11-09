@@ -201,6 +201,13 @@ export default async function ({ check, openTab, context, URL }) {
     });
     check("the service worker refuses a made page that breaks the rules", planted.startsWith("500") && /onerror/.test(planted), planted.slice(0, 120));
 
+    // A repeated attribute can't sneak a second script past the rules: browsers keep the first value.
+    const repeated = await page.evaluate(async () => {
+      const { pageProblems } = await import("/sw/made-page.js");
+      return pageProblems('<!doctype html><head><script type="module" src="payload.js" src="/platform/host.js"></script></head>').map((p) => p.message);
+    });
+    check("a page that names a script's src twice is refused", repeated.some((m) => /more than once/.test(m)), repeated.join(" | "));
+
     // With no model and no app maker running anywhere, the app still works on its own.
     await page.close();
     const alone = await context.newPage();

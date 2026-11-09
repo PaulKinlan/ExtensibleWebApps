@@ -23,6 +23,7 @@
 //
 // A kernel module (docs/layers.md): a site that lists `maker` in kernel.json has it, as `ctx.call("maker", …)`.
 
+import { diffLines, trim } from "../../src/kernel/diff";
 import { capabilities, grants } from "../../src/kernel/gate";
 import { readManifest } from "../../src/kernel/manifest";
 import type { Param, ServiceProvider } from "../../src/kernel/remote";
@@ -67,6 +68,17 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   kernel.hook("maker:changed", { mode: "emit", needs: "apps:read", args: "{ app, files, removed? }", description: "A made app's files were saved, restored or removed (maker.save, maker.restore, maker.remove)." });
   kernel.hook("maker:check", { mode: "emit", needs: "apps:read", args: "{ app }", description: "maker.check wants the app opened again, to see it run: a preview of it (std/maker/your-apps.js) reloads." });
 
+  /**
+   * One change at a time per app, and to the list of apps: what was checked after a review and what is
+   * written run together, so two accepted saves (or a save and a removal) can't interleave.
+   */
+  const locks = new Map<string, Promise<unknown>>();
+  const locked = <T>(key: string, work: () => Promise<T>): Promise<T> => {
+    const run = (locks.get(key) ?? Promise.resolve()).then(work, work);
+    locks.set(key, run.catch(() => {}));
+    return run;
+  };
+
   const nameOf = (instance: string) => remote.installed.get(base(instance))?.manifest.name ?? base(instance);
   const read = async (name: string, f: string) => store.readText(`${APPS}/${name}/${f}`);
   const filesOf = async (name: string) => {
@@ -83,10 +95,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return version;
   };
 
-  const indexed = async (name: string, present: boolean) => {
-    const names = (await store.readJson<string[]>(INDEX, [])).filter((n) => n !== name);
-    await store.writeJson(INDEX, present ? [...names, name].sort() : names);
-  };
+  const indexed = (name: string, present: boolean) =>
+    locked(INDEX, async () => {
+      const names = (await store.readJson<string[]>(INDEX, [])).filter((n) => n !== name);
+      await store.writeJson(INDEX, present ? [...names, name].sort() : names);
+    });
 
   /** The kernel's rules for the checks: its manifest reader, gate, HTML allowlist and API reference. */
   const rules = (name: string) => {
@@ -124,6 +137,13 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
 
   /** One file's change, as the review card shows it: its name, then its code. */
   const shown = (f: string, text: string | undefined) => (text === undefined ? "" : `──── ${f} ────\n${text}\n`);
+  /** Why a change can't be shown whole on one card (the card shows at most SHOWN lines, each cut at 1000 characters), or undefined if it can. */
+  const tooBig = (before: string, after: string) => {
+    const lines = trim(diffLines(before, after));
+    if (lines.some((l) => l.text.endsWith(" …") && l.text.length > 1000)) return "A line is longer than 1000 characters, so the review card couldn't show it whole: break it up";
+    if (lines.some((l) => /^… \d+ more lines? not shown$/.test(l.text))) return "That is more than one review card can show in full: save the app's files in a few smaller saves (app.html and one plugin first, then the rest)";
+    return undefined;
+  };
 
   async function save(instance: string, name: string, files: unknown, note: unknown, dispatch: { trace?: string }, how: "save" | "restore" = "save") {
     if (!Array.isArray(files) || !files.length) throw new Error("save() needs a list of files: [{ name, text }]");
@@ -160,29 +180,36 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const before = changed.map(([f]) => shown(f, current.get(f))).join("\n");
     const after = changed.map(([f, text]) => shown(f, text)).join("\n");
     const reason = String(note ?? "").slice(0, 300) || (isNew ? "A new app" : "A change to the app");
+    const big = tooBig(before, after);
+    if (big) return { ok: false, error: `Nothing was saved. ${big}` };
     try {
-      await kernel.reviewed(instance, `make:${name}`, target, before, after, reason, dispatch);
+      // Every save is asked about: no "Always allow", since each one is new code.
+      await kernel.reviewed(instance, `make:${name}`, target, before, after, reason, dispatch, { once: true });
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
-    // Only what the person saw: if a file changed while the card was open, nothing more is written.
-    for (const [f] of changed) if ((await read(name, f)) !== current.get(f)) return { ok: false, error: `${f} changed while the review was open, so nothing more was saved. Read it again and try once more.` };
     const by = nameOf(instance);
     const versions: Record<string, number> = {};
-    for (const [f, text] of changed) {
-      await store.writeText(`${APPS}/${name}/${f}`, text);
-      versions[f] = await remember(name, f, { by, note: reason, text });
-      // A running copy with other code is stopped, so opening the app again starts the new code under the same id.
-      if (f.endsWith(".js")) stopOld(name, f, text);
-    }
+    const stale = await locked(name, async () => {
+      // Only what the person saw: if a file changed while the card was open, nothing is written.
+      for (const [f] of changed) if ((await read(name, f)) !== current.get(f)) return f;
+      for (const [f, text] of changed) {
+        await store.writeText(`${APPS}/${name}/${f}`, text);
+        versions[f] = await remember(name, f, { by, note: reason, text });
+        // A running copy with other code is stopped, so opening the app again starts the new code under the same id.
+        if (f.endsWith(".js")) stopOld(name, f, text);
+      }
+      return undefined;
+    });
+    if (stale) return { ok: false, error: `${stale} changed while the review was open, so nothing was saved. Read it again and try once more.` };
     if (isNew) await indexed(name, true);
     root.emit(dispatch, "maker:changed", { app: name, files: changed.map(([f]) => f) });
-    const { problems } = checkFiles(await filesOf(name), rules(name));
+    const { problems } = checkFiles(await filesOf(name), rules(name), name);
     return { ok: true, url: appUrl(name), saved: changed.map(([f]) => f), versions, problems };
   }
 
   /** What went wrong while the app ran, once it opened again, for the plugins in it: from the moment it was asked to open, as a plugin may fail before the app has finished opening. */
-  async function ran(name: string, plugins: { file: string; id: string; name: string }[], dispatch: { trace?: string }) {
+  async function ran(name: string, files: Map<string, string>, plugins: { file: string; id: string; name: string }[], dispatch: { trace?: string }) {
     const since = recent().at(-1)?.seq ?? 0;
     root.emit(dispatch, "maker:check", { app: name });
     if (!plugins.length) return { ran: false, problems: [] as Problem[] };
@@ -202,8 +229,27 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       if (failed) problems.push({ level: "error", file: p.file, message: `It didn't start: ${failed[1]}` });
     }
     const seen = new Set<string>();
-    for (const e of recent()) {
-      if (e.seq <= since || !e.plugin || !ids.has(base(e.plugin))) continue;
+    const events = recent().filter((e) => e.seq > since);
+    // A plugin that never got going (refused, or a service it needs is missing) isn't running this code.
+    for (const p of plugins) {
+      if (problems.some((x) => x.file === p.file)) continue;
+      const running = remote.installed.get(p.id);
+      if (running && running.source === files.get(p.file)) continue;
+      const why = events.find((e) => e.name === "plugin:refused" && (e.plugin === p.id || e.detail?.includes(p.name) || e.detail?.includes(p.id)))?.detail;
+      problems.push({ level: "error", file: p.file, message: `It didn't start${why ? `: ${why}` : ""}` });
+      seen.add(`${p.id} didn't start`);
+    }
+    // Problems in the page itself (a template or element that didn't load), reported by the preview's tab.
+    for (const e of events) {
+      if (e.kind !== "error" || !e.name.startsWith("page:") || !e.detail?.startsWith(`tab ${tab}:`)) continue;
+      const file = plugins.find((p) => e.detail!.includes(p.file) || e.detail!.includes(p.file.replace(/\.js$/, ".html")))?.file ?? "app.html";
+      const message = `${e.name}: ${e.detail.slice(`tab ${tab}:`.length).trim()}`;
+      if (seen.has(message)) continue;
+      seen.add(message);
+      problems.push({ level: "error", file, message });
+    }
+    for (const e of events) {
+      if (!e.plugin || !ids.has(base(e.plugin))) continue;
       // Only the tab that opened it: a preview opened and closed again meanwhile leaves its own complaints.
       if (e.plugin.includes("@") && e.plugin.split("@")[1] !== tab) continue;
       if (e.kind !== "error" && e.kind !== "denied") continue;
@@ -302,16 +348,24 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         if (!which.every((f) => current.has(f))) return { ok: false, error: `${name} has no ${which.join(", ")}` };
         const title = pageParts(current.get("app.html") ?? "").title || name;
         try {
-          await kernel.reviewed(instance, `make:${name}`, args[1] === undefined ? `your apps: removes ${title}` : `your app ${title}: removes ${which[0]}`, which.map((f) => shown(f, current.get(f))).join("\n"), "", "Its files go; their history is kept, so it can be put back", dispatch);
+          await kernel.reviewed(instance, `make:${name}`, args[1] === undefined ? `your apps: removes ${title}` : `your app ${title}: removes ${which[0]}`, which.map((f) => shown(f, current.get(f))).join("\n"), "", "Its files go; their history is kept, so it can be put back", dispatch, { once: true });
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
         const by = nameOf(instance);
-        for (const f of which) {
-          await store.removeFile(`${APPS}/${name}/${f}`);
-          if (f.endsWith(".js")) stopOld(name, f, "");
-          await remember(name, f, { by, note: "Removed", text: current.get(f) ?? "", removed: true });
-        }
+        const stale = await locked(name, async () => {
+          // Remove only what the person saw: the same files, unchanged, and for the whole app no new ones.
+          const now = await filesOf(name);
+          if (args[1] === undefined && [...now.keys()].join() !== [...current.keys()].join()) return "The app's files changed while the review was open, so nothing was removed";
+          for (const f of which) if (now.get(f) !== current.get(f)) return `${f} changed while the review was open, so nothing was removed`;
+          for (const f of which) {
+            await store.removeFile(`${APPS}/${name}/${f}`);
+            if (f.endsWith(".js")) stopOld(name, f, "");
+            await remember(name, f, { by, note: "Removed", text: current.get(f) ?? "", removed: true });
+          }
+          return undefined;
+        });
+        if (stale) return { ok: false, error: stale };
         if (!current.has("app.html") || which.includes("app.html")) await indexed(name, false);
         root.emit(dispatch, "maker:changed", { app: name, files: which, removed: true });
         return { ok: true };
@@ -319,8 +373,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       if (method === "check") {
         const files = await filesOf(name);
         if (!files.size) throw new Error(`There is no app called ${name}`);
-        const { problems, plugins } = checkFiles(files, rules(name));
-        const running = await ran(name, plugins, dispatch);
+        const { problems, plugins } = checkFiles(files, rules(name), name);
+        const running = await ran(name, files, plugins, dispatch);
         const all = [...problems, ...running.problems];
         return { ok: !all.some((p) => p.level === "error"), ran: running.ran, url: appUrl(name), problems: all, plugins, ...(running.ran ? {} : { note: "It isn't open anywhere, so only the files were checked. Open it, or its preview, to see it run." }) };
       }

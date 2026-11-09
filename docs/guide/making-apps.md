@@ -53,6 +53,10 @@ service worker checks it again before it serves it, and sends a policy under
 which no inline script runs. The app's code is in its plugins, which run in
 workers with the permissions they ask for, like any app's.
 
+Saving a changed plugin stops the copy that is running, so the app's next
+opening runs the new code. The preview opens again by itself; another tab
+with the app open shows it stopped until that tab is reloaded.
+
 A made app links only its own files and the standard plugins it chose, never
 the model or the app maker. Switch both off, or close `/new/`, and it keeps
 working.
@@ -60,7 +64,9 @@ working.
 ## Saving, versions and going back
 
 `maker.save(app, files, note)` writes several files at once, after one
-review card that shows every changed file in full, before and after. The
+review card that shows every changed file in full, before and after. The card
+never offers "Always allow": each save is new code. A change too big for one
+card to show whole is refused, and the app maker saves it in smaller parts. The
 first save of an app must hold its `app.html`. Each file keeps its last 50
 versions, with who saved each and why: `maker.history(app, file)` lists them
 and `maker.version(app, file, n)` reads one. `maker.restore(app, file, n)`
