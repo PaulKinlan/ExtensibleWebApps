@@ -4,5 +4,6 @@
   ],
   "hooks": [
     "history:changed"
-  ]
+  ],
+  "starts": "always"
 }
