@@ -1,0 +1,54 @@
+/* The /packages/ page (packages/index.html, written by scripts/packages.mjs). */
+main { max-width: 1200px; }
+.lede { max-width: 72ch; font-size: var(--text-lg); margin: 0 0 var(--space-3); }
+.how { max-width: 72ch; color: var(--fg-2); font-size: var(--text-sm); margin: 0 0 var(--space-2); }
+.about { max-width: 72ch; color: var(--fg-2); margin: 0 0 var(--space-3); }
+
+.find { position: sticky; top: 0; z-index: 1; display: grid; gap: var(--space-2); padding: var(--space-3) 0; background: var(--bg); border-bottom: 1px solid var(--border); margin-bottom: var(--space-3); }
+.find label { font-weight: 600; }
+.find input { font: inherit; padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); width: 100%; box-sizing: border-box; }
+.filters { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.filters button { font: inherit; font-size: var(--text-sm); padding: var(--space-1) var(--space-3); border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--fg); cursor: pointer; }
+.filters button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.shown { margin: 0; font-size: var(--text-sm); color: var(--fg-2); }
+
+.toc { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0 0 var(--space-5); }
+.count { font-size: var(--text-sm); color: var(--fg-2); font-weight: 400; }
+
+section[id] { margin-bottom: var(--space-6); scroll-margin-top: 140px; }
+section[id] > h2 { margin: 0 0 var(--space-1); }
+.kind { margin: var(--space-4) 0 var(--space-5); }
+.kind > h3 { margin: 0 0 var(--space-1); }
+h4.group { font-size: var(--text-md); margin: var(--space-4) 0 var(--space-2); color: var(--fg-2); }
+
+.cards { display: grid; gap: var(--space-3); grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); margin: 0; padding: 0; list-style: none; }
+.card { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); scroll-margin-top: 160px; }
+.card:target { outline: 2px solid var(--accent); }
+.card h4 { font-size: var(--text-lg); margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.card p { margin: 0; }
+.card > p:first-of-type { color: var(--fg-2); }
+.tags { display: inline-flex; gap: var(--space-1); }
+.tag { font-size: var(--text-sm); font-weight: 500; padding: 0 var(--space-2); border-radius: 999px; border: 1px solid var(--border); color: var(--fg-2); }
+.tag.service { border-color: var(--accent); color: var(--accent); }
+.tag.builtin { border-color: var(--ok); color: var(--ok); }
+.tag.agent { border-color: var(--warn); color: var(--warn); }
+.facts, .asks { margin: 0; padding: 0; list-style: none; font-size: var(--text-sm); display: grid; gap: 2px; }
+.facts b { font-weight: 600; }
+.asks { padding-top: var(--space-1); }
+.asks code { font-weight: 600; }
+details summary { font-size: var(--text-sm); cursor: pointer; color: var(--fg-2); }
+.actions { margin-top: auto !important; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); font-size: var(--text-sm); }
+.actions button { font: inherit; padding: 2px var(--space-2); border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); color: var(--fg); cursor: pointer; }
+code { font-family: var(--mono); font-size: 0.92em; overflow-wrap: anywhere; }
+
+.key { display: grid; gap: var(--space-2) var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); margin: 0 0 var(--space-3); }
+.key div { display: grid; gap: var(--space-1); align-content: start; }
+.key dt, .key dd { margin: 0; }
+.key dd { font-size: var(--text-sm); color: var(--fg-2); }
+section[id] > h2 { font-size: var(--text-2xl); }
+.kind > h3 { font-size: var(--text-xl); }
+section[id], .card { scroll-margin-top: 210px; }
+@media (max-width: 640px) {
+  .find { position: static; }
+  section[id], .card { scroll-margin-top: 0; }
+}
