@@ -36,10 +36,16 @@
     { "tag": "v2", "new_sqlite_classes": ["Accounts"] }
   ],
   "worker_loaders": [{ "binding": "LOADER" }],
-  // Cloudflare Email Service, for mail server plugins send to a space's members (std/email/module.ts). It
-  // delivers once the site's domain is onboarded for Email Sending and the Worker has an EMAIL_FROM
-  // variable or secret on that domain (docs/server.md); until then mail stays in each space's outbox.
-  // `wrangler dev` only logs what it would send.
+  // Cloudflare Email Service, for mail server plugins send to a space's members (std/email/module.ts).
+  // extensibleweb.app is onboarded for Email Sending, and EMAIL_FROM below is the address on it that mail
+  // comes from (docs/server.md). Without EMAIL_FROM, mail stays in each space's outbox. `wrangler dev`
+  // only logs what it would send. The tests set their own EMAIL_FROM with --var.
   "send_email": [{ "name": "EMAIL" }],
+  // Plain settings, kept in Git so a deploy doesn't drop them. keep_vars leaves any other variable set in
+  // the dashboard alone; secrets (OAuth client secrets) are never in this file.
+  "vars": {
+    "EMAIL_FROM": "paul@extensibleweb.app"
+  },
+  "keep_vars": true,
   "previews": {}
 }
