@@ -1,10 +1,6 @@
 // The runtime inside each sandboxed plugin's worker. It loads the plugin's
 // module from its source and gives it a `ctx` whose every call becomes a
 // message to the kernel, where the capability gate checks it.
-//
-// Plugins written for the Markdown editor (they take an `editor` object and
-// use editor-style permissions such as `post:read`) get a shim instead, so
-// they run unchanged.
 
 import type { Api, Live, RouteRequest } from "../shared/api";
 import { lockdown } from "./lockdown";
@@ -263,58 +259,6 @@ function html(strings: TemplateStringsArray, ...values: unknown[]): View {
 const ctx = api(() => activeTrace);
 const log = ctx.log;
 
-/**
- * The Markdown editor's `editor` API, on top of `ctx`, for the parts these demo notes support. Its posts are
- * the notes plugin's notes (site/workbench/plugins/notes.js), and its post events that plugin's hooks.
- */
-function editorShim() {
-  let post: any = null;
-  const track = (p: any) => (post = p);
-  ctx.on("notes:open", track);
-  ctx.on("notes:change", track);
-  ctx.on("notes:save", track);
-  ctx.on("notes:close", () => (post = null));
-  const events: Record<string, string> = { "post:open": "notes:open", "post:change": "notes:change", "post:save": "notes:save", "post:close": "notes:close" };
-  const commands = new Map<string, () => unknown>();
-  ctx.ui.onEvent((action) => commands.get(action)?.());
-  return {
-    on(event: string, handler: (value: unknown) => void) {
-      const hook = events[event];
-      if (!hook) {
-        log(`The shim has no editor event ${event}`, "error");
-        return () => {};
-      }
-      return ctx.on(hook, handler);
-    },
-    document: {
-      get post() {
-        return post;
-      },
-      get text() {
-        return post?.text ?? "";
-      },
-      read: async () => post,
-      annotate: async () => {},
-    },
-    ui: {
-      status(id: string, text: string, title?: string) {
-        const set = (t: string, ti?: string) => ctx.ui.render("status", id, t ? { type: "text", text: t, title: ti } : null);
-        set(text, title);
-        return { set, remove: () => set("") };
-      },
-      notify: (message: string) => log(message),
-    },
-    registerCommand({ id, run }: { id: string; run: () => unknown }) {
-      commands.set(`command:${id}`, run);
-      return () => commands.delete(`command:${id}`);
-    },
-    storage: { get: (key: string) => ctx.storage.get(key), set: (key: string, value: unknown) => ctx.storage.set(key, value) },
-    settings: { get: () => ctx.settings.get() },
-  };
-}
-
-const isEditorExtension = (manifest: Manifest) => manifest.permissions.some((p) => p.startsWith("post:"));
-
 async function load(source: string) {
   // On a Node server the host gives a data: URL instead (src/server/isolate.ts); Node can't import blob: URLs.
   const moduleUrl = (globalThis as { __moduleUrl?: (source: string) => string }).__moduleUrl;
@@ -325,7 +269,7 @@ async function load(source: string) {
     const manifest = module.manifest as Manifest;
     if (!manifest?.id || !Array.isArray(manifest.permissions)) throw new Error("The module has no manifest");
     send({ t: "ready", manifest });
-    await module.default(isEditorExtension(manifest) ? editorShim() : ctx);
+    await module.default(ctx);
   } catch (error) {
     send({ t: "failed", error: String(error instanceof Error ? error.message : error) });
   } finally {

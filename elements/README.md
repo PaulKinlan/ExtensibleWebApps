@@ -34,6 +34,15 @@ nothing from the host and can't act for another plugin.
 a textarea. Its text content is the starting value, and a redraw keeps what
 the person typed until the view changes its `revision` attribute.
 
+[`ui-editor`](ui-editor.html) is the same for Markdown, on CodeMirror
+(loaded from [`/vendor/codemirror/`](../vendor/codemirror/) the first time
+one is drawn): headings and emphasis styled as you type, undo, search, and
+underlines a plugin asks for with its `annotations` attribute. It sends what
+the person types, the selection, and pastes and drops back to its plugin,
+the same editor events a textarea sends
+([`src/host/editing.ts`](../src/host/editing.ts)). The
+[Markdown editor](../demos/markdown-editor/) is built on it.
+
 ## Documents and diagrams
 
 [`ui-markdown`](ui-markdown.html) draws a Markdown file, and

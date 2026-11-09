@@ -1,0 +1,21 @@
+<!--
+  Tag suggestions: { tags: [{ i, tag, hits, used }], none, note }.
+  Each sends add:<i>, which adds that tag to the post's front matter.
+-->
+<style>
+  .tags ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .tags li { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
+  .tags small, .tags p { color: var(--fg-2); margin: 0; }
+</style>
+<template id="tags">
+  <ui-card class="tags">
+    <ui-stack direction="row" justify="between" align="center"><h3>Tags that fit</h3><button type="button" data-action="close">Close</button></ui-stack>
+    <template if="note"><p role="status">{{note}}</p></template>
+    <template if="none"><p>None of the site's tags appear in this post.</p></template>
+    <ul>
+      <template for="t of tags">
+        <li key="{{t.tag}}"><span>{{t.tag}} <small>mentioned {{t.hits}}×, on {{t.used}} posts</small></span><button type="button" data-action="add:{{t.i}}">Add</button></li>
+      </template>
+    </ul>
+  </ui-card>
+</template>

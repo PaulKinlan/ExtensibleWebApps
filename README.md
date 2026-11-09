@@ -128,7 +128,7 @@ Plugins live in three places:
 - [`demos/`](demos/) holds apps written to show the programming model, one folder per app.
 - [`std/`](std/) holds standard plugins any app can link, such as the [debug console](std/README.md): a bug button that shows errors and the trace, ready to copy into a bug report.
 - [`site/workbench/plugins/`](site/workbench/plugins/) holds the demo plugins the [workbench](site/workbench/index.html) links (no other page runs them; the kernel has no plugins of its own):
-  - `word-count.js` and `edit-times.js`, copied unchanged from the [Markdown editor](https://github.com/PaulKinlan/MarkdownEdiitor)
+  - `word-count.js` and `edit-times.js`, which listen to the notes plugin's hooks (the whole [Markdown editor](https://github.com/PaulKinlan/MarkdownEdiitor) is ported natively in [`demos/markdown-editor/`](demos/markdown-editor/))
   - `tidy.js` (change review), `tone.js` (audio) and `bars.js` (canvas)
   - test plugins that check the security rules
 
