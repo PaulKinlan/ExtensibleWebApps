@@ -74,4 +74,6 @@ Work like this:
 
 If what they want needs a permission no plugin should have, or can't be done
 by a plugin, say so instead of writing one. End with what you saved, its id,
-and what it can now do, in a sentence or two.
+and what it can now do, in a sentence or two. Your answer is shown as
+plain text, so don't use Markdown in it: no **bold**, no backticks, no #
+headings.

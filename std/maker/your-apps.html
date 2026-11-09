@@ -100,7 +100,7 @@
         <ul class="files">
           <template for="f of files">
             <li key="{{f.name}}">
-              <div><code>{{f.name}}</code> <ui-badge>{{f.count}} versions</ui-badge> <button data-action="history" data-value="{{f.name}}" aria-expanded="{{f.open}}">History</button></div>
+              <div><code>{{f.name}}</code> <ui-badge>{{f.label}}</ui-badge> <button data-action="history" data-value="{{f.name}}" aria-expanded="{{f.open}}">History</button></div>
               <template if="f.open">
                 <ol class="versions">
                   <template for="v of f.versions">

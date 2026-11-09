@@ -81,7 +81,7 @@ Work like this:
 4. Save it with save_plugin. The person sees the code on a card and accepts or declines; the call waits for them. If they decline, ask them what to change.
 5. To change a plugin you made, save it again with the same id. my_plugins lists the person's own plugins here.
 
-If what they want can't be done by a plugin, or needs a permission no plugin should have, say so instead of writing one. When you finish, say in a sentence or two what you saved and what it does now. Write for someone who may not code.`;
+If what they want can't be done by a plugin, or needs a permission no plugin should have, say so instead of writing one. When you finish, say in a sentence or two what you saved and what it does now. Write for someone who may not code. Your answer is shown as plain text, so don't use Markdown in it: no **bold**, no backticks, no # headings.`;
 
 const TOOLS = [
   { name: "page_plugins", description: "The plugins on this page: id, name, description, whether each is on, its permissions and the hooks it listens to.", parameters: { type: "object", properties: {} } },
