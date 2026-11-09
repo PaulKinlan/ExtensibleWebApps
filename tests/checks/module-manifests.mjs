@@ -77,6 +77,21 @@ export default async function ({ check, context, URL: site }) {
     };
     await settled();
     const atStart = await running();
+    // history starts with every kernel (its manifest says so), as its own file: undo holds every write from the first.
+    check("history starts with every kernel, from a file of its own", atStart.includes("history") && built.some((f) => f.startsWith("kernel-history-")), `running at the start: ${atStart.join(", ") || "none"}`);
+    // So a plugin that asks for history later, in an app whose plugins never listed it, can undo a write made before it asked.
+    const log = (id, prefix) => page.waitForFunction(([i, p]) => window.__host.traces.findLast((e) => e.plugin === i && e.detail?.startsWith(p)), [id, prefix], { timeout: 5000 }).then((h) => h.jsonValue()).then((e) => e.detail).catch((e) => `no answer: ${e.message.split("\n")[0]}`);
+    await page.evaluate((source) => window.__host.command("install", source), `export const manifest = { id: 'early-writer', name: 'Early writer', permissions: [], collections: { 'early-notes': { title: 'Early notes', schema: { type: 'object', properties: { title: { type: 'string' } } } } } };
+export default async (ctx) => { await ctx.call('data', 'put', 'early-notes', { title: 'Written first' }); ctx.log('early-done'); };`);
+    await log("early-writer", "early-done");
+    await page.evaluate((source) => window.__host.command("install", source), `export const manifest = { id: 'late-undoer', name: 'Late undoer', permissions: ['history', 'data:read:early-notes'] };
+export default async (ctx) => {
+  const answer = await ctx.call('history', 'undo').catch((e) => ({ ok: false, error: e.message }));
+  ctx.log('late-undo ' + JSON.stringify({ ok: answer.ok, by: answer.step?.by, text: answer.step?.text, error: answer.error, left: (await ctx.call('data', 'list', 'early-notes')).length }));
+};`);
+    const late = await log("late-undoer", "late-undo");
+    check("a plugin that asks for history later, in an app that never listed it, undoes a write made before it asked", /"ok":true/.test(late) && /"by":"early-writer"/.test(late) && /"left":0/.test(late), late);
+    for (const id of ["late-undoer", "early-writer"]) await page.evaluate((id) => window.__host.command("uninstall", id), id).catch(() => {});
     const unwanted = ["spaces", "maker", "game", "audio", "folder", "outside", "email", "transfer"].filter((name) => atStart.includes(name));
     check("an app's kernel starts only the modules its plugins use: Habits starts no spaces, app maker, game, audio, folder, email or MCP module", !unwanted.length && atStart.length < modules.length / 2, `running at the start: ${atStart.join(", ") || "none"}`);
 
