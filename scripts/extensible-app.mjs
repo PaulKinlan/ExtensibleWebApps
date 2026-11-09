@@ -24,16 +24,26 @@
 // does. It writes only in the project's .extensible/ folder, which is never committed.
 
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, watch, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, watch, writeFileSync } from "node:fs";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SITE_PAGES } from "./deploy-app.mjs";
 
 /** This package: the platform. */
 export const PLATFORM = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** A project's own files that aren't the app's, and so aren't served. */
+/** A project's own files at its top that aren't the app's, and so aren't served. */
 const NOT_SERVED = ["node_modules", "package.json", "package-lock.json"];
+
+/** Whether a file or folder of the project is served, at any depth: nothing starting with a dot (.env, .git), no node_modules. */
+const servable = (name) => !name.startsWith(".") && name !== "node_modules";
+
+/** The project's identity, which its Worker carries (EXTENSIBLE_APP), so a deploy only replaces a Worker of the same project. */
+function projectName(project) {
+  const pkg = JSON.parse(readFileSync(join(project, "package.json"), "utf8"));
+  if (typeof pkg.name !== "string" || !pkg.name) throw new Error("package.json needs a name: it is how a deploy knows its own Worker");
+  return pkg.name;
+}
 
 /** Where the platform's built site is, checked: what a project serves and deploys around its app. */
 export function platformSite(platform = PLATFORM) {
@@ -70,25 +80,36 @@ export function siteEntries(project, { platform = PLATFORM } = {}) {
   return entries;
 }
 
-/** Makes `dir` hold a link to each entry, and nothing else: changes to the project's files show at once. */
-function linkSite(dir, entries) {
+/**
+ * Makes `dir` the site again: a link to each of the platform's entries, and the project's folders as folders
+ * holding a link to each file that's served, so a change to a file shows at once and nothing unservable
+ * (plugins/.env) is reachable. Where a file can't be linked (Windows, without the right to), it is copied,
+ * and the next change copies it again.
+ */
+function linkSite(dir, entries, project) {
+  rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  for (const name of readdirSync(dir)) if (!entries[name]) unlinkSync(join(dir, name));
-  for (const [name, target] of Object.entries(entries)) {
-    const at = join(dir, name);
-    if (existsSync(at) || isLink(at)) unlinkSync(at);
-    // A junction needs no special rights on Windows; elsewhere the type is ignored.
-    symlinkSync(target, at, lstatSync(target).isDirectory() ? "junction" : "file");
-  }
+  const place = (target, at, mine) => {
+    const folder = lstatSync(target).isDirectory();
+    if (mine && folder) {
+      mkdirSync(at);
+      for (const name of readdirSync(target)) if (servable(name)) place(join(target, name), join(at, name), true);
+      return;
+    }
+    try {
+      // A junction needs no special rights on Windows; elsewhere the type is ignored.
+      symlinkSync(target, at, folder ? "junction" : "file");
+    } catch (error) {
+      if (folder || error.code !== "EPERM") throw error;
+      copyFileSync(target, at);
+    }
+  };
+  for (const [name, target] of Object.entries(entries)) place(target, join(dir, name), own(project, target));
 }
 
-const isLink = (path) => {
-  try {
-    return lstatSync(path).isSymbolicLink();
-  } catch {
-    return false;
-  }
-};
+const inside = (folder, path) => path === folder || path.startsWith(folder + sep);
+/** Whether an entry is the project's own, not the platform's (which may be in the project's node_modules). */
+const own = (project, path) => inside(project, path) && !inside(join(project, "node_modules"), path);
 
 /**
  * Serves the project at `/` with the platform around it, and its spaces' server (src/server/serve.ts, built),
@@ -98,14 +119,15 @@ const isLink = (path) => {
 export async function dev(project, { port = 5173, host = "127.0.0.1", platform = PLATFORM, quiet = false } = {}) {
   const dir = join(project, ".extensible");
   const site = join(dir, "site");
-  linkSite(site, siteEntries(project, { platform }));
-  // A file or folder added at the top of the project is served as soon as it's there.
+  linkSite(site, siteEntries(project, { platform }), project);
+  // A file or folder added anywhere in the project is served as soon as it's there.
   let timer;
-  const watcher = watch(project, () => {
+  const watcher = watch(project, { recursive: true }, (_, file) => {
+    if (file && !String(file).split(/[\\/]/).every(servable)) return;
     clearTimeout(timer);
     timer = setTimeout(() => {
       try {
-        linkSite(site, siteEntries(project, { platform }));
+        linkSite(site, siteEntries(project, { platform }), project);
       } catch (error) {
         if (!quiet) console.error(error.message);
       }
@@ -126,7 +148,8 @@ export async function dev(project, { port = 5173, host = "127.0.0.1", platform =
 /** The app's mistakes, as `npm run check` finds them in the repo's demos (scripts/check.mjs). */
 export async function check(project) {
   const { checkApps } = await import("./check.mjs");
-  const [app] = await checkApps([project]);
+  // An address from the root (/main.js) is the project's file when it has one, else the platform's.
+  const [app] = await checkApps([project], { root: project });
   // It names files from the platform's folder; here they're named from the project's.
   const named = (file) => (file ? relative(project, resolve(PLATFORM, file)).split("\\").join("/") : file);
   return { ...app, app: ".", problems: app.problems.map((p) => ({ ...p, file: named(p.file) })) };
@@ -138,15 +161,18 @@ export async function check(project) {
  * @param {string} project @param {{ name?: string, platform?: string }} [options]
  */
 export function layoutProject(project, { name, platform = PLATFORM } = {}) {
-  const pkg = JSON.parse(readFileSync(join(project, "package.json"), "utf8"));
-  const worker = name ?? String(pkg.name ?? "").replace(/^@[^/]+\//, "");
+  const app = projectName(project);
+  const worker = name ?? app.replace(/^@[^/]+\//, "");
   if (!/^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(worker)) throw new Error(`"${worker}" can't name a Worker: lowercase letters, digits and dashes, at most 63, no dash at either end. Give one with --name.`);
   const target = join(project, ".extensible", "deploy");
   const site = join(target, "site");
   const entries = siteEntries(project, { platform });
   rmSync(target, { recursive: true, force: true });
   mkdirSync(site, { recursive: true });
-  for (const [entry, from] of Object.entries(entries)) cpSync(from, join(site, entry), { recursive: true, dereference: true });
+  for (const [entry, from] of Object.entries(entries)) {
+    const mine = own(project, from);
+    cpSync(from, join(site, entry), { recursive: true, dereference: true, filter: (path) => !mine || relative(project, path).split(sep).every(servable) });
+  }
 
   const jsonc = (text) => JSON.parse(text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1"));
   const config = jsonc(readFileSync(join(platform, "wrangler.jsonc"), "utf8"));
@@ -158,11 +184,11 @@ export function layoutProject(project, { name, platform = PLATFORM } = {}) {
     assets: { ...config.assets, directory: "./site" },
     // Only the app's mark: the platform's own site's variables (its email sender) aren't this project's.
     // Set your own in the Cloudflare dashboard; keep_vars keeps them across deploys.
-    vars: { EXTENSIBLE_APP: worker },
+    vars: { EXTENSIBLE_APP: app },
   };
   delete appConfig.previews;
   writeFileSync(join(target, "wrangler.jsonc"), `// Written by extensible-app deploy: the platform's Worker serving this project's app at /.\n${JSON.stringify(appConfig, null, 2)}\n`);
-  return { target, site, worker, config: join(target, "wrangler.jsonc") };
+  return { target, site, worker, app, config: join(target, "wrangler.jsonc") };
 }
 
 const run = (command, args, cwd) => {
@@ -222,7 +248,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
       else {
         // Never over a Worker that isn't this app's, unless asked to (scripts/deploy-guard.mjs).
         const { checkName } = await import("./deploy-guard.mjs");
-        console.log(await checkName(laid.worker, laid.worker, { replace }));
+        console.log(await checkName(laid.worker, laid.app, { replace }));
         run("npx", ["wrangler", "deploy", "-c", config], project);
         console.log(`Your app is at https://${laid.worker}.<your workers.dev subdomain>/`);
       }

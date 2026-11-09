@@ -46,6 +46,19 @@ const escapeHtml = (text) => text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<"
 const GITIGNORE = ["node_modules", ".extensible"].join("\n") + "\n";
 
 /**
+ * The ids no plugin may have, read from the platform's source as the kernel has them: RESERVED in
+ * src/kernel/manifest.ts, each service in src/kernel/services/, and each kernel module kernel.json lists.
+ * (Read as text: npx installs no TypeScript tools.)
+ */
+export function reservedIds(root = ROOT) {
+  const manifest = readFileSync(join(root, "src/kernel/manifest.ts"), "utf8");
+  const listed = /export const RESERVED = new Set\(\[([^\]]*)\]/.exec(manifest)?.[1] ?? "";
+  const services = readdirSync(join(root, "src/kernel/services")).filter((f) => f.endsWith(".ts") && f !== "index.ts").map((f) => f.slice(0, -3));
+  const { modules = [] } = JSON.parse(readFileSync(join(root, "kernel.json"), "utf8"));
+  return new Set([...listed.matchAll(/"([^"]+)"/g)].map((m) => m[1]).concat(services, modules));
+}
+
+/**
  * Makes the project in `target` (which mustn't exist yet, or must be empty): the app from the starter, at the
  * top, and a package.json that depends on the platform. Installs nothing. Returns the folder and the app's id.
  * @param {string} target @param {{ name?: string, platform?: string }} [options]
@@ -54,6 +67,7 @@ export function makeProject(target, { name, platform = PLATFORM_SPEC } = {}) {
   const folder = resolve(target);
   const id = basename(folder);
   if (!ID.test(id)) throw new Error(`The folder's name is your app's id, so it must be lowercase letters, digits and dashes, starting with a letter, at most 35 long: not "${id}"`);
+  if (reservedIds().has(id)) throw new Error(`"${id}" is a name the platform keeps for itself (its kernel, or one of its services), so it can't be your app's id: pick another name for the folder`);
   if (existsSync(folder) && readdirSync(folder).length) throw new Error(`${relative(process.cwd(), folder) || folder} already exists and isn't empty`);
   // The starter, named, as `npm run new-app` does (scripts/new-app.mjs, which also checks it: that needs the
   // checks' build tools, which npx doesn't install, so `npm run check` in the project does that).

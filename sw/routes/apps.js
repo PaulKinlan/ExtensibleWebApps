@@ -43,6 +43,11 @@ export default {
       const html = await page.text();
       if (!/<script\b[^>]*\bsrc=["']?\/platform\/host\.js/i.test(html) || html.includes("/@vite/client")) continue;
       if (folder !== "/" && html === (await front)) continue;
+      // An address the server has a page for (/account/, /auth/…) is that page, not a screen of an app at the root.
+      if (folder === "/") {
+        const itself = await env.fetch(request).catch(() => undefined);
+        if (itself?.ok) return itself;
+      }
       // At the root the front page is the app's own page (a copy of /app.html), so that can't tell them apart:
       // instead, a server that answers an address it has no file for with a page isn't serving an app.html here.
       if (folder === "/" && (await env.fetch(new Request(new URL("/no-such-file-here.html", url))).then((r) => r.ok, () => false))) continue;

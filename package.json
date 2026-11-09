@@ -5,6 +5,7 @@
   "license": "Apache-2.0",
   "type": "module",
   "bin": {
+    "extensible-web-apps": "scripts/create-app.mjs",
     "create-extensible-app": "scripts/create-app.mjs",
     "extensible-app": "scripts/extensible-app.mjs"
   },

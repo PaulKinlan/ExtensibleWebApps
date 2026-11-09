@@ -85,9 +85,11 @@ function loadReference() {
 }
 
 /** A path as a link or ctx.ui.views gives it: from the site's root if it starts with /, else next to `from`; no query or fragment. */
-const local = (path, from) => {
+const local = (path, from, root) => {
   const clean = path.replace(/[?#].*$/, "");
   if (!clean.startsWith("/")) return join(dirname(from), clean);
+  // A project of its own (scripts/extensible-app.mjs) serves its files at the root, beside the platform's.
+  if (root && existsSync(join(root, clean))) return join(root, clean);
   // The site's own pages are in site/, served at the root (vite.config.ts): /workbench/plugins/x.js is site/workbench/plugins/x.js.
   const top = join(ROOT, clean);
   const site = join(ROOT, "site", clean);
@@ -95,11 +97,12 @@ const local = (path, from) => {
 };
 const rel = (file) => relative(ROOT, file) || ".";
 
-export async function checkApps(targets) {
+/** @param {string[]} targets @param {{ root?: string }} [options] root: a project whose files are served at the site's root */
+export async function checkApps(targets, { root } = {}) {
   const rules = await loadKernelRules();
   const reference = loadReference();
   const apps = targets.length ? targets.map(appFile) : demoApps();
-  return apps.map((file) => checkAppFile(file, rules, reference));
+  return apps.map((file) => checkAppFile(file, rules, reference, root));
 }
 
 function demoApps() {
@@ -116,14 +119,14 @@ function appFile(target) {
 }
 
 /** One app on disk, read by the checks every app gets (std/maker/checks.js), with the kernel's rules and the reference. */
-function checkAppFile(file, rules, reference) {
+function checkAppFile(file, rules, reference, root) {
   // Every service a call may name: the kernel's files and modules, and each one the reference documents.
   const services = new Set([...serviceFiles(), ...[...reference.methods.keys()].map((k) => k.split(".")[0])]);
   const { problems, plugins } = checkApp(
     {
       page: file,
       read: (key) => (existsSync(key) && statSync(key).isFile() ? readFileSync(key, "utf8") : undefined),
-      resolve: (href, from) => (/^[a-z][\w+.-]*:/i.test(href) ? undefined : local(href, from)),
+      resolve: (href, from) => (/^[a-z][\w+.-]*:/i.test(href) ? undefined : local(href, from, root)),
       label: rel,
       own: () => true,
     },
