@@ -13,11 +13,16 @@
 /** How many folders up a screen may be from its app: /demos/reading-list/a/b/c/d/e/f is the deepest. */
 const DEPTH = 8;
 
-/** The folders an address could belong to, nearest first: /demos/reading-list/book/42 → /demos/reading-list/book/42/, …/book/, /demos/reading-list/, /demos/. */
+/**
+ * The folders an address could belong to, nearest first: /demos/reading-list/book/42 → /demos/reading-list/book/42/,
+ * …/book/, /demos/reading-list/, /demos/, and last the site's root, where a project's one app lives
+ * (/book/42 → /book/42/, /book/, /: scripts/extensible-app.mjs).
+ */
 function folders(pathname) {
   const parts = pathname.split("/").filter(Boolean);
   const out = [];
   for (let n = parts.length; n > 0 && out.length < DEPTH; n--) out.push(`/${parts.slice(0, n).join("/")}/`);
+  if (parts.length <= DEPTH) out.push("/");
   return out;
 }
 
@@ -37,7 +42,15 @@ export default {
       // An app.html only has to load the platform; it needn't link any plugins.
       const html = await page.text();
       if (!/<script\b[^>]*\bsrc=["']?\/platform\/host\.js/i.test(html) || html.includes("/@vite/client")) continue;
-      if (html === (await front)) continue;
+      if (folder !== "/" && html === (await front)) continue;
+      // An address the server has a page for (/account/, /auth/…) is that page, not a screen of an app at the root.
+      if (folder === "/") {
+        const itself = await env.fetch(request).catch(() => undefined);
+        if (itself?.ok) return itself;
+      }
+      // At the root the front page is the app's own page (a copy of /app.html), so that can't tell them apart:
+      // instead, a server that answers an address it has no file for with a page isn't serving an app.html here.
+      if (folder === "/" && (await env.fetch(new Request(new URL("/no-such-file-here.html", url))).then((r) => r.ok, () => false))) continue;
       // The server's headers (its security policies, caching) stay; only those about the encoded body go, as it's decoded here.
       const headers = new Headers(page.headers);
       headers.delete("Content-Encoding");

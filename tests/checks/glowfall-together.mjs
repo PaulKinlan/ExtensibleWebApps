@@ -84,8 +84,13 @@ export default async function ({ check, context, errors, URL }) {
     // Ben taps the first lane: the server moves his jar, and Ann sees it there.
     const canvas = ben.page.locator('[data-plugin="glowfall-field"] canvas');
     const box = await canvas.boundingBox();
-    await ben.page.mouse.click(box.x + box.width * 0.05, box.y + box.height * 0.6);
-    const seen = await ann.page.waitForFunction((s) => [...document.querySelectorAll(`${s} .players li`)].some((li) => li.dataset.you !== "true" && li.dataset.jar === "0"), LOBBY, { timeout: 8000 }).then(() => true, () => false);
+    // The field drops a tap until its first frame from the server has arrived (field.js: no state yet), which on
+    // a busy machine can be after the lobby says Playing: so tap again, a few times, until Ann sees it.
+    let seen = false;
+    for (let tries = 0; tries < 4 && !seen; tries++) {
+      await ben.page.mouse.click(box.x + box.width * 0.05, box.y + box.height * 0.6);
+      seen = await ann.page.waitForFunction((s) => [...document.querySelectorAll(`${s} .players li`)].some((li) => li.dataset.you !== "true" && li.dataset.jar === "0"), LOBBY, { timeout: 3000 }).then(() => true, () => false);
+    }
     check("Glowfall together: a tap on one member's screen moves their jar in the server's game, and the other member's frames show it", seen);
 
     const started = await debug.waitForSelector(`${EVENTS} >> text=game:started`, { timeout: 8000 }).then(() => true, () => false);
