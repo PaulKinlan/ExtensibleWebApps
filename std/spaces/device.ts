@@ -16,6 +16,7 @@ import type { Hosts } from "../../src/kernel/hosts";
 import type { Change, Collections, StoredRecord } from "../../src/kernel/records";
 import type { Store } from "../../src/kernel/store";
 import { record as trace } from "../../src/kernel/trace";
+import { thisDevice } from "./this-device";
 
 const STATE = "sync/device.json";
 const MAX_PUSH = 100;
@@ -37,8 +38,6 @@ export interface Draft {
   at: string;
 }
 
-/** This kernel's sync, if it keeps a copy of a space, and who hears when what it has changes (service.ts). */
-export const thisDevice: { sync?: ReturnType<typeof syncDevice>; changed: Set<() => void> } = { changed: new Set() };
 const changed = () => {
   for (const heard of thisDevice.changed) heard();
 };

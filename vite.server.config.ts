@@ -4,6 +4,10 @@
 // because it imports plugin sources as text and finds services by name; the
 // server itself (serve.ts) and the seams run as written. The output goes in
 // .build/, which is never served.
+//
+// serve.ts is built too, as .build/server/serve.js, for projects that use the
+// platform as a dependency (scripts/extensible-app.mjs): Node won't strip the
+// types from a .ts file inside node_modules.
 import { kernelModules } from "./vite.kernel-modules";
 import { defineConfig } from "vite";
 
@@ -15,6 +19,6 @@ export default defineConfig({
     outDir: ".build/server",
     emptyOutDir: true,
     target: "node22",
-    rollupOptions: { input: { space: "src/server/space.ts", isolate: "src/server/isolate.ts" }, output: { entryFileNames: "[name].js" } },
+    rollupOptions: { input: { space: "src/server/space.ts", isolate: "src/server/isolate.ts", serve: "src/server/serve.ts" }, output: { entryFileNames: "[name].js" } },
   },
 });
