@@ -5,6 +5,8 @@
 // unknown elements are unwrapped so their text survives.
 
 import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../shared/html";
+import { CANVAS_MAX } from "../shared/svg";
+import { copySvg, SVG_NS, type SvgScope } from "./sanitize-svg";
 import { html as trusted } from "./trusted";
 
 const SAFE_HREF = /^(https?:|mailto:|#)/i;
@@ -61,15 +63,70 @@ function allowedAttribute(tag: string, name: string): boolean {
 }
 
 /**
- * An image next to a template file (`<img src="tram.png">` in countdown.html) is the plugin's own file,
- * so it may load without the network permission. Anything that climbs out of the template's folder or
- * leaves the site doesn't count.
+ * A file in the template's folder or below it (`<ui-markdown src="guide.md">`) is the plugin's own.
+ * Anything that climbs out of the template's folder or leaves the site doesn't count.
  */
 function ownFile(value: string, base: string | undefined): string | undefined {
   if (!base || /^[a-z][\w+.-]*:/i.test(value.trim()) || value.trim().startsWith("//")) return undefined;
   const url = new URL(value.trim(), base);
   const folder = new URL(".", base);
   return url.origin === folder.origin && url.pathname.startsWith(folder.pathname) && !url.search ? url.href : undefined;
+}
+
+/** Files an <img> may show from this site without the network permission: pictures, by their extension. */
+const IMAGE_FILE = /\.(png|jpe?g|gif|webp|avif|svg|ico)$/i;
+
+/**
+ * An image file on this site (`../images/tram.png`, `/icons/bus.svg`): a picture, with no query, so it is a
+ * plain file and not a request to the site's server. A relative address needs the template's address to
+ * resolve against; an HTML view drawn from code has none, so it may use a path from the site's root.
+ */
+function siteImage(value: string, base: string | undefined): string | undefined {
+  const v = value.trim();
+  if (/^[a-z][\w+.-]*:/i.test(v) || v.startsWith("//") || v.includes("\\")) return undefined;
+  if (!base && !v.startsWith("/")) return undefined;
+  let url: URL;
+  try {
+    url = new URL(v, base ?? location.href);
+  } catch {
+    return undefined;
+  }
+  return url.origin === location.origin && !url.search && IMAGE_FILE.test(url.pathname) ? url.href : undefined;
+}
+
+/** A canvas's side, in pixels, from its attribute: a whole number from 1 to CANVAS_MAX, else the default. */
+function side(value: string | null, fallback: number): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= CANVAS_MAX ? n : fallback;
+}
+
+/**
+ * A <canvas id> becomes a stand-in the view turns live (canvas-live.ts): its id is the name the plugin's
+ * worker gets it by. Without a usable id there is nothing to hand the worker, so it says so instead.
+ */
+function canvasStandIn(el: Element, owner: string): Element {
+  const id = el.getAttribute("id") ?? "";
+  if (!/^[A-Za-z][\w-]{0,63}$/.test(id)) {
+    const note = document.createElement("span");
+    note.className = "muted";
+    note.textContent = "A canvas needs an id, such as <canvas id=\"chart\">.";
+    return note;
+  }
+  const out = document.createElement("canvas");
+  out.width = side(el.getAttribute("width"), 300);
+  out.height = side(el.getAttribute("height"), 150);
+  out.dataset.canvasId = id;
+  if (el.hasAttribute("pointer")) out.setAttribute("data-pointer", "");
+  out.id = scoped(owner, id);
+  for (const { name, value } of [...el.attributes]) {
+    if (name.startsWith("on") || name === "data-plugin" || name === "data-canvas" || name === "data-canvas-id") continue;
+    if (name.startsWith("aria-") || name.startsWith("data-") || GLOBAL_ATTRIBUTES.includes(name)) out.setAttribute(name, scopedValue(owner, name, value));
+  }
+  return out;
+}
+
+function svgScope(owner: string): SvgScope {
+  return { scoped: (name, value) => scopedValue(owner, name, value), style: customProperties, id: (id) => scoped(owner, id) };
 }
 
 function copy(source: Node, into: Node, owner: string, remote: boolean, base?: string): void {
@@ -81,6 +138,16 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
     if (child.nodeType !== Node.ELEMENT_NODE) continue; // comments, processing instructions
     const el = child as Element;
     const tag = el.localName;
+    // An <svg> is copied by its own list (sanitize-svg.ts); a <canvas> becomes one the plugin draws on.
+    if (tag === "svg" && el.namespaceURI === SVG_NS) {
+      const svg = copySvg(el, svgScope(owner));
+      if (svg) into.appendChild(svg);
+      continue;
+    }
+    if (tag === "canvas") {
+      into.appendChild(canvasStandIn(el, owner));
+      continue;
+    }
     if (DROPPED_WITH_CONTENT.has(tag)) continue;
     // A slot is a room the plugin opens to others, so its name must be the plugin's own: `cookbook.recipe.actions`.
     if (tag === "slot" && !(el.getAttribute("name") ?? "").startsWith(`${owner.split("@")[0]}.`)) {
@@ -100,10 +167,10 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       }
       if (!allowedAttribute(tag, name)) continue;
       if (name === "href" && !SAFE_HREF.test(value.trim()) && !isLocal(value)) continue;
-      // An https image is a request: only plugins allowed on the network may make one. A file next to the template is the plugin's own.
+      // An https image is a request: only plugins allowed on the network may make one. A picture on this site is not.
       if (name === "src" && !(remote ? SAFE_SRC : DATA_SRC).test(value.trim())) {
-        // So is a Markdown file a ui-markdown draws: it is fetched from this site and shown as text.
-        const own = tag === "img" || tag === "ui-markdown" ? ownFile(value, base) : undefined;
+        // A Markdown file a ui-markdown draws is fetched from the template's folder and shown as text.
+        const own = tag === "img" ? siteImage(value, base) : tag === "ui-markdown" ? ownFile(value, base) : undefined;
         if (own) out.setAttribute("src", own);
         continue;
       }

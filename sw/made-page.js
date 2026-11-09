@@ -10,6 +10,8 @@
 // permissions its manifest lists. The page is layout: slots, headings, plain
 // text and links, a <style>, and <link rel="plugin"> lines.
 
+import { LAUNCH_META, launchManifest } from "./launch-meta.js";
+
 /** The one script a made app's page may load. */
 export const HOST_SCRIPT = '<script type="module" src="/platform/host.js"></script>';
 
@@ -95,8 +97,12 @@ export function pageProblems(html) {
       problems.push({ line, message: `<${name}> isn't allowed in an app's page. Lay out slots in plain HTML, and draw with plugins` });
       continue;
     }
-    if (name === "meta" && ("http-equiv" in attributes || ("name" in attributes && !["viewport", "description", "color-scheme", "theme-color", "short-name"].includes(attributes.name.toLowerCase())))) {
-      problems.push({ line, message: '<meta> may only be charset, or name="viewport", "description", "color-scheme", "theme-color" or "short-name"' });
+    if (name === "meta" && ("http-equiv" in attributes || ("name" in attributes && !["viewport", "description", "color-scheme", "theme-color", "short-name", ...LAUNCH_META].includes(attributes.name.toLowerCase())))) {
+      problems.push({ line, message: '<meta> may only be charset, or name="viewport", "description", "color-scheme", "theme-color", "short-name", "file-handlers" or "share-target"' });
+    } else if (name === "meta" && LAUNCH_META.includes((attributes.name ?? "").toLowerCase())) {
+      // The app's file handlers and share target (launch-meta.js): a line the manifest can't use is a mistake now, not a silent no-op later.
+      const which = attributes.name.toLowerCase();
+      for (const message of launchManifest((n) => (n === which ? (attributes.content ?? "") : undefined)).problems) problems.push({ line, message });
     }
     for (const attribute of tag.names) {
       const value = attributes[attribute];

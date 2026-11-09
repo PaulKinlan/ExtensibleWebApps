@@ -13,6 +13,8 @@ import type { Api, ApiMember } from "../shared/api";
 import type { Command, Slot, View } from "../shared/protocol";
 import { capabilityFor, hookOwners, hooks, type Mode } from "./hooks";
 import { ACTIONS, COMPONENTS, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, HTML_MAX, INPUT_TYPES } from "../shared/html";
+import { SVG_ATTRIBUTES } from "../shared/svg";
+import { SVG_ELEMENTS } from "../shared/svg-docs";
 import { MANIFEST_FIELDS, RESERVED } from "./manifest";
 import { RECORD_FIELDS } from "./records";
 import { SCHEMA_KEYWORDS } from "./schema";
@@ -102,7 +104,7 @@ const CTX: Record<ApiMember<Api>, Doc> = {
   "ui.onCanvas": {
     signature: "ctx.ui.onCanvas(id, (canvas, theme) => …)",
     needs: "",
-    description: "Receives the OffscreenCanvas for a canvas view the plugin rendered, with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope \"tab\" for plugins that draw. A canvas view rendered with `pointer: true` sends taps and drags on it as the event `canvas:pointer` (hear it with ui.onEvent): `{ canvas, type, x, y, id, kind }`, type down, move, up or cancel, x and y in the canvas's own pixels.",
+    description: "Receives the OffscreenCanvas for a canvas view the plugin rendered, or a `<canvas id>` in its HTML view or template (by that id), with the page's theme: `{ scheme, colors, font }`, where colors holds fg, fg-2, bg, bg-2, surface, border, accent, accent-fg, danger, ok and warn, resolved. Use scope \"tab\" for plugins that draw. A canvas view rendered with `pointer: true` sends taps and drags on it as the event `canvas:pointer` (hear it with ui.onEvent): `{ canvas, type, x, y, id, kind }`, type down, move, up or cancel, x and y in the canvas's own pixels.",
   },
   "ui.onTheme": {
     signature: "ctx.ui.onTheme((theme) => …) → off()",
@@ -214,6 +216,7 @@ export interface Reference {
     inputTypes: string[];
     components: { tag: string; attributes: string; about: string }[];
     actions: string[];
+    svg: { elements: { tag: string; about: string }[]; attributes: string[] };
   };
   slots: { slot: string; about: string }[];
   commands: { name: string; about: string }[];
@@ -261,6 +264,7 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
       inputTypes: INPUT_TYPES,
       components: Object.entries(COMPONENTS).map(([tag, c]) => ({ tag, ...c })),
       actions: ACTIONS,
+      svg: { elements: Object.entries(SVG_ELEMENTS).map(([tag, about]) => ({ tag, about })), attributes: SVG_ATTRIBUTES },
     },
     slots: Object.entries(SLOTS).map(([slot, about]) => ({ slot, about })),
     commands: Object.entries(COMMANDS).map(([name, about]) => ({ name, about })),
@@ -374,7 +378,7 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     "",
     "## HTML views",
     "",
-    `Plugins describe UI as plain HTML, up to ${ref.html.maxLength.toLocaleString("en")} characters. The host parses it inertly and keeps only what is listed here: no script, no frames, no event attributes, and a \`style\` attribute keeps only custom properties set to numbers (\`style="--pct: 40"\`, for sizes from data). Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app; \`class\` is for a template file's own \`<style>\`, which reaches only that plugin's views. Images load from https: only for plugins with the \`network\` capability; others can use data: images.`,
+    `Plugins describe UI as plain HTML, up to ${ref.html.maxLength.toLocaleString("en")} characters. The host parses it inertly and keeps only what is listed here: no script, no frames, no event attributes, and a \`style\` attribute keeps only custom properties set to numbers (\`style="--pct: 40"\`, for sizes from data). Unknown elements are unwrapped, so their text stays. Styling comes from the app's design tokens, so plain HTML already looks like the rest of the app; \`class\` is for a template file's own \`<style>\`, which reaches only that plugin's views. Images load from https: only for plugins with the \`network\` capability; any plugin can use data: images and pictures on this site (by extension, with no ?query). An \`<svg>\` keeps the elements listed under SVG in views, and a \`<canvas id>\` is handed to the plugin's worker (ctx.ui.onCanvas).`,
     "",
     "### Components",
     "",
@@ -389,6 +393,12 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     `Allowed on every element: ${ref.html.globalAttributes.map(code).join(", ")}, \`aria-*\` and \`data-*\`. Input types: ${ref.html.inputTypes.map(code).join(", ")}.`,
     "",
     table(["Element", "Its own attributes", "Notes"], ref.html.elements.map((e) => [code(`<${e.tag}>`), e.attributes.map(code).join(", "), e.about])),
+    "",
+    "### SVG in views",
+    "",
+    `An \`<svg>\` keeps these elements and drops anything else with its content (no script, foreignObject, image, a or animation). Inside it, \`<template for>\` and \`<template if>\` work as elsewhere, so shapes can come from data. Attributes allowed on them, besides the ones allowed on every element: ${ref.html.svg.attributes.map(code).join(", ")}. \`href\` (on use and textPath) and \`url()\` (in fill, stroke, clip-path, mask, filter and markers) may only name an \`#id\` in the same view.`,
+    "",
+    table(["Element", "Notes"], ref.html.svg.elements.map((e) => [code(`<${e.tag}>`), e.about])),
     "",
     "## Views and slots",
     "",

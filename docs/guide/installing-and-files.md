@@ -17,7 +17,16 @@ The host links each app's page to `manifest.webmanifest` in its folder ([`src/ho
 
 So `demos/habits/` installs as "Habits", and an app made in the browser at `/apps/tally/` installs as itself too. The link goes in once the service worker controls the page: on a very first visit there is nothing at that address yet.
 
-Write your own `manifest.webmanifest` when the app needs more than that: a share target, file handlers, shortcuts, screenshots. The reading list does.
+Two more lines in the page make the app a place to open files or share to, with no manifest file ([`sw/launch-meta.js`](../../sw/launch-meta.js)):
+
+| From the page | In the manifest |
+| --- | --- |
+| `<meta name="file-handlers" content=".csv .tsv">` | `file_handlers`, opening those files at the app's `open` screen. A kind of file the platform doesn't know is written `type/subtype:.ext`, such as `application/x-logbook:.logbook` |
+| `<meta name="share-target" content="title text url">` | `share_target`, taking the fields named at the app's `share` screen |
+
+An app made in the browser holds only its page, plugins, templates and styles, so these lines are how it does either. The page checks for made apps refuse a line the manifest couldn't use (an extension it doesn't know, a field that isn't title, text or url), so the mistake shows when the app is made, not when someone installs it.
+
+Write your own `manifest.webmanifest` when the app needs more than that: shortcuts, screenshots, a share target that takes files. The reading list has one.
 
 ## Offline
 

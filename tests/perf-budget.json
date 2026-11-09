@@ -1,8 +1,8 @@
 {
   "gzipKB": {
-    "platform/host.js": 32,
+    "platform/host.js": 35,
     "platform/host.css": 7,
-    "assets/browser.js": 128,
+    "assets/browser.js": 130,
     "assets/runtime.js": 4,
     "assets/net-runtime.js": 4
   },

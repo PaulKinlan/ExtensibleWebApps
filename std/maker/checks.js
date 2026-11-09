@@ -36,6 +36,7 @@ import { pageParts, pageProblems, tags } from "../../sw/made-page.js";
  *   grants(caps: Set<string>, wanted: string): boolean;
  *   ELEMENTS: Record<string, string>; COMPONENTS: Record<string, unknown>; GLOBAL_ATTRIBUTES: string[];
  *   ELEMENT_ATTRIBUTES: Record<string, string[]>; DROPPED_WITH_CONTENT: Set<string>; INPUT_TYPES?: string[];
+ *   SVG_ELEMENTS?: Record<string, string>; SVG_ATTRIBUTES?: string[];
  *   methods: Map<string, string | string[] | undefined>; hooks: Map<string, string>;
  *   services?: Set<string>;
  *   takenBy?(id: string): string | undefined;
@@ -380,6 +381,17 @@ function checkTemplates(key, raw, rules, report) {
       continue;
     }
     const component = tag in rules.COMPONENTS;
+    // Inside an <svg>, shapes and their attributes come from the SVG list (src/shared/svg.ts). Names are compared
+    // without case, as this reads tags lowercased.
+    if (rules.SVG_ELEMENTS && (tag === "svg" || (!(tag in rules.ELEMENTS) && Object.keys(rules.SVG_ELEMENTS).some((t) => t.toLowerCase() === tag)))) {
+      const svgAttributes = new Set([...(rules.SVG_ATTRIBUTES ?? []), ...rules.GLOBAL_ATTRIBUTES, "id", "style", "xmlns"].map((a) => a.toLowerCase()));
+      for (const { name, value } of attributes) {
+        if (name.startsWith("on")) report("error", key, line, `${name}= isn't allowed in a view: use data-action for events, and ctx.ui.onEvent in the plugin`);
+        else if (!name.startsWith("aria-") && !name.startsWith("data-") && !svgAttributes.has(name)) report("warning", key, line, `${name}= isn't allowed on <${tag}>, so it is dropped`);
+        else if ((name === "href" || /url\s*\(/i.test(value)) && !value.includes("{{") && !/^\s*(#[\w-]+|url\(\s*#[\w-]+\s*\))\s*$/i.test(value)) report("warning", key, line, `${name}="${value}" is dropped: in an <svg>, href and url() may only name an #id in the same view`);
+      }
+      continue;
+    }
     if (rules.DROPPED_WITH_CONTENT.has(tag)) {
       report("error", key, line, `<${tag}> isn't allowed in a view; it is dropped with everything inside it`);
       continue;

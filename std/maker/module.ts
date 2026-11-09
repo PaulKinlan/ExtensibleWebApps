@@ -39,6 +39,8 @@ import { readManifest } from "../../src/kernel/manifest";
 import type { Param, ServiceProvider } from "../../src/kernel/remote";
 import { recent, record } from "../../src/kernel/trace";
 import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENTS, ELEMENT_ATTRIBUTES, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../../src/shared/html";
+import { SVG_ATTRIBUTES } from "../../src/shared/svg";
+import { SVG_ELEMENTS } from "../../src/shared/svg-docs";
 import { fromAgentFile } from "../../src/kernel/agents/file";
 import { DEFAULT_RUNNER, runnerName } from "../../src/shared/agent-runner";
 import { env } from "../../src/kernel/env";
@@ -138,6 +140,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       ELEMENT_ATTRIBUTES,
       DROPPED_WITH_CONTENT,
       INPUT_TYPES,
+      SVG_ELEMENTS,
+      SVG_ATTRIBUTES,
       fromAgentFile,
       runnerName,
       DEFAULT_RUNNER,
