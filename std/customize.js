@@ -170,7 +170,7 @@ export default function (ctx) {
     return [...own, ...theirs].filter(matches);
   };
 
-  const draw = async () => {
+  const drawNow = async () => {
     if (!open) return views.render("customize", "panel", { open: false, reopen });
     const [mine, page] = await Promise.all([call("mine"), call("page")]);
     if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, reopen, message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
@@ -225,6 +225,30 @@ export default function (ctx) {
     }
     const layout = await call("layout");
     return views.render("customize", "panel", { ...base, layout: layout?.slots ? { ...layout, noSlots: !layout.slots.length, noParts: !layout.parts.length } : { slots: [], parts: [], elements: [], noSlots: true, noParts: true } });
+  };
+
+  /**
+   * Draws the panel, once at a time: a change heard while drawing (plugins:changed, an action) draws once
+   * more after, rather than reading everything twice at the same moment.
+   */
+  let drawing = null;
+  let again = false;
+  const draw = () => {
+    if (drawing) {
+      again = true;
+      return drawing;
+    }
+    drawing = (async () => {
+      try {
+        do {
+          again = false;
+          await drawNow();
+        } while (again);
+      } finally {
+        drawing = null;
+      }
+    })();
+    return drawing;
   };
 
   /** Runs one authoring call, says how it went, and draws the panel again. */
