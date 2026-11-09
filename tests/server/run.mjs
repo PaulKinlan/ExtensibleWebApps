@@ -66,7 +66,7 @@ const hosts = {
       return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env), allowPrivate: ["127.0.0.1"], email: smtpMailer({ url: `smtp://127.0.0.1:${mailbox.port}`, from: FROM }) });
     },
     /** Whether a message with this subject went out to `to`, with these words. */
-    mailed: (subject, to, text) => mailbox.received.some((m) => m.subject === subject && m.to.some((t) => t.toLowerCase() === to) && m.text === text && m.from === "spaces@example.com"),
+    mailed: (subject, to, text) => mailbox.received.some((m) => m.subject === subject && m.to.some((t) => t.toLowerCase() === to) && (text === undefined || m.text === text) && m.from === "spaces@example.com"),
     wrote: (space) => existsSync(join(spaces, space, "files", "user", "demos", "contacts", "hello-space.js")),
   }),
   cloudflare: (spaces) => {
@@ -970,6 +970,15 @@ async function suite(name, make) {
       "email: a server plugin's message to a member is delivered: over SMTP on Node, through Cloudflare Email Service on Cloudflare",
       host.mailed("3 new answers", "sam@example.com", "See them in the space."),
       name === "node" ? JSON.stringify(mailbox.received.slice(0, 2).map(({ raw, ...m }) => m)) : (server.log?.() ?? "").split("\n").filter((l) => /mail|eml|send/i.test(l)).slice(-8).join(" | "),
+    );
+    // A person can send their saved address a test message, a few a day, to see mail reaches them.
+    const tests = [];
+    for (let i = 0; i < 4; i++) tests.push(await owner.call("/auth/me/email/test", {}));
+    const subject = `A test message from ${new URL(server.url).host}`;
+    check(
+      "email: a signed-in person can send their own address a test message (3 a day), and it's delivered on this host",
+      tests.slice(0, 3).every((t) => t.status === 200 && t.body?.ok) && tests[3].status === 429 && host.mailed(subject, "sam@example.com"),
+      JSON.stringify(tests.map((t) => [t.status, t.body])),
     );
     await surveyChecks(server.url, check, owner);
     await mcpChecks(server.url, check, owner, await person(server.url).account("Stranger"));

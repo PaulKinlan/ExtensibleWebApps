@@ -71,6 +71,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     left(space, user) {
       for (const [socket, who] of clients) if (who.space === space && who.user === user) socket.close(4403, "You're no longer in this space");
     },
+    mail: async (message) => (options.email ? options.email.send(message) : null),
   });
 
   /** Spaces whose kernel is stopped while their folder is copied out or in, until it's done. */

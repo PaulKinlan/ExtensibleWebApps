@@ -12,6 +12,7 @@
 //   GET  /auth/me                           who is signed in (401 if no one)
 //   POST /auth/signout                      ends this session
 //   POST /auth/me/email          { email }  sets the address the spaces you're in may email ("" removes it)
+//   POST /auth/me/email/test                sends that address a test message (a few a day), to see mail arrives
 //   GET  /auth/providers                    the other sites you can sign in with (providers.ts)
 //   GET  /auth/oauth/<id>/start             goes to that site to sign in (or, signed in, to link it)
 //   GET  /auth/oauth/<id>/callback          where that site sends you back; signs in, then /account/
@@ -35,7 +36,7 @@
 // hash, so its files can't be used to sign in.
 
 import { isAddress } from "../../kernel/address.ts";
-import type { Files } from "../../seams/index.ts";
+import type { Email, Files } from "../../seams/index.ts";
 import { agentKeys } from "./agent-keys.ts";
 import { isFlow, type OAuthProvider, type Provider } from "./providers.ts";
 import { ALGORITHMS, b64url, unb64url, type CredentialJSON, type PublicKey, verifyAssertion, verifyRegistration } from "./webauthn.ts";
@@ -49,8 +50,9 @@ export interface User {
    * its members' addresses). Typed on /account/; not confirmed yet (no link is mailed to it).
    */
   email?: string;
+  /** How many test messages they sent themselves today (POST /auth/me/email/test). */
+  tests?: { day: string; sent: number };
 }
-
 
 interface Credential {
   id: string;
@@ -130,7 +132,12 @@ export async function bodyOf(request: Request, limit: number): Promise<string | 
 export interface Hooks {
   /** Someone left a space, or was removed from it: close their connections to it. */
   left?(space: string, user: string): void | Promise<void>;
+  /** Sends a message, as the host sends a space's email; null when the host has no mail set up. */
+  mail?(message: Parameters<Email["send"]>[0]): Promise<Awaited<ReturnType<Email["send"]>> | null>;
 }
+
+/** Test messages a person may send themselves in a day. */
+const TESTS_PER_DAY = 3;
 
 /** The routes, for a host to call with each request under /auth/. */
 export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks = {}) {
@@ -536,6 +543,22 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         const updated: User = email ? { ...user, email } : user;
         await write(`users/${user.id}.json`, updated);
         return json({ user: updated });
+      }
+      case "/auth/me/email/test": {
+        const current = await session(request);
+        if (!current) return json({ error: "Not signed in" }, 401);
+        const { user } = current;
+        if (!user.email) return json({ error: "Save an email address first" }, 400);
+        if (!hooks.mail) return json({ error: "This server can't send email" }, 503);
+        const day = new Date().toISOString().slice(0, 10);
+        const sent = user.tests?.day === day ? user.tests.sent : 0;
+        if (sent >= TESTS_PER_DAY) return json({ error: `You can send yourself ${TESTS_PER_DAY} test messages a day` }, 429);
+        await write(`users/${user.id}.json`, { ...user, tests: { day, sent: sent + 1 } });
+        const host = new URL(request.url).host;
+        const result = await hooks.mail({ to: [user.email], subject: `A test message from ${host}`, text: `Hello ${user.name},\n\nYou asked ${host} to send you a test message, and here it is: apps in your spaces can reach you at this address.\n\nIf you didn't ask for it, someone typed your address on their account. Nothing more will come unless they're in a space with you.` });
+        if (!result) return json({ error: "This server keeps email in an outbox and doesn't send it yet" }, 503);
+        if (!result.ok) return json({ error: `The message couldn't be sent: ${result.error}` }, 502);
+        return json({ ok: true, id: result.id });
       }
       case "/auth/signout": {
         const current = await session(request);
