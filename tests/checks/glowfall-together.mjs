@@ -23,9 +23,9 @@ async function signUp(browser, address, name, errors) {
     options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
   });
   await page.goto(address);
-  await page.fill("#name", name);
-  await page.click('#register button[type="submit"]');
-  await page.waitForSelector("#in:not([hidden])", { timeout: 8000 });
+  await page.fill('form[data-action="register"] input[name="name"]', name);
+  await page.click('form[data-action="register"] button[type="submit"]');
+  await page.waitForSelector(".signed-in", { timeout: 8000 });
   return { context, page };
 }
 
@@ -44,12 +44,12 @@ export default async function ({ check, context, errors, URL }) {
   try {
     const ann = await signUp(browser, `${server.url}/account/`, "Ann", errors);
     devices.push(ann.context);
-    await ann.page.fill("#space-name", "play");
-    await ann.page.click('#new-space button[type="submit"]');
-    await ann.page.waitForSelector('#spaces button:has-text("Invite someone")', { timeout: 8000 });
-    await ann.page.click('#spaces button:has-text("Invite someone")');
-    await ann.page.waitForSelector("#invite-link:not([hidden])", { timeout: 8000 });
-    const ben = await signUp(browser, await ann.page.inputValue("#invite-url"), "Ben", errors);
+    await ann.page.fill('form[data-action="make"] input[name="name"]', "play");
+    await ann.page.click('form[data-action="make"] button[type="submit"]');
+    await ann.page.waitForSelector('.space-list button:has-text("Invite someone")', { timeout: 8000 });
+    await ann.page.click('.space-list button:has-text("Invite someone")');
+    await ann.page.waitForSelector(".invite input", { timeout: 8000 });
+    const ben = await signUp(browser, await ann.page.inputValue(".invite input"), "Ben", errors);
     devices.push(ben.context);
 
     // Ann's debugger first, listening to the server.

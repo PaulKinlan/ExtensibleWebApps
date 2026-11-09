@@ -1,0 +1,48 @@
+<!--
+  Your spaces (spaces.js). It sends { user, spaces, app, invite, status,
+  revision }: each space { name, owner, role, open }, where `open` is the
+  address of the app the person came from, in that space. `invite` is the
+  last invite link made.
+-->
+<style>
+  .spaces form { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .spaces input { flex: 1 1 12rem; }
+  .spaces ul { display: grid; gap: var(--space-2); padding-left: 1.2rem; }
+  .spaces .status:empty { display: none; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+<template id="spaces">
+  <template if="user">
+    <section class="spaces">
+      <h2>Your spaces</h2>
+      <p>A space holds people and their data, and any app can open in it. One with just you in it is your own.</p>
+      <ul class="space-list">
+        <template for="s of spaces">
+          <li key="{{s.name}}">
+            <strong>{{s.name}}</strong> ({{s.role}})
+            <template if="s.open"><a href="{{s.open}}">Open {{app.title}} in it</a></template>
+            <a href="/s/{{s.name}}/">Open the site in it</a>
+            <template if="s.owner">
+              <button type="button" data-action="invite:{{s.name}}">Invite someone</button>
+              <a href="/auth/spaces/{{s.name}}/export" class="button">Download a copy</a>
+              <button type="button" data-action="load:{{s.name}}">Load a copy</button>
+            </template>
+            <template if="!s.owner">
+              <button type="button" data-action="leave:{{s.name}}">Leave</button>
+            </template>
+          </li>
+        </template>
+        <template if="!spaces.length"><li>None yet.</li></template>
+      </ul>
+      <form data-action="make" key="new-space-{{revision}}">
+        <label for="space-name" class="visually-hidden">The new space's name</label>
+        <input id="space-name" name="name" placeholder="family" required pattern="[a-z0-9][a-z0-9\-]{0,62}" title="Lowercase letters, numbers and dashes">
+        <button type="submit">Make a space</button>
+      </form>
+      <template if="invite">
+        <p class="invite">Send this link to the person you're inviting. It works once, for a week: <input id="invite-url" readonly value="{{invite}}"></p>
+      </template>
+      <p class="status" role="status">{{status}}</p>
+    </section>
+  </template>
+</template>

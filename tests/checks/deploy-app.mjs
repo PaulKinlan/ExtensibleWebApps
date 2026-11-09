@@ -15,7 +15,7 @@ export default async function ({ check }) {
   try {
     const { site, path, worker, warnings } = layoutApp("demos/habits", { out });
     const has = (p) => existsSync(join(site, p));
-    check("an app's Worker serves the platform", ["platform/host.js", "platform/host.css", "sw.js", "404.html", "_headers", "std/debug-console.js", "account/index.html"].every(has));
+    check("an app's Worker serves the platform", ["platform/host.js", "platform/host.css", "sw.js", "404.html", "_headers", "std/debug-console.js", "account/app.html"].every(has));
     check("an app's Worker serves the app at the path it has here", path === "demos/habits" && has("demos/habits/app.html") && worker === "habits");
     check("an app's Worker leaves out this site's own pages", !has("docs") && !has("workbench") && !has("home") && !has("demos/reading-list") && !has("demos/index.html"));
     const front = readFileSync(join(site, "index.html"), "utf8");
