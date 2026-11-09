@@ -1,0 +1,22 @@
+# What a package of the platform leaves out (npm pack, npm publish, and an
+# install from GitHub, which runs `prepack` to build it). Unlike .gitignore,
+# it keeps dist/ and .build/: a project that depends on the platform serves
+# and deploys the built files (scripts/extensible-app.mjs), with no build of
+# its own.
+node_modules
+test-results
+tests
+.spaces
+.wrangler
+.extensible
+.build/apps
+.github
+# This site's own pages, built: a project serves the platform's files around its app, never these
+# (SITE_PAGES in scripts/deploy-app.mjs). Their sources stay in the package, to read.
+/dist/demos
+/dist/docs
+/dist/home
+/dist/workbench
+/dist/new
+/dist/starter
+/dist/index.html
