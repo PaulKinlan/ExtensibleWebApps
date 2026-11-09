@@ -129,6 +129,23 @@ export default async function ({ check, context, errors }) {
     await ann.page.click(`${YOURS} button[data-action="unshare"]`);
     const stopped = (await accept(ann.page, "stops sharing tides")) && (await shown(ann.page, `${YOURS} >> text=No longer shared`));
     check("space made apps: stopping sharing leaves a member's accepted copy with them", stopped && /High water at one/.test(await served(ben.page, "tides.js")) && (await ann.page.isVisible(`${YOURS} button[data-action="share"]:has-text("Share with the space")`)));
+
+    // An app Ann made outside the space (at /new/, in her own data folder) can be copied in, after a review.
+    await ann.page.evaluate(async ([page, plugin]) => {
+      let dir = await navigator.storage.getDirectory();
+      for (const part of ["made", "apps", "harbour"]) dir = await dir.getDirectoryHandle(part, { create: true });
+      for (const [name, body] of [["app.html", page.replace("Tide times", "Harbour")], ["tides.js", plugin]]) {
+        const out = await (await dir.getFileHandle(name, { create: true })).createWritable();
+        await out.write(body);
+        await out.close();
+      }
+    }, [PAGE, tides("Boats in")]);
+    await ann.page.reload();
+    const listed = await shown(ann.page, `${YOURS} .own-apps >> text=Harbour`);
+    if (listed) await ann.page.click(`${YOURS} .own-apps button[data-action="copy-in"]`);
+    const copied = listed && (await accept(ann.page, "makes Harbour")) && (await shown(ann.page, `${YOURS} button[data-action="pick"]:has-text("Harbour")`));
+    const inSpace = copied && (await ann.page.evaluate(() => fetch("/s/home/apps/harbour/tides.js").then((r) => r.text()))).includes("Boats in");
+    check("space made apps: an app made outside the space is offered to copy in, and copied after a review", listed && copied && inSpace && (await ann.page.locator(`${YOURS} .own-apps`).count()) === 0, `listed ${listed}, copied ${copied}, served ${inSpace}`);
   } finally {
     for (const device of devices) await device.close().catch(() => {});
     await server.stop().catch(() => {});

@@ -972,6 +972,14 @@ Needs: `apps:read`.
 
 Checks a made app's files as the kernel will read them, then, if it is open (its preview reloads), what went wrong as it ran. ran is false if it isn't open anywhere. ok is true when there are no errors.
 
+#### maker.copyIn
+
+`maker.copyIn(app)` → the same as save
+
+Needs: `apps:make`, and the person's review.
+
+In a space: copies one of the person's own apps (made outside it, on this device) in, as a made app in the space, once they accept one review. It can then be shared with the space's members.
+
 #### maker.history
 
 `maker.history(app, file)` → [{ version, at, by, note, removed? }]
@@ -995,6 +1003,14 @@ The apps the person has made.
 Needs: `apps:make`, and the person's review.
 
 Reads an app's files from a folder the person picks (call it right after they click): app.html and the plugins, templates, styles and agents beside it. Saves them as the made app named app, or after the folder, once the person accepts one review. Other files are skipped.
+
+#### maker.ownApps
+
+`maker.ownApps()` → [{ name, title, here }]
+
+Needs: `apps:read`.
+
+In a space: the apps the person made outside it on this device (at /new/), to copy one in. here is true when an app of that name is in the space already. Empty outside a space.
 
 #### maker.read
 
@@ -1805,8 +1821,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `agents:run:<agent>` | Call agents.run. |
-| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.unshare. |
-| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.check. |
+| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.unshare. |
+| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.check. |
 | `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.mix, audio.keep, audio.load, audio.forget, audio.kept, audio.playClip, audio.open, audio.save. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |
@@ -1960,6 +1976,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-preview>` | app="<name>", revision, label | A working copy of an app the person made in the browser (std/maker/), from /apps/<name>/, in a frame, with a link to open it in its own tab. Changing `revision` opens it again. |
 | `<ui-dictation>` | action, label, lang | A button that listens, with the browser's speech recognition, while it is pressed in. `action` is sent with { listening: true } when the microphone is on, { text, final } for what it hears (final: false while a phrase is still changing), and { listening: false, error? } when it stops. Disabled, saying why, in a browser without speech recognition. |
 | `<ui-site-preview>` | address="http://localhost:1313/…", revision, label, action | A page from a web server on the person's own device (localhost, 127.0.0.1), such as a site's `hugo server`, in a frame; any other address isn't shown. It checks the server first, and sends `action` with "up", "down" or "blocked" (the browser won't let the site reach the device). Changing `revision` checks again and reloads it. |
+| `<ui-summarizer>` | action, label, kind, length, context, lang, subject | A button that summarises its text content on the device, sending `action` with { text } or { error } (see elements/ui-summarizer.html). |
 | `<ui-waveform>` | peaks="-12,30,…", duration, select="from,to", action, playing="at,from,to", label | A sound's waveform, from `peaks` (a low and a high from -100 to 100 for each column) and its `duration` in seconds. Dragging across it (or Shift and the arrow keys) picks a part, sent as `action` with { from, to } in seconds; a click sends a cursor. `select` sets the part shown as picked; `playing` runs a playhead from `from` to `to` starting at `at` (ms since the epoch). |
 
 ### Actions

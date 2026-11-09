@@ -1,0 +1,41 @@
+<!--
+  ui-summarizer: a button that drafts a short summary of some text with the
+  browser's own on-device model (Chrome's Summarizer API), and sends it to
+  the plugin that drew it:
+
+    <ui-summarizer action="drafted" label="Draft description" kind="teaser"
+      context="A post from the blog Example, for its description field.">
+      The text to summarise, as the element's text content.
+    </ui-summarizer>
+
+  Attributes: action (sent with the result), label (the button's text,
+  "Draft" if left out), kind ("tldr", "teaser", "key-points" or "headline";
+  "tldr" if left out), length ("short", "medium" or "long"; "short"), context
+  (a sentence on what the text is and what the summary is for), lang (the
+  text's language; the page's if left out), subject (what the text is of, such
+  as a post's path; sent back with the result, so the plugin can tell a
+  result that arrives after it has moved on).
+
+  `action` is sent with
+    { text, subject }    the summary, once it is written
+    { error, subject }   why there is none: the browser said no, the model couldn't
+                 run, or the text was empty
+
+  The text never leaves the device: the model runs in the browser, which may
+  download it the first time (the button shows how far it has got). The text
+  content is the input and is never shown. A result that arrives after the
+  element left the page isn't sent. In a browser with no on-device
+  summarizer the element shows nothing at all.
+
+  The behaviour is in ui-summarizer.js, linked below.
+-->
+<template>
+  <style>
+    :host { display: inline-block; }
+    :host([hidden]), .unsupported { display: none; }
+    button { font: inherit; }
+    button[aria-busy="true"] { cursor: progress; }
+  </style>
+  <button type="button" part="button" aria-busy="false"></button>
+</template>
+<script type="module" src="ui-summarizer.js"></script>
