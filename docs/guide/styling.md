@@ -18,7 +18,8 @@ Use the tokens rather than fixed values, so a plugin fits any app that sets them
 
 | Kind | Tokens |
 | --- | --- |
-| Colour | `--bg`, `--bg-2`, `--surface`, `--fg`, `--fg-2`, `--border`, `--accent`, `--accent-fg`, `--ok`, `--warn`, `--danger` |
+| Colour | `--bg`, `--bg-2`, `--surface`, `--fg`, `--fg-2`, `--border`, `--accent`, `--accent-fg`, `--action`, `--action-fg` (the main button), `--ok`, `--warn`, `--danger` |
+| Size | `--control` (38px): the height of a button, field or select |
 | Space | `--space-1` (4px) to `--space-6` (32px) |
 | Type | `--text-sm`, `--text-md`, `--text-lg`, `--text-xl`, `--text-2xl`, `--font`, `--mono` |
 | Shape | `--radius-sm`, `--radius`, `--radius-lg`, `--shadow-1`, `--shadow-2`, `--ring` (the focus outline) |

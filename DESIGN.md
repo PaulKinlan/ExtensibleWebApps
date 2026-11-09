@@ -6,7 +6,7 @@ How things look here, and how to keep them looking right. Read this before you w
 
 One look, set in one place. The platform's stylesheet ([src/host/styles.css](src/host/styles.css), served as `/platform/host.css`) holds the design tokens and styles plain HTML to them. A view written as plain HTML with no CSS of its own should already look finished. CSS in a plugin is for layout the defaults can't know (a calendar grid, a board's columns), not for restating how a button looks.
 
-Quiet, dense enough to work in, legible to someone who has never seen the app: that is the look. Developers and people who don't code both use these apps, so nothing relies on knowing what a control is called.
+Warm paper neutrals, ink for the main action, the accent kept for links and focus, cards for sections, and no shadow on anything that doesn't float: that is the look. It is quiet, dense enough to work in, and legible to someone who has never seen the app. Developers and people who don't code both use these apps, so nothing relies on knowing what a control is called.
 
 ## Tokens
 
@@ -15,8 +15,9 @@ Use a token wherever one fits. A fixed value is a decision the next app, theme o
 | Kind | Tokens | Use |
 | --- | --- | --- |
 | Space | `--space-1` 4px, `-2` 8px, `-3` 12px, `-4` 16px, `-5` 24px, `-6` 32px | Every gap, padding and margin. `-2` between controls in a row, `-3` between things in a section, `-6` between sections. |
-| Type | `--text-sm` 12px, `-md` 14px, `-lg` 16px, `-xl` 20px, `-2xl` 26px | `-md` is body. One `h1` per page at `-2xl`, section headings (`h2`) at `-xl`. |
-| Colour | `--bg`, `--bg-2`, `--surface`, `--fg`, `--fg-2`, `--border`, `--accent`, `--accent-fg`, `--ok`, `--warn`, `--danger` | Page, sunken areas, raised areas, text, quieter text, lines, the one accent, and meaning. Never a raw hex value outside a theme. |
+| Type | `--text-sm` 13px, `-md` 15px, `-lg` 17px, `-xl` 21px, `-2xl` 30px | `-md` is body. One `h1` per page at `-2xl`, section headings (`h2`) at `-xl`. |
+| Colour | `--bg`, `--bg-2`, `--surface`, `--fg`, `--fg-2`, `--border`, `--accent`, `--accent-fg`, `--action`, `--action-fg`, `--ok`, `--warn`, `--danger` | Page, sunken areas, raised areas, text, quieter text, lines, the accent (links, focus and selection only), the main button (ink by default), and meaning. Never a raw hex value outside a theme. |
+| Size | `--control` 38px | The height of every one-line control: buttons, fields, selects. |
 | Shape | `--radius-sm`, `--radius`, `--radius-lg`, `--shadow-1`, `--shadow-2`, `--ring` | Controls and cards use `--radius`; only things that float use `--shadow-2`. |
 | Motion | `--duration`, `--ease` | Transitions only. |
 
@@ -25,8 +26,8 @@ A new token is added to `styles.css` and to the table in [Styling](docs/guide/st
 ## Layout rules
 
 1. **Say the direction.** Inside a view, a `<form>` or `<fieldset>` is already a column (`display: flex; flex-direction: column`). For a row of fields write `display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-2)`. `display: flex` on its own keeps the column, and a `flex: 1 1 12rem` meant as a width becomes a height.
-2. **One-line controls are one line tall.** Buttons are 32px and fields 36px. Don't set a height on them; don't let a layout stretch them. Anything bigger on purpose (a game's touch pad) is listed with its reason in the layout check.
-3. **A primary action is as wide as its words.** Only one accent-coloured button per form. Buttons sit in a row beside or under the field they act on, not stretched across the page.
+2. **One-line controls are one line tall.** Buttons, fields and selects are all `--control` tall, so they line up side by side. Don't set a height on them; don't let a layout stretch them. Anything bigger on purpose (a game's touch pad) is listed with its reason in the layout check.
+3. **A primary action is as wide as its words.** Only one main button (`type="submit"`, `data-primary` or `class="primary"`, drawn in `--action`) per form. Buttons sit in a row beside or under the field they act on, not stretched across the page.
 4. **Space says what belongs together.** `--space-6` between sections, `--space-3` inside one, `--space-2` between controls. A heading is closer to what it heads than to what came before it.
 5. **Links in a row need a gap.** Two links side by side go in a flex row with a gap, or a list. Words running into each other read as one link.
 6. **Lists of things with actions are cards or rows.** Name first, then what you can do with it, on their own lines; not a bullet with buttons trailing after the text.

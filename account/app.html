@@ -31,7 +31,10 @@
   <link rel="plugin" href="providers.js">
   <link rel="plugin" href="spaces.js">
   <style>
-    main.account { width: 100%; max-width: 40rem; margin: 0 auto; padding: var(--space-6) var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-6); overflow-wrap: anywhere; }
+    main.account { width: 100%; max-width: 40rem; margin: 0 auto; padding: var(--space-6) var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); overflow-wrap: anywhere; }
+    /* Each topic is a card. */
+    main.account [data-plugin] > .html-view > section, main.account .account-view { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: var(--space-5); box-shadow: var(--shadow-1); }
+    main.account .account-view section { padding: 0; border: 0; border-radius: 0; box-shadow: none; }
     main.account h1 { margin: 0; font-size: var(--text-2xl); }
   </style>
 </head>
