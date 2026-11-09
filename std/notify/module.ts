@@ -9,8 +9,10 @@
 // the answer for the site. show() puts up one notification, from one tab with
 // the plugin's app open, and only when nobody is looking at that app (unless
 // `always`): someone looking at the page sees the plugin's own view instead.
-// Clicking the notification brings that tab forward. The browser's part is a
-// bridge (src/host/bridges/notify.ts), since Notification lives in pages.
+// The service worker shows it (sw/notifications.js), so it stays in the
+// system's notification centre after the app's tabs close; clicking it brings
+// the app's tab forward, or opens the app again. The browser's part is a
+// bridge (src/host/bridges/notify.ts), since asking lives in pages.
 //
 // A kernel module (docs/layers.md): a site that lists `notify` in kernel.json has it, as `ctx.call("notify", …)`.
 
