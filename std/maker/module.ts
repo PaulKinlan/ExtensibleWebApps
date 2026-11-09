@@ -128,10 +128,20 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     };
   };
 
-  /** Stops the running copy of one of the app's plugins, if its code isn't `text` any more. */
-  const stopOld = (name: string, f: string, text: string) => {
-    for (const [id, running] of remote.installed) {
-      if (running.href && new URL(running.href, "http://x").pathname === `/apps/${name}/${f}` && running.source !== text) remote.uninstall(id);
+  /**
+   * Brings the running copy of one of the app's plugins up to date with its saved code `text` ("" once
+   * the file is removed). The same plugin is replaced in place, so every tab that has the app open
+   * restarts it with the new code; one whose id changed, or that won't start any more, is stopped.
+   */
+  const replaceOld = async (name: string, f: string, text: string) => {
+    for (const [id, running] of [...remote.installed]) {
+      if (!running.href || new URL(running.href, "http://x").pathname !== `/apps/${name}/${f}` || running.source === text) continue;
+      let same = false;
+      try {
+        same = text !== "" && readManifest(text).id === id;
+      } catch {}
+      const result = same ? await remote.install(text, { origin: running.origin, href: running.href, enabled: running.enabled }) : undefined;
+      if (!result?.ok && remote.installed.get(id)?.source === running.source) remote.uninstall(id);
     }
   };
 
@@ -196,11 +206,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       for (const [f, text] of changed) {
         await store.writeText(`${APPS}/${name}/${f}`, text);
         versions[f] = await remember(name, f, { by, note: reason, text });
-        // A running copy with other code is stopped, so opening the app again starts the new code under the same id.
-        if (f.endsWith(".js")) stopOld(name, f, text);
       }
       return undefined;
     });
+    // A running copy with other code is replaced, so every open tab runs the new code under the same id.
+    if (!stale) for (const [f, text] of changed) if (f.endsWith(".js")) await replaceOld(name, f, text);
     if (stale) return { ok: false, error: `${stale} changed while the review was open, so nothing was saved. Read it again and try once more.` };
     if (isNew) await indexed(name, true);
     root.emit(dispatch, "maker:changed", { app: name, files: changed.map(([f]) => f) });
@@ -360,7 +370,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
           for (const f of which) if (now.get(f) !== current.get(f)) return `${f} changed while the review was open, so nothing was removed`;
           for (const f of which) {
             await store.removeFile(`${APPS}/${name}/${f}`);
-            if (f.endsWith(".js")) stopOld(name, f, "");
+            if (f.endsWith(".js")) await replaceOld(name, f, "");
             await remember(name, f, { by, note: "Removed", text: current.get(f) ?? "", removed: true });
           }
           return undefined;

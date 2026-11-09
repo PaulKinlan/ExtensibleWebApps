@@ -538,6 +538,10 @@ function render(slot: Slot, key: string, owner: string, order: number, view: Vie
     else held.delete(id);
     return;
   }
+  // A view taken down (as when its plugin stops, to restart with new code) lets go of its template files,
+  // so the next view drawn from them loads them afresh rather than from what this page read before.
+  const before = drawn.get(id)?.view;
+  if (!view && before) for (const src of templateFiles(before)) forgetFiles(new URL(src, location.href).pathname);
   // A template view (or a stack holding one) waits for its files; the latest view for this slot and key is drawn once they load.
   const missing = view ? templateFiles(view).filter((src) => !loadedFile(src)) : [];
   if (missing.length) {

@@ -53,9 +53,10 @@ service worker checks it again before it serves it, and sends a policy under
 which no inline script runs. The app's code is in its plugins, which run in
 workers with the permissions they ask for, like any app's.
 
-Saving a changed plugin stops the copy that is running, so the app's next
-opening runs the new code. The preview opens again by itself; another tab
-with the app open shows it stopped until that tab is reloaded.
+Saving a changed plugin replaces the copy that is running, in place, so
+every tab with the app open restarts it with the new code; the preview also
+opens again by itself. A plugin whose id changed, or whose new code won't
+start, is stopped instead, and the check says why.
 
 A made app links only its own files and the standard plugins it chose, never
 the model or the app maker. Switch both off, or close `/new/`, and it keeps

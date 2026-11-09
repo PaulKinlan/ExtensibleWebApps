@@ -170,12 +170,17 @@ export default async function ({ check, openTab, context, URL }) {
     check("the preview runs the fixed reminder", await inPreview('[data-key="reading-list-reminder:reminder"] >> text=/Next reminder|It\'s Sunday/'));
     check("each file keeps its versions: the reminder has two", await seen(`${yours} li:has(code:text-is("reminder.js")) >> text=2 versions`));
 
-    // Change it.
+    // Change it, with the app also open in a tab of its own.
+    const other = await context.newPage();
+    await other.goto(`${URL}apps/reading-list/`);
+    const otherReady = await seen('[data-key="reading-list-books:books"] ui-form', 15000, other);
     await ask("add a rating", "reading-list");
     check("a follow-up change goes through a review card", await accept("your app Reading list: changes books.js, books.html"));
     const rated = await inPreview('[data-key="reading-list-books:books"] ui-form >> [name="rating"]', 20000);
     if (!rated && process.env.DEBUG_MAKER) console.log(await page.evaluate(() => window.__host.traces.filter((e) => /app:open|plugin:failed|refused|error/.test(e.name + e.kind)).slice(-15).map((e) => `${e.kind} ${e.name} ${e.plugin ?? ""} ${e.detail ?? ""}`).join("\n")), await preview().locator("body").innerHTML().catch((e) => String(e)));
     check("the change shows in the preview: a rating field", rated);
+    check("another tab with the app open runs the new code without a reload", otherReady && (await seen('[data-key="reading-list-books:books"] ui-form >> [name="rating"]', 15000, other)));
+    await other.close();
 
     // Go back to an earlier version.
     await page.click(`${yours} li:has(code:text-is("books.js")) button[data-action="history"]`);
