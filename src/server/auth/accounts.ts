@@ -46,7 +46,7 @@ export interface User {
   created: number;
   /**
    * The address a space's server plugins may email them at (std/email/module.ts sends only to
-   * its members' addresses). Typed on /account/; not checked yet, as the site doesn't deliver mail yet.
+   * its members' addresses). Typed on /account/; not confirmed yet (no link is mailed to it).
    */
   email?: string;
 }

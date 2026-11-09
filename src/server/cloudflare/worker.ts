@@ -26,6 +26,7 @@ import kernelSource from "../../../.build/cloudflare/kernel-source.js";
 // A plugin's sandbox, the same way.
 import isolateSource from "../../../.build/cloudflare/isolate-source.js";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
+import type { Message } from "../../seams/index.ts";
 import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
 import { mcpAddress, mcpRequest, mcpResponse } from "../mcp.ts";
@@ -42,6 +43,9 @@ interface Env {
   SPACE: DurableObjectNamespace<Space>;
   ACCOUNTS: DurableObjectNamespace<Accounts>;
   LOADER: WorkerLoader;
+  /** Cloudflare Email Service (the send_email binding), and the address mail comes from: both, or mail stays in the outbox. */
+  EMAIL?: { send(message: { to: string[]; from: string; subject: string; text: string; html?: string }): Promise<{ messageId: string }> };
+  EMAIL_FROM?: string;
 }
 
 interface KernelStub {
@@ -140,6 +144,21 @@ class PluginHost extends RpcTarget {
   /** The space's members' email addresses, from the accounts (std/email/module.ts mails only these). */
   addresses(): Promise<string[]> {
     return this.env.ACCOUNTS.getByName("accounts").addresses(this.space);
+  }
+
+  /**
+   * Sends a message a server plugin sent, which the email module checked and wrote to the outbox: through
+   * Cloudflare Email Service, from EMAIL_FROM. Null when the deployment hasn't set both up.
+   */
+  async deliver(message: Message): Promise<{ ok: true; id: string } | { ok: false; error: string } | null> {
+    if (!this.env.EMAIL || !this.env.EMAIL_FROM) return null;
+    try {
+      const sent = await this.env.EMAIL.send({ to: message.to, from: this.env.EMAIL_FROM, subject: message.subject, text: message.text, ...(message.html !== undefined ? { html: message.html } : {}) });
+      return { ok: true, id: sent.messageId };
+    } catch (error) {
+      const e = error as { code?: string; message?: string };
+      return { ok: false, error: `${e.code ? `${e.code}: ` : ""}${e.message ?? String(error)}` };
+    }
   }
 
   /** The space's members, with the names on their accounts (sync.ts tells each device, to show who changed what). */

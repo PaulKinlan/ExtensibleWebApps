@@ -4,7 +4,7 @@
 // space kernel. Everything that differs between hosts is in here or in the
 // seams (src/seams/), so kernel.ts never reaches for `self` or `navigator`.
 
-import type { Files, Isolates } from "../seams/index.ts";
+import type { Email, Files, Isolates } from "../seams/index.ts";
 import type { RouteRequest, RouteResponse } from "./routes";
 
 export interface KernelEnv {
@@ -37,6 +37,12 @@ export interface KernelEnv {
    * made a change (`by` is a member's id) by name (sync.ts sends them to each device).
    */
   members?(): Promise<{ id: string; name: string }[]>;
+  /**
+   * On a server whose deployment can send email (Cloudflare Email Service on Cloudflare, SMTP on Node), sends
+   * one message the email module has checked and written to the outbox. Without it, or when it answers null
+   * (the deployment hasn't set mail up), mail stays in the outbox.
+   */
+  deliver?(message: Parameters<Email["send"]>[0]): Promise<Awaited<ReturnType<Email["send"]>> | null>;
   /**
    * On a host that can put a space to sleep (Cloudflare), asks to be woken at `at` (ms since 1970), or
    * not at all when undefined, for the earliest job plugins scheduled (std/schedule/module.ts).
