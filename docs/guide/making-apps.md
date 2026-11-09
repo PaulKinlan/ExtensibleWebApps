@@ -97,9 +97,12 @@ that shows what changed, before anything runs. `maker.shared()` lists the
 space's apps and how each stands on this device.
 
 **Stop sharing** (`maker.unshare(app)`) takes it off the space's list. Members
-who accepted it keep their copy. An app made outside a space goes into one
-through a folder: **Save to a folder** at `/new/`, then **Open from a folder**
-at `/s/<space>/new/`.
+who accepted it keep their copy. An app made outside a space, at `/new/` on
+the same device, is listed in the space's Your apps under **Your apps outside
+this space**: **Copy into this space** (`maker.copyIn(app)`) saves a copy of it
+there after the usual review, and then it can be shared. From another device,
+it goes in through a folder: **Save to a folder** at `/new/`, then **Open from
+a folder** at `/s/<space>/new/`.
 
 ## Saving, versions and going back
 

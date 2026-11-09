@@ -2,9 +2,9 @@
   Your apps. your-apps.js sends two views:
   make: { working, request, steps: [{ n, text, ok }], answer: { text, tone }, targets: [{ name, title, picked }] }
   apps: { none, apps: [{ name, title, url, picked }], app: { name, title, url, revision }, files: [{ name, count, open, versions: [{ version, when, by, note, current, removed }] }], folder: { text, tone },
-          space: { name, offline, sharedHere, waiting: [{ name, title, by, when, changed, label }] } (in a space only), sharing: { text, tone } }
+          space: { name, offline, sharedHere, waiting: [{ name, title, by, when, changed, label }], own: [{ name, title }] } (in a space only), sharing: { text, tone } }
   "folder" saves the picked app's files to a folder on the person's disk; "open-folder" makes an app from one.
-  In a space, "share" and "unshare" share the picked app with its members or stop; "accept" takes one a member shared, after a review.
+  In a space, "share" and "unshare" share the picked app with its members or stop; "accept" takes one a member shared, after a review; "copy-in" copies in one the person made outside the space.
 -->
 <style>
   .make form { display: grid; gap: var(--space-2); margin: 0; }
@@ -18,8 +18,8 @@
   .yours .files li > div { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
   .yours .versions { margin: var(--space-1) 0 0; padding-left: 1.25rem; font-size: var(--text-sm); color: var(--fg-2); }
   .yours code { font: var(--text-sm)/1.4 var(--mono); }
-  .yours .shared ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
-  .yours .shared li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .yours :is(.shared, .own-apps) ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
+  .yours :is(.shared, .own-apps) li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
   .yours .shared-note { color: var(--fg-2); font-size: var(--text-sm); }
 </style>
 <template id="make">
@@ -68,6 +68,16 @@
             </template>
           </ul>
           <p class="shared-note">An app from the space runs here only once you accept its files.</p>
+        </section>
+      </template>
+      <template if="space.own.length">
+        <section class="own-apps" aria-label="Your apps outside this space">
+          <h3>Your apps outside this space</h3>
+          <ul>
+            <template for="o of space.own">
+              <li key="{{o.name}}"><strong>{{o.title}}</strong> <button data-action="copy-in" data-value="{{o.name}}">Copy into this space</button></li>
+            </template>
+          </ul>
         </section>
       </template>
     </template>
