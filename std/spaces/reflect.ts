@@ -23,7 +23,7 @@
 // running now.
 
 import type { Dispatch } from "../../src/shared/protocol";
-import type { ReflectRequest, SyncToDevice } from "../../src/shared/sync";
+import type { ReflectRequest, SharedSummary, SyncToDevice } from "../../src/shared/sync";
 import type { Host, Hosts } from "../../src/kernel/hosts";
 import type { RemotePlugins } from "../../src/kernel/remote";
 import { record as trace } from "../../src/kernel/trace";
@@ -34,19 +34,34 @@ export const READS = ["snapshot", "plugins", "hooks", "workers", "tabs", "source
 /** How long a device waits for the space's answer. */
 const WAIT_MS = 10_000;
 
-/** On the space's server: answers each member's question from the kernel's own reflect service. */
-export function spaceReflect(remote: RemotePlugins, hosts: Hosts) {
+/** The plugins members share with the space (plugins.ts): kept on the server, never run, so reflect doesn't see them. */
+export interface SharedReader {
+  list(): Promise<SharedSummary[]>;
+  code(id: string): Promise<string | undefined>;
+}
+
+/**
+ * On the space's server: answers each member's question from the kernel's own reflect service. A snapshot
+ * also lists the plugins members share (`shared`), and `source` falls back to a shared plugin's code.
+ */
+export function spaceReflect(remote: RemotePlugins, hosts: Hosts, shared?: SharedReader) {
   let asked = 0;
   return async (host: Host, m: ReflectRequest): Promise<void> => {
     const reply = (rest: Omit<Extract<SyncToDevice, { op: "reflect:reply" }>, "t" | "op" | "id">) => hosts.send(host, { t: "sync", op: "reflect:reply", id: m.id, ...rest });
-    const reflect = remote.services.reflect;
-    if (!reflect) return reply({ ok: false, error: "This space's kernel has no reflect module" });
-    if (!READS.includes(m.method)) return reply({ ok: false, error: `reflect.${String(m.method)} isn't something a member can ask the space` });
-    const args = Array.isArray(m.args) ? m.args.slice(0, 1).map(String) : [];
-    const dispatch: Dispatch = { trace: `reflect-${host.member ?? "member"}-${++asked}` };
     try {
-      const value = await reflect.call(`space-debugger@${host.tab}`, m.method, args, dispatch);
-      trace({ kind: "note", name: "reflect:space", detail: `${m.method}, for ${host.member ?? "a member"}` });
+      const reflect = remote.services.reflect;
+      if (!reflect) return reply({ ok: false, error: "This space's kernel has no reflect module" });
+      const method = typeof m.method === "string" ? m.method : "";
+      if (!READS.includes(method)) return reply({ ok: false, error: "That isn't something a member can ask the space" });
+      const args = Array.isArray(m.args) && typeof m.args[0] === "string" ? [m.args[0]] : [];
+      const dispatch: Dispatch = { trace: `reflect-${host.member ?? "member"}-${++asked}` };
+      let value: unknown;
+      if (method === "source" && args[0] && !remote.installed.has(args[0]) && shared) {
+        value = await shared.code(args[0]);
+        if (value === undefined) throw new Error(`No plugin ${args[0]} is installed or shared here`);
+      } else value = await reflect.call(`space-debugger@${host.tab}`, method, args, dispatch);
+      if (method === "snapshot" && shared && value && typeof value === "object") value = { ...value, shared: await shared.list() };
+      trace({ kind: "note", name: "reflect:space", detail: `${method}, for ${host.member ?? "a member"}` });
       reply({ ok: true, value });
     } catch (error) {
       reply({ ok: false, error: error instanceof Error ? error.message : String(error) });

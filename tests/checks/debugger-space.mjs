@@ -43,6 +43,12 @@ export default async function ({ check, context, errors }) {
     await page.goto(`${server.url}/s/lab/demos/survey/`);
     await page.waitForSelector('[data-plugin="surveys"]', { timeout: 15000 });
 
+    // A plugin of her own for Surveys, shared with the space: the space keeps it and never runs it.
+    const command = (name, arg) => page.evaluate(([n, a]) => window.__host.command(n, a), [name, arg]);
+    const note = 'export const manifest = { id: "poll-note", name: "Poll note", description: "A note", permissions: [] };\nexport default () => {};';
+    await command("user:add", { app: "demos/survey", files: [{ name: "poll-note.js", data: note }] });
+    const sharedOk = await command("user:share", { app: "demos/survey", id: "poll-note" }).catch((e) => ({ error: String(e) }));
+
     // The debugger, in the same space, in a second tab.
     const debug = await own.newPage();
     debug.on("pageerror", (e) => errors.push(`debugger-space: ${e.message}`));
@@ -56,6 +62,14 @@ export default async function ({ check, context, errors }) {
     await debug.click(`${collect} button[data-action="code:collect"]`);
     const code = await debug.waitForFunction((s) => /runs: "server"/.test(document.querySelector(`${s} ui-code`)?.value ?? document.querySelector(`${s} ui-code`)?.textContent ?? ""), collect, { timeout: 5000 }).then(() => true, () => false);
     check("debugger: it reads a server plugin's code from the space", code);
+
+    // The shared plugin is listed as kept, not run, and its code reads from the space too.
+    const kept = `${PANEL} li.plugin[key="poll-note"]`;
+    await debug.click(`${PANEL} button[data-action="refresh"]`);
+    const listed = await debug.waitForSelector(`${kept} >> text=kept, not run`, { timeout: 10000 }).then(() => true, () => false);
+    if (listed) await debug.click(`${kept} button[data-action="code:poll-note"]`);
+    const read = listed && (await debug.waitForFunction((s) => /poll-note/.test(document.querySelector(`${s} ui-code`)?.value ?? document.querySelector(`${s} ui-code`)?.textContent ?? ""), kept, { timeout: 5000 }).then(() => true, () => false));
+    check("debugger: plugins members share are listed as kept and not run, with their code", listed && read, JSON.stringify(sharedOk));
 
   } finally {
     await own.close().catch(() => {});

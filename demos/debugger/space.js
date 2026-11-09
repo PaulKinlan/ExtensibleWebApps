@@ -4,8 +4,8 @@
 // that runs the plugins with `runs: "server"` (public routes, scheduled
 // jobs, email) and orders every member's changes. This panel shows that one:
 // the plugins it runs, what each was granted, the hooks they listen to and
-// the routes they answer, its workers, and which members' devices are
-// connected now.
+// the routes they answer, its workers, which members' devices are
+// connected now, and the plugins members share (kept there, never run).
 //
 // It asks through the space's `sync` service, `sync.reflect(method)`, which
 // sends the question over the page's own socket to the space (only members
@@ -63,6 +63,12 @@ export default function (ctx) {
       }));
     // A member's page reaches the space as a device signed in as them; the server's own runner for its
     // plugins' workers is connected too, as no member.
+    // The plugins members share with each other: the space keeps them and never runs them, so reflect
+    // doesn't list them; the snapshot adds them as `shared`.
+    const installed = new Set(snapshot.plugins.map((p) => p.id));
+    const shared = (snapshot.shared ?? [])
+      .filter((p) => !installed.has(p.id))
+      .map((p) => ({ id: p.id, app: p.app, by: p.by ? names.get(p.by) ?? p.by : "a member", showing: code?.id === p.id, pressed: String(code?.id === p.id), code: code?.id === p.id ? code.text : "", rev }));
     const devices = snapshot.tabs.map((t) => ({
       tab: t.tab,
       who: t.member ? names.get(t.member) ?? t.member : t.workers ? "The server's plugin runner" : "Not signed in as a member",
@@ -82,6 +88,8 @@ export default function (ctx) {
       workers: snapshot.workers.length,
       devices,
       people: devices.length,
+      shared,
+      sharing: shared.length,
     };
   });
 
@@ -94,7 +102,15 @@ export default function (ctx) {
     if (action === "refresh") return view.refresh();
     if (action.startsWith("code:")) {
       const id = action.slice(5);
-      code = code?.id === id ? null : { id, text: await ctx.call("sync", "reflect", "source", id).catch((e) => `// ${e instanceof Error ? e.message : e}`) };
+      // Choose first, so a second click while the space answers closes it again; a late answer is dropped.
+      const picked = code?.id === id ? null : { id, text: "// Asking the space…" };
+      code = picked;
+      rev++;
+      view.refresh();
+      if (!picked) return;
+      const text = await ctx.call("sync", "reflect", "source", id).catch((e) => `// ${e instanceof Error ? e.message : e}`);
+      if (code !== picked) return;
+      code = { id, text };
       rev++;
       view.refresh();
     }

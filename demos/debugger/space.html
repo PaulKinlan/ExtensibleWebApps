@@ -4,7 +4,9 @@
   mode, since, plugins, none, count, hooks, workers, devices, people }. Each
   plugin is { id, name, description, off, running, stopped, server, granted,
   routes, heard, secrets: [{ name, state }], showing, pressed, code, rev };
-  each device is { tab, who, you, what }.
+  each device is { tab, who, you, what }; each of shared (the plugins
+  members share, which the space keeps and never runs) is { id, app, by,
+  showing, pressed, code, rev }, and sharing is how many.
 
   "code:<id>" shows or hides a plugin's code; "refresh" asks the space again.
 -->
@@ -71,6 +73,25 @@
             </template>
           </ul>
         </section>
+        <template if="sharing">
+          <section aria-label="Plugins members share">
+            <h3>Shared by members <ui-badge>{{sharing}}</ui-badge></h3>
+            <p class="muted">The space keeps these for its members' devices, where they arrive switched off. It never runs them.</p>
+            <ul class="plugins">
+              <template for="p of shared">
+                <li class="plugin" key="{{p.id}}">
+                  <header>
+                    <strong><code>{{p.id}}</code></strong>
+                    <ui-badge>kept, not run</ui-badge>
+                    <button type="button" data-action="code:{{p.id}}" aria-pressed="{{p.pressed}}">Code</button>
+                  </header>
+                  <p class="muted">For <code>{{p.app}}</code>, shared by {{p.by}}.</p>
+                  <template if="p.showing"><ui-code readonly label="Code of {{p.id}}" rows="18" revision="{{p.rev}}">{{p.code}}</ui-code></template>
+                </li>
+              </template>
+            </ul>
+          </section>
+        </template>
       </template>
     </template>
   </ui-card>

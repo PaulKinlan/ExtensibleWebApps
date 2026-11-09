@@ -126,6 +126,7 @@
     @media (max-width: 800px) {
       body:has([data-plugin="story-view"] [data-layout="story"]) {
         .home { grid-template-columns: minmax(0, 1fr); grid-template-areas: "chapters" "playground"; }
+        .side { position: static; max-height: none; }
         .intro { padding-top: 24px; }
         .chapters ui-card { font-size: var(--text-md); }
       }

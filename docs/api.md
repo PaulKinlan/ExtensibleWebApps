@@ -1170,7 +1170,7 @@ The space's members, each with the name on their account, and which of them this
 
 Needs: `reflect:read`.
 
-For debuggers: asks the space's own kernel, on its server, what its reflect service says (its server plugins, their permissions, hooks and workers, and the members' devices connected, each with its member). Read only, like reflect. Fails outside a space, or while this page can't reach it.
+For debuggers: asks the space's own kernel, on its server, what its reflect service says (its server plugins, their permissions, hooks and workers, and the members' devices connected, each with its member). A snapshot also lists `shared`: the plugins members share, which the space keeps but never runs ({ app, id, by?, at }); source reads theirs too. Read only, like reflect. Fails outside a space, or while this page can't reach it.
 
 #### sync.state
 

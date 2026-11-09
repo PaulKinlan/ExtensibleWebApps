@@ -51,9 +51,10 @@ export default {
       const onServer = where.isolates ? serverApps(remote, store, where.origin, where.site) : undefined;
       const hub = syncHub(root, store, records, hosts, (app) => onServer?.use(app), draining.get(store));
       // A space keeps the plugins its members share with each other, and never runs them.
-      hub.plugins = spacePlugins(userAdded, store, hosts, (message) => hub.tell(message)).handle;
+      const shared = spacePlugins(userAdded, store, hosts, (message) => hub.tell(message));
+      hub.plugins = shared.handle;
       // A member's debugger may ask what runs here, from the kernel's own reflect service (reflect.ts).
-      hub.reflect = spaceReflect(remote, hosts);
+      hub.reflect = spaceReflect(remote, hosts, shared);
       // A space's server has no screen: its reviews are shown on members' devices.
       kernel.cleanup(relayReviews(reviews, hub, (host, message) => hosts.send(host, message)));
       kernel.message("sync", (host, message) => hub.handle(host, message));
