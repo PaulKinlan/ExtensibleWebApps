@@ -1,0 +1,27 @@
+<!--
+  ui-preview: a live, working copy of an app the person made in the browser
+  (std/maker/), shown in the page, such as the app maker's preview on /new/:
+
+    <ui-preview app="reading-list" revision="3" label="Reading list"></ui-preview>
+
+  Attributes: app (the made app's name; it is shown from /apps/<name>/, so
+  this element only ever shows an app made in the browser), revision (changing it opens the app again, so a
+  saved change shows), label (what it shows, for screen readers).
+
+  The app runs as it would in its own tab: its plugins start in the kernel,
+  with their own permissions, and its page follows the rules for made apps
+  (sw/made-page.js), so it runs no script of its own. A plugin's view
+  can't hold a frame itself.
+-->
+<template>
+  <style>
+    :host { display: block; }
+    .frame { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg); }
+    .bar { display: flex; gap: var(--space-2, 8px); align-items: center; padding: var(--space-1, 4px) var(--space-2, 8px); border-bottom: 1px solid var(--border); font-size: var(--text-sm); color: var(--fg-2); background: var(--surface, var(--bg)); }
+    .bar a { margin-left: auto; color: var(--accent); }
+    iframe { display: block; width: 100%; height: var(--preview-height, 32rem); border: 0; background: var(--bg); }
+    .none { padding: var(--space-3, 16px); color: var(--fg-2); }
+  </style>
+  <div class="frame" part="frame"><div class="bar"><span class="where"></span><a target="_blank" rel="noopener">Open in its own tab</a></div><p class="none" hidden>Nothing to show yet.</p><iframe title="" hidden></iframe></div>
+</template>
+<script type="module" src="ui-preview.js"></script>
