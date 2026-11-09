@@ -65,7 +65,7 @@
     {
       "id": "llm-anthropic",
       "name": "Claude (Anthropic)",
-      "description": "Answers the app's llm requests with Claude, using the person's Anthropic API key.",
+      "description": "A language model for this app: Claude, from Anthropic. Uses your own Anthropic API key, which goes only to Anthropic.",
       "version": "1.1.0",
       "href": "/std/llm/anthropic.js",
       "permissions": [
@@ -140,7 +140,7 @@
     {
       "id": "llm-gemini",
       "name": "Gemini (Google)",
-      "description": "Answers the app's llm requests with Gemini, using the person's Gemini API key.",
+      "description": "A language model for this app: Gemini, from Google. Uses your own Gemini API key, which goes only to Google.",
       "version": "1.1.0",
       "href": "/std/llm/gemini.js",
       "permissions": [
@@ -208,7 +208,7 @@
     {
       "id": "llm-openai-compatible",
       "name": "Ollama",
-      "description": "Answers the app's llm requests with a model served on this computer by Ollama, or another OpenAI-style API.",
+      "description": "A language model for this app that runs on your own computer, with Ollama. No key needed.",
       "version": "1.0.0",
       "href": "/std/llm/openai-compatible.js",
       "permissions": [
@@ -228,7 +228,7 @@
     {
       "id": "llm-openai",
       "name": "OpenAI",
-      "description": "Answers the app's llm requests with OpenAI's models, using the person's OpenAI API key.",
+      "description": "A language model for this app: OpenAI's models. Uses your own OpenAI API key, which goes only to OpenAI.",
       "version": "1.1.0",
       "href": "/std/llm/openai.js",
       "permissions": [
@@ -269,6 +269,37 @@
         "append main"
       ],
       "apps": []
+    },
+    {
+      "id": "plugin-maker",
+      "name": "Plugin maker",
+      "description": "Describe a plugin you want for this page: a language model writes it, and you accept its code before it runs.",
+      "version": "1.0.0",
+      "href": "/std/plugin-maker.js",
+      "permissions": [
+        "ui",
+        "llm",
+        "plugins:author"
+      ],
+      "provides": [],
+      "services": [
+        "llm"
+      ],
+      "std": true,
+      "kind": "ui",
+      "group": "Building plugins",
+      "places": [
+        "append main"
+      ],
+      "apps": [],
+      "needsOneOf": {
+        "llm": [
+          "llm-anthropic",
+          "llm-gemini",
+          "llm-openai",
+          "llm-openai-compatible"
+        ]
+      }
     },
     {
       "id": "reset",

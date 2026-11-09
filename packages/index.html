@@ -45,10 +45,10 @@
         <button type="button" data-filter="agent" aria-pressed="false">Agents</button>
         <button type="button" data-filter="builtin" aria-pressed="false">Built-in services</button>
       </div>
-      <p class="shown" role="status" aria-live="polite">156 plugins and services</p>
+      <p class="shown" role="status" aria-live="polite">157 plugins and services</p>
     </search>
     <nav class="toc" aria-label="On this page">
-      <a href="#add">Add to any app <span class="count">17</span></a>
+      <a href="#add">Add to any app <span class="count">18</span></a>
       <a href="#built-in">Built into this site <span class="count">22</span></a>
       <a href="#std">For app authors <span class="count">7</span></a>
       <a href="#demos">From the demos <span class="count">110</span></a>
@@ -63,30 +63,30 @@
         <div data-section>
         <h4 class="group">Language models</h4>
       <ul class="cards">
-        <li class="card" id="llm-anthropic" data-kind="service" data-search="claude (anthropic) llm-anthropic answers the app's llm requests with claude, using the person's anthropic api key. language models services provide:llm network:api.anthropic.com secret:anthropic llm llm assistant librarian markdown editor security make an app">
+        <li class="card" id="llm-anthropic" data-kind="service" data-search="claude (anthropic) llm-anthropic a language model for this app: claude, from anthropic. uses your own anthropic api key, which goes only to anthropic. language models services provide:llm network:api.anthropic.com secret:anthropic llm llm assistant librarian markdown editor security make an app">
           <h4>Claude (Anthropic) <span class="tags"><span class="tag service">Service</span></span></h4>
-          <p>Answers the app's llm requests with Claude, using the person's Anthropic API key.</p>
+          <p>A language model for this app: Claude, from Anthropic. Uses your own Anthropic API key, which goes only to Anthropic.</p>
           <ul class="facts"><li><b>Provides</b> the <a href="/docs/api#llm"><code>llm</code></a> service</li><li><b>In</b> <a href="/demos/assistant/app.html">Assistant</a>, <a href="/demos/librarian/app.html">Librarian</a>, <a href="/demos/markdown-editor/app.html">Markdown editor</a>, <a href="/demos/security/app.html">Security</a>, <a href="/new/">Make an app</a></li></ul>
           <details><summary>Asks for 3 permissions</summary><ul class="asks"><li><code>provide:llm</code> Answer every call this page's plugins make to the llm service.</li><li><code>network:api.anthropic.com</code> Connect to api.anthropic.com.</li><li><code>secret:anthropic</code> Use a key you give it for anthropic, which it never sees: the site adds it to its requests.</li></ul></details>
           <p class="actions"><a href="/std/llm/anthropic.js">Code</a> <button type="button" class="copy" data-copy="/std/llm/anthropic.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel="plugin" href="/std/llm/anthropic.js"&gt;">Copy link tag</button></p>
         </li>
-        <li class="card" id="llm-gemini" data-kind="service" data-search="gemini (google) llm-gemini answers the app's llm requests with gemini, using the person's gemini api key. language models services provide:llm network:generativelanguage.googleapis.com secret:gemini llm llm make an app">
+        <li class="card" id="llm-gemini" data-kind="service" data-search="gemini (google) llm-gemini a language model for this app: gemini, from google. uses your own gemini api key, which goes only to google. language models services provide:llm network:generativelanguage.googleapis.com secret:gemini llm llm make an app">
           <h4>Gemini (Google) <span class="tags"><span class="tag service">Service</span></span></h4>
-          <p>Answers the app's llm requests with Gemini, using the person's Gemini API key.</p>
+          <p>A language model for this app: Gemini, from Google. Uses your own Gemini API key, which goes only to Google.</p>
           <ul class="facts"><li><b>Provides</b> the <a href="/docs/api#llm"><code>llm</code></a> service</li><li><b>In</b> <a href="/new/">Make an app</a></li></ul>
           <details><summary>Asks for 3 permissions</summary><ul class="asks"><li><code>provide:llm</code> Answer every call this page's plugins make to the llm service.</li><li><code>network:generativelanguage.googleapis.com</code> Connect to generativelanguage.googleapis.com.</li><li><code>secret:gemini</code> Use a key you give it for gemini, which it never sees: the site adds it to its requests.</li></ul></details>
           <p class="actions"><a href="/std/llm/gemini.js">Code</a> <button type="button" class="copy" data-copy="/std/llm/gemini.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel="plugin" href="/std/llm/gemini.js"&gt;">Copy link tag</button></p>
         </li>
-        <li class="card" id="llm-openai-compatible" data-kind="service" data-search="ollama llm-openai-compatible answers the app's llm requests with a model served on this computer by ollama, or another openai-style api. language models services provide:llm network:localhost:11434 llm llm">
+        <li class="card" id="llm-openai-compatible" data-kind="service" data-search="ollama llm-openai-compatible a language model for this app that runs on your own computer, with ollama. no key needed. language models services provide:llm network:localhost:11434 llm llm">
           <h4>Ollama <span class="tags"><span class="tag service">Service</span></span></h4>
-          <p>Answers the app's llm requests with a model served on this computer by Ollama, or another OpenAI-style API.</p>
+          <p>A language model for this app that runs on your own computer, with Ollama. No key needed.</p>
           <ul class="facts"><li><b>Provides</b> the <a href="/docs/api#llm"><code>llm</code></a> service</li><li><b>In</b> no app yet: add it to one</li></ul>
           <details><summary>Asks for 2 permissions</summary><ul class="asks"><li><code>provide:llm</code> Answer every call this page's plugins make to the llm service.</li><li><code>network:localhost:11434</code> Connect to localhost:11434.</li></ul></details>
           <p class="actions"><a href="/std/llm/openai-compatible.js">Code</a> <button type="button" class="copy" data-copy="/std/llm/openai-compatible.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel="plugin" href="/std/llm/openai-compatible.js"&gt;">Copy link tag</button></p>
         </li>
-        <li class="card" id="llm-openai" data-kind="service" data-search="openai llm-openai answers the app's llm requests with openai's models, using the person's openai api key. language models services provide:llm network:api.openai.com secret:openai llm llm make an app">
+        <li class="card" id="llm-openai" data-kind="service" data-search="openai llm-openai a language model for this app: openai's models. uses your own openai api key, which goes only to openai. language models services provide:llm network:api.openai.com secret:openai llm llm make an app">
           <h4>OpenAI <span class="tags"><span class="tag service">Service</span></span></h4>
-          <p>Answers the app's llm requests with OpenAI's models, using the person's OpenAI API key.</p>
+          <p>A language model for this app: OpenAI's models. Uses your own OpenAI API key, which goes only to OpenAI.</p>
           <ul class="facts"><li><b>Provides</b> the <a href="/docs/api#llm"><code>llm</code></a> service</li><li><b>In</b> <a href="/new/">Make an app</a></li></ul>
           <details><summary>Asks for 3 permissions</summary><ul class="asks"><li><code>provide:llm</code> Answer every call this page's plugins make to the llm service.</li><li><code>network:api.openai.com</code> Connect to api.openai.com.</li><li><code>secret:openai</code> Use a key you give it for openai, which it never sees: the site adds it to its requests.</li></ul></details>
           <p class="actions"><a href="/std/llm/openai.js">Code</a> <button type="button" class="copy" data-copy="/std/llm/openai.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel="plugin" href="/std/llm/openai.js"&gt;">Copy link tag</button></p>
@@ -137,6 +137,13 @@
           <ul class="facts"><li><b>Draws</b> <code>append main</code>, so it works on a page with no slot for it</li><li><b>In</b> no app yet: add it to one</li></ul>
           <details><summary>Asks for 4 permissions</summary><ul class="asks"><li><code>ui</code> Draw on this page.</li><li><code>plugins:read</code> See which plugins this page has, which are on, and their code.</li><li><code>plugins:author</code> Read the code of this page's plugins, and add, change, remove or share your own. Each change is shown to you first.</li><li><code>debug:read</code> See everything every plugin does, as the debug console does.</li></ul></details>
           <p class="actions"><a href="/std/plugin-editor.js">Code</a> <button type="button" class="copy" data-copy="/std/plugin-editor.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel="plugin" href="/std/plugin-editor.js"&gt;">Copy link tag</button></p>
+        </li>
+        <li class="card" id="plugin-maker" data-kind="ui" data-search="plugin maker plugin-maker describe a plugin you want for this page: a language model writes it, and you accept its code before it runs. building plugins on the page ui llm plugins:author llm">
+          <h4>Plugin maker <span class="tags"><span class="tag ui">On the page</span></span></h4>
+          <p>Describe a plugin you want for this page: a language model writes it, and you accept its code before it runs.</p>
+          <ul class="facts"><li><b>Needs</b> <code>llm</code>: add one of Claude (Anthropic), Gemini (Google), OpenAI, Ollama too</li><li><b>Draws</b> <code>append main</code>, so it works on a page with no slot for it</li><li><b>In</b> no app yet: add it to one</li></ul>
+          <details><summary>Asks for 3 permissions</summary><ul class="asks"><li><code>ui</code> Draw on this page.</li><li><code>llm</code> Use the llm service: one way for any plugin to ask a language model, whoever makes the model.</li><li><code>plugins:author</code> Read the code of this page's plugins, and add, change, remove or share your own. Each change is shown to you first.</li></ul></details>
+          <p class="actions"><a href="/std/plugin-maker.js">Code</a> <button type="button" class="copy" data-copy="/std/plugin-maker.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel="plugin" href="/std/plugin-maker.js"&gt;">Copy link tag</button></p>
         </li>
       </ul>
         </div>
@@ -294,7 +301,7 @@
         <li class="card" id="service-llm" data-kind="builtin" data-search="llm llm one way for any plugin to ask a language model, whoever makes the model. claude (anthropic) gemini (google) ollama openai">
           <h4><code>llm</code> <span class="tags"><span class="tag builtin">Built in</span></span></h4>
           <p>One way for any plugin to ask a language model, whoever makes the model.</p>
-          <ul class="facts"><li><b>Answered by</b> a plugin you add: <a href="#llm-anthropic">Claude (Anthropic)</a>, <a href="#llm-gemini">Gemini (Google)</a>, <a href="#llm-openai-compatible">Ollama</a>, <a href="#llm-openai">OpenAI</a></li><li><b>Used by</b> 1 plugin here: Ask the page</li></ul>
+          <ul class="facts"><li><b>Answered by</b> a plugin you add: <a href="#llm-anthropic">Claude (Anthropic)</a>, <a href="#llm-gemini">Gemini (Google)</a>, <a href="#llm-openai-compatible">Ollama</a>, <a href="#llm-openai">OpenAI</a></li><li><b>Used by</b> 2 plugins here: Ask the page, Plugin maker</li></ul>
           <p class="actions"><a href="/docs/api#llm">How to call it</a> <a href="https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/llm/module.ts">Code</a></p>
         </li>
         <li class="card" id="service-maker" data-kind="builtin" data-search="maker maker apps a person makes in the browser, by describing them to the app maker (std/maker/app-maker.agent.md) or by hand.">
