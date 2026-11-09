@@ -3,7 +3,7 @@
 export default async function ({ a, check }) {
   // Nested loops multiply: 300 × 300 items would make 90,000 rows, so filling stops at its node budget.
   const tooBig = await a.evaluate(() => {
-    const file = new DOMParser().parseFromString('<template id="grid"><template for="r of rows"><template for="c of rows"><i>{{c}}</i></template></template></template>', "text/html");
+    const file = window.__host.parse('<template id="grid"><template for="r of rows"><template for="c of rows"><i>{{c}}</i></template></template></template>');
     const rows = Array.from({ length: 300 }, (_, i) => i);
     const started = performance.now();
     const html = window.__host.fill(file, "grid", { rows });
@@ -12,7 +12,7 @@ export default async function ({ a, check }) {
   check("a template that would make too many nodes stops early instead of freezing the page", /wasn't drawn/.test(tooBig.html), `${tooBig.ms}ms: ${tooBig.html}`);
   // An attribute that is one whole hole comes and goes with its value; a hole inside other text is just text.
   const conditional = await a.evaluate(() => {
-    const file = new DOMParser().parseFromString('<template id="t"><input type="checkbox" checked="{{on}}"><i data-x="{{off}}" data-y="{{missing}}" data-n="{{n}}" title="is {{on}}"></i></template>', "text/html");
+    const file = window.__host.parse('<template id="t"><input type="checkbox" checked="{{on}}"><i data-x="{{off}}" data-y="{{missing}}" data-n="{{n}}" title="is {{on}}"></i></template>');
     return window.__host.fill(file, "t", { on: true, off: false, n: 0 });
   });
   check("an attribute that is one whole hole is left out when false or missing, and bare when true", conditional === '<input type="checkbox" checked=""><i data-n="0" title="is true"></i>', conditional);

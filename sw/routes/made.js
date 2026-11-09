@@ -12,7 +12,7 @@
 // Like apps.js, a visit to a screen inside the app (/apps/reading-list/book/
 // 42) gets the app's page, with a <base> naming its folder.
 
-import { APP_NAME, FILE_NAME, PAGE_CSP, pageProblems } from "../made-page.js";
+import { APP_NAME, FILE_NAME, PAGE_CSP, PERMISSIONS_POLICY, pageProblems } from "../made-page.js";
 
 const TYPES = { js: "text/javascript", html: "text/html", css: "text/css", md: "text/markdown" };
 
@@ -47,7 +47,7 @@ export default {
       const folder = `/apps/${app}/`;
       const based = html.replace(/<head\b[^>]*>/i, (head) => `${head}\n  <base href="${folder}">`);
       return new Response(based.includes(`<base href="${folder}">`) ? based : `<base href="${folder}">${html}`, {
-        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP, "X-Content-Type-Options": "nosniff" },
+        headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP, "Permissions-Policy": PERMISSIONS_POLICY, "X-Content-Type-Options": "nosniff" },
       });
     }
     // A file the page loads: one of the app's plugins, templates or styles.

@@ -22,6 +22,7 @@ import { fakeSmtp } from "./fake-smtp.mjs";
 import { authenticator } from "./authenticator.mjs";
 import { blueskyChecks } from "./bluesky.mjs";
 import { mcpChecks } from "./mcp.mjs";
+import { pagePolicyChecks } from "./page-policy.mjs";
 import { fakeAtproto } from "./fake-atproto.mjs";
 import { fakeProvider } from "./fake-oauth.mjs";
 
@@ -974,6 +975,7 @@ async function suite(name, make) {
     // Someone with an account, who makes the spaces the checks use.
     const owner = await person(server.url).account("Owner");
     for (const space of ["family", "work", "tabs"]) await owner.call("/auth/spaces", { name: space });
+    await pagePolicyChecks(server.url, check, owner.cookie);
 
     const a = await client(server.url, "family", owner.cookie);
     await new Promise((r) => setTimeout(r, 300));

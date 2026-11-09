@@ -1,6 +1,7 @@
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { extname, join, resolve, sep } from "node:path";
 import { kernelModules } from "./vite.kernel-modules";
+import { siteHeaders } from "./vite.site-headers";
 import { defineConfig, type Plugin } from "vite";
 
 // Plugin workers get their content security policy from the response that
@@ -150,7 +151,7 @@ function notFoundPage(): Plugin {
 
 export default defineConfig({
   // The kernel's modules: in the worker build, and in development, where Vite serves the kernel through this pipeline.
-  plugins: [kernelModules(), workerPolicy(), asWritten(), notFoundPage()],
+  plugins: [kernelModules(), workerPolicy(), siteHeaders(), asWritten(), notFoundPage()],
   // The kernel is a worker: its modules are the ones kernel.json lists.
   worker: { format: "es", plugins: () => [kernelModules()] },
   build: {

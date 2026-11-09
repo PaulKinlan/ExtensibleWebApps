@@ -7,6 +7,23 @@
 // add script, event handlers or links that run code, so a diagram from a
 // plugin is as safe to draw as one from the docs.
 
+const SOURCE = "/vendor/mermaid/mermaid.min.js";
+
+/**
+ * The page's Trusted Types policy (public/_headers) takes markup only from a named policy: this is
+ * Mermaid's, for the SVG its strict level has cleaned, and for its own script's address.
+ * @type {{ createHTML(s: string): any; createScriptURL(s: string): any } | undefined}
+ */
+const policy = (() => {
+  try {
+    return /** @type {any} */ (globalThis).trustedTypes?.createPolicy("mermaid", {
+      createHTML: (/** @type {string} */ svg) => svg,
+      createScriptURL: (/** @type {string} */ url) => (url === SOURCE ? url : null),
+    });
+  } catch {
+    return undefined; // Made already on this page: the default policy still takes the script's address, and the markup is refused.
+  }
+})();
 /** @type {Promise<any> | undefined} */
 let loading;
 let count = 0;
@@ -17,7 +34,7 @@ function load() {
     const ready = /** @type {any} */ (globalThis).mermaid;
     if (ready) return resolve(ready);
     const script = document.createElement("script");
-    script.src = "/vendor/mermaid/mermaid.min.js";
+    script.src = policy ? policy.createScriptURL(SOURCE) : SOURCE;
     script.onload = () => resolve(/** @type {any} */ (globalThis).mermaid);
     script.onerror = () => {
       loading = undefined;
@@ -47,7 +64,7 @@ export async function draw(text, target, label = "") {
     mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark() ? "dark" : "neutral", fontFamily: "inherit" });
     const { svg } = await mermaid.render(`ui-diagram-${++count}`, text.trim());
     // Mermaid's strict level has already cleaned the SVG of script and handlers.
-    target.innerHTML = svg;
+    target.innerHTML = policy ? policy.createHTML(svg) : svg;
     const drawn = target.querySelector("svg");
     if (drawn) {
       drawn.setAttribute("role", "img");

@@ -13,3 +13,36 @@
 # for twenty round trips before its first view.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Every page (an app's app.html, a folder's index.html, the front page, any other .html):
+#
+# - Scripts only from this site's files: no inline script (inline speculation rules aside), and
+#   none from other sites.
+# - Trusted Types: markup, script text and script addresses reach the page only through the named
+#   policies (src/host/trusted.ts, elements/mermaid.js, and the DOMPurify that Mermaid in vendor/
+#   brings), so nothing a plugin sends can become script.
+# - Permissions-Policy: the device features no app here uses are off, for the page and anything it
+#   embeds; the ones apps use stay on for this site.
+#
+# tests/checks/page-policy.mjs checks every host sends these, and the test run fails on any page
+# that breaks them. Keep the four rules the same: Cloudflare sends /demos/habits/app.html on to
+# /demos/habits/app, so the /*/app rule is the app pages there.
+/
+  Content-Security-Policy: script-src 'self' blob: 'inline-speculation-rules'; object-src 'none'; base-uri 'self'; require-trusted-types-for 'script'; trusted-types platform default mermaid dompurify
+  Permissions-Policy: accelerometer=(), autoplay=(self), bluetooth=(), camera=(), clipboard-write=(self), display-capture=(), fullscreen=(self), gamepad=(self), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(self), midi=(), payment=(), publickey-credentials-create=(self), publickey-credentials-get=(self), screen-wake-lock=(self), serial=(), usb=(), web-share=(self), xr-spatial-tracking=()
+  X-Content-Type-Options: nosniff
+
+/*/
+  Content-Security-Policy: script-src 'self' blob: 'inline-speculation-rules'; object-src 'none'; base-uri 'self'; require-trusted-types-for 'script'; trusted-types platform default mermaid dompurify
+  Permissions-Policy: accelerometer=(), autoplay=(self), bluetooth=(), camera=(), clipboard-write=(self), display-capture=(), fullscreen=(self), gamepad=(self), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(self), midi=(), payment=(), publickey-credentials-create=(self), publickey-credentials-get=(self), screen-wake-lock=(self), serial=(), usb=(), web-share=(self), xr-spatial-tracking=()
+  X-Content-Type-Options: nosniff
+
+/*/app
+  Content-Security-Policy: script-src 'self' blob: 'inline-speculation-rules'; object-src 'none'; base-uri 'self'; require-trusted-types-for 'script'; trusted-types platform default mermaid dompurify
+  Permissions-Policy: accelerometer=(), autoplay=(self), bluetooth=(), camera=(), clipboard-write=(self), display-capture=(), fullscreen=(self), gamepad=(self), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(self), midi=(), payment=(), publickey-credentials-create=(self), publickey-credentials-get=(self), screen-wake-lock=(self), serial=(), usb=(), web-share=(self), xr-spatial-tracking=()
+  X-Content-Type-Options: nosniff
+
+/*.html
+  Content-Security-Policy: script-src 'self' blob: 'inline-speculation-rules'; object-src 'none'; base-uri 'self'; require-trusted-types-for 'script'; trusted-types platform default mermaid dompurify
+  Permissions-Policy: accelerometer=(), autoplay=(self), bluetooth=(), camera=(), clipboard-write=(self), display-capture=(), fullscreen=(self), gamepad=(self), geolocation=(), gyroscope=(), hid=(), magnetometer=(), microphone=(self), midi=(), payment=(), publickey-credentials-create=(self), publickey-credentials-get=(self), screen-wake-lock=(self), serial=(), usb=(), web-share=(self), xr-spatial-tracking=()
+  X-Content-Type-Options: nosniff

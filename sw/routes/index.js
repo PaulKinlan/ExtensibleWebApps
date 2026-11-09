@@ -9,6 +9,7 @@
 import apps from "./apps.js";
 import headers from "./headers.js";
 import made from "./made.js";
+import manifest from "./manifest.js";
 import plugins from "./plugins.js";
 import spaces from "./spaces.js";
 import user from "./user.js";
@@ -17,6 +18,8 @@ export default [
   headers,
   // A plugin's route inside a space is answered before the space's files.
   plugins,
+  // An app's manifest.webmanifest, made from its page when it has none of its own: before made, which has no such file.
+  manifest,
   spaces,
   // Apps a person made in the browser, from their data folder: /apps/<name>/.
   made,

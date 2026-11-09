@@ -1,0 +1,49 @@
+# Runs the platform's checks (npm test: tests/platform.test.mjs) on every pull
+# request and on main, in Chromium: every demo app, every feature check, the
+# page policy (Trusted Types, scripts only from the site, Permissions-Policy,
+# failing the run on any page that breaks it) and the performance budget
+# (tests/perf-budget.json). npm test builds the site and the Node server
+# kernel itself, so this is what a fresh checkout runs.
+#
+# The hosts' own checks (Node and Cloudflare) are server-checks.yml.
+
+name: Platform checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Playwright isn't a dependency of the site: the checks bring their own Chromium.
+      - name: Install
+        run: npm ci && npm i --no-save playwright && npx playwright install --with-deps chromium
+
+      - name: npm test
+        run: npm test
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # The apps' own mistakes (permissions, manifests, templates, slots), without a browser.
+      - name: App checks
+        run: npm run check

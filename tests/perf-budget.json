@@ -1,0 +1,19 @@
+{
+  "gzipKB": {
+    "platform/host.js": 32,
+    "platform/host.css": 7,
+    "assets/browser.js": 125,
+    "assets/runtime.js": 4,
+    "assets/net-runtime.js": 4
+  },
+  "firstViewMs": {
+    "first": 3000,
+    "again": 2000
+  },
+  "layoutShift": 0.1,
+  "apps": {
+    "demos/habits/": "[data-key=\"habits:habits\"] ui-form",
+    "demos/reading-list/": "[data-key=\"library:books\"] ui-table",
+    "demos/contacts/": "main [data-key]"
+  }
+}

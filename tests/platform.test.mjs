@@ -10,6 +10,7 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { watchPolicy } from "./policy-watch.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require("playwright");
@@ -34,6 +35,8 @@ await new Promise((resolve, reject) => {
 });
 
 const browser = await chromium.launch({ args: ["--autoplay-policy=no-user-gesture-required"] });
+// Every context from here on is watched for pages breaking the site's page policy (public/_headers).
+const refusedByPolicy = watchPolicy(browser);
 const context = await browser.newContext();
 const errors = [];
 const proof = {};
@@ -591,6 +594,7 @@ export default async (ctx) => {
   await isolated.close();
 
   check("no uncaught errors in any page", errors.length === 0, errors.join("; "));
+  check("no page broke the site's page policy (Trusted Types, scripts, Permissions-Policy)", refusedByPolicy.length === 0, [...new Set(refusedByPolicy)].slice(0, 10).join("\n"));
 } catch (error) {
   check("the run finished", false, String(error));
 } finally {

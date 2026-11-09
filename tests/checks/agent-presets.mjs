@@ -41,8 +41,10 @@ export default async function ({ a, check, openTab, URL }) {
   const review = '[data-key^="review:"]';
   const asked = () => a.evaluate(() => window.__host.traces.filter((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked")).map((e) => JSON.parse(e.detail.slice(12))));
   /** The first model call that `test` (a function's source, run in the page) picks, waiting for its trace to arrive. */
+  // The model call whose system prompt starts with `system`, or whose first message has `first` in it. (Not a function as text:
+  // the page's Trusted Types policy refuses eval.)
   const turnWhere = (test) =>
-    a.waitForFunction((t) => window.__host.traces.filter((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked")).map((e) => JSON.parse(e.detail.slice(12))).find(eval(t)), test, { timeout: 5000 }).then((h) => h.jsonValue(), () => undefined);
+    a.waitForFunction(({ system, first }) => window.__host.traces.filter((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked")).map((e) => JSON.parse(e.detail.slice(12))).find((c) => (system ? c.system.startsWith(system) : c.first.includes(first))), test, { timeout: 5000 }).then((h) => h.jsonValue(), () => undefined);
   const seen = (selector, timeout = 10000) => page.waitForSelector(selector, { timeout }).then(() => true, () => false);
   const chatSays = (text, timeout = 15000) => seen(`${chat} >> text=${text}`, timeout);
   const send = async (agent, text) => {
@@ -63,7 +65,7 @@ export default async function ({ a, check, openTab, URL }) {
     await send("assistant", "Add Piranesi by Susanna Clarke");
     check("the assistant answers in the chat", await chatSays("Added it"));
     check("the assistant does it with the app's own commands", await seen('[data-key="library:books"] ui-table >> text=Piranesi', 5000));
-    const turn = await turnWhere(`(c) => c.system.startsWith("You help the person use this app")`);
+    const turn = await turnWhere({ system: "You help the person use this app" });
     check("the assistant's tools are the commands tools and bus_ask", !!turn && ["bus_ask", "commands_list", "commands_run"].every((t) => turn.tools.includes(t)) && !turn.tools.some((t) => /^data_(list|get|put|delete)/.test(t)), JSON.stringify(turn?.tools ?? (await asked()).map((c) => c.system)));
 
     // The builder, run 1: the person lets it act for them this time. Its save is still reviewed, as theirs.
@@ -76,7 +78,7 @@ export default async function ({ a, check, openTab, URL }) {
     const answered = await chatSays("Saving answered");
     if (!answered && process.env.DEBUG_PRESETS) console.log(JSON.stringify((await a.evaluate(() => window.__host.traces.filter((e) => /builder|chat|bus\.|agent:|change:|review/.test(`${e.plugin} ${e.name}`)).slice(-60).map((e) => `${e.kind} ${e.name} ${e.plugin ?? ""} ${e.detail ?? ""}`))), null, 1), JSON.stringify(await changes()));
     check("the builder answers in the chat", answered);
-    const builderTurn = await turnWhere(`(c) => c.system.startsWith("You write plugins for this app")`);
+    const builderTurn = await turnWhere({ system: "You write plugins for this app" });
     check("the builder's tools are the authoring tools, not the data", !!builderTurn && ["authoring_check", "authoring_save", "authoring_source", "authoring_mine"].every((t) => builderTurn.tools.includes(t)) && !builderTurn.tools.some((t) => /^data_(list|get|put|delete)/.test(t)), JSON.stringify(builderTurn?.tools));
     const saved = (await changes()).filter((e) => e.kind === "write" && e.plugin === "builder");
     check("the change log has the save as the person's, made through the builder", saved.at(-1)?.as === "person" && saved.at(-1)?.outcome === "allowed-once", JSON.stringify(saved.at(-1)));
@@ -88,7 +90,7 @@ export default async function ({ a, check, openTab, URL }) {
     check("declined, the agent acts as itself", await seen(`${review} >> text=Builder wants to change your plugins`));
     await page.click(`${review} >> text="Decline"`);
     await chatSays("Not saved");
-    const followUp = await turnWhere(`(c) => c.first.includes("Change it to say")`);
+    const followUp = await turnWhere({ first: "Change it to say" });
     check("the chat sends the conversation so far with that agent, and only that one", !!followUp && followUp.first.includes('"conversation"') && followUp.first.includes("Saving answered") && !followUp.first.includes("Add Piranesi"), followUp?.first);
     const declined = (await changes()).filter((e) => e.kind === "write" && e.plugin === "builder").at(-1);
     check("a change it made as itself isn't logged as the person's", declined?.outcome === "rejected" && !declined.as, JSON.stringify(declined));

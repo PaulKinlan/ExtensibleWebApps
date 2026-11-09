@@ -9,6 +9,8 @@
 // gets a class from templateElement() below, which fills {{name}} holes from
 // the element's attributes.
 
+import { html } from "./trusted";
+
 const BASE = new URL("/elements/", location.href);
 const loading = new Map<string, Promise<void>>();
 let reportError: (name: string, error: unknown) => void = () => {};
@@ -45,7 +47,7 @@ async function define(name: string): Promise<void> {
   const url = new URL(`${name}.html`, BASE);
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url} answered ${response.status}`);
-  const file = new DOMParser().parseFromString(await response.text(), "text/html");
+  const file = new DOMParser().parseFromString(html(await response.text()), "text/html");
   const template = file.querySelector("template") ?? undefined;
   const script = file.querySelector<HTMLScriptElement>('script[type="module"]');
   // The elements its own template uses load alongside it, not after it is first drawn.

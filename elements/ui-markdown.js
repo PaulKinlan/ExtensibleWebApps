@@ -82,7 +82,10 @@ export default class UiMarkdown extends HTMLElement {
         if (lang !== "mermaid") return undefined;
         const figure = document.createElement("figure");
         figure.className = "diagram";
-        figure.innerHTML = '<p class="waiting">Drawing the diagram…</p>';
+        const waiting = document.createElement("p");
+        waiting.className = "waiting";
+        waiting.textContent = "Drawing the diagram…";
+        figure.append(waiting);
         diagrams.push([code, figure]);
         return figure;
       },
