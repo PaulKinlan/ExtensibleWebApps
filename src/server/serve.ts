@@ -21,6 +21,7 @@ import { type Provider, providersFrom } from "./auth/providers.ts";
 import { signed } from "./signed.ts";
 import { type Accounts, type Decision, frontDoor, type Knock, SPACE, unrouted } from "./front-door.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "./routes.ts";
+import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
 import { accept } from "./websocket.ts";
 
 const TYPES: Record<string, string> = {
@@ -67,20 +68,28 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     },
   });
 
+  /** Spaces whose kernel is stopped while their folder is copied out or in, until it's done. */
+  const paused = new Map<string, Promise<void>>();
+
   /** The space's kernel, started on first use. */
   const space = (name: string): Promise<Worker> => {
+    // A space being copied out or in starts once that's done (src/server/transfer.ts).
+    const pause = paused.get(name);
+    if (pause) return pause.then(() => space(name));
     let started = spaces.get(name);
     if (!started) {
       started = new Promise<Worker>((ready, fail) => {
         const worker = new Worker(resolve(options.kernel), { workerData: { dir: join(resolve(options.spaces), name), origin: url, allowPrivate: options.allowPrivate ?? [] } });
         worker.on("message", (m) => {
           if (m?.t === "ready") ready(worker);
-          // The kernel asks for its members' email addresses, the only ones its plugins may email.
-          if (m?.t === "addresses")
-            void auth.addresses(name).then(
-              (addresses) => worker.postMessage({ t: "addresses", id: m.id, addresses }),
-              () => worker.postMessage({ t: "addresses", id: m.id, addresses: [] }),
+          // The kernel asks about its members: their email addresses (the only ones its plugins may email) and names.
+          if (m?.t === "addresses" || m?.t === "members") {
+            const asked: Promise<unknown> = m.t === "addresses" ? auth.addresses(name) : auth.members(name);
+            void asked.then(
+              (value) => worker.postMessage({ t: m.t, id: m.id, value }),
+              () => worker.postMessage({ t: m.t, id: m.id, value: [] }),
             );
+          }
         });
         worker.on("error", (error) => {
           console.error(`Space ${name}:`, error);
@@ -116,6 +125,58 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     for (const rule of rules) if (rule.path.test(path)) Object.assign(headers, rule.headers);
     response.writeHead(status, headers);
     createReadStream(full).pipe(response);
+  };
+
+  /** A space's folder, where its kernel keeps it. */
+  const folderOf = (name: string) => nodeFiles(join(resolve(options.spaces), name, "files"));
+  /**
+   * Runs `work` on a space's folder with its kernel stopped, so nothing writes to it meanwhile: its clients are
+   * disconnected (they connect again by themselves) and anything that needs the kernel waits. The kernel starts
+   * again afterwards if it was running, or if `restart` says to. One at a time for each space.
+   */
+  const withKernelStopped = async <T>(name: string, work: () => Promise<T>, restart: (result: T | undefined) => boolean): Promise<T> => {
+    if (paused.has(name)) throw new Error("The space is being copied: try again in a moment");
+    let resume!: () => void;
+    paused.set(name, new Promise<void>((done) => (resume = done)));
+    const running = spaces.get(name);
+    let result: T | undefined;
+    try {
+      if (running) {
+        spaces.delete(name);
+        for (const [socket, who] of clients) if (who.space === name) socket.close(1012, "The space is restarting");
+        await (await running.catch(() => undefined))?.terminate();
+      }
+      return (result = await work());
+    } finally {
+      paused.delete(name);
+      resume();
+      if (running || restart(result)) void space(name).catch(() => {});
+    }
+  };
+
+  /** Moving a space between hosts (src/server/transfer.ts): its copy out, or a copy in. False for any other request. */
+  const transfer = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    // Only these two routes: anything else under /auth/ keeps its body for the accounts.
+    if (!/^\/auth\/spaces\/[^/?]+\/(export|import)(\?|$)/.test(request.url ?? "")) return false;
+    const url = `${options.origin?.replace(/\/$/, "") ?? `http://${request.headers.host ?? "localhost"}`}${request.url}`;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
+    const answer = await transferRoute(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), {
+      role: async (req, name) => (await auth.member(req, name))?.role ?? null,
+      // The kernel stops while the folder is read, so the copy is the folder at one moment.
+      exportSpace: (name) => withKernelStopped(name, () => exportSpace(folderOf(name), name), () => false),
+      async importSpace(name, copy) {
+        // Refused before anything stops; checked again with the kernel stopped, in case it wrote meanwhile.
+        if ((await folderOf(name).list("")).length) throw new Error("A copy only goes into an empty space: make a new space for it");
+        // Started afterwards, so its server plugins and scheduled jobs run with no one connected.
+        return withKernelStopped(name, () => importSpace(folderOf(name), copy), (done) => !!done);
+      },
+    });
+    if (!answer) return false;
+    response.writeHead(answer.status, Object.fromEntries(answer.headers));
+    response.end(Buffer.from(await answer.arrayBuffer()));
+    return true;
   };
 
   /** A request under /auth/, as the web's Request, answered with the accounts' Response. */
@@ -194,7 +255,8 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
 
   /** Sends what the door decided for a request that isn't the space's socket. */
   const answer = async (request: IncomingMessage, response: ServerResponse, decision: Decision): Promise<void> => {
-    if (decision.door === "auth") return signIn(request, response);
+    // Moving a space (src/server/transfer.ts) is under /auth/ too; anything else there is the accounts'.
+    if (decision.door === "auth") return void ((await transfer(request, response)) || (await signIn(request, response)));
     if (decision.door === "route") {
       if (!(await publicRoute(request, response, decision))) await answer(request, response, unrouted(request.method ?? "GET"));
       return;

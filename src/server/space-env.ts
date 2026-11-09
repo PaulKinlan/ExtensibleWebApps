@@ -12,8 +12,22 @@ import { nodeIsolates } from "../seams/node-isolates.ts";
 
 const { dir, origin, allowPrivate } = workerData as { dir: string; origin: string; allowPrivate?: string[] };
 
-/** The kernel's asks for its members' addresses, numbered so each answer finds its ask. */
+/** The kernel's asks of the server (its members' addresses and names), numbered so each answer finds its ask. */
 let asked = 0;
+
+/** Asks serve.ts something only it knows (the accounts, which the space's thread can't read): `t` names it, and the answer comes back as `value`. */
+function askServer<T>(t: string, fallback: T): Promise<T> {
+  const id = ++asked;
+  return new Promise<T>((done) => {
+    const answer = (m: { t?: string; id?: number; value?: T }) => {
+      if (m?.t !== t || m.id !== id) return;
+      parentPort!.off("message", answer);
+      done(m.value ?? fallback);
+    };
+    parentPort!.on("message", answer);
+    parentPort!.postMessage({ t, id });
+  });
+}
 
 setEnv({
   kind: "server",
@@ -31,19 +45,8 @@ setEnv({
     // kernel's folder is ready at once on Node, so it starts as soon as it has loaded.
     setImmediate(start);
   },
-  addresses() {
-    // serve.ts asks the accounts, which the space's thread can't read.
-    const id = ++asked;
-    return new Promise<string[]>((done) => {
-      const answer = (m: { t?: string; id?: number; addresses?: string[] }) => {
-        if (m?.t !== "addresses" || m.id !== id) return;
-        parentPort!.off("message", answer);
-        done(Array.isArray(m.addresses) ? m.addresses : []);
-      };
-      parentPort!.on("message", answer);
-      parentPort!.postMessage({ t: "addresses", id });
-    });
-  },
+  addresses: () => askServer<string[]>("addresses", []),
+  members: () => askServer<{ id: string; name: string }[]>("members", []),
   serve(answer) {
     // A public route's request, which serve.ts passes on (src/server/routes.ts).
     parentPort!.on("message", async (message: { t?: string; id?: number; request?: Parameters<typeof answer>[0] }) => {

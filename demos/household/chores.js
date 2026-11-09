@@ -1,7 +1,8 @@
 // Chores: owns the `chores` collection, what needs doing and how often.
 // "Done" stamps a chore with today's date and who did it, so everyone sees
-// whose turn it was last; the list puts what's overdue first. Who "I" am
-// comes from the bus topic `household-me` (see housemates.js).
+// whose turn it was last; the list puts what's overdue first. In a space
+// "who" is the member's id, shown as the name on their account (see
+// housemates.js).
 //
 // In a space the chores sync like any collection. Two people marking the
 // same chore done while apart is a conflict the space settles: the first
@@ -12,7 +13,7 @@ export const manifest = {
   name: "Chores",
   description: "What needs doing around the house, how often, and who did it last.",
   version: "1.0.0",
-  permissions: ["ui", "bus:read:household-me", "data:read:housemates", "hook:listen:bus:posted"],
+  permissions: ["ui", "members", "hook:listen:members:changed", "bus:read:household-new", "hook:listen:bus:posted"],
   collections: {
     chores: {
       title: "Chores",
@@ -52,40 +53,50 @@ export function due(chore, today = new Date()) {
   return { when: days === 1 ? "Due tomorrow" : `Due in ${days} days`, tone: days <= 2 ? "accent" : "neutral", order: days };
 }
 
+const capital = (words) => words.charAt(0).toUpperCase() + words.slice(1);
+
 const ago = (date) => {
   const days = -daysTo(date);
   return days <= 0 ? "today" : days === 1 ? "yesterday" : `${days} days ago`;
 };
 
-async function myName(ctx) {
-  const posts = await ctx.call("bus", "read", "household-me");
-  try {
-    return (posts.length && JSON.parse(posts[posts.length - 1].text)?.name) || "";
-  } catch {
-    return "";
-  }
+/**
+ * Who is using this device, and everyone's names: in a space, the space's members (sync.members), so a
+ * stamp is a member's id and shows as the name on their account. On its own there's one person, "me".
+ */
+async function people(ctx) {
+  const { space, you, members } = await ctx.call("sync", "members");
+  if (!space) return { me: "me", name: () => "you" };
+  const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
+  // Someone who has left the space, or a stamp from before names came from accounts, is "someone".
+  return { me: you ?? "", name: (id) => (id === you ? "you" : names[id] ?? "someone") };
 }
 
 /**
- * Whether to add the sample items: only for a household nobody has joined yet, with nothing in the
- * collection. Both are synced, so a phone new to a space where people have cleared everything
- * doesn't put the samples back; this plugin's own `seeded` flag, which stays on the device, keeps
- * this device from adding them twice.
+ * Whether to add the sample items: only in a new household (housemates.js says, on the bus topic
+ * `household-new`), with nothing in the collection yet. This plugin's own `seeded` flag, which stays on
+ * the device, keeps it from adding them twice.
  */
-async function newHousehold(ctx, collection) {
-  return !(await ctx.call("data", "list", collection)).length && !(await ctx.call("data", "list", "housemates")).length;
+async function seedOnce(ctx, collection, samples) {
+  if (await ctx.storage.get("seeded")) return;
+  const posts = await ctx.call("bus", "read", "household-new");
+  if (!posts.length) return;
+  let fresh = false;
+  try {
+    fresh = JSON.parse(posts[posts.length - 1].text)?.new === true;
+  } catch {}
+  await ctx.storage.set("seeded", true);
+  if (fresh && !(await ctx.call("data", "list", collection)).length) for (const sample of samples) await ctx.call("data", "put", collection, sample);
 }
 
 export default async function (ctx) {
   const views = ctx.ui.views("chores.html");
-  if (!(await ctx.storage.get("seeded"))) {
-    if (await newHousehold(ctx, "chores")) for (const chore of SAMPLE) await ctx.call("data", "put", "chores", chore);
-    await ctx.storage.set("seeded", true);
-  }
+  await seedOnce(ctx, "chores", SAMPLE);
   let added = 0;
 
   const view = views.live("chores", "list", async (ctx) => {
-    const me = await myName(ctx);
+    const { name } = await people(ctx);
+    const who = (id) => (id ? name(id) : "someone");
     const chores = (await ctx.call("data", "list", "chores"))
       .map((c) => ({ chore: c, due: due(c) }))
       .sort((a, b) => a.due.order - b.due.order || a.chore.name.localeCompare(b.chore.name))
@@ -95,13 +106,14 @@ export default async function (ctx) {
         often: OFTEN[c.every] ?? `every ${c.every} days`,
         when: d.when,
         tone: d.tone,
-        last: c.doneOn ? `${c.doneBy ? (c.doneBy === me ? "You" : c.doneBy) : "Someone"} did it ${ago(c.doneOn)}` : "",
+        last: c.doneOn ? `${capital(who(c.doneBy))} did it ${ago(c.doneOn)}` : "",
         today: c.doneOn === iso(new Date()),
       }));
     return { chores, form: `add-${added}` };
   });
 
-  ctx.on("bus:posted", ({ topic }) => topic === "household-me" && view.refresh());
+  ctx.on("members:changed", () => view.refresh());
+  ctx.on("bus:posted", ({ topic }) => topic === "household-new" && seedOnce(ctx, "chores", SAMPLE));
   // "Due today" becomes "1 day overdue" at midnight, with no change to any chore: draw again then.
   const atMidnight = () => {
     const now = new Date();
@@ -110,7 +122,7 @@ export default async function (ctx) {
   atMidnight();
 
   ctx.ui.onEvent(async (action, value) => {
-    const me = await myName(ctx);
+    const { me } = await people(ctx);
     if (action.startsWith("done:")) {
       const chore = await ctx.call("data", "get", "chores", action.slice(5));
       if (!chore) return;

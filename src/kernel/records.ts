@@ -104,7 +104,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     registry.set(collection.name, collection);
     const { name } = collection;
     if (!hooks.has(`data:changed:${name}`)) {
-      defineHook(`data:changed:${name}`, { mode: "emit", args: "{ collection, id, before?, after?, by? }", description: `A record in ${name} was written or deleted (after is missing for a delete). In a space, a change from another device or the space's server says who made it with \`by\`: a member's name, or plugin:<id>.` });
+      defineHook(`data:changed:${name}`, { mode: "emit", args: "{ collection, id, before?, after?, by? }", description: `A record in ${name} was written or deleted (after is missing for a delete). In a space, a change from another device or the space's server says who made it with \`by\`: a member's id (sync.members() has their names), or plugin:<id>.` });
       defineHook(`data:beforeWrite:${name}`, { ...BEFORE_WRITE, args: "{ collection, id, before?, after? }", description: `Before a record in ${name} is written or deleted. Return { block: reason } to stop it.` });
       root.on(`data:changed:${name}`, () => push(name));
     }
