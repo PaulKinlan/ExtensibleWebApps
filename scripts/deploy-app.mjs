@@ -150,7 +150,9 @@ export function layoutApp(app, { name, dist = join(ROOT, "dist"), out } = {}) {
     main: rel(join(ROOT, config.main)),
     assets: { ...config.assets, directory: "./site" },
     // Which app this Worker serves, so a later deploy can tell it from a Worker that isn't this app's (deploy-guard.mjs).
-    vars: { ...config.vars, [APP_VAR]: path },
+    // The site's sign-in providers stay behind: their callback is the site's host and their secrets the site's
+    // Worker's, so this Worker would refuse to start its accounts. An app sets up its own (docs/guide/deploying-an-app.md).
+    vars: { ...Object.fromEntries(Object.entries(config.vars ?? {}).filter(([name]) => name !== "AUTH_PROVIDERS")), [APP_VAR]: path },
   };
   writeFileSync(
     join(target, "wrangler.jsonc"),
