@@ -151,9 +151,10 @@ export function userPlugins(store: Store, origin: string, space?: string) {
      * Adds a plugin from a URL on this site, with the files its manifest lists next to it: how the demos'
      * sample plugins are added, and how a person adds one they found elsewhere on the site.
      */
-    async addFromUrl(app: string, url: string) {
+    /** A plugin's file and the files its manifest lists, read from this site, ready for add(). */
+    async fetch(url: string): Promise<{ ok: true; files: { name: string; data: Blob | string }[]; source: string } | { ok: false; error: string }> {
       const href = new URL(url, origin);
-      if (href.origin !== origin || !href.pathname.endsWith(".js")) return { ok: false as const, error: "Add a .js file from this site" };
+      if (href.origin !== origin || !href.pathname.endsWith(".js")) return { ok: false, error: "Add a .js file from this site" };
       const get = async (u: URL) => {
         const response = await fetch(u);
         if (!response.ok) throw new Error(`${u.pathname} answered ${response.status}`);
@@ -164,10 +165,48 @@ export function userPlugins(store: Store, origin: string, space?: string) {
         const manifest = readManifest(source);
         const files: { name: string; data: Blob | string }[] = [{ name: href.pathname.split("/").pop()!, data: source }];
         for (const name of manifest.files ?? []) files.push({ name, data: await get(new URL(name, href)) });
-        return this.add(app, files);
+        return { ok: true, files, source };
       } catch (error) {
-        return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+        return { ok: false, error: error instanceof Error ? error.message : String(error) };
       }
+    },
+
+    /**
+     * Why one plugin's files can't go in an app's folder, if they can't: they are one plugin (.js), every
+     * other file is one its manifest lists, and none belongs to another of the person's plugins there
+     * (which it would overwrite). A review shows the plugin's code, so nothing else may ride along with it.
+     */
+    async problem(app: string, files: { name: string; data: Blob | string }[]): Promise<string | undefined> {
+      const plugins = files.filter((f) => f.name.endsWith(".js"));
+      if (plugins.length !== 1 || typeof plugins[0].data !== "string") return "Add one plugin (.js) at a time, with the files its manifest lists";
+      let manifest;
+      try {
+        manifest = readManifest(plugins[0].data);
+      } catch (error) {
+        return `${plugins[0].name}: ${error instanceof Error ? error.message : error}`;
+      }
+      const listed = new Set(manifest.files ?? []);
+      const badName = files.find((f) => !FILE_NAME.test(f.name));
+      if (badName) return `${badName.name}: a file name is letters, digits, ., - and _`;
+      const extra = files.find((f) => f !== plugins[0] && !listed.has(f.name));
+      if (extra) return `${extra.name} isn't one of the files ${manifest.id} lists`;
+      const ours = new Set([`${manifest.id}.js`, ...listed]);
+      for (const other of await list(app)) {
+        if (!other.id || other.id === manifest.id) continue;
+        const source = (await store.readText(`user/${app}/${other.file}`)) ?? "";
+        let theirs: string[] = [];
+        try {
+          theirs = readManifest(source).files ?? [];
+        } catch {}
+        const clash = [other.file, ...theirs].find((name) => ours.has(name));
+        if (clash) return `${clash} belongs to ${other.name ?? other.id}, another plugin for this app`;
+      }
+      return undefined;
+    },
+
+    async addFromUrl(app: string, url: string) {
+      const fetched = await this.fetch(url);
+      return fetched.ok ? this.add(app, fetched.files) : fetched;
     },
 
     on: (app: string, id: string) => setOn(checkApp(app), id, true),

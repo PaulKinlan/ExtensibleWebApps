@@ -1,7 +1,7 @@
 // Groceries: owns the `groceries` collection, the house's shopping list.
 // Each item says who added it and, once it's in someone's basket, who got
-// it. Who "I" am comes from the bus topic `household-me`, which
-// housemates.js posts to when the person says who is using this device.
+// it. In a space that's the member's id, which the space vouches for, shown
+// as the name on their account (sync.members); see housemates.js.
 //
 // In a space every phone has a copy: an item added on one shows on the
 // others, and one ticked off while offline is sent when the phone is back.
@@ -14,7 +14,7 @@ export const manifest = {
   name: "Shopping list",
   description: "What the house needs, who added it, and who got it.",
   version: "1.0.0",
-  permissions: ["ui", "bus:read:household-me", "data:read:housemates", "hook:listen:bus:posted"],
+  permissions: ["ui", "members", "hook:listen:members:changed", "bus:read:household-new", "hook:listen:bus:posted"],
   collections: {
     groceries: {
       title: "Shopping list",
@@ -38,39 +38,45 @@ const SAMPLE = [
   { id: "sample-bread", item: "Bread" },
 ];
 
-/** This device's person's name, from the latest post on the topic, or "" before they've said. */
-async function myName(ctx) {
-  const posts = await ctx.call("bus", "read", "household-me");
-  try {
-    return (posts.length && JSON.parse(posts[posts.length - 1].text)?.name) || "";
-  } catch {
-    return "";
-  }
+/**
+ * Who is using this device, and everyone's names: in a space, the space's members (sync.members), so a
+ * stamp is a member's id and shows as the name on their account. On its own there's one person, "me".
+ */
+async function people(ctx) {
+  const { space, you, members } = await ctx.call("sync", "members");
+  if (!space) return { me: "me", name: () => "you" };
+  const names = Object.fromEntries(members.map((m) => [m.id, m.name]));
+  // Someone who has left the space, or a stamp from before names came from accounts, is "someone".
+  return { me: you ?? "", name: (id) => (id === you ? "you" : names[id] ?? "someone") };
 }
 
 /**
- * Whether to add the sample items: only for a household nobody has joined yet, with nothing in the
- * collection. Both are synced, so a phone new to a space where people have cleared everything
- * doesn't put the samples back; this plugin's own `seeded` flag, which stays on the device, keeps
- * this device from adding them twice.
+ * Whether to add the sample items: only in a new household (housemates.js says, on the bus topic
+ * `household-new`), with nothing in the collection yet. This plugin's own `seeded` flag, which stays on
+ * the device, keeps it from adding them twice.
  */
-async function newHousehold(ctx, collection) {
-  return !(await ctx.call("data", "list", collection)).length && !(await ctx.call("data", "list", "housemates")).length;
+async function seedOnce(ctx, collection, samples) {
+  if (await ctx.storage.get("seeded")) return;
+  const posts = await ctx.call("bus", "read", "household-new");
+  if (!posts.length) return;
+  let fresh = false;
+  try {
+    fresh = JSON.parse(posts[posts.length - 1].text)?.new === true;
+  } catch {}
+  await ctx.storage.set("seeded", true);
+  if (fresh && !(await ctx.call("data", "list", collection)).length) for (const sample of samples) await ctx.call("data", "put", collection, sample);
 }
 
 export default async function (ctx) {
   const views = ctx.ui.views("groceries.html");
-  if (!(await ctx.storage.get("seeded"))) {
-    if (await newHousehold(ctx, "groceries")) for (const item of SAMPLE) await ctx.call("data", "put", "groceries", item);
-    await ctx.storage.set("seeded", true);
-  }
+  await seedOnce(ctx, "groceries", SAMPLE);
   /** Bumped after each add, so the template's form is drawn fresh, with its field empty. */
   let added = 0;
 
   const view = views.live("groceries", "list", async (ctx) => {
     const items = await ctx.call("data", "list", "groceries");
-    const me = await myName(ctx);
-    const by = (name) => (name && name === me ? "you" : name);
+    const { name } = await people(ctx);
+    const by = (id) => (id ? name(id) : "");
     const shown = (i) => ({ id: i.id, item: i.item, got: !!i.got, added: by(i.addedBy), gotBy: by(i.gotBy) });
     // Oldest first, as a list is written; what's been got goes to the bottom.
     const oldest = (a, b) => a.createdAt.localeCompare(b.createdAt);
@@ -79,11 +85,12 @@ export default async function (ctx) {
     return { toGet, got, empty: !items.length, form: `add-${added}` };
   });
 
-  // The names change when the person says who they are.
-  ctx.on("bus:posted", ({ topic }) => topic === "household-me" && view.refresh());
+  // Names arrive when the page reaches the space; samples once housemates.js says the household is new.
+  ctx.on("members:changed", () => view.refresh());
+  ctx.on("bus:posted", ({ topic }) => topic === "household-new" && seedOnce(ctx, "groceries", SAMPLE));
 
   ctx.ui.onEvent(async (action, value) => {
-    const me = await myName(ctx);
+    const { me } = await people(ctx);
     if (action === "add" && value.item?.trim()) {
       const saved = await ctx.call("data", "put", "groceries", { item: value.item.trim(), ...(me ? { addedBy: me } : {}) });
       // A refused add (a data:beforeWrite listener blocked it, say) keeps what was typed.
