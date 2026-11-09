@@ -5,11 +5,16 @@
 # model does with the prompts, the tools and the fix loop.
 #
 # It costs money and uses the repository's GEMINI_API_KEY secret, so it only
-# ever starts by hand (Actions, "Real model checks", Run workflow), never on a
-# pull request or a push: code from a pull request can't reach the key. The
-# key goes to the test as an environment variable for one step. The test never
-# prints it and takes its text out of everything it writes; GitHub masks it
-# in the log as well.
+# ever starts by hand (Actions, "Real model checks", Run workflow) or on its
+# weekly schedule, never on a pull request or a push: code from a pull
+# request can't reach the key. The key goes to the test as an environment
+# variable for one step. The test never prints it and takes its text out of
+# everything it writes; GitHub masks it in the log as well.
+#
+# The weekly run is Mondays at 05:00 UTC, three hours before the weekly health
+# review, on the `balanced` tier: Google's newest Flash model, which costs far
+# less than the `best` tier the features ship with. A run by hand can pick
+# another tier or a model's id. A failed run shows red in the Actions list.
 #
 # Each run uploads its screenshots, the report and the files of the app the
 # model made, and writes the pass/fail summary on the run's page.
@@ -17,12 +22,18 @@
 name: Real model checks
 
 on:
+  schedule:
+    - cron: "0 5 * * 1"
   workflow_dispatch:
     inputs:
       features:
         description: "Which to run, comma separated: ask, builder, plugin-maker, app-maker"
         required: false
         default: "ask,builder,plugin-maker,app-maker"
+      model:
+        description: "Which Gemini model: best, balanced or fast for Google's newest of that kind, or a model's id"
+        required: false
+        default: "balanced"
 
 permissions:
   contents: read
@@ -33,8 +44,8 @@ concurrency:
 
 jobs:
   real-model:
-    # Only a run someone started by hand may use the key.
-    if: github.event_name == 'workflow_dispatch'
+    # Only a run someone started by hand, or the weekly schedule, may use the key.
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -56,6 +67,8 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           FEATURES: ${{ inputs.features }}
+          # The schedule has no inputs: it runs every feature on the balanced tier.
+          MODEL: ${{ inputs.model || 'balanced' }}
           OUT: ${{ runner.temp }}/real-model
         run: node tests/real-model/run.mjs
 

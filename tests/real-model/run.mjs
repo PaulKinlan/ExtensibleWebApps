@@ -19,6 +19,11 @@
 //              app-maker (default: all)
 //   OUT        where the report, screenshots and made files go
 //              (default .build/real-model)
+//   MODEL      which Gemini model answers: a tier (best, balanced, fast) or a
+//              model's id. Without it each feature uses what it ships with,
+//              which is `best`. With it, the built site in dist/ is changed
+//              for the length of the run and put back after: the Gemini
+//              provider's default model, and the app maker's `model:`.
 //
 // Exits non-zero if any check fails.
 
@@ -44,8 +49,35 @@ if (unknown.length) {
   process.exit(2);
 }
 const ROOT = fileURLToPath(new globalThis.URL("../../", import.meta.url));
+const MODEL = (process.env.MODEL ?? "").trim();
+if (MODEL && !/^[a-z0-9][a-z0-9.-]{1,60}$/.test(MODEL)) {
+  console.error("MODEL is a tier (best, balanced, fast) or a model's id, such as gemini-3.8-flash.");
+  process.exit(2);
+}
 const OUT = process.env.OUT ? process.env.OUT : join(ROOT, ".build/real-model");
 mkdirSync(OUT, { recursive: true });
+
+/**
+ * The model choice, made in the built site the run serves. Each change must find its line: a file that no longer
+ * says what this expects fails the run, so a run never quietly uses another model than the one asked for.
+ */
+const restore = [];
+// Put back however the run ends.
+process.on("exit", () => restore.splice(0).forEach((undo) => undo()));
+if (MODEL) {
+  const change = (file, from, to) => {
+    const path = join(ROOT, "dist", file);
+    const text = readFileSync(path, "utf8");
+    if (text.split(from).length !== 2) {
+      console.error(`Can't set the model: dist/${file} doesn't have exactly one ${JSON.stringify(from)}. Run npm run build first.`);
+      process.exit(2);
+    }
+    restore.push(() => writeFileSync(path, text));
+    writeFileSync(path, text.replace(from, to));
+  };
+  change("std/llm/gemini.js", 'default: "best",', `default: ${JSON.stringify(MODEL)},`);
+  change("std/maker/app-maker.agent.md", "\nmodel: best\n", `\nmodel: ${MODEL}\n`);
+}
 
 const PORT = 4179;
 const URL = `http://localhost:${PORT}/`;
@@ -480,7 +512,7 @@ for (const f of Object.values(features)) for (const [model, u] of Object.entries
 const md = [
   `# Model features with a real Gemini model`,
   ``,
-  `${results.length - failed.length} of ${results.length} checks passed. Features run: ${FEATURES.join(", ")}.`,
+  `${results.length - failed.length} of ${results.length} checks passed. Features run: ${FEATURES.join(", ")}. Model asked for: ${MODEL || "each feature's own (best)"}.`,
   ``,
   `| Model | Calls | Tokens in | Tokens out |`,
   `| --- | ---: | ---: | ---: |`,
