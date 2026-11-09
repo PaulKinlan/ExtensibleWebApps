@@ -72,8 +72,50 @@ const STARTERS = [
 /** A package's kind: from the registry when it says, else worked out the same way it does. */
 const kindOf = (p) => p.kind ?? (p.provides?.length || p.permissions?.some((x) => x.startsWith("provide:")) ? "service" : p.permissions?.includes("ui") ? "ui" : "background");
 
-/** Words a person reads for where a place draws. */
-const whereOf = (p) => `${PUTS[p.put] ?? p.put} ${p.at}${p.each ? " (each one)" : ""}`;
+/** Parts of a page every app has, in words. */
+const TAGS = { main: "the page's main part", header: "the page's header", footer: "the page's footer", aside: "the side panel", nav: "the page's links", h1: "the page's heading", body: "the page" };
+
+/** A selector in words, where it says what it is plainly enough ([data-part=price] is "the price"); else the selector itself. */
+const partOf = (at, each) => {
+  const s = String(at).trim();
+  if (TAGS[s]) return TAGS[s];
+  const named = /^\[data-part=["']?([\w-]+)["']?\]$/.exec(s) ?? /^#([a-z][\w-]*)$/i.exec(s);
+  if (named) return `${each ? "each" : "the"} ${named[1].replace(/[-_]+/g, " ")}`;
+  return each ? `each ${s}` : s;
+};
+
+/** Words a person reads for where a place draws: "Shows below the page's heading", "Shows instead of each price", "Hides the newsletter". */
+const whereOf = (p) => (p.put === "hide" ? `Hides ${partOf(p.at, p.each)}` : `Shows ${PUTS[p.put] ?? p.put} ${partOf(p.at, p.each)}`);
+
+/** The same, from the way a person's own plugin lists its places ("replace each [data-part=price]"). */
+const whereOfText = (text) => {
+  const m = /^(\w+)( each)? (.+)$/.exec(String(text));
+  return m ? whereOf({ put: m[1], each: !!m[2], at: m[3] }) : String(text);
+};
+
+/** What a permission lets a plugin do, short enough for a list (the review card says it in full). */
+const canOf = (permission) => {
+  const [kind, verb, ...rest] = String(permission).split(":");
+  const what = rest.join(":");
+  if (permission === "ui") return "show things on this page";
+  if (permission === "network") return "reach sites on the internet";
+  if (kind === "network") return `reach ${[verb, what].filter(Boolean).join(":")}`;
+  if (kind === "data" && verb === "read") return `read your ${what} records`;
+  if (kind === "data" && verb === "write") return `change your ${what} records`;
+  if (kind === "hook" && verb === "listen") return `hear ${what}`;
+  if (kind === "hook" && verb === "intercept") return `change or stop ${what}`;
+  if (permission === "plugins:read") return "see this page's plugins";
+  if (permission === "plugins:manage") return "turn plugins on and off";
+  if (permission === "plugins:author") return "add or change your plugins (you're asked each time)";
+  if (kind === "provide") return `offer the ${[verb, what].filter(Boolean).join(":")} service`;
+  if (kind === "secret") return `keep your key for ${verb}`;
+  if (permission === "debug:read") return "see everything every plugin does";
+  if (permission === "live") return "send live messages to others in the space";
+  return verb ? `use ${permission}` : `use the ${permission} service`;
+};
+
+/** A sentence of what a plugin can do once it's on. */
+const canSay = (permissions) => (permissions?.length ? `It can ${[...new Set(permissions.map(canOf))].join(", ")}.` : "It asks for nothing.");
 
 /** An id from a name: lowercase words joined by dashes. */
 const slug = (name) =>
@@ -115,7 +157,7 @@ export default function (ctx) {
   /** Each new value opens the panel again, after something on the page closed it. */
   let reopen = 0;
   /** The plugin being made in Make: the starter, the spot, the name and the code. */
-  const make = { starter: "", spot: null, name: "", code: "", rev: 0, check: null, status: "" };
+  const make = { starter: "", spot: null, name: "", code: "", rev: 0, check: null, status: "", saved: false };
 
   const matches = (p) => !query || `${p.name} ${p.description ?? ""} ${p.id}`.toLowerCase().includes(query.toLowerCase());
 
@@ -150,9 +192,9 @@ export default function (ctx) {
       off: !p.on,
       offClass: p.on ? "" : "off",
       error: p.error,
-      asks: p.on ? "" : `Asks for: ${p.permissions.join(", ") || "nothing"}`,
       places: p.on ? placesOf(page, p.id, running(p.id)) : [],
-      draws: p.on || !p.places.length ? "" : `Shows ${p.places.join("; ")}`,
+      // Off, it neither shows nor runs: say so in the row, with what turning it on does.
+      offHint: p.on || p.error ? "" : `Off: it isn't running.${p.places.length ? ` Turn it on and it ${p.places.map(whereOfText).map((w) => w[0].toLowerCase() + w.slice(1)).join("; ")}.` : " Turn it on to use it."}`,
       share: page.space ? (p.shared ? "Stop sharing" : "Share with the space") : "",
       shared: p.shared,
     }));
@@ -167,15 +209,35 @@ export default function (ctx) {
         on: !!p.enabled,
         off: !p.enabled,
         offClass: p.enabled ? "" : "off",
-        places: placesOf(page, p.id, running(p.id)),
+        places: p.enabled ? placesOf(page, p.id, running(p.id)) : [],
+        offHint: p.enabled ? "" : "Off: it isn't running. Turn it on to bring it back.",
       }));
     return [...own, ...theirs].filter(matches);
   };
 
+  /** What Make shows, from the draft. */
+  const makeView = (editorLinked) => ({
+    ...make,
+    starters: STARTERS.map((s) => ({ ...s, pressed: String(s.file === make.starter) })),
+    started: !!make.starter,
+    spotLabel: make.spot?.label ?? "At the bottom of the page's main part. Choose a spot to put it somewhere else.",
+    chosenSpot: !!make.spot,
+    ok: make.check?.ok,
+    problem: make.check && !make.check.ok ? make.check.error : "",
+    permissions: make.check?.ok ? make.check.permissions : [],
+    editorLinked,
+  });
+  /** What the page said last, for drawing Make while the panel is closed. */
+  let lastArrange = false;
+  let lastEditorLinked = false;
+
   const drawNow = async () => {
-    if (!open) return views.render("customize", "panel", { open: false, reopen });
+    // Closed, only Make stays drawn (hidden), so a draft being typed is still there when the panel opens again.
+    if (!open) return views.render("customize", "panel", { open: false, reopen, notMake: true, arrange: lastArrange, make: makeView(lastEditorLinked) });
     const [mine, page] = await Promise.all([call("mine"), call("page")]);
-    if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, reopen, message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
+    if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, reopen, notMake: true, make: makeView(false), message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
+    lastArrange = !!page.arrange;
+    lastEditorLinked = page.running.some((r) => r.id === "plugin-editor");
     const tabs = { plugins: tab === "plugins", make: tab === "make", layout: tab === "layout" };
     const pressed = Object.fromEntries(Object.entries(tabs).map(([k, v]) => [k, String(v)]));
     const base = {
@@ -191,17 +253,7 @@ export default function (ctx) {
       arrange: page.arrange,
       busy,
       // Make is drawn on every tab, hidden on the others, so a draft in it survives a look at another tab.
-      make: {
-        ...make,
-        starters: STARTERS.map((s) => ({ ...s, pressed: String(s.file === make.starter) })),
-        started: !!make.starter,
-        spotLabel: make.spot?.label ?? "At the bottom of the page's main part (choose a spot to put it somewhere else)",
-        chosenSpot: !!make.spot,
-        ok: make.check?.ok,
-        problem: make.check && !make.check.ok ? make.check.error : "",
-        permissions: make.check?.ok ? make.check.permissions : [],
-        editorLinked: page.running.some((r) => r.id === "plugin-editor"),
-      },
+      make: makeView(lastEditorLinked),
     };
     if (tab === "plugins") {
       const [packages, app] = await Promise.all([call("packages"), ctx.call("plugins", "app").catch(() => [])]);
@@ -212,10 +264,11 @@ export default function (ctx) {
         return {
           ...p,
           state: own ? (own.on ? "Added, on" : "Added, off") : p.linked ? "In this app" : "",
+          stateClass: own ? (own.on ? "on" : "off") : "",
           add: !p.linked && !own,
           turnOn: !!own && !own.on,
           disabled: busy,
-          asks: `Asks for: ${p.permissions.join(", ") || "nothing"}`,
+          can: canSay(p.permissions),
           also: p.adds.length > 1 ? `Adds ${p.adds.filter((a) => a.id !== p.id).map((a) => a.name).join(", ")} too, which it needs.` : "",
         };
       });
@@ -280,14 +333,42 @@ export default function (ctx) {
     follow = null;
     await draw();
     try {
-      for (const a of adds) if (!(await run("add", [a.href]))) return;
-      const last = adds[adds.length - 1];
-      message = `Added ${adds.map((a) => a.name).join(" and ")}, turned off for now.`;
-      follow = last.id ? { label: `Turn ${last.name} on`, action: "turn", value: last.id } : null;
+      const ids = [];
+      for (const a of adds) {
+        const result = await call("add", a.href);
+        if (result?.ok === false) {
+          message = result.error === "Not added" ? `${a.name} wasn't added.` : result.error;
+          follow = null;
+          return;
+        }
+        if (result?.id) ids.push(result.id);
+      }
+      // The person has just seen its code and accepted it: that's the moment they want it, so it goes on now.
+      await turnOn(ids, adds.map((a) => a.name));
     } finally {
       busy = false;
       await draw();
     }
+  };
+
+  /**
+   * Turns on plugins the person has just added (after the review they accepted), and says so with a way back.
+   * The last is what they asked for; turning it on brings the ones it needs too.
+   */
+  const turnOn = async (ids, names) => {
+    const before = await call("mine");
+    for (const id of ids) {
+      const result = await call("turn", id, true);
+      if (result?.ok === false) {
+        message = `Added ${names.join(" and ")}, but couldn't turn it on: ${result.error}`;
+        follow = null;
+        return;
+      }
+    }
+    undo = Array.isArray(before) ? new Map(before.map((m) => [m.id, !!m.on])) : null;
+    for (const id of ids) undo?.set(id, false);
+    message = `Added ${names.join(" and ")}, and turned ${ids.length > 1 ? "them" : "it"} on.`;
+    follow = undo && ids.length ? { label: "Turn off", action: "undo-turn", value: ids[ids.length - 1] } : null;
   };
 
   /** Turns one of the person's plugins on or off, or the app's own (plugins.setEnabled). */
@@ -299,7 +380,7 @@ export default function (ctx) {
       const theirs = app.find((a) => a.id === id);
       if (!theirs) return;
       await ctx.call("plugins", "setEnabled", id, !theirs.enabled);
-      message = `Turned ${theirs.name ?? id} ${theirs.enabled ? "off" : "on"}`;
+      message = `Turned ${theirs.name ?? id} ${theirs.enabled ? "off" : "on"}.`;
       follow = null;
       return draw();
     }
@@ -329,7 +410,11 @@ export default function (ctx) {
     // Off first, then on: turning one on brings what it needs, so the ones that were on end up on.
     for (const m of changed.filter((m) => !before.get(m.id))) await call("turn", m.id, false);
     for (const m of changed.filter((m) => before.get(m.id))) await call("turn", m.id, true);
-    message = changed.length ? `Put back ${changed.map((m) => m.name).join(" and ")}.` : "Nothing to put back.";
+    // Turning one off may have stopped others that need it (a provider that replaced another): bring back any that were on.
+    const now = await call("mine");
+    if (Array.isArray(now)) for (const m of now.filter((m) => before.get(m.id) && !m.on)) await call("turn", m.id, true);
+    const said = (list, how) => (list.length ? `Turned ${list.map((m) => m.name).join(" and ")} ${how}.` : "");
+    message = changed.length ? [said(changed.filter((m) => m.on), "off"), said(changed.filter((m) => !m.on), "back on")].filter(Boolean).join(" ") : "Nothing to put back.";
     await draw();
   };
 
@@ -371,7 +456,16 @@ export default function (ctx) {
     }
     if (action === "turn") return turn(String(value));
     if (action === "undo-turn") return undoTurn();
-    if (action === "remove") return run("remove", [value], "Removed");
+    if (action === "remove") {
+      const mine = await call("mine");
+      const name = (Array.isArray(mine) ? mine.find((m) => m.id === value)?.name : undefined) ?? value;
+      message = "Waiting for your answer on the review card…";
+      follow = null;
+      await draw();
+      const result = await call("remove", value);
+      message = result?.ok === false ? (result.error === "Not removed" ? `${name} is still here.` : result.error) : `Removed ${name}. Your data from it is kept.`;
+      return draw();
+    }
     if (action === "share") {
       const mine = await call("mine");
       const p = Array.isArray(mine) ? mine.find((m) => m.id === value) : undefined;
@@ -403,7 +497,20 @@ export default function (ctx) {
       if (sample) await addAll([{ href: sample.href, name: sample.title }]);
       return;
     }
-    if (action === "pick") return run("pick", [], "Added, turned off for now. Turn it on in the list above.");
+    if (action === "pick") {
+      // The file chooser opens only while the click still counts, so ask for it before anything else.
+      const result = await call("pick");
+      if (result?.ok === false) {
+        message = result.error;
+        follow = null;
+        return draw();
+      }
+      const mine = await call("mine");
+      const ids = result?.ids ?? [];
+      const names = ids.map((id) => (Array.isArray(mine) ? mine.find((m) => m.id === id)?.name : undefined) ?? id);
+      if (ids.length) await turnOn(ids, names);
+      return draw();
+    }
     if (action === "paste") {
       const code = String(value?.code ?? "").trim();
       if (code) await run("save", [code], "Added and turned on.");
@@ -438,11 +545,13 @@ export default function (ctx) {
       const code = finish(make.code, make.name, make.spot);
       make.check = await call("check", code);
       make.status = "";
+      make.saved = false;
       if (action === "make-save" && make.check?.ok) {
         make.status = "Waiting for your answer on the review card…";
         await draw();
         const saved = await call("save", code);
-        make.status = saved?.ok ? `Saved, and ${make.check.manifest.name} is on. It's listed under Plugins, where you can turn it off, move it or remove it.` : saved?.error ?? "Not saved";
+        make.saved = !!saved?.ok;
+        make.status = saved?.ok ? `Saved, and ${make.check.manifest.name} is on. It's under Plugins, where you can turn it off, move it or remove it.` : saved?.error === "Not saved" ? "Not saved. Change it and save again when you're ready." : saved?.error ?? "Not saved";
         if (saved?.ok) {
           make.code = code;
           make.rev++;

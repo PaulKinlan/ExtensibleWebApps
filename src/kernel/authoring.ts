@@ -543,7 +543,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
             if (stopped) return stopped;
             const before = await current(manifest.id);
             const review = asked(manifest, before);
-            if (!(await ask(review.target, review.before, fetched.source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
+            if (!(await ask(review.target, review.before, fetched.source, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
             if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
             // The files the person saw, not the site's files read again.
             const added = await saving.userAdded.add(app, fetched.files);
@@ -578,7 +578,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
             if (stopped) return stopped;
             const before = await current(manifest.id);
             const review = asked(manifest, before);
-            if (!(await ask(review.target, review.before, source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
+            if (!(await ask(review.target, review.before, source, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
             if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
             const added = await saving.userAdded.add(app, files);
             if (!added.ok) return added;
