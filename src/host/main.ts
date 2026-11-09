@@ -16,6 +16,7 @@ import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, Vie
 import { customize } from "./customize";
 import { inspect } from "./inspect";
 import { themeCss } from "../shared/theme";
+import { isAgentFile, runnerHref } from "../shared/agent-runner";
 import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
 import { audioProbe, audioStats } from "./bridges/audio";
@@ -209,15 +210,25 @@ const held = new Map<string, Extract<KernelToHost, { t: "render" }>>();
  * The app's plugin files, fetched as soon as the host runs, while the kernel starts. Each one's template
  * files (and their elements) start loading as soon as its source arrives (prefetch.ts).
  */
-const linked = links.map(async (href) => {
-  const response = await fetch(href, { priority: "high" }).catch((error: Error) => error);
-  if (response instanceof Response && response.ok) {
-    const source = await response.text();
+const linked = links.map((href) => fetchLink(href, "high"));
+
+/**
+ * A linked file's source. An agent file comes with the agent loop it runs (its `runner:`, or the standard
+ * one), which the kernel puts after the manifest it makes: an agent whose loop didn't load doesn't start.
+ */
+async function fetchLink(href: string, priority?: RequestPriority): Promise<{ href: string; source: string; runner?: string; why: string }> {
+  const response = await fetch(href, { priority }).catch((error: Error) => error);
+  if (!(response instanceof Response && response.ok)) return { href, source: "", why: response instanceof Response ? `it answered ${response.status}` : response.message };
+  const source = await response.text();
+  if (!isAgentFile(href)) {
     warmPlugin(href, source);
     return { href, source, why: "" };
   }
-  return { href, source: "", why: response instanceof Response ? `it answered ${response.status}` : response.message };
-});
+  const loop = runnerHref(source, href);
+  const runner = await fetch(loop, { priority }).catch((error: Error) => error);
+  if (!(runner instanceof Response && runner.ok)) return { href, source: "", why: `its agent loop ${loop} ${runner instanceof Response ? `answered ${runner.status}` : `didn't load: ${runner.message}`}` };
+  return { href, source, runner: await runner.text(), why: "" };
+}
 
 async function openApp() {
   const plugins = await Promise.all(linked);
@@ -230,7 +241,7 @@ async function openApp() {
     url.searchParams.delete("reset");
     history.replaceState(history.state, "", url);
   }
-  send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source }) => ({ href, source })), reset, app });
+  send({ t: "open", plugins: plugins.filter((p) => p.source).map(({ href, source, runner }) => ({ href, source, runner })), reset, app });
 }
 
 /** The screen this tab shows (/demos/reading-list/book/42 is `/book/42`). The router service hands it to plugins. */
@@ -759,15 +770,10 @@ function resetLinks() {
     if (url.origin !== location.origin || url.pathname !== location.pathname || !url.searchParams.has("reset")) return;
     event.preventDefault();
     // Every plugin's code, or none: the kernel treats a plugin left out of `open` as gone, and would stop it.
-    void Promise.all(
-      links.map(async (href) => {
-        const response = await fetch(href).catch(() => undefined);
-        return { href, source: response?.ok ? await response.text() : "" };
-      }),
-    ).then((plugins) => {
+    void Promise.all(links.map((href) => fetchLink(href))).then((plugins) => {
       const missing = plugins.filter((p) => !p.source);
       if (missing.length) return notice(`Couldn't turn the plugins back on: ${missing.map((p) => p.href).join(", ")} didn't load. Try again, or reload the page.`);
-      send({ t: "open", plugins, reset: true, app });
+      send({ t: "open", plugins: plugins.map(({ href, source, runner }) => ({ href, source, runner })), reset: true, app });
     });
   });
 }

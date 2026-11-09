@@ -234,7 +234,7 @@ slot[float] > [data-plugin]:has([corner="top-left"]) { inset: var(--space-4) aut
 slot[float] > [data-plugin]:has([corner="top-right"]) { inset: var(--space-4) var(--space-4) auto auto; }
 slot[float] > [data-plugin]:has([corner="inline"]) { position: static; }
 /* Floating chrome in the bottom-left corner takes room there, and says so for other chrome (the Customize button). */
-body:has(slot[float] > [data-plugin]:not(:has([corner="bottom-right"], [corner="top-left"], [corner="top-right"], [corner="inline"]))) { --chrome-bottom-left: 52px; }
+body:has(slot[float] > [data-plugin] > [corner="bottom-left"], slot[float] > [data-plugin] > :not([corner])) { --chrome-bottom-left: 52px; }
 }
 
 /* The site's own links in an app's header (Home, All demos, Docs, Workbench), pushed to the end. */

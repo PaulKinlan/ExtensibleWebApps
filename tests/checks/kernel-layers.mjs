@@ -48,7 +48,6 @@ const CORE = [
 const SERVICES = [
   "address.ts",
   "agents/file.ts",
-  "agents/runner.js",
   "csv.ts",
   "routes.ts",
   "server-apps.ts",
