@@ -3,7 +3,8 @@
   seconds, current, stereo }], stereo, kept, peaks, duration, length,
   select, picked, part, playing, isPlaying, effects: [{ id, name,
   description, tunable, knobs: [{ label, min, max, step, value, shown,
-  action }] }], noEffects, noUndo, noRedo, noPart, status }.
+  action }] }], noEffects, noUndo, noRedo, noPart, folderName, folderPicked,
+  folderBlocked, folderSounds: [{ path, name }], noFolderSounds, status }.
 
   The waveform sends `select` with { from, to } as the person picks; every
   button sends its data-action, and each knob (a slider) sends its action,
@@ -67,7 +68,7 @@
       <button type="button" class="play primary" data-action="play"><template if="isPlaying">■ Stop</template><template if="!isPlaying">▶ Play</template></button>
       <button type="button" data-action="play-part" disabled="{{noPart}}">Play the part picked</button>
       <template if="stereo"><span class="badge" data-stereo>Stereo</span></template>
-      <template if="kept"><span class="badge" title="Too long for the clips collection, so the audio service keeps its sound in your data folder">Long clip</span></template>
+      <template if="kept"><span class="badge" title="Too long for the clips collection, so the audio service keeps its sound in this browser's data. Save it to the folder to have it on your disk.">Long clip</span></template>
       <span class="part">{{part}} · {{length}} s</span>
     </div>
 
@@ -103,6 +104,26 @@
         <button type="submit" disabled="{{noOthers}}">Mix it in</button>
       </form>
       <template if="noOthers"><p class="muted">Make or open a second clip to lay over this one.</p></template>
+    </div>
+
+    <div class="group" data-folder>
+      <h3>Folder</h3>
+      <p class="muted"><template if="folderPicked">Sounds go to <strong>{{folderName}}</strong> on your disk, in sounds/.</template><template if="!folderPicked">Sounds go to a private folder in this browser, in sounds/, until you pick one on your disk.</template> A long clip is safest there.</p>
+      <div class="buttons">
+        <button type="button" data-action="folder-save" disabled="{{noClip}}">Save to the folder</button>
+        <button type="button" data-action="folder-pick">Pick a folder…</button>
+        <template if="folderBlocked"><button type="button" data-action="folder-allow">Allow the folder again</button></template>
+      </div>
+      <template if="!noFolderSounds">
+        <form class="layer" data-action="folder-open">
+          <label>In the folder
+            <select name="path" aria-label="Sound in the folder">
+              <template for="f of folderSounds"><option key="{{f.path}}" value="{{f.path}}">{{f.name}}</option></template>
+            </select>
+          </label>
+          <button type="submit">Open it</button>
+        </form>
+      </template>
     </div>
 
     <div class="group">

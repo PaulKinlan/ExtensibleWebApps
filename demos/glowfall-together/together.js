@@ -11,6 +11,12 @@
 //
 // runs: "server": it starts when a member opens the app in a space, and runs
 // with no browser open. Outside a space there is no server, and lobby.js says so.
+//
+// Before a player takes a seat, and before each move goes to the loop, it asks
+// its own hooks, glowfall-together:join and glowfall-together:move: a plugin
+// that answers { block: reason } stops it. referee.js is the one here, so a
+// player can't take two jars or move faster than a person can; turn it off
+// and the game plays on unrefereed.
 
 export const manifest = {
   id: "glowfall-together",
@@ -20,6 +26,20 @@ export const manifest = {
   runs: "server",
   permissions: ["game", "live", "hook:listen:sync:live", "hook:listen:game:frame", "hook:listen:game:ended"],
   services: ["game", "sync"],
+  hooks: {
+    join: {
+      mode: "serial",
+      args: "{ device, member, players: [{ device, member }] }",
+      description: "A device asks for a seat in the game. Answer { block: reason } to refuse it; the device hears why.",
+    },
+    move: {
+      mode: "serial",
+      // Many a second while people play: not traced, as the game's own ticks aren't.
+      quiet: true,
+      args: "{ device, member, type, lane?, lanes, tick }",
+      description: "A player's move, before it goes to the game loop. Answer { block: reason } to set it aside.",
+    },
+  },
 };
 
 const TOPIC = "glowfall-together";
@@ -58,6 +78,24 @@ export default function (ctx) {
     await say({ type: "started", players: roster() });
   };
 
+  /**
+   * A device asks for a seat. Joins are taken one at a time, so two devices of one member asking at once can't
+   * both pass the join hook before either is seated: the second is asked about with the first in the roster.
+   */
+  let joins = Promise.resolve();
+  const joining = (device, member) =>
+    (joins = joins.then(async () => {
+      if (!players.has(device)) {
+        const verdict = await ctx.hooks.call("join", { device, member: member ?? "", players: roster().map((p) => ({ device: p.device, member: p.member })) }).catch(() => null);
+        if (verdict?.block) return say({ type: "refused", device, reason: String(verdict.block) }, device);
+      }
+      const p = seat(device, member);
+      // The new player hears which jar is theirs, and everyone hears who is in.
+      await say({ type: "welcome", device, colour: p.colour, running, ...(last ? { frame: last } : {}) }, device);
+      await say({ type: "players", players: roster() });
+      if (running) await ctx.call("game", "input", { game: GAME, type: "join", player: device, member: p.member, colour: p.colour }).catch(() => {});
+    }).catch(() => {}));
+
   ctx.on("sync:live", async ({ topic, value, member, device, gone }) => {
     if (topic !== TOPIC || !device) return;
     if (gone) {
@@ -68,18 +106,13 @@ export default function (ctx) {
       return;
     }
     const type = value?.type;
-    if (type === "join") {
-      const p = seat(device, member);
-      // The new player hears which jar is theirs, and everyone hears who is in.
-      await say({ type: "welcome", device, colour: p.colour, running, ...(last ? { frame: last } : {}) }, device);
-      await say({ type: "players", players: roster() });
-      if (running) await ctx.call("game", "input", { game: GAME, type: "join", player: device, member: p.member, colour: p.colour }).catch(() => {});
-      return;
-    }
+    if (type === "join") return joining(device, member);
     if (!players.has(device)) return;
     if (type === "start" && !running) return start();
     if (MOVES.includes(type) && running) {
       const lane = Number.isInteger(value.lane) ? value.lane : undefined;
+      const verdict = await ctx.hooks.call("move", { device, member: member ?? "", type, ...(lane !== undefined ? { lane } : {}), lanes: LANES, tick: last?.tick ?? 0 }).catch(() => null);
+      if (verdict?.block) return;
       await ctx.call("game", "input", { game: GAME, type, player: device, ...(lane !== undefined ? { lane } : {}) }).catch(() => {});
     }
   });

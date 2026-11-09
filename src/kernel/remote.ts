@@ -307,6 +307,7 @@ export class RemotePlugins {
         ...(h.description ? { description: h.description } : {}),
         ...(waits ? { timeoutMs: Math.min(h.timeoutMs ?? PLUGIN_HOOKS.defaultTimeoutMs, PLUGIN_HOOKS.timeoutMs), onFailure: h.onFailure ?? "open" } : {}),
         ...(waits && h.agentTimeoutMs ? { agentTimeoutMs: Math.min(h.agentTimeoutMs, PLUGIN_HOOKS.agentTimeoutMs) } : {}),
+        ...(h.quiet ? { quiet: true } : {}),
       });
     }
     for (const [name, owner] of hookOwners) {

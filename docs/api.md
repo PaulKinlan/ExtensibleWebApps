@@ -342,19 +342,19 @@ Keeps a clip in the person's data folder under a name of this plugin's own, for 
 
 #### audio.kept
 
-`audio.kept()` → [name]
+`audio.kept({ of? }?)` → [name]
 
-Needs: `audio`.
+Needs: `audio, or audio:kept:<of>`.
 
-The names of the clips this plugin kept.
+The names of the clips this plugin kept, or, with `of`, that plugin kept (audio:kept:<of>).
 
 #### audio.load
 
-`audio.load({ name })` → { rate, pcm, channels? } or null
+`audio.load({ name, of? })` → { rate, pcm, channels? } or null
 
-Needs: `audio`.
+Needs: `audio, or audio:kept:<of>`.
 
-A clip this plugin kept, or null if there is none by that name.
+A clip this plugin kept, or null if there is none by that name. With `of`, a plugin's id, one that plugin kept: that needs the permission audio:kept:<of>, so a timeline can read the clips an editor keeps.
 
 #### audio.mix
 
@@ -526,7 +526,7 @@ The site's plugin registry (/packages/): each package, whether the person has ad
 
 Needs: `plugins:read`.
 
-The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample), and whether it has inspect mode.
+The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match, or slot when the page has its own slot of that name), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample), and whether it has inspect mode.
 
 #### authoring.pick
 
@@ -868,6 +868,14 @@ Needs: `folder:read`.
 
 A file's text, or null if there is no such file. At most 5 MB.
 
+#### folder.readData
+
+`folder.readData(path)` → dataUrl or null
+
+Needs: `folder:read`.
+
+A file that isn't text, such as a sound or an image, as a base64 data: URL (its type from its extension), or null if there is no such file. At most 32 MB.
+
 #### folder.write
 
 `folder.write(path, text)` → { ok, path }
@@ -882,7 +890,7 @@ Writes a file, making its folders. For the plugin that keeps the folder's files:
 
 Needs: `folder:write`.
 
-Writes a file that isn't text, such as an image the person dropped, from a data: URL; at most 5 MB. As write, it doesn't ask the person.
+Writes a file that isn't text, such as an image the person dropped or a sound, from a data: URL; at most 32 MB. As write, it doesn't ask the person.
 
 ### game
 
@@ -1924,7 +1932,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `agents:run:<agent>` | Call agents.run. |
 | `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.unshare. |
 | `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.check. |
-| `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.mix, audio.keep, audio.load, audio.forget, audio.kept, audio.playClip, audio.open, audio.save. |
+| `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.mix, audio.keep, audio.forget, audio.playClip, audio.open, audio.save. |
+| `audio, or audio:kept:<of>` | Call audio.load, audio.kept. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |
 | `bus:inbox` | Call bus.receive, bus.reply. |
@@ -1939,7 +1948,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `files:<folder>` | Call files.read, files.write. |
 | `folder:choose` | Call folder.choose, folder.allow, folder.forget. |
 | `folder:propose` | Call folder.propose. |
-| `folder:read` | Call folder.about, folder.list, folder.entries, folder.read, folder.exists. |
+| `folder:read` | Call folder.about, folder.list, folder.entries, folder.read, folder.readData, folder.exists. |
 | `folder:write` | Call folder.write, folder.writeData. |
 | `game` | Call game.start, game.stop, game.pause, game.input, game.state. |
 | `history` | Call history.state, history.undo, history.redo. |
@@ -1979,7 +1988,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin's view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `theme` | Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only --bg, --bg-2, --surface, --fg, --fg-2, --border, --accent, --accent-fg, --ok, --warn, --danger, --radius-sm, --radius, --radius-lg, --shadow-1, --font, --mono, color-scheme, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md. |
-| `hooks` | Optional. Up to 20 hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure? } }. Each is the hook `<id>:<key>` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (1000 ms if not given, at most 5000); an agent that checks it has agentTimeoutMs (at most 30 s; without one, agents can't check it). A hook lasts while its plugin is installed. These limits are the defaults; a site may change them in kernel.json's `hooks`. |
+| `hooks` | Optional. Up to 20 hooks the plugin defines: { key: { mode, args?, description?, timeoutMs?, agentTimeoutMs?, onFailure?, quiet? } }. Each is the hook `<id>:<key>` (keys are lowercase letters, digits and dashes), which only this plugin runs, with ctx.hooks.emit or ctx.hooks.call; others listen with ctx.on and hook:listen or hook:intercept, as for the kernel's hooks, and may listen before the plugin is installed. A listener has timeoutMs to answer (1000 ms if not given, at most 5000); an agent that checks it has agentTimeoutMs (at most 30 s; without one, agents can't check it). A hook that runs many times a second (a game's moves) says `quiet: true`, and isn't traced unless a listener fails. A hook lasts while its plugin is installed. These limits are the defaults; a site may change them in kernel.json's `hooks`. |
 | `services` | Optional. Up to 30 services the plugin calls that not every site runs, by name: ["llm", "bus"]. The kernel's own services (data, storage, settings and the rest) are always there and needn't be listed. A plugin that lists a service the site doesn't run isn't started, and says which one is missing, so an app that needs it fails when it opens rather than on its first call. The site lists the services it runs in kernel.json (docs/layers.md). |
 | `provides` | Optional. Up to 5 services the plugin provides, by name: { mail: { description, methods: { send: { args?, returns?, description, needs? } } } }. Each needs the permission provide:<name>, and the plugin answers its calls with ctx.provide (shared plugins only, not scope "tab"). Other plugins call it with ctx.call(name, method, ...args) and the permission <name>, or what a method's `needs` says. A name the kernel or another plugin already has is refused. See docs/layers.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, or paths in a folder beside it like plugin-editor.templates/card.js (up to four folders deep, and the first folder's name has a dot in it, so it can never be another app's folder). They are copied with it when a person adds it to an app. |
