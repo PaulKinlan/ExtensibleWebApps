@@ -24,6 +24,11 @@ export const manifest = {
   services: ["llm"],
   // Its tab says which app it is about.
   scope: "tab",
+  // Where it draws on a page with no <slot name="ask">, such as a person adding it to any app from the
+  // registry (packages/std.json); a page with the slot keeps it there.
+  places: { "ask": { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["ask-the-page.html"],
 };
 
 /** Questions to start from. */

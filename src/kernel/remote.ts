@@ -160,7 +160,11 @@ export class RemotePlugins {
     const provides = Object.keys(manifest.provides ?? {});
     const missing = (manifest.services ?? []).filter((name) => !Object.hasOwn(this.services, name) && !this.expected.has(name) && !provides.includes(name));
     if (missing.length) {
-      const message = `“${manifest.name}” needs the ${missing.join(", ")} service${missing.length > 1 ? "s" : ""}, which nothing here provides: add ${missing.length > 1 ? "them" : "it"} to kernel.json, or link a plugin that provides ${missing.length > 1 ? "them" : "it"}`;
+      // Said so the person can fix it: by adding or turning on a plugin that provides it (Customize adds a
+      // registry package's providers with it), never by editing the site's kernel.json, which isn't theirs.
+      // A site's own services are its kernel modules; docs/layers.md says how a developer adds one.
+      const them = missing.length > 1 ? "them" : "it";
+      const message = `“${manifest.name}” needs the ${missing.join(", ")} service${missing.length > 1 ? "s" : ""}, which nothing here provides: add or turn on a plugin that provides ${them}`;
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }

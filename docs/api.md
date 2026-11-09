@@ -338,15 +338,15 @@ Locks a part of the page again, for a plugin that was let into it.
 
 Needs: `plugins:author`.
 
-The person's own plugins for the caller's app. In a space, shared says which are the space's plugins.
+The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).
 
 #### authoring.packages
 
-`authoring.packages()` → [{ id, name, description, href, permissions, added, adds: [href] }]
+`authoring.packages()` → [{ id, name, description, href, permissions, added, linked, adds: [href] }]
 
 Needs: `plugins:read`.
 
-The site's plugin registry (/packages/): each package, whether the person has added it to this app, and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.
+The site's plugin registry (/packages/): each package, whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.
 
 #### authoring.page
 
@@ -398,11 +398,11 @@ The code of a plugin the caller's app links, or of one of the person's own for i
 
 #### authoring.turn
 
-`authoring.turn(id, on)` → { ok: true } or { ok: false, error }
+`authoring.turn(id, on)` → { ok: true, also: [{ id, name }] } or { ok: false, error }
 
 Needs: `plugins:manage`.
 
-Turns one of the person's own plugins for the caller's app on or off. The app's own plugins are switched with plugins.setEnabled.
+Turns one of the person's own plugins for the caller's app on or off. Turning one on turns on the person's plugins that provide the services it needs, and turning one off turns off theirs that need a service only it provides: also lists those. The app's own plugins are switched with plugins.setEnabled.
 
 #### authoring.unlock
 

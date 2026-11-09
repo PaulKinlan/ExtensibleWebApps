@@ -1,0 +1,100 @@
+<!doctype html>
+<!--
+  The plugin registry, as a page. Written by `npm run packages` (scripts/packages.mjs) from the same
+  manifests as index.json, which Customize reads; don't edit it by hand.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Plugins · Extensible Web Apps</title>
+  <meta name="description" content="Plugins anyone can add to any app on this site, from Customize.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <style>
+    .intro { max-width: 75ch; color: var(--fg-2); margin: 0 0 16px; }
+    .plugins { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); margin: 0; padding: 0; list-style: none; }
+    .plugins li { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+    .plugins h2 { font-size: var(--text-lg); margin: 0; }
+    .plugins p { margin: 0; color: var(--fg-2); }
+    .plugins .meta { font-size: var(--text-sm); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Plugins</h1>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/packages/" aria-current="page">Plugins</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <p class="intro">Add any of these to any app, even one whose author never planned for it. Open the app (try the <a href="/demos/trip/app.html">trip</a>), open <strong>Customize</strong> in the bottom left, and pick one under <strong>Add a plugin</strong>. You see its code and what it asks for before it is added, it is kept on your device, and you turn it on when you're ready. A plugin that needs another, as World clock needs Clock, brings it along. <a href="/docs/guide/plugin-registry">How the registry works</a>.</p>
+    <ul class="plugins">
+      <li id="ask-the-page">
+        <h2><a href="/std/ask-the-page.js">Ask the page</a></h2>
+        <p>Answers questions about this page with a language model, from the plugins it is made of.</p>
+        <p class="meta">Asks for: ui, llm, plugins:read · A standard plugin</p>
+      </li>
+      <li id="board">
+        <h2><a href="/std/board.js">Board</a></h2>
+        <p>Questions from the app's agents, waiting for your answer, and what they did lately.</p>
+        <p class="meta">Asks for: ui, bus:board, hook:listen:bus:asked, hook:listen:bus:answered, hook:listen:agent:* · A standard plugin</p>
+      </li>
+      <li id="clock">
+        <h2><a href="/packages/clock/clock.js">Clock</a></h2>
+        <p>Provides the clock service: the time now in any time zone.</p>
+        <p class="meta">Asks for: provide:clock · Provides the clock service</p>
+      </li>
+      <li id="debug-console">
+        <h2><a href="/std/debug-console.js">Debug console</a></h2>
+        <p>A bug button that shows errors and the trace, ready to copy into a bug report.</p>
+        <p class="meta">Asks for: ui, debug:read · A standard plugin</p>
+      </li>
+      <li id="hook-tracer">
+        <h2><a href="/std/hook-tracer.js">Hook tracer</a></h2>
+        <p>Shows each hook an action runs, in order, and what every plugin listening said.</p>
+        <p class="meta">Asks for: ui, plugins:read, debug:read · A standard plugin</p>
+      </li>
+      <li id="import-export">
+        <h2><a href="/std/import-export.js">Import and export</a></h2>
+        <p>Buttons to save each of the app's collections to a CSV or JSON file, and to import a file's rows into one.</p>
+        <p class="meta">Asks for: ui, transfer · A standard plugin</p>
+      </li>
+      <li id="reset">
+        <h2><a href="/std/reset.js">Reset</a></h2>
+        <p>Turns every plugin on the page back on.</p>
+        <p class="meta">Asks for: ui, plugins:read, plugins:manage · A standard plugin</p>
+      </li>
+      <li id="switchboard">
+        <h2><a href="/std/switchboard.js">Switchboard</a></h2>
+        <p>A switch for each plugin on the page.</p>
+        <p class="meta">Asks for: ui, plugins:read, plugins:manage · A standard plugin</p>
+      </li>
+      <li id="sync-status">
+        <h2><a href="/std/sync.js">Sync</a></h2>
+        <p>In a space: whether this page reaches it, and the versions of records it kept when someone else changed them first.</p>
+        <p class="meta">Asks for: ui, sync · A standard plugin</p>
+      </li>
+      <li id="undo">
+        <h2><a href="/std/undo.js">Undo</a></h2>
+        <p>Undo and Redo buttons that take back the app's most recent change to its data, and put it back again.</p>
+        <p class="meta">Asks for: ui, history · A standard plugin</p>
+      </li>
+      <li id="view-source">
+        <h2><a href="/std/view-source.js">View source</a></h2>
+        <p>Shows the code of every plugin on the page, and what each one may do.</p>
+        <p class="meta">Asks for: ui, plugins:read · A standard plugin</p>
+      </li>
+      <li id="world-clock">
+        <h2><a href="/packages/world-clock/world-clock.js">World clock</a></h2>
+        <p>The time in London, New York and Tokyo, at the foot of the page.</p>
+        <p class="meta">Asks for: ui, clock · Brings Clock, which it needs</p>
+      </li>
+    </ul>
+  </main>
+</body>
+</html>

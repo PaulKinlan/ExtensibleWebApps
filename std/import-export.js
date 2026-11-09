@@ -22,6 +22,11 @@ export const manifest = {
   scope: "tab",
   permissions: ["ui", "transfer"],
   services: ["transfer"],
+  // Where it draws on a page with no <slot name="import-export">, such as a person adding it to any app from the
+  // registry (packages/std.json); a page with the slot keeps it there.
+  places: { "import-export": { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["import-export.html"],
 };
 
 const plural = (n, one) => `${n} ${one}${n === 1 ? "" : "s"}`;
