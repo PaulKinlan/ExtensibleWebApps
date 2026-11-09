@@ -620,6 +620,82 @@ Needs: `files:<folder>`, and the person's review.
 
 Writes a file, up to 5 MB. Fails if the person declines, nobody answers, or the file changed while the review was open.
 
+### folder
+
+A folder of files the person works on, such as a Hugo site: one they picked on their disk, or a private folder in the browser until they do. Paths are relative, with /, and never reach .git or .env files.
+
+#### folder.about
+
+`folder.about()` → { name, picked, allowed }
+
+Needs: `folder:read`.
+
+The folder's name, whether the person picked it (or it is the private one), and whether the browser lets it be used now.
+
+#### folder.allow
+
+`folder.allow()` → { name, allowed }
+
+Needs: `folder:choose`.
+
+Asks the browser to let the picked folder be used again, after a reload (right after a click).
+
+#### folder.choose
+
+`folder.choose()` → { name } or null
+
+Needs: `folder:choose`.
+
+Asks the person to pick a folder on their disk (right after a click in the app). null if they cancel. The files are left where they are.
+
+#### folder.entries
+
+`folder.entries(path?)` → [{ name, kind }] or null
+
+Needs: `folder:read`.
+
+What is in one folder (the top if left out): each file's and folder's name, and kind "file" or "directory", folders first. null if there is no such folder. Hidden names are left out.
+
+#### folder.forget
+
+`folder.forget()` → true
+
+Needs: `folder:choose`.
+
+Goes back to the private folder. The picked folder's files are left as they are.
+
+#### folder.list
+
+`folder.list(prefix?)` → [path]
+
+Needs: `folder:read`.
+
+Every file's path under prefix (all of them if left out), sorted, at most 5000. Hidden files, node_modules, public, resources and dist are left out.
+
+#### folder.propose
+
+`folder.propose(path, text, reason)` → { ok, path, outcome } or { ok, unchanged }
+
+Needs: `folder:propose`, and the person's review.
+
+Asks the person to let a file be written: they see the change as a diff, with the reason, and allow it once, always for this plugin, or not. Fails if they decline or nobody answers.
+
+#### folder.read
+
+`folder.read(path)` → text or null
+
+Needs: `folder:read`.
+
+A file's text, or null if there is no such file. At most 5 MB.
+
+#### folder.write
+
+`folder.write(path, text)` → { ok, path }
+
+Needs: `folder:write`.
+
+Writes a file, making its folders. For the plugin that keeps the folder's files: it doesn't ask the person.
+
 ### history
 
 Undo and redo for the person, across every write to the app's collections, whichever plugin made it.
@@ -1412,6 +1488,10 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `debug:read` | Call debug.recent, debug.app. |
 | `email` | Call email.send. |
 | `files:<folder>` | Call files.read, files.write. |
+| `folder:choose` | Call folder.choose, folder.allow, folder.forget. |
+| `folder:propose` | Call folder.propose. |
+| `folder:read` | Call folder.about, folder.list, folder.entries, folder.read. |
+| `folder:write` | Call folder.write. |
 | `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `members` | Call sync.members. |
@@ -1428,14 +1508,6 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `transfer` | Call transfer.collections, transfer.export, transfer.import. |
 | `ui` | Call page.matches, page.slots. |
 
-Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
-
-| Editor permission | Capabilities |
-| --- | --- |
-| `post:read` | `hook:listen:notes:*` |
-| `post:write` | `data:read:notes`, `hook:intercept:data:beforeWrite:notes` |
-| `ui` | `ui` |
-
 ## Manifest
 
 `export const manifest = { ... }` must be the module's first statement, a plain literal, read before any of the plugin's code runs.
@@ -1446,7 +1518,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `name` | Required. The name the person sees. |
 | `version` | Optional. Shown nowhere yet. |
 | `description` | Optional. Shown as the name's tooltip in the plugins panel. |
-| `permissions` | Required, may be empty. Capabilities, or editor-style permissions that stand for them (see Capabilities). |
+| `permissions` | Required, may be empty. Capabilities (see Capabilities). |
 | `order` | Optional. Where the plugin's views go among others in the same slot; lower comes first. |
 | `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
 | `runs` | "browser" (the default): in the browser, on each device. "server": only in a space's kernel on its server, for an app opened in a space (/s/<space>/…), with no app open anywhere; it has no UI, no file system, and no network unless it asks for `network`. "both": in each. See docs/server.md. |
@@ -1470,6 +1542,7 @@ Reserved ids, which no plugin can take:
 - `debug`
 - `email`
 - `files`
+- `folder`
 - `history`
 - `hooks`
 - `host`
@@ -1539,6 +1612,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
 | `<ui-spacer>` |  | Takes up the free space in a row. |
 | `<ui-code>` | name, label, rows="20", readonly, revision | A plain code editor: a textarea with line numbers, where Tab indents (Escape, then Tab, leaves it). Its text content is the starting code; edits survive redraws until `revision` changes. In a `form` it is sent under its `name`. |
+| `<ui-editor>` | name, label, placeholder, readonly, revision, action, selection-action, paste-action, drop-action, select="from,to", annotations | A Markdown editor (CodeMirror): styled as you type, with undo, search and Tab to indent. Its text content is the starting text; edits survive redraws until `revision` changes, and then the new text goes in as an edit. `action` is sent with the text after a pause in typing, `selection-action` with { from, to, text }, and `paste-action` and `drop-action` take pastes and drops for the plugin to put in ({ from, to, text, html, files }). `select` selects a range; `annotations` is JSON [{ from, to, severity, message }] to underline. |
 | `<ui-commands>` | label, open-keys="Mod+K", run, no-button, message, message-at | A command palette: a button (and the `open-keys` shortcut) opens a searchable list of the commands inside it, each a `<button data-command="name" data-keys='["Mod+B","Shift+N"]' data-group data-description>Title</button>`. Picking one, or pressing one of its keys anywhere on the page, sends `run` with its name. `message` is announced briefly whenever `message-at` changes. |
 | `<ui-diagram>` | label | A Mermaid diagram: its text content is the diagram, in Mermaid's language (flowchart, sequenceDiagram, …). `label` says what it shows, for screen readers. Mermaid loads the first time one is drawn. |
 | `<ui-markdown>` | src, pages="/docs/", repo, sets-title, compact | A Markdown file in the template's folder (or below it), drawn as a page, with ```mermaid blocks as diagrams. Raw HTML in it shows as text. `pages` is a folder whose .md files are this app's screens (links to them drop .md); `repo` is where links to source go; `sets-title` makes its first heading the page's title; `compact` is for a list of contents. |

@@ -27,6 +27,7 @@ import { cleanCss } from "./plugin-styles";
 import { watchCanvasTheme } from "./canvas-theme";
 import { fill, forgetFiles, loadedFile, loadFile } from "./templates";
 import { listenDrag } from "./drag";
+import { listenEditing } from "./editing";
 import { drawView } from "./views";
 import { workbench } from "./workbench";
 import { elementsIn, warmPlugin } from "./prefetch";
@@ -139,6 +140,12 @@ function listen(entry: Entry) {
   const el = entry.el;
   const event = (action: string, value?: unknown) => send({ t: "event", owner: entry.owner, action, value, trace: newTrace() });
   const timers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
+  // What a control's last input will send when its pause ends; an editor event sends it first (flush).
+  const pending = new WeakMap<Element, () => void>();
+  const flush = (target: Element) => {
+    clearTimeout(timers.get(target));
+    pending.get(target)?.();
+  };
   // Another plugin's view inside this one (in a slot it declared, or a transform's place) has its own listeners:
   // its events bubble through here too, and must not reach this entry's plugin.
   const ours = (e: Event) => e.target instanceof Element && e.target.closest("[data-plugin][data-key]") === el;
@@ -164,7 +171,12 @@ function listen(entry: Entry) {
     const action = target.getAttribute("data-action")!;
     const value = valueOf(target);
     clearTimeout(timers.get(target));
-    timers.set(target, setTimeout(() => event(action, value), 300));
+    const fire = () => {
+      pending.delete(target);
+      event(action, value);
+    };
+    pending.set(target, fire);
+    timers.set(target, setTimeout(fire, 300));
   });
   // Components (a bound table's row, a bound form's save) report through this event.
   el.addEventListener("ui-action", (e) => {
@@ -173,6 +185,7 @@ function listen(entry: Entry) {
     event(action, value);
   });
   listenDrag(el, ours, event);
+  listenEditing(el, ours, event, flush);
   el.addEventListener("submit", (e) => {
     // Never let a plugin's form navigate the page.
     e.preventDefault();

@@ -4,20 +4,10 @@
 import type { Manifest } from "../shared/protocol";
 import { record } from "./trace";
 
-/**
- * Editor-style permissions (from the Markdown editor) expressed as capabilities. The editor's posts are the
- * notes plugin's notes (site/workbench/plugins/notes.js): its hooks and its collection.
- */
-export const EDITOR_PERMISSIONS: Record<string, string[]> = {
-  "post:read": ["hook:listen:notes:*"],
-  "post:write": ["data:read:notes", "hook:intercept:data:beforeWrite:notes"],
-  ui: ["ui"],
-};
-
 export function capabilities(manifest: Manifest): Set<string> {
   const out = new Set<string>();
   for (const permission of manifest.permissions ?? []) {
-    for (const cap of EDITOR_PERMISSIONS[permission] ?? [permission]) out.add(cap);
+    out.add(permission);
     // Reading a collection includes hearing that it changed: data:read:x grants hook:listen:data:changed:x.
     const read = /^data:read:(.+)$/.exec(permission);
     if (read) out.add(`hook:listen:data:changed:${read[1]}`);

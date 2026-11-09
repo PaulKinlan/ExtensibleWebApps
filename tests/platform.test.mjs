@@ -355,15 +355,15 @@ export default async (ctx) => {
   check("a plugin can't start a worker of its own", /blocked/.test(escape), escape);
   check("the kernel runs in a shared worker", (await a.textContent("#mode")).includes("shared worker"));
 
-  // Editor extensions, unchanged, through the shim.
+  // The workbench's word count and edit times, which hear the notes plugin's hooks.
   await a.click("nav >> text=Welcome");
   await a.waitForFunction(() => document.querySelector("footer").textContent.includes("words"));
-  check("editor's word-count.js runs unchanged and fills the status bar", /\d+ words · \d+ min read/.test(await status(a)), await status(a));
+  check("word-count.js hears the open note and fills the status bar", /\d+ words · \d+ min read/.test(await status(a)), await status(a));
 
   await a.fill("textarea", "Hello there\n\nOne two three four five six seven eight nine ten.");
   await a.waitForFunction(() => document.querySelector("footer").textContent.includes("12 words"));
   check("edits reach plugin workers after the debounce", (await status(a)).includes("12 words"));
-  check("editor's edit-times.js runs unchanged", (await status(a)).includes("Edited just now"), await status(a));
+  check("edit-times.js says when the note was edited", (await status(a)).includes("Edited just now"), await status(a));
 
   await a.click("main button >> text=Save");
   await a.waitForSelector("main >> text=Saved");

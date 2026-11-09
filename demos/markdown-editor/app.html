@@ -1,0 +1,110 @@
+<!doctype html>
+<!--
+  Markdown editor: the editor from github.com/PaulKinlan/MarkdownEdiitor,
+  ported to the platform. It edits the Markdown posts of a site folder
+  (a Hugo site, say), and every feature is a plugin, one file each.
+
+  posts.js            the document: lists the site's posts, opens one in a
+                      <ui-editor>, saves it to the folder. Its hooks
+                      (posts:open, posts:change, …) are how every other
+                      plugin hears what you do, and its `document` service is
+                      how they change the post.
+
+  In the status bar:  post-words, word-goal, post-times, writing-streak,
+                      readability, repetition, seo-check, style-guide,
+                      data-checker, link-checker
+  Underlines:         readability, seo-check, style-guide, link-checker
+  Panels:             outline, writing-streak, data-checker, and the pickers
+                      of emoji, snippets, tag-suggester and word-goal
+  In Customize:       repetition and autosave, off until you add them
+  For the assistant:  writer.agent.md, which the plugins' tools and quick
+                      edits work through, and alerts, which tells you when
+                      it is done. The builder writes new plugins for you.
+
+  How it all fits together, with diagrams: docs/guide/markdown-editor.md.
+
+  The folder is a private one in this browser until you open one of your
+  own (Open folder…): the files stay where they are, and are written only
+  when you save.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Markdown editor</title>
+  <meta name="description" content="A Markdown editor for a site folder, where every feature is a plugin.">
+  <meta name="gallery" content="writing">
+  <meta name="gallery-about" content="Write the Markdown posts of a site folder (a Hugo site, say), with a word count, readability and SEO checks, a style guide, a link checker, an outline, emoji, snippets, tag suggestions and an assistant that edits the post for you to keep or undo.">
+  <meta name="gallery-shows" content="an editor where every feature is a plugin, editor events (selection, paste, drop), the &lt;ui-editor&gt; element and the folder service.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="posts.js">
+  <link rel="plugin" href="post-words.js">
+  <link rel="plugin" href="word-goal.js">
+  <link rel="plugin" href="post-times.js">
+  <link rel="plugin" href="writing-streak.js">
+  <link rel="plugin" href="readability.js">
+  <link rel="plugin" href="style-guide.js">
+  <link rel="plugin" href="seo-check.js">
+  <link rel="plugin" href="data-checker.js">
+  <link rel="plugin" href="tag-suggester.js">
+  <link rel="plugin" href="link-checker.js">
+  <link rel="plugin" href="outline.js">
+  <link rel="plugin" href="emoji.js">
+  <link rel="plugin" href="snippets.js">
+  <link rel="plugin" href="alerts.js">
+  <!-- Off until you add them in Customize, as in the editor. -->
+  <link rel="plugin-sample" href="repetition.js" title="Repetition">
+  <link rel="plugin-sample" href="autosave.js" title="Autosave">
+  <link rel="agent" href="writer.agent.md">
+  <link rel="agent" href="/std/agents/builder.agent.md">
+  <link rel="plugin" href="/std/agents/chat.js">
+  <link rel="plugin" href="/std/board.js">
+  <link rel="plugin" href="/std/commands/palette.js">
+  <link rel="plugin" href="/std/llm/anthropic.js">
+  <style>
+    body {
+      grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr) minmax(14rem, 20rem);
+      grid-template-areas: "header header header" "files main side" "footer footer footer";
+    }
+    body > header { grid-area: header; display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+    body > header h1 { margin: 0; font-size: var(--text-lg, 1.2rem); }
+    .toolbar { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-inline-start: auto; }
+    .files { grid-area: files; }
+    main { grid-area: main; min-width: 0; }
+    .side { grid-area: side; display: grid; gap: var(--space-3); align-content: start; }
+    body > footer { grid-area: footer; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-1) var(--space-4); font-size: var(--text-sm); color: var(--fg-2); }
+    @media (max-width: 60rem) {
+      body { grid-template-columns: minmax(0, 1fr); grid-template-areas: "header" "main" "side" "files" "footer"; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Markdown editor</h1>
+    <div class="toolbar"><slot name="toolbar"></slot><slot name="commands"></slot></div>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <aside class="files" aria-label="Posts">
+    <slot name="files"><p>Opening the site folder…</p></slot>
+  </aside>
+  <main>
+    <slot name="main"></slot>
+  </main>
+  <aside class="side" aria-label="Panels">
+    <slot name="notices"></slot>
+    <slot name="panels"></slot>
+    <slot name="board"></slot>
+    <slot name="chat"></slot>
+  </aside>
+  <footer aria-label="Status">
+    <slot name="status"></slot>
+  </footer>
+</body>
+</html>

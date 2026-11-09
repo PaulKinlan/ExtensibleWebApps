@@ -1,0 +1,76 @@
+<!--
+  The posts plugin's views (posts.js).
+
+  files: { folder: { name, picked, allowed, needsAllow }, sections: [{ name,
+           posts: [{ path, title, date, draft, open }] }], empty, problem }
+  editor: { open, title, path, unsaved, status, text, revision, select,
+            annotations }
+
+  The editor is a <ui-editor>: what the person types comes back as `edit`
+  after a pause, the selection as `select`, and pastes and drops as `paste`
+  and `drop`, which posts.js runs through its hooks and puts in itself.
+-->
+<style>
+  .files { display: grid; gap: var(--space-3); }
+  .folder { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .folder strong { flex: 1; min-width: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .files h3 { margin: 0; font-size: var(--text-xs, 0.75rem); text-transform: uppercase; letter-spacing: 0.06em; color: var(--fg-2); }
+  .list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .list button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: grid; gap: 1px; padding: var(--space-1) var(--space-2); border-radius: var(--radius); }
+  .list button:hover, .list button:focus-visible { background: var(--bg-2); }
+  .list button[aria-current="true"] { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .list small { color: var(--fg-2); }
+  .new { display: grid; gap: var(--space-2); }
+  .problem { color: var(--danger, #b91c1c); }
+  .doc { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: var(--space-2); height: 100%; }
+  .doc header { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+  .doc h2 { margin: 0; font-size: var(--text-lg, 1.15rem); flex: 1; min-width: 10rem; }
+  .doc .path { color: var(--fg-2); font-size: var(--text-sm); }
+  .doc ui-editor { min-height: 60vh; }
+</style>
+
+<template id="files">
+  <div class="files">
+    <div class="folder">
+      <strong title="The site folder">{{folder.name}}</strong>
+      <button type="button" data-action="choose">Open folder…</button>
+      <template if="folder.needsAllow"><button type="button" class="primary" data-action="allow">Allow {{folder.name}} again</button></template>
+    </div>
+    <template if="problem"><p class="problem">{{problem}}</p></template>
+    <form class="new" data-action="new">
+      <input name="title" placeholder="New post title" aria-label="New post title" required>
+      <button type="submit">New post</button>
+    </form>
+    <template for="section of sections">
+      <section key="{{section.name}}">
+        <h3>{{section.name}}</h3>
+        <ul class="list">
+          <template for="post of section.posts">
+            <li key="{{post.path}}">
+              <button type="button" data-action="open:{{post.path}}" aria-current="{{post.open}}">
+                <span>{{post.title}}</span>
+                <small>{{post.date}}<template if="post.draft"> · draft</template></small>
+              </button>
+            </li>
+          </template>
+        </ul>
+      </section>
+    </template>
+    <template if="empty"><p class="path">No Markdown files under content/ in this folder.</p></template>
+  </div>
+</template>
+
+<template id="editor">
+  <template if="open">
+    <article class="doc">
+      <header>
+        <h2>{{title}}<template if="unsaved"> •</template></h2>
+        <span class="path">{{path}}</span>
+        <span class="path" role="status">{{status}}</span>
+        <button type="button" class="primary" data-action="save">Save</button>
+      </header>
+      <ui-editor name="text" label="{{title}}" action="edit" selection-action="select" paste-action="paste" drop-action="drop" document="{{path}}" revision="{{revision}}" select="{{select}}" annotations="{{annotations}}">{{text}}</ui-editor>
+    </article>
+  </template>
+  <template if="!open"><ui-empty heading="No post open"><p>Pick a post on the left, or start a new one.</p></ui-empty></template>
+</template>

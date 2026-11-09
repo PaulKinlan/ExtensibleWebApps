@@ -23,7 +23,17 @@ export type View =
   | { type: "text"; text: string; title?: string; tone?: "muted" | "error" | "ok" }
   | { type: "button"; label: string; action: string; primary?: boolean }
   | { type: "list"; items: { label: string; action: string; selected?: boolean }[] }
-  | { type: "textarea"; name: string; value: string; action: string; placeholder?: string }
+  | {
+      type: "textarea";
+      name: string;
+      value: string;
+      action: string;
+      placeholder?: string;
+      /** Editor events (src/host/editing.ts): the action the settled selection, a paste and a drop from outside are sent as. */
+      selectionAction?: string;
+      pasteAction?: string;
+      dropAction?: string;
+    }
   | { type: "canvas"; id: string; width: number; height: number }
   /** A line diff, for change review. */
   | { type: "diff"; lines: { op: "same" | "add" | "del"; text: string }[] }
@@ -180,7 +190,7 @@ export interface Manifest {
   name: string;
   version?: string;
   description?: string;
-  /** New-style capabilities (`hook:listen:notes:open`, `ui`, `audio`, ...) or editor-style permissions (`post:read`, `ui`). */
+  /** Capabilities: `hook:listen:notes:open`, `ui`, `audio`, ... */
   permissions: string[];
   order?: number;
   /** "shared" (default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or hold view state. */
