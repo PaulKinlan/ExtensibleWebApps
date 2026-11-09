@@ -300,8 +300,8 @@ export class Accounts extends DurableObject<Env> {
   }
 
   /** Which member of a space an agent's key (an Authorization header) is for, if it's one (src/server/mcp.ts). */
-  async agent(authorization: string | null, space: string): Promise<{ user: string; key: string } | null> {
-    return this.auth.agent(authorization, space);
+  async agent(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string } | null> {
+    return this.auth.agent(authorization, space, plugin);
   }
 }
 
@@ -312,7 +312,7 @@ async function mcp(request: Request, env: Env): Promise<Response | undefined> {
   const at = mcpAddress(url);
   if (!at) return undefined;
   const accounts = env.ACCOUNTS.getByName("accounts");
-  const asked = await mcpRequest(request, at, (authorization, space) => accounts.agent(authorization, space));
+  const asked = await mcpRequest(request, at, (authorization, space, plugin) => accounts.agent(authorization, space, plugin));
   if (asked instanceof Response) return asked;
   return mcpResponse(await env.SPACE.getByName(at.space).route(at.space, url.origin, asked));
 }

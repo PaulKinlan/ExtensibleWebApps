@@ -55,7 +55,7 @@ const rpcError = (status: number, message: string, headers: Record<string, strin
 export async function mcpRequest(
   request: Request,
   at: { space: string; plugin: string },
-  member: (authorization: string | null, space: string) => Promise<{ user: string } | null>,
+  member: (authorization: string | null, space: string, plugin: string) => Promise<{ user: string } | null>,
 ): Promise<RouteRequest | Response> {
   const url = new URL(request.url);
   // A page on another site may not call it from someone's browser (MCP's advice against DNS rebinding);
@@ -63,7 +63,7 @@ export async function mcpRequest(
   const origin = request.headers.get("origin");
   if (origin !== null && origin !== url.origin) return rpcError(403, "Not from this site");
   if (request.method !== "POST" && request.method !== "DELETE") return answer(405, undefined, { allow: "POST, DELETE" });
-  const who = await member(request.headers.get("authorization"), at.space).catch(() => null);
+  const who = await member(request.headers.get("authorization"), at.space, at.plugin).catch(() => null);
   if (!who)
     return rpcError(401, "This needs an agent key for the space: sign in when your agent asks, or make one on /account/ and send it as Authorization: Bearer <key>", {
       "www-authenticate": `Bearer realm="space", resource_metadata="${resourceMetadata(url)}"`,

@@ -24,6 +24,7 @@
 
 import type { Files } from "../../seams/index.ts";
 import { mcpAddress } from "../mcp.ts";
+import { bodyOf } from "./accounts.ts";
 import type { agentKeys } from "./agent-keys.ts";
 import { b64url, unb64url } from "./webauthn.ts";
 
@@ -221,8 +222,8 @@ ${hidden}
     if (posted) {
       // Only this site's own consent page answers (a form on another site can't).
       if (request.headers.get("origin") !== url.origin) return problem("Answer from this site's own page.", 403);
-      const text = await new Response(request.body).text();
-      if (text.length > MAX_BODY) return problem("That's too much.", 413);
+      const text = await bodyOf(request, MAX_BODY);
+      if (text === null) return problem("That's too much.", 413);
       params = new URLSearchParams(text);
     }
     const checked = check(params, url.origin);
@@ -259,8 +260,8 @@ ${hidden}
   }
 
   async function token(request: Request, url: URL): Promise<Response> {
-    const text = await new Response(request.body).text();
-    if (text.length > MAX_BODY) return oauthError("invalid_request", "Too big", 413);
+    const text = await bodyOf(request, MAX_BODY);
+    if (text === null) return oauthError("invalid_request", "Too big", 413);
     // The spec's form, though some clients send JSON.
     let params = new URLSearchParams(text);
     if (/application\/json/i.test(request.headers.get("content-type") ?? "")) {
@@ -285,9 +286,10 @@ ${hidden}
       if (params.has("resource") && resourceOf(params.get("resource"), url.origin)?.href !== kept.resource) return oauthError("invalid_target", "That code is for another MCP address");
       const verifier = params.get("code_verifier") ?? "";
       if (!/^[A-Za-z0-9._~-]{43,128}$/.test(verifier) || (await hash(verifier)) !== kept.challenge) return oauthError("invalid_grant", "code_verifier doesn't match");
-      // Connecting the same client again replaces the key it had, rather than piling them up.
-      for (const old of await accounts.keys.list(kept.user)) if (old.space === kept.space && old.name === kept.name) await accounts.keys.revoke(kept.user, old.id);
-      const made = await accounts.keys.make(kept.user, kept.space, kept.name);
+      // Connecting the same client to the same address again replaces the key it had, rather than piling them up.
+      for (const old of await accounts.keys.list(kept.user)) if (old.client === kept.client && old.space === kept.space && old.plugin === kept.plugin) await accounts.keys.revoke(kept.user, old.id);
+      // The key reaches only the door the member said yes to.
+      const made = await accounts.keys.make(kept.user, kept.space, kept.name, { plugin: kept.plugin, client: kept.client });
       if ("error" in made) return oauthError("invalid_grant", made.error);
       return json({ access_token: made.key, token_type: "Bearer", scope: "mcp" });
     });
@@ -353,8 +355,8 @@ ${hidden}
       if (pathname === "/auth/mcp/authorize" && (request.method === "GET" || request.method === "POST")) return authorize(request, url);
       if (pathname === "/auth/mcp/token" && request.method === "POST") return token(request, url);
       if (pathname === "/auth/mcp/register" && request.method === "POST") {
-        const text = await new Response(request.body).text();
-        return text.length > MAX_BODY ? oauthError("invalid_client_metadata", "Too big", 413) : register(text);
+        const text = await bodyOf(request, MAX_BODY);
+        return text === null ? oauthError("invalid_client_metadata", "Too big", 413) : register(text);
       }
       return oauthError("invalid_request", "Not part of the sign-in", 404);
     },

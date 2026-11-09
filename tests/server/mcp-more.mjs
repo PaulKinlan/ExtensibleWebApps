@@ -132,6 +132,15 @@ export async function mcpMoreChecks(base, check, owner, stranger) {
     JSON.stringify({ before, heard, repeat, after }),
   );
 
+  // A session the server doesn't know (the space's kernel restarted since) is taken up again, and told to list the tools afresh.
+  const restored = await messages(await rpc("ping", undefined, { session: "0123456789abcdef0123456789abcdef" }));
+  const otherDoor = await fetch(`${base}/s/jots/mcp/reading-list-agents`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "ping" }) });
+  check(
+    "mcp: a session the server lost is taken up again and told to list the tools; a signed-in key reaches only the door the member said yes to",
+    restored[0]?.method === "notifications/tools/list_changed" && restored[1]?.result && otherDoor.status === 401,
+    JSON.stringify([restored, otherDoor.status]),
+  );
+
   const ended = await fetch(address, { method: "DELETE", headers: { authorization: `Bearer ${key}`, "mcp-session-id": session ?? "" } });
   const afterEnd = await rpc("ping", undefined, { session });
   const getStream = await fetch(address, { headers: { authorization: `Bearer ${key}`, accept: "text/event-stream" } });

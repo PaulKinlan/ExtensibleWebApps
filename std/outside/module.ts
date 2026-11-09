@@ -235,18 +235,24 @@ export default {
       for (const [key, s] of sessions) if (now - s.used > SESSION_IDLE_MS) sessions.delete(key);
       let session = sessions.get(id);
       if (session && (session.plugin !== plugin || session.member !== member)) return null;
-      if (!session) sessions.set(id, (session = { plugin, member, used: now }));
+      // Taken up again with no fingerprint, so its first streamed answer tells it to list the tools again.
+      if (!session) admit(id, (session = { plugin, member, used: now }));
       session.used = now;
       return session;
     }
 
-    function newSession(plugin: string, member: string | undefined, seen: string): string {
+    /** Keeps a session, making room first: the least recently used goes. */
+    function admit(id: string, session: Session) {
       if (sessions.size >= MAX_SESSIONS) {
         const oldest = [...sessions.entries()].sort((a, b) => a[1].used - b[1].used)[0];
         if (oldest) sessions.delete(oldest[0]);
       }
+      sessions.set(id, session);
+    }
+
+    function newSession(plugin: string, member: string | undefined, seen: string): string {
       const id = random();
-      sessions.set(id, { plugin, member, seen, used: Date.now() });
+      admit(id, { plugin, member, seen, used: Date.now() });
       return id;
     }
 
@@ -320,7 +326,7 @@ export default {
       // The tools changed since this session was last told: say so ahead of the answer, if the client takes a stream.
       if (door && session && options.streams && !answers.some((a) => (a as { result?: { tools?: unknown } })?.result?.tools)) {
         const now = fingerprint(await toolsOf(door, { trace: "mcp:changed" }).catch(() => []));
-        if (session.seen && session.seen !== now) json.notices = [{ jsonrpc: "2.0", method: "notifications/tools/list_changed" }];
+        if (session.seen !== now) json.notices = [{ jsonrpc: "2.0", method: "notifications/tools/list_changed" }];
         session.seen = now;
       }
       return { status: 200, json };

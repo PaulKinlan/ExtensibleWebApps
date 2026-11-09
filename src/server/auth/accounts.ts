@@ -420,7 +420,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     },
 
     /** Which member of a space an agent's key (an `Authorization` header) is for: for a host to ask before an MCP request. */
-    agent: (authorization: string | null, name: string) => keys.member(authorization, name),
+    agent: (authorization: string | null, name: string, plugin?: string) => keys.member(authorization, name, plugin),
 
     /** A space's members, each with the name on their account: what a page shows for a change's `by`. */
     async members(name: string): Promise<{ id: string; name: string }[]> {

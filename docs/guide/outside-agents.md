@@ -98,7 +98,7 @@ claude mcp add --transport http reading-list https://<site>/s/<space>/mcp/readin
 3. Signed in on the site, the member sees which agent wants which space, as them, and answers. Someone who isn't in the space can't say yes.
 4. The client trades the code for an agent key at `/auth/mcp/token`, and sends it as above.
 
-The key is an ordinary agent key, named after the client: `/account/` lists it, and revoking it there shuts the agent out. Connecting the same client again replaces its key. The sign-in is [`src/server/auth/mcp-oauth.ts`](../../src/server/auth/mcp-oauth.ts). A client registers without a secret, and nothing is stored for it: its id carries its name and the addresses it may be sent back to.
+The key is an agent key named after the client: `/account/` lists it, and revoking it there shuts the agent out. Unlike a key made on `/account/`, it reaches only the one MCP address the member said yes to. Connecting the same client to the same address again replaces its key. The sign-in is [`src/server/auth/mcp-oauth.ts`](../../src/server/auth/mcp-oauth.ts). A client registers without a secret, and nothing is stored for it: its id carries its name and the addresses it may be sent back to.
 
 ### When the tools change
 
