@@ -14,7 +14,9 @@
 
   groceries.js and chores.js stamp what the person does with their member
   id, which the space vouches for, and show it as that member's name.
-  Nobody types a name, so nobody can sign as someone else.
+  Nobody types a name, and stamps.js, which runs on the space's server,
+  refuses a change that sets a stamp to anyone but the member who sent it,
+  so nobody can sign as someone else.
 
   Two standard plugins: std/sync.js says whether the page is in step with the
   space and lists the drafts it kept (when two people changed the same thing
@@ -31,6 +33,8 @@
   <link rel="plugin" href="housemates.js">
   <link rel="plugin" href="groceries.js">
   <link rel="plugin" href="chores.js">
+  <!-- On the space's server only: refuses a change signed with someone else's member id. -->
+  <link rel="plugin" href="stamps.js">
   <!-- A standard plugin: opened in a space (/s/<space>/…), whether this page reaches it, and the drafts it kept. -->
   <link rel="plugin" href="/std/sync.js">
   <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->

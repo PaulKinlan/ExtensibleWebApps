@@ -16,6 +16,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { setEnv } from "../../kernel/env";
+import type { Files } from "../../seams/index.ts";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { type IsolateHost, remoteIsolates } from "../../seams/remote-isolates.ts";
 import type { RouteRequest, RouteResponse } from "../routes.ts";
@@ -143,7 +144,13 @@ export class SpaceKernel extends DurableObject {
 
   /** The space's folder, as a copy to move it to another host (src/server/transfer.ts). */
   async dump(space: string): Promise<SpaceCopy> {
-    return exportSpace(durableFiles(this.ctx.storage.sql as unknown as Sql), space);
+    // One statement, so the copy is the folder at one moment even while the kernel runs.
+    const files = new Map<string, Uint8Array>();
+    const sql = this.ctx.storage.sql as unknown as Sql;
+    durableFiles(sql);
+    for (const row of sql.exec("SELECT path, data FROM files ORDER BY path").toArray()) files.set(String(row.path), new Uint8Array(row.data as ArrayBuffer));
+    const snapshot: Pick<Files, "list" | "read"> = { list: async () => [...files.keys()], read: async (path) => files.get(path) ?? null };
+    return exportSpace(snapshot as Files, space);
   }
 
   /** Loads a copy into the space's folder, which must be empty, before the kernel has started on it. */

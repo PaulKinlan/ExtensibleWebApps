@@ -299,6 +299,25 @@ async function syncChecks(base, check, owner, restart) {
   check("sync: the space's answer to hello tells each device which member it is", told(phone) === ids.owner && told(laptop) === ids.bea, JSON.stringify({ phone: told(phone), laptop: told(laptop) }));
   const names = phone.heard.find((m) => m.op === "changes")?.members;
   check("sync: the space's answer to hello names its members, by the names on their accounts", names?.[ids.owner] === "Owner" && names?.[ids.bea] === "Bea" && Object.keys(names).length === 2, JSON.stringify(names));
+  // Household's stamps.js, on the space's server: a stamp must be the member who sent the change. A space of its own, so the sequence numbers below stay as they are.
+  await owner.call("/auth/spaces", { name: "house" });
+  await bea.call("/auth/invites/accept", { token: (await owner.call("/auth/spaces/house/invite", {})).body?.token });
+  const annPhone = await device(base, "house", owner.cookie);
+  const beaPhone = await device(base, "house", bea.cookie);
+  await annPhone.hello(0);
+  await beaPhone.hello(0);
+  annPhone.app("demos/household");
+  await new Promise((r) => setTimeout(r, 1500));
+  const forged = await beaPhone.push([{ collection: "groceries", id: "forged", base: 0, after: { id: "forged", item: "Caviar", addedBy: ids.owner } }]);
+  const honest = await beaPhone.push([{ collection: "groceries", id: "honest", base: 0, after: { id: "honest", item: "Tea", addedBy: ids.bea } }]);
+  const kept = await annPhone.push([{ collection: "groceries", id: "honest", base: honest?.[0]?.seq ?? 0, after: { id: "honest", item: "Green tea", addedBy: ids.bea } }]);
+  annPhone.close();
+  beaPhone.close();
+  check(
+    "household: the space refuses a change signed with another member's id, and takes one signed by its sender, or that leaves someone's stamp as it was",
+    /signed by the member who makes it/.test(forged?.[0]?.error ?? "") && honest?.[0]?.ok && kept?.[0]?.ok,
+    JSON.stringify({ forged, honest, kept }),
+  );
   const stamped = laptop.changes().find((c) => c.seq === 1)?.after;
   check("sync: a record sent without timestamps is stored with them, as every record has", typeof stamped?.createdAt === "string" && typeof stamped?.updatedAt === "string", JSON.stringify(stamped));
 
@@ -1050,10 +1069,11 @@ async function moveChecks() {
     const garbled = await there.call("/auth/spaces/news/import", { format: "something else" });
     const sneaky = await there.call("/auth/spaces/news/import", { ...copy, files: { "../escape.json": "e30=" } });
     const elsewhere = await there.call("/auth/spaces/news/import", copy, { origin: "https://elsewhere.example" });
+    const badData = await there.call("/auth/spaces/news/import", { ...copy, files: { ...copy.files, "zz-last.json": "A" } });
     check(
-      "a copy is refused for a space that has things in it, when it isn't a copy, when a path leads out of the folder, and from another site's page",
-      intoBusy.status === 409 && garbled.status === 400 && sneaky.status === 400 && elsewhere.status === 403,
-      JSON.stringify([intoBusy, garbled, sneaky, elsewhere].map((r) => `${r.status} ${r.body?.error}`)),
+      "a copy is refused for a space that has things in it, when it isn't a copy, when a path leads out of the folder or a file isn't base64, and from another site's page, writing nothing",
+      intoBusy.status === 409 && garbled.status === 400 && sneaky.status === 400 && elsewhere.status === 403 && badData.status === 400,
+      JSON.stringify([intoBusy, garbled, sneaky, elsewhere, badData].map((r) => `${r.status} ${r.body?.error}`)),
     );
     const imported = await there.call("/auth/spaces/news/import", copy);
     check("the owner loads the copy into an empty space on Node", imported.status === 200 && imported.body?.files === paths.length, JSON.stringify(imported));

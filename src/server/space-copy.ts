@@ -42,7 +42,7 @@ export function checkCopy(value: unknown): SpaceCopy {
   if (!copy.files || typeof copy.files !== "object" || Array.isArray(copy.files)) throw new Error("The copy has no files");
   for (const [path, data] of Object.entries(copy.files)) {
     checkPath(path);
-    if (typeof data !== "string" || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw new Error(`The copy's ${path} isn't base64`);
+    if (typeof data !== "string" || data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(data)) throw new Error(`The copy's ${path} isn't base64`);
   }
   return copy as SpaceCopy;
 }
@@ -51,7 +51,8 @@ export function checkCopy(value: unknown): SpaceCopy {
 export async function importSpace(folder: Files, copy: SpaceCopy): Promise<{ files: number }> {
   checkCopy(copy);
   if ((await folder.list("")).length) throw new Error("A copy only goes into an empty space: make a new space for it");
-  const entries = Object.entries(copy.files);
-  for (const [path, data] of entries) await folder.write(path, fromBase64(data));
-  return { files: entries.length };
+  // Every file decoded first, so a copy that's wrong anywhere writes nothing.
+  const decoded = Object.entries(copy.files).map(([path, data]) => [path, fromBase64(data)] as const);
+  for (const [path, data] of decoded) await folder.write(path, data);
+  return { files: decoded.length };
 }
