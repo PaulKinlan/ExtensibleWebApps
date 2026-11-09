@@ -190,11 +190,11 @@ what you see, not the post. A plugin that should only look at the post
 
 ```html
 <ui-editor name="text" action="edit" selection-action="select"
-  paste-action="paste" drop-action="drop"
+  paste-action="paste" drop-action="drop" document="{{path}}"
   revision="{{revision}}" select="{{select}}" annotations="{{annotations}}">{{text}}</ui-editor>
 ```
 
-Two rules keep your typing and the plugins' edits from fighting:
+Three rules keep your typing and the plugins' edits from fighting:
 
 1. **Your typing goes one way.** The editor sends the text after a pause
    (`edit`). `posts.js` stores it and runs `posts:change`, but doesn't bump
@@ -202,6 +202,14 @@ Two rules keep your typing and the plugins' edits from fighting:
 2. **A plugin's edit bumps `revision`.** That covers an insert, applyEdits,
    setFrontMatter or a pasted answer. The editor then takes the new text as a
    diff, so your undo history, cursor and scroll position survive.
+3. **Another post starts afresh.** `document` is the post's path. When it
+   changes, the editor takes the new text with an undo history of its own, so
+   Undo never brings back the last post's text.
+
+Typing still waiting to be sent goes at once when you leave the editor or
+press a shortcut, so Save (the button or Mod+S) always has your last
+keystrokes. `posts.js` also keeps the unsaved draft in its storage, so it
+outlives the worker starting again when the tab that started it closes.
 
 The underlines work the same way. Each plugin's notes are kept under its
 own `set` name, and the merged list goes to the editor's `annotations`

@@ -69,7 +69,7 @@
         <span class="path" role="status">{{status}}</span>
         <button type="button" class="primary" data-action="save">Save</button>
       </header>
-      <ui-editor name="text" label="{{title}}" action="edit" selection-action="select" paste-action="paste" drop-action="drop" revision="{{revision}}" select="{{select}}" annotations="{{annotations}}">{{text}}</ui-editor>
+      <ui-editor name="text" label="{{title}}" action="edit" selection-action="select" paste-action="paste" drop-action="drop" document="{{path}}" revision="{{revision}}" select="{{select}}" annotations="{{annotations}}">{{text}}</ui-editor>
     </article>
   </template>
   <template if="!open"><ui-empty heading="No post open"><p>Pick a post on the left, or start a new one.</p></ui-empty></template>

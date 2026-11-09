@@ -191,7 +191,7 @@ function checkApp(file, rules, reference) {
       continue; // checkPlugin reports it
     }
     for (const [name, service] of Object.entries(manifest.provides ?? {})) {
-      for (const [method, spec] of Object.entries(service.methods ?? {})) methods.set(`${name}.${method}`, spec.needs ? [spec.needs] : []);
+      for (const [method, spec] of Object.entries(service.methods ?? {})) methods.set(`${name}.${method}`, [spec.needs ?? name]);
     }
   }
   reference = { ...reference, methods };

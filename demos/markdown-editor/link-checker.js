@@ -59,7 +59,10 @@ export default function (ctx) {
     return false;
   };
 
+  /** Each check's number: a slow check that a newer one (or a closed or saved post) overtook is dropped. */
+  let current = 0;
   const check = async () => {
+    const mine = ++current;
     const post = await ctx.call("document", "read");
     if (!post) return [];
     const posts = await ctx.call("document", "list");
@@ -75,6 +78,7 @@ export default function (ctx) {
       }),
     );
     const broken = results.filter((r) => !r.ok);
+    if (mine !== current) return results;
     status(broken.length ? `${broken.length} broken links` : `${results.length} links OK`, broken.map((b) => `• ${b.url}`).join("\n") || "Every link resolved.");
     await ctx.call("document", "annotate", "broken-links", broken.map((b) => ({ from: b.from, to: b.to, severity: "warning", message: b.external ? `Couldn't reach ${b.url}` : `No page or file at ${b.url}` })));
     return results;
@@ -98,10 +102,14 @@ export default function (ctx) {
   );
   // A post is checked when it opens and each time it is saved; "Check links" checks it now.
   ctx.on("posts:open", () => {
+    current++;
     status("");
     void ctx.call("document", "annotate", "broken-links", []).then(check);
   });
   ctx.on("posts:save", () => void check());
-  ctx.on("posts:close", () => status(""));
+  ctx.on("posts:close", () => {
+    current++;
+    status("");
+  });
   void check();
 }

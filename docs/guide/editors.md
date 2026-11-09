@@ -48,13 +48,16 @@ editor events:
 
 ```html
 <ui-editor name="text" label="{{title}}" action="edit" selection-action="select"
-  paste-action="paste" drop-action="drop" revision="{{revision}}"
+  paste-action="paste" drop-action="drop" document="{{path}}" revision="{{revision}}"
   select="{{select}}" annotations="{{annotations}}">{{text}}</ui-editor>
 ```
 
 - Its text content is the text to start with. A redraw keeps what the person
   typed until `revision` changes; then the new text goes in as an edit, so
   undo, the selection and the scroll position survive a plugin's change.
+- `document` names the document being edited. When it changes, the new text
+  goes in with an undo history of its own, so Undo in one post never brings
+  back another's text.
 - `select="from,to"` selects that range and scrolls to it each time it changes
   (add a counter, `from,to,n`, to select the same range again).
 - `annotations` is a JSON list of `{ from, to, severity, message }` to

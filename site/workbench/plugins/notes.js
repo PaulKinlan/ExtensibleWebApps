@@ -165,7 +165,11 @@ export default async function (ctx) {
     const files = Array.isArray(value.files) ? value.files : [];
     const offered = { from, to, text: String(value.text ?? ""), html: String(value.html ?? ""), files, selected: draft.slice(from, to) };
     if (!offered.text) offered.text = files.map((f) => f.text ?? "").filter(Boolean).join("\n");
+    const note = openId;
+    const before = draft;
     const answer = await api.hooks.call(hook, offered);
+    // Another note opened, or the text changed, while the listeners ran: the offsets no longer fit.
+    if (openId !== note || draft !== before) return render(api);
     if (!answer || answer.block || typeof answer.text !== "string" || !answer.text) return render(api);
     draft = draft.slice(0, from) + answer.text + draft.slice(to);
     selection = { from: from + answer.text.length, to: from + answer.text.length };

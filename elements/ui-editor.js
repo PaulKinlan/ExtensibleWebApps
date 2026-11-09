@@ -32,9 +32,13 @@ const isText = (file) => file.type.startsWith("text/") || /\.(md|markdown|txt|cs
  * @param {DataTransfer | null} data
  */
 async function transferred(data) {
+  // The browser lets the text be read only while the event runs, so it is read before any file is.
+  const text = (data?.getData("text/plain") ?? "").slice(0, MAX_TEXT);
+  const html = (data?.getData("text/html") ?? "").slice(0, MAX_TEXT);
+  const list = [...(data?.files ?? [])].slice(0, 20);
   /** @type {{ name: string, type: string, size: number, text?: string, dataUrl?: string }[]} */
   const files = [];
-  for (const file of [...(data?.files ?? [])].slice(0, 20)) {
+  for (const file of list) {
     /** @type {(typeof files)[number]} */
     const entry = { name: file.name, type: file.type, size: file.size };
     if (file.size <= MAX_FILE) {
@@ -43,7 +47,7 @@ async function transferred(data) {
     }
     files.push(entry);
   }
-  return { text: (data?.getData("text/plain") ?? "").slice(0, MAX_TEXT), html: (data?.getData("text/html") ?? "").slice(0, MAX_TEXT), files };
+  return { text, html, files };
 }
 
 /**
@@ -62,7 +66,7 @@ function difference(a, b) {
 
 export default class UiEditor extends HTMLElement {
   static formAssociated = true;
-  static observedAttributes = ["revision", "readonly", "label", "select", "annotations", "placeholder"];
+  static observedAttributes = ["document", "revision", "readonly", "label", "select", "annotations", "placeholder"];
   /** @type {HTMLTemplateElement | undefined} set by the host from ui-editor.html */
   static template;
 
@@ -89,6 +93,12 @@ export default class UiEditor extends HTMLElement {
   constructor() {
     super();
     this.#internals = this.attachInternals();
+    // Typing still waiting to be sent goes now when the person leaves the editor (a Save button) or
+    // presses a shortcut (Mod+S), so the plugin has it before the action that follows.
+    this.addEventListener("focusout", () => this.#flush());
+    this.addEventListener("keydown", (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) this.#flush();
+    });
   }
 
   async connectedCallback() {
@@ -295,12 +305,33 @@ export default class UiEditor extends HTMLElement {
     if (!this.#view || before === after) return;
     const cm = this.#cm;
     // A redraw may set the new revision before it changes the text content, so read it once the redraw is done.
-    if (name === "revision") queueMicrotask(() => this.#reset());
+    if (name === "document") queueMicrotask(() => this.#replace());
+    else if (name === "revision") queueMicrotask(() => this.#reset());
     else if (name === "select") queueMicrotask(() => this.#select());
     else if (name === "annotations") queueMicrotask(() => this.#annotate());
     else if (name === "readonly") this.#view.dispatch({ effects: this.#compartments.readonly.reconfigure(cm.EditorState.readOnly.of(after !== null)) });
     else if (name === "placeholder") this.#view.dispatch({ effects: this.#compartments.placeholder.reconfigure(after ? cm.placeholder(after) : []) });
     else if (name === "label") this.#view.dispatch({ effects: this.#compartments.label.reconfigure(cm.EditorView.contentAttributes.of({ "aria-label": after ?? "Text", "aria-multiline": "true" })) });
+  }
+
+  /**
+   * Another document: its text goes in with a history of its own, so Undo never brings back the last
+   * document's text. Typing not yet sent was the last document's, and is dropped.
+   */
+  #replace() {
+    if (!this.#view) return;
+    clearTimeout(this.#changeTimer);
+    this.#changeTimer = undefined;
+    this.#expecting = undefined;
+    this.#lastSelection = "";
+    this.#quiet = true;
+    try {
+      this.#view.setState(this.#cm.EditorState.create({ doc: this.textContent ?? "", extensions: this.#extensions(this.#cm) }));
+    } finally {
+      this.#quiet = false;
+    }
+    this.#internals.setFormValue(this.value);
+    this.#annotate();
   }
 
   /** The text content goes in, as an edit, so history and the selection are kept. */

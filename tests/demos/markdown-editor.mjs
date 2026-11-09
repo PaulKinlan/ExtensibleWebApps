@@ -16,6 +16,22 @@ export default async function (page, { check, proof }) {
   proof.opened = await until(() => document.querySelector("ui-editor")?.value?.includes("Welcome to the editor"));
   check("the first post opens in the CodeMirror editor", proof.opened && !!(await page.$(`${editor} >> .cm-content`)));
 
+  // Front matter: a field's whole value is replaced (an unindented YAML list, a block scalar), a TOML
+  // field goes before the first [table], and a brace in a JSON string doesn't end the front matter.
+  proof.frontMatter = await page.evaluate(async () => {
+    const { setField, parseFrontMatter } = await import("/demos/markdown-editor/posts.js");
+    const yaml = setField("---\ntitle: A\ntags:\n- old\nsummary: |\n  one\n  two\n---\nbody", "tags", ["new"]);
+    const toml = setField('+++\ntitle = "A"\n[params]\nx = 1\n+++\nbody', "tags", ["new"]);
+    const json = parseFrontMatter('{"title": "A } B"}\nbody');
+    return [
+      yaml === '---\ntitle: A\ntags: ["new"]\nsummary: |\n  one\n  two\n---\nbody',
+      parseFrontMatter(yaml).fields.summary === "one\ntwo",
+      toml.indexOf("tags") < toml.indexOf("[params]"),
+      json.kind === "json" && json.fields.title === "A } B",
+    ];
+  });
+  check("front matter edits replace a field's whole value, in the right table", proof.frontMatter.every(Boolean), JSON.stringify(proof.frontMatter));
+
   // The status bar: each item is a plugin.
   proof.status = await until(() => /\d+ words · \d+ min read/.test(document.querySelector("footer").textContent) && /Grade/.test(document.querySelector("footer").textContent) && /broken link/.test(document.querySelector("footer").textContent));
   check("the status bar shows the word count, grade and link check, each from its own plugin", proof.status, (await footer()).replace(/\s+/g, " "));
@@ -75,7 +91,11 @@ export default async function (page, { check, proof }) {
   const tagged = await page.waitForSelector('[data-key="tag-suggester:tags"]', { timeout: 5000 }).then(() => true, () => false);
   check("the Tags button opens the tag suggester", tagged);
 
-  // Saving writes the file; the bullet goes and the post times say so.
+  // Saving writes the file; the bullet goes and the post times say so. Save straight after typing
+  // still has the last keystrokes: the editor sends them when it loses focus.
+  await page.click(`${editor} >> .cm-content`);
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(" Last words.");
   await page.click('[data-key="posts:editor"] button >> text=Save');
   proof.saved = await until(() => !document.querySelector('[data-key="posts:editor"] h2')?.textContent.includes("•") && /Saved/.test(document.querySelector("footer").textContent));
   check("Save writes the post to the folder and the status bar says when", proof.saved, (await footer()).replace(/\s+/g, " "));
@@ -83,6 +103,6 @@ export default async function (page, { check, proof }) {
     let dir = await navigator.storage.getDirectory();
     for (const part of [".folder", "content", "posts"]) dir = await dir.getDirectoryHandle(part);
     return (await (await dir.getFileHandle("welcome.md")).getFile()).text();
-  }).then((t) => t.includes("Three more words.") && t.includes("pasted words"), () => false);
-  check("the saved file has what was typed and pasted", proof.written);
+  }).then((t) => t.includes("Three more words.") && t.includes("pasted words") && t.includes("Last words."), () => false);
+  check("the saved file has what was typed and pasted, up to the last keystroke before Save", proof.written);
 }

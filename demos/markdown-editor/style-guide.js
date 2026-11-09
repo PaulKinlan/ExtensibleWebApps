@@ -57,7 +57,7 @@ export default async function (ctx) {
   let problem = "";
   let loaded = false;
 
-  /** Reads the site's rules, once, and again after a post is saved (the rules file may be what changed). */
+  /** Reads the site's rules once for each post opened, and again when the report is asked for (the rules file may be what changed). */
   const load = async () => {
     if (loaded) return;
     loaded = true;
@@ -83,7 +83,11 @@ export default async function (ctx) {
     ctx.ui.render("status", "style", { type: "text", text: issues.length ? `Style: ${issues.length}` : "Style ✓", title: issues.length ? `${issues.length} places break the style guide` : "Follows the style guide" });
     await ctx.call("document", "annotate", "style", issues.slice(0, 300).map((i) => ({ from: i.from, to: i.to, severity: "warning", message: i.message })));
   };
-  ctx.on("posts:open", update);
+  // A post that opens may be in another site folder, with rules of its own: read them again.
+  ctx.on("posts:open", (post) => {
+    loaded = false;
+    return update(post);
+  });
   ctx.on("posts:change", update);
   ctx.on("posts:close", () => update(null));
 

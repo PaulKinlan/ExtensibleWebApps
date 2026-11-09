@@ -8,6 +8,8 @@
     name, label          the field's name in a form, and its accessible name
     placeholder, readonly
     revision             the text content is read again when this changes
+    document             which document this is: when it changes, the text
+                         content goes in with an undo history of its own
     action               sent with the whole text after a pause in typing
     selection-action     sent with { from, to, text } when the selection settles
     paste-action         a paste is sent as { from, to, text, html, files } and

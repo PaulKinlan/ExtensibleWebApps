@@ -23,6 +23,7 @@
 
 import { service, type ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
+import type { Dispatch } from "../../src/shared/protocol";
 
 const DB = "ewa-folder";
 const KEY = "folder";
@@ -42,7 +43,8 @@ function checkPath(path: unknown): string[] {
   if (typeof path !== "string" || !path || path.length > 512) throw new Error("A path is a non-empty string of at most 512 characters");
   if (path.startsWith("/") || path.includes("\\") || /[\u0000-\u001f:*?"<>|]/.test(path)) throw new Error(`${path}: paths are relative and use /`);
   const parts = path.split("/");
-  if (parts.some((p) => !p || p === "." || p === ".." || p === ".git" || p.startsWith(".env"))) throw new Error(`${path}: no empty parts, .., .git or .env`);
+  // In any case: on a disk that ignores case (macOS, Windows), .GIT is .git.
+  if (parts.some((p) => !p || p === "." || p === ".." || p.toLowerCase() === ".git" || p.toLowerCase().startsWith(".env"))) throw new Error(`${path}: no empty parts, .., .git or .env`);
   return parts;
 }
 
@@ -85,17 +87,17 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return handle;
   };
 
-  const locate = async (path: string, create: boolean) => {
+  const locate = async (path: string, create: boolean, base?: Handle) => {
     const parts = checkPath(path);
     const name = parts.pop()!;
-    let at: FileSystemDirectoryHandle = await root();
+    let at: FileSystemDirectoryHandle = base ?? (await root());
     for (const part of parts) at = await at.getDirectoryHandle(part, { create });
     return { at, name };
   };
 
-  const read = async (path: string): Promise<string | null> => {
+  const read = async (path: string, base?: Handle): Promise<string | null> => {
     try {
-      const { at, name } = await locate(path, false);
+      const { at, name } = await locate(path, false, base);
       const file = await (await at.getFileHandle(name)).getFile();
       if (file.size > MAX_FILE) throw new Error(`${path} is larger than 5 MB`);
       return await file.text();
@@ -105,8 +107,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     }
   };
 
-  const write = async (path: string, text: string) => {
-    const { at, name } = await locate(path, true);
+  const write = async (path: string, text: string, base?: Handle) => {
+    const { at, name } = await locate(path, true, base);
     const writable = await (await at.getFileHandle(name, { create: true })).createWritable();
     await writable.write(text);
     await writable.close();
@@ -159,8 +161,15 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return { name: handle.name, picked: true, allowed: state === "granted" };
   };
 
-  /** The tab the asking plugin's app is open in, for the picker: it must be the one the person clicked in. */
-  const tabOf = (plugin: string) => {
+  /**
+   * The tab to ask in, for the picker: it must be the one the person clicked in. An action's trace starts
+   * with the id of the tab it came from (src/host/main.ts), which a plugin shared by every tab needs;
+   * otherwise the tab of a tab's own plugin, or the first tab with the plugin's app open.
+   */
+  const tabOf = (plugin: string, dispatch: Dispatch = {}) => {
+    const from = dispatch.trace?.split("-")[0];
+    const clicked = from && hosts.list.find((h) => h.tab === from);
+    if (clicked) return clicked;
     const tab = plugin.split("@")[1];
     const id = plugin.split("@")[0];
     return hosts.list.find((h) => (tab ? h.tab === tab : kernel.apps.linkedBy(h.tab)?.includes(id)));
@@ -176,13 +185,18 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     description:
       "A folder of files the person works on, such as a Hugo site: one they picked on their disk, or a private folder in the browser until they do. Paths are relative, with /, and never reach .git or .env files.",
     methods: {
-      about: { args: "()", returns: "{ name, picked, allowed }", needs: "folder:read", description: "The folder's name, whether the person picked it (or it is the private one), and whether the browser lets it be used now." },
-      list: { args: "(prefix?)", returns: "[path]", needs: "folder:read", description: "Every file's path under prefix (all of them if left out), sorted, at most 5000. Hidden files, node_modules, public, resources and dist are left out." },
-      entries: { args: "(path?)", returns: "[{ name, kind }] or null", needs: "folder:read", description: "What is in one folder (the top if left out): each file's and folder's name, and kind \"file\" or \"directory\", folders first. null if there is no such folder. Hidden names are left out." },
-      read: { args: "(path)", returns: "text or null", needs: "folder:read", description: "A file's text, or null if there is no such file. At most 5 MB." },
-      write: { args: "(path, text)", returns: "{ ok, path }", needs: "folder:write", description: "Writes a file, making its folders. For the plugin that keeps the folder's files: it doesn't ask the person." },
+      about: { args: "()", params: [], returns: "{ name, picked, allowed }", needs: "folder:read", description: "The folder's name, whether the person picked it (or it is the private one), and whether the browser lets it be used now." },
+      list: { args: "(prefix?)", params: [{ name: "prefix", schema: { type: "string", description: "A folder, such as content/posts; leave out for every file" }, optional: true }], returns: "[path]", needs: "folder:read", description: "Every file's path under prefix (all of them if left out), sorted, at most 5000. Hidden files, node_modules, public, resources and dist are left out." },
+      entries: { args: "(path?)", params: [{ name: "path", schema: { type: "string", description: "A folder; leave out for the top" }, optional: true }], returns: "[{ name, kind }] or null", needs: "folder:read", description: "What is in one folder (the top if left out): each file's and folder's name, and kind \"file\" or \"directory\", folders first. null if there is no such folder. Hidden names are left out." },
+      read: { args: "(path)", params: [{ name: "path", schema: { type: "string", description: "Relative to the folder, with /" } }], returns: "text or null", needs: "folder:read", description: "A file's text, or null if there is no such file. At most 5 MB." },
+      write: { args: "(path, text)", params: [{ name: "path", schema: { type: "string", description: "Relative to the folder, with /" } }, { name: "text", schema: { type: "string", description: "The file's whole text" } }], returns: "{ ok, path }", needs: "folder:write", description: "Writes a file, making its folders. For the plugin that keeps the folder's files: it doesn't ask the person." },
       propose: {
         args: "(path, text, reason)",
+        params: [
+          { name: "path", schema: { type: "string", description: "Relative to the folder, with /" } },
+          { name: "text", schema: { type: "string", description: "The file's whole new text" } },
+          { name: "reason", schema: { type: "string", description: "Why, for the person reviewing it" } },
+        ],
         returns: "{ ok, path, outcome } or { ok, unchanged }",
         needs: "folder:propose",
         reviewed: true,
@@ -211,17 +225,20 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         case "propose": {
           const path = checkPath(args[0]).join("/");
           const after = text(args[1], "propose");
-          const before = await read(path);
+          // The folder the person reviews the change in is the one it is written to.
+          const base = await root();
+          const before = await read(path, base);
           if (before === after) return { ok: true, unchanged: true };
           const outcome = await reviewed(plugin, `folder:${path.split("/")[0]}`, path, before ?? "", after, args[2], dispatch);
+          if (!(await base.isSameEntry(await root()))) throw new Error(`Another folder was picked while the review of ${path} was open`);
           // Written only if the file is still what the person reviewed.
-          if ((await read(path)) !== before) throw new Error(`${path} changed while the review was open`);
-          await write(path, after);
+          if ((await read(path, base)) !== before) throw new Error(`${path} changed while the review was open`);
+          await write(path, after, base);
           return { ok: true, path, outcome };
         }
         case "choose": {
           if (!inBrowser) throw new Error("There is no folder to pick on a space's server");
-          const host = tabOf(plugin);
+          const host = tabOf(plugin, dispatch);
           if (!host) throw new Error("No tab has this plugin's app open");
           const handle = (await hosts.bridge("folder", "pick", [], dispatch, host)) as Handle | null;
           if (!handle) return null;
@@ -232,7 +249,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         case "allow": {
           const handle = await remembered();
           if (!handle) return { name: "Private folder", allowed: true };
-          const host = tabOf(plugin);
+          const host = tabOf(plugin, dispatch);
           if (!host) throw new Error("No tab has this plugin's app open");
           const allowed = (await hosts.bridge("folder", "allow", [handle], dispatch, host)) === true;
           return { name: handle.name, allowed };

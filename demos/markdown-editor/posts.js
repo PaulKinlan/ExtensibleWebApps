@@ -58,14 +58,47 @@ export const manifest = {
     document: {
       description: "The post open in the Markdown editor.",
       methods: {
-        read: { args: "()", returns: "the post's snapshot, or null", needs: "document:read", description: "The open post as it is now, saved or not." },
-        list: { args: "()", returns: "[{ path, url, title, section, date, draft, tags, categories }]", needs: "document:read", description: "Every post in the site (Markdown files under content/), from their front matter." },
-        annotate: { args: "(set, [{ from, to, severity, message }])", returns: "true", needs: "document:read", description: "Underlines ranges of the open post, with a note on hover. Each plugin's `set` replaces its last one; an empty list clears it." },
-        select: { args: "(from, to?)", returns: "true or false", needs: "document:read", description: "Selects a range of the open post and scrolls to it." },
-        applyEdits: { args: "([{ find, replace }])", returns: "{ applied, problems }", needs: "document:write", description: "Edits the open post: each find must occur exactly once. The person can undo them, and they are saved only when the post is." },
-        insert: { args: "(text)", returns: "true or false", needs: "document:write", description: "Puts text in at the selection, replacing what is selected." },
-        setFrontMatter: { args: "(key, value)", returns: "true or false", needs: "document:write", description: "Sets one top-level front matter field (null removes it): a string, number, boolean or list of strings." },
-        save: { args: "()", returns: "true or false", needs: "document:write", description: "Saves the open post, as the Save button does (before-save listeners run first)." },
+        read: { args: "()", params: [], returns: "the post's snapshot, or null", needs: "document:read", description: "The open post as it is now, saved or not." },
+        list: { args: "()", params: [], returns: "[{ path, url, title, section, date, draft, tags, categories }]", needs: "document:read", description: "Every post in the site (Markdown files under content/), from their front matter." },
+        annotate: {
+          args: "(set, [{ from, to, severity, message }])",
+          params: [
+            { name: "set", schema: { type: "string", description: "A name for this set of underlines; the next call with the same name replaces them" } },
+            { name: "annotations", schema: { type: "array", items: { type: "object", properties: { from: { type: "integer", minimum: 0 }, to: { type: "integer", minimum: 0 }, severity: { type: "string", enum: ["info", "warning", "error"] }, message: { type: "string" } }, required: ["from", "to"] } } },
+          ],
+          returns: "true",
+          needs: "document:read",
+          description: "Underlines ranges of the open post, with a note on hover. Each plugin's `set` replaces its last one; an empty list clears it.",
+        },
+        select: {
+          args: "(from, to?)",
+          params: [
+            { name: "from", schema: { type: "integer", minimum: 0, description: "Offset into the post's whole text" } },
+            { name: "to", schema: { type: "integer", minimum: 0, description: "End of the range; leave out to put the caret at from" }, optional: true },
+          ],
+          returns: "true or false",
+          needs: "document:read",
+          description: "Selects a range of the open post and scrolls to it.",
+        },
+        applyEdits: {
+          args: "([{ find, replace }])",
+          params: [{ name: "edits", schema: { type: "array", items: { type: "object", properties: { find: { type: "string", description: "Text that occurs exactly once in the post" }, replace: { type: "string" } }, required: ["find", "replace"] } } }],
+          returns: "{ applied, problems }",
+          needs: "document:write",
+          description: "Edits the open post: each find must occur exactly once. The person can undo them, and they are saved only when the post is.",
+        },
+        insert: { args: "(text)", params: [{ name: "text", schema: { type: "string" } }], returns: "true or false", needs: "document:write", description: "Puts text in at the selection, replacing what is selected." },
+        setFrontMatter: {
+          args: "(key, value)",
+          params: [
+            { name: "key", schema: { type: "string", description: "A top-level field, such as title or tags" } },
+            { name: "value", schema: { description: "A string, number, boolean or list of strings; null removes the field" } },
+          ],
+          returns: "true or false",
+          needs: "document:write",
+          description: "Sets one top-level front matter field (null removes it): a string, number, boolean or list of strings.",
+        },
+        save: { args: "()", params: [], returns: "true or false", needs: "document:write", description: "Saves the open post, as the Save button does (before-save listeners run first)." },
       },
     },
   },
@@ -121,25 +154,60 @@ export function parseFrontMatter(text) {
       const clean = (v) => v.trim().replace(/^["']|["']$/g, "");
       const list = (v) => v.replace(/^\[|\]$/g, "").split(",").map(clean).filter(Boolean);
       let key;
+      // A YAML block scalar (`key: |` or `key: >`): its indented lines, joined once it ends.
+      let block = null;
+      const finish = () => {
+        if (!block) return;
+        const lines = [...block.lines];
+        while (lines.length && !lines.at(-1).trim()) lines.pop();
+        const indent = Math.min(...lines.filter((l) => l.trim()).map((l) => /^\s*/.exec(l)[0].length));
+        const body = lines.map((l) => l.slice(Number.isFinite(indent) ? indent : 0));
+        fields[block.key] = block.fold ? body.join(" ").replace(/\s+/g, " ").trim() : body.join("\n");
+        block = null;
+      };
       for (const line of head.split(/\r?\n/)) {
-        const item = /^\s+-\s+(.*)$/.exec(line);
+        if (block) {
+          if (!line.trim() || /^\s/.test(line)) {
+            block.lines.push(line);
+            continue;
+          }
+          finish();
+        }
+        // TOML: fields after the first [table] belong to that table, not the page.
+        if (kind === "toml" && /^\s*\[/.test(line)) break;
+        // A list item, indented under its key or (YAML allows it) not.
+        const item = kind === "yaml" ? /^\s*-\s+(.*)$/.exec(line) : null;
         if (item && key) {
           fields[key] = [...(Array.isArray(fields[key]) ? fields[key] : []), clean(item[1])];
           continue;
         }
+        // Only top-level keys: indented ones belong to a map under the key above.
         const m = /^([A-Za-z_][\w-]*)\s*[:=]\s*(.*)$/.exec(line);
         if (!m) continue;
         key = m[1].toLowerCase();
         const value = m[2].trim();
+        if (kind === "yaml" && /^[|>][+-]?\d*$/.test(value)) {
+          block = { key, fold: value.startsWith(">"), lines: [] };
+          continue;
+        }
         fields[key] = value.startsWith("[") ? list(value) : clean(value);
       }
+      finish();
     }
   } else if (text.startsWith("{")) {
-    // JSON front matter ends at the brace that closes the first.
+    // JSON front matter ends at the brace that closes the first (braces in strings don't count).
     let depth = 0;
+    let quoted = false;
     for (let i = 0; i < text.length; i++) {
-      if (text[i] === "{") depth++;
-      else if (text[i] === "}" && --depth === 0) {
+      const c = text[i];
+      if (quoted) {
+        if (c === "\\") i++;
+        else if (c === '"') quoted = false;
+        continue;
+      }
+      if (c === '"') quoted = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) {
         try {
           for (const [k, v] of Object.entries(JSON.parse(text.slice(0, i + 1)))) fields[k.toLowerCase()] = Array.isArray(v) ? v.map(String) : String(v);
           kind = "json";
@@ -154,7 +222,7 @@ export function parseFrontMatter(text) {
   return { fields, bodyStart, kind };
 }
 
-/** The text with one front matter field set (or removed, for null), in the front matter's own format. */
+/** The text with one top-level front matter field set (or removed, for null), in the front matter's own format. */
 export function setField(text, key, value) {
   const { kind, bodyStart } = parseFrontMatter(text);
   const quote = (v) => (typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(String(v)));
@@ -167,18 +235,33 @@ export function setField(text, key, value) {
   }
   const sep = kind === "toml" ? " = " : ": ";
   if (!kind) return value === null ? text : `---\n${key}${sep}${format(value)}\n---\n\n${text}`;
-  const open = kind === "toml" ? "+++" : "---";
   const lines = text.slice(0, bodyStart).split("\n");
-  // The fence lines stay; the field's line (and a YAML list's items under it) go.
-  const at = lines.findIndex((line) => new RegExp(`^${key}\\s*[:=]`, "i").test(line));
+  // lines[0] is the opening fence; `close` is the closing one. For TOML, the page's own fields end at the first [table].
+  const close = lines.findLastIndex((line) => /^(---|\+\+\+)[ \t]*\r?$/.test(line));
+  let end = close;
+  if (kind === "toml") {
+    const table = lines.findIndex((line, i) => i > 0 && i < close && /^\s*\[/.test(line));
+    if (table > 0) end = table;
+  }
+  const at = lines.findIndex((line, i) => i > 0 && i < end && new RegExp(`^${key}\\s*[:=]`, "i").test(line));
   const line = `${key}${sep}${format(value)}`;
   if (at >= 0) {
-    let end = at + 1;
-    while (end < lines.length && /^\s+-\s/.test(lines[end])) end++;
-    lines.splice(at, end - at, ...(value === null ? [] : [line]));
+    // The field's value may go on below it: indented lines (a list, a block scalar, a map, a TOML array),
+    // YAML list items at the start of the line, and blank lines between them.
+    const more = (l) => /^\s+\S/.test(l) || (kind === "yaml" && /^-(\s|$)/.test(l)) || (kind === "toml" && /^\s*\]/.test(l));
+    let after = at + 1;
+    while (after < end) {
+      if (more(lines[after])) after++;
+      else if (!lines[after].trim()) {
+        let next = after;
+        while (next < end && !lines[next].trim()) next++;
+        if (next < end && more(lines[next])) after = next;
+        else break;
+      } else break;
+    }
+    lines.splice(at, after - at, ...(value === null ? [] : [line]));
   } else if (value !== null) {
-    const close = lines.lastIndexOf(open);
-    lines.splice(close > 0 ? close : 1, 0, line);
+    lines.splice(end > 0 ? end : 1, 0, line);
   }
   return lines.join("\n") + text.slice(bodyStart);
 }
@@ -213,6 +296,11 @@ export default async function (ctx) {
   let saving = false;
 
   const unsaved = () => !!open && draft !== open.saved;
+  /**
+   * The open post and its draft, kept in this plugin's storage: one worker serves every tab, and when the
+   * tab that started it closes it starts again, so unsaved writing must outlive it.
+   */
+  const remember = (api) => api.storage.set("open", open ? { path: open.path, saved: open.saved, draft } : null);
   const siteName = () => folder.name || "Site";
   /** The URL Hugo gives a post: /<section>/<slug>/, or the bundle's folder for index.md. */
   const urlOf = (path, fields = {}) => {
@@ -288,10 +376,12 @@ export default async function (ctx) {
     open = null;
     draft = "";
     notes.clear();
+    await remember(api);
     await api.hooks.emit("close", null);
   };
 
-  const openPost = async (path, api) => {
+  /** Opens a post from the folder; `kept` is its unsaved draft from before this worker started again. */
+  const openPost = async (path, api, kept) => {
     const text = await api.call("folder", "read", path);
     if (text === null) {
       problem = `${path} isn't in the folder any more.`;
@@ -300,11 +390,15 @@ export default async function (ctx) {
     await close(api);
     open = { path, saved: text };
     draft = text;
+    status = "";
+    if (kept && typeof kept.draft === "string" && kept.draft !== text) {
+      draft = kept.draft;
+      if (kept.saved !== text) status = "Unsaved changes kept, but the file changed on disk since: saving replaces it.";
+    }
     selection = { from: 0, to: 0 };
     revision++;
-    status = "";
     problem = "";
-    await api.storage.set("open", path);
+    await remember(api);
     draw(api);
     await api.hooks.emit("open", snapshot());
   };
@@ -315,6 +409,7 @@ export default async function (ctx) {
     revision++;
     status = "";
     draw(api);
+    await remember(api);
     await api.hooks.emit("change", snapshot());
   };
 
@@ -323,20 +418,29 @@ export default async function (ctx) {
     saving = true;
     try {
       const path = open.path;
+      // What the listeners check is what is saved: typing that goes on meanwhile stays unsaved.
+      const checked = draft;
       const verdict = await api.hooks.call("before-save", snapshot());
+      if (open?.path !== path) return false;
       if (verdict?.block) {
         status = `Not saved: ${verdict.block}`;
         draw(api);
         return false;
       }
-      if (typeof verdict?.text === "string" && verdict.text !== draft) {
-        draft = verdict.text;
+      let text = checked;
+      if (typeof verdict?.text === "string" && verdict.text !== checked) {
+        if (draft !== checked) {
+          status = "Not saved: the post changed while it was being checked. Save again.";
+          draw(api);
+          return false;
+        }
+        text = draft = verdict.text;
         revision++;
       }
-      const text = draft;
       await api.call("folder", "write", path, text);
       if (open?.path !== path) return true;
       open.saved = text;
+      await remember(api);
       status = "Saved";
       await scan(api);
       draw(api);
@@ -358,7 +462,11 @@ export default async function (ctx) {
     const files = Array.isArray(value.files) ? value.files : [];
     const offered = { from, to, text: String(value.text ?? ""), html: String(value.html ?? ""), files, selected: draft.slice(from, to) };
     if (!offered.text) offered.text = files.map((f) => f.text ?? "").filter(Boolean).join("\n");
+    const path = open.path;
+    const before = draft;
     const answer = await api.hooks.call(hook, offered);
+    // Another post opened, or the text changed, while the listeners ran: the offsets no longer fit.
+    if (open?.path !== path || draft !== before) return draw(api);
     if (!answer || answer.block || typeof answer.text !== "string" || !answer.text) return draw(api);
     selection = { from: from + answer.text.length, to: from + answer.text.length };
     await changed(draft.slice(0, from) + answer.text + draft.slice(to), api);
@@ -374,6 +482,20 @@ export default async function (ctx) {
     await openPost(path, api);
   };
 
+  /** Picks a site folder (or lets the picked one be used again): the old folder's post closes first. */
+  const chooseFolder = async (how, api) => {
+    try {
+      if (how === "choose" && !(await api.call("folder", "choose"))) return;
+      if (how === "allow") await api.call("folder", "allow");
+      problem = "";
+      await close(api);
+      await scan(api);
+    } catch (error) {
+      problem = error instanceof Error ? error.message : String(error);
+    }
+    draw(api);
+  };
+
   ctx.ui.onEvent(async (action, value) => {
     // Pinned to this action's trace, so its writes and hooks are traced with it.
     const here = ctx.traced();
@@ -381,6 +503,7 @@ export default async function (ctx) {
       draft = String(value ?? "");
       status = "";
       draw(here);
+      await remember(here);
       return here.hooks.emit("change", snapshot());
     }
     if (action === "select" && open && value && typeof value === "object") {
@@ -395,18 +518,7 @@ export default async function (ctx) {
       await close(here);
       return draw(here);
     }
-    if (action === "choose" || action === "allow") {
-      try {
-        if (action === "choose" && !(await here.call("folder", "choose"))) return;
-        if (action === "allow") await here.call("folder", "allow");
-        problem = "";
-        await close(here);
-        await scan(here);
-      } catch (error) {
-        problem = error instanceof Error ? error.message : String(error);
-      }
-      return draw(here);
-    }
+    if (action === "choose" || action === "allow") return chooseFolder(action, here);
     if (action === "rescan") {
       await scan(here);
       return draw(here);
@@ -414,12 +526,15 @@ export default async function (ctx) {
   });
 
   ctx.commands.add({ id: "save", title: "Save the post", keys: ["Mod+S"] }, () => save(ctx.traced()));
-  ctx.commands.add({ id: "open-folder", title: "Open a site folder…" }, () => ctx.traced().call("folder", "choose").then(() => scan()).then(() => draw()));
+  ctx.commands.add({ id: "open-folder", title: "Open a site folder…" }, () => chooseFolder("choose", ctx.traced()));
 
   ctx.provide("document", {
     read: () => snapshot(),
     list: () => posts,
-    annotate(set, list, { caller }) {
+    // The runtime adds { caller } after the arguments given, so a method with optional arguments takes it off the end.
+    annotate(...args) {
+      const { caller } = args.pop();
+      const [set, list] = args;
       const key = `${caller} ${String(set)}`;
       const kept = (Array.isArray(list) ? list : [])
         .filter((a) => a && Number.isFinite(a.from) && Number.isFinite(a.to) && a.from < a.to)
@@ -430,9 +545,11 @@ export default async function (ctx) {
       draw();
       return true;
     },
-    select(from, to) {
+    select(...args) {
+      args.pop();
+      const [from, to = from] = args;
       if (!open) return false;
-      selection = { from: Number(from) || 0, to: Number(to ?? from) || 0 };
+      selection = { from: Number(from) || 0, to: Number(to) || 0 };
       selectAt = `${selection.from},${selection.to},${++selects}`;
       draw();
       return true;
@@ -480,7 +597,9 @@ export default async function (ctx) {
   }
   // Opens the post that was open last time, or the newest.
   const last = await ctx.storage.get("open");
-  const first = posts.find((p) => p.path === last) ?? posts[0];
-  if (first) await openPost(first.path, ctx);
+  const kept = last && typeof last === "object" ? last : null;
+  const lastPath = kept ? kept.path : last;
+  const first = posts.find((p) => p.path === lastPath) ?? posts[0];
+  if (first) await openPost(first.path, ctx, first.path === kept?.path ? kept : undefined);
   else draw();
 }

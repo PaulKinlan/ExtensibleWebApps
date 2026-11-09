@@ -55,11 +55,12 @@ export default async (ctx) => {
   const tryIt = (p) => p.then((v) => 'ok ' + JSON.stringify(v), (e) => 'no ' + e.message);
   ctx.log('writer-git ' + await tryIt(ctx.call('folder', 'write', '.git/config', 'x')));
   ctx.log('writer-env ' + await tryIt(ctx.call('folder', 'write', '.env', 'x')));
+  ctx.log('writer-case ' + await tryIt(ctx.call('folder', 'write', '.GIT/config', 'x')));
   await ctx.call('folder', 'write', 'checks/editor-events.md', 'kept');
   ctx.log('writer-back ' + await tryIt(ctx.call('folder', 'read', 'checks/editor-events.md')));
   ctx.log('writer-list ' + await tryIt(ctx.call('folder', 'list', 'checks')));
 };`);
-    check("a plugin can't write to .git or .env in the folder", /^writer-git no /.test(await logged("folder-writer", "writer-git")) && /^writer-env no /.test(await logged("folder-writer", "writer-env")), `${await logged("folder-writer", "writer-git")}; ${await logged("folder-writer", "writer-env")}`);
+    check("a plugin can't write to .git or .env in the folder, in any case", /^writer-git no /.test(await logged("folder-writer", "writer-git")) && /^writer-env no /.test(await logged("folder-writer", "writer-env")) && /^writer-case no /.test(await logged("folder-writer", "writer-case")), `${await logged("folder-writer", "writer-git")}; ${await logged("folder-writer", "writer-env")}; ${await logged("folder-writer", "writer-case")}`);
     check("a written file reads back and is listed", (await logged("folder-writer", "writer-back")) === 'writer-back ok "kept"' && /checks\/editor-events\.md/.test(await logged("folder-writer", "writer-list")), await logged("folder-writer", "writer-list"));
   } finally {
     for (const id of ids) await uninstall(id);
