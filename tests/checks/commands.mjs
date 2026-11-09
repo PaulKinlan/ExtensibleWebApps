@@ -1,4 +1,4 @@
-// Commands (src/kernel/services/commands.ts, ctx.commands.add) and the command
+// Commands (std/commands/module.ts, ctx.commands.add) and the command
 // palette (std/commands/palette.js, elements/ui-commands.html): a plugin names
 // what it does, and a palette, a shortcut or an agent's tool call runs it.
 

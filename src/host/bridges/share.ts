@@ -1,5 +1,5 @@
 // share: the system's share sheet (Web Share), or the clipboard where there is
-// none (../../kernel/services/share.ts).
+// none (../../kernel/std/share/module.ts).
 
 import { folder } from "../router";
 

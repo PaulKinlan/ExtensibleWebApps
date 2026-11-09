@@ -279,7 +279,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
   await new Promise<void>((ready) => server.listen(options.port, options.host, ready));
   const address = server.address();
   const url = `http://${options.host}:${typeof address === "object" && address ? address.port : options.port}`;
-  // A space whose plugins scheduled jobs (src/kernel/services/schedule.ts) starts now, so they run
+  // A space whose plugins scheduled jobs (std/schedule/module.ts) starts now, so they run
   // with no one connected.
   for (const name of existsSync(resolve(options.spaces)) ? readdirSync(resolve(options.spaces)) : []) {
     if (!SPACE.test(name)) continue;

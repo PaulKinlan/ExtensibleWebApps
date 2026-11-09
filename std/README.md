@@ -27,9 +27,20 @@ Some folders here also hold a `module.ts`: a **kernel module**, trusted code tha
 | Module | What it adds |
 | --- | --- |
 | [`agents/module.ts`](agents/module.ts) | The `agents` service: agents' runs and tokens counted by the kernel, and the `agent:*` hooks that say what they did. Needs `tools` |
+| [`audio/module.ts`](audio/module.ts) | The `audio` service: sound for plugins, played by the tab that runs their workers |
 | [`bus/module.ts`](bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person |
+| [`commands/module.ts`](commands/module.ts) | The `commands` service behind the [palette](commands/palette.js): commands from any plugin, run from a palette, a key or an agent |
 | [`debug/module.ts`](debug/module.ts) | The `debug` service, which the debug console and other developer tools read the trace from, and the `bench` and `reload-test` commands the tests run |
+| [`email/module.ts`](email/module.ts) | The `email` service: mail a space's server plugins send, only to the space's members, with daily limits |
+| [`history/module.ts`](history/module.ts) | The `history` service behind [`undo.js`](undo.js): undo and redo across every plugin's writes |
+| [`llm/module.ts`](llm/module.ts) | The `llm` service: one way for any plugin to ask a model; the vendor plugins in [`llm/`](llm/) answer behind it |
+| [`page/module.ts`](page/module.ts) | The `page` service: the app's own page, as far as a plugin's places reach into it |
+| [`reflect/module.ts`](reflect/module.ts) | The `reflect` service: a read-only view of the whole kernel, for debuggers |
+| [`router/module.ts`](router/module.ts) | The `router` service: a screen for every address in an app |
+| [`schedule/module.ts`](schedule/module.ts) | The `schedule` service behind `ctx.schedule`: plugins' jobs, kept so they outlive a restart |
+| [`share/module.ts`](share/module.ts) | The `share` service: the system's share sheet, and things shared to an installed app |
 | [`tools/module.ts`](tools/module.ts) | The `tools` service: the service methods a plugin may call, offered to a model as tools |
+| [`transfer/module.ts`](transfer/module.ts) | The `transfer` service behind [`import-export.js`](import-export.js): import and export of collections, as CSV or JSON |
 
 ## The command palette
 

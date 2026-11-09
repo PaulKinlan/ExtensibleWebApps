@@ -1,7 +1,7 @@
 // The `commands` service: things a person (or an agent) can do in an app,
 // named once by the plugin that does them, and run from anywhere: a command
 // palette, a keyboard shortcut, or a model's tool call.
-// Found by name: this file is src/kernel/services/commands.ts, so it is `ctx.call("commands", …)`.
+// A kernel module (docs/layers.md): a site that lists `commands` in kernel.json has it, as `ctx.call("commands", …)`.
 //
 // A plugin adds a command with a handler:
 //
@@ -24,10 +24,9 @@
 // hook:intercept:commands:before) and stop a run, such as an agent's, before
 // it happens; `commands:ran` tells the rest it did.
 
-import { defineHook } from "../hooks";
-import { commandHook, type ServiceProvider } from "../remote";
-import { checkSchema, validate, type Schema } from "../schema";
-import type { Kernel } from "./index";
+import { commandHook, type ServiceProvider } from "../../src/kernel/remote";
+import { checkSchema, validate, type Schema } from "../../src/kernel/schema";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
 
 /** A command as its plugin adds it. */
 interface Command {
@@ -54,26 +53,6 @@ const MODIFIER = new Set(["Mod", "Ctrl", "Alt", "Shift", "Meta"]);
 const KEY = /^(?:[^\s+]|\+|Enter|Escape|Space|Tab|Backspace|Delete|Home|End|PageUp|PageDown|Arrow(?:Up|Down|Left|Right)|F(?:[1-9]|1[0-2]))$/;
 const MAX_COMMANDS = 100;
 const MAX_ANSWER = 1_000_000;
-
-defineHook("commands:changed", {
-  mode: "emit",
-  needs: "commands",
-  args: "{}",
-  description: "A command was added or removed, or the plugin that added it stopped. Call commands.list() again.",
-});
-defineHook("commands:before", {
-  mode: "serial",
-  timeoutMs: 15_000,
-  onFailure: "open",
-  args: "{ name, plugin, id, args, by, as? }",
-  description: "Before a command runs; `by` is the plugin that ran it (the palette, an agent), and as is \"person\" when that is an agent acting for the person. Return { block: reason } to stop it.",
-});
-defineHook("commands:ran", {
-  mode: "emit",
-  needs: "commands",
-  args: "{ name, plugin, id, by, as?, ok, error? }",
-  description: "A command ran, or failed (ok false, with the error). Its arguments aren't included: listen to commands:before for those.",
-});
 
 const base = (instance: string) => instance.split("@")[0];
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -111,7 +90,27 @@ function checkCommand(input: unknown): Command {
   return command;
 }
 
-export default ({ root, remote, apps }: Kernel): ServiceProvider => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { root, remote, apps } = kernel;
+  kernel.hook("commands:changed", {
+    mode: "emit",
+    needs: "commands",
+    args: "{}",
+    description: "A command was added or removed, or the plugin that added it stopped. Call commands.list() again.",
+  });
+  kernel.hook("commands:before", {
+    mode: "serial",
+    timeoutMs: 15_000,
+    onFailure: "open",
+    args: "{ name, plugin, id, args, by, as? }",
+    description: "Before a command runs; `by` is the plugin that ran it (the palette, an agent), and as is \"person\" when that is an agent acting for the person. Return { block: reason } to stop it.",
+  });
+  kernel.hook("commands:ran", {
+    mode: "emit",
+    needs: "commands",
+    args: "{ name, plugin, id, by, as?, ok, error? }",
+    description: "A command ran, or failed (ok false, with the error). Its arguments aren't included: listen to commands:before for those.",
+  });
   /** Each plugin instance's commands, by id. */
   const added = new Map<string, Map<string, Command>>();
   // A plugin adds its commands one call each as it starts: say so once for the lot.
@@ -121,12 +120,12 @@ export default ({ root, remote, apps }: Kernel): ServiceProvider => {
     pending = setTimeout(() => root.emit({}, "commands:changed", {}), 50);
   };
 
-  // An instance that stops takes its commands with it. Keep whatever else was told before.
-  const before = remote.onDispose;
-  remote.onDispose = (instance) => {
-    before?.(instance);
+  // An instance that stops takes its commands with it (kernel.ts says so as internal/stopped).
+  root.on("internal/stopped", (instance: string) => {
     if (added.delete(instance)) changed();
-  };
+  });
+  // When the module stops, no commands:changed comes late.
+  kernel.cleanup(() => clearTimeout(pending));
 
   /**
    * The commands the caller can run, each with the instance that answers it:
@@ -243,3 +242,5 @@ export default ({ root, remote, apps }: Kernel): ServiceProvider => {
     },
   };
 };
+
+export default service("commands", make);

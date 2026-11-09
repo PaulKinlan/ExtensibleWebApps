@@ -8,6 +8,7 @@ const KERNEL = new URL("../../src/kernel/", import.meta.url);
 
 /** Needed to run any plugin, in any app or space server. */
 const CORE = [
+  "address.ts",
   "apps.ts",
   "authoring.ts",
   "browser-env.ts",
@@ -46,23 +47,10 @@ const CORE = [
 
 /** Kernel services an app may not use, and the files that belong to them, being split out of the core. */
 const SERVICES = [
-  "address.ts",
   "agents/file.ts",
-  "csv.ts",
   "routes.ts",
   "server-apps.ts",
-  "services/audio.ts",
-  "services/commands.ts",
-  "services/email.ts",
-  "services/history.ts",
-  "services/llm.ts",
-  "services/page.ts",
-  "services/reflect.ts",
-  "services/router.ts",
-  "services/schedule.ts",
-  "services/share.ts",
   "services/sync.ts",
-  "services/transfer.ts",
   "shared-plugins.ts",
   "sync-device.ts",
   "sync.ts",
@@ -91,7 +79,7 @@ export default async function ({ check }) {
   const unnamed = modules.filter((name) => !page.includes(`std/${name}/module.ts`));
   check("docs/layers.md names every kernel module", !unnamed.length, unnamed.join(", "));
   // A module adds hooks with kernel.hook and cleans up with kernel.cleanup, so all it adds goes when it stops.
-  // defineHook would outlive it, and Cordis never fires ctx.on("dispose").
-  const unscoped = modules.filter((name) => /\bdefineHook\b|\bhooks\.set\(|on\(\s*["']dispose["']/.test(readFileSync(new URL(`../../std/${name}/module.ts`, import.meta.url), "utf8")));
+  // defineHook, or setting one of the core's callbacks (remote.onDispose = …), would outlive it, and Cordis never fires ctx.on("dispose").
+  const unscoped = modules.filter((name) => /\bdefineHook\b|\bhooks\.set\(|on\(\s*["']dispose["']|\.on[A-Z]\w*\s*=[^=]/.test(readFileSync(new URL(`../../std/${name}/module.ts`, import.meta.url), "utf8")));
   check("kernel modules add hooks and clean up only through their kernel, so stopping one takes it all back", !unscoped.length, unscoped.join(", "));
 }

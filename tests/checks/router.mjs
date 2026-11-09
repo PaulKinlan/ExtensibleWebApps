@@ -1,4 +1,4 @@
-// The router service (src/kernel/services/router.ts): the screen a tab shows,
+// The router service (std/router/module.ts): the screen a tab shows,
 // from its address. The reading-list demo's checks cover links, back
 // and opening a book's address in a new tab; these cover the service itself.
 

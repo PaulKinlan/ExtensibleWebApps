@@ -1,12 +1,13 @@
 // The `page` service. The app's own page, as far as a plugin's places reach into it.
-// Found by name: this file is src/kernel/services/page.ts, so it is `ctx.call("page", …)`.
+// A kernel module (docs/layers.md): a site that lists `page` in kernel.json has it, as `ctx.call("page", …)`.
 
-import type { Kernel } from "./index";
-import type { ServiceProvider } from "../remote";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
+import type { ServiceProvider } from "../../src/kernel/remote";
 
 const base = (instance: string) => instance.split("@")[0];
 
-export default ({ hosts, remote, apps }: Kernel): ServiceProvider => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { hosts, remote, apps } = kernel;
   return {
     description: "The app's own page, as far as a plugin's places reach into it, and the slots plugins declare in their views.",
     methods: {
@@ -40,3 +41,5 @@ export default ({ hosts, remote, apps }: Kernel): ServiceProvider => {
     },
   };
 };
+
+export default service("page", make);

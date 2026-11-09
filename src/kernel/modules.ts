@@ -14,7 +14,8 @@
 //   export default { name: "debug", uses: ["llm"], apply(ctx, kernel) { kernel.provide("debug", …); } };
 //
 // Everything a module adds goes through `kernel` (provide, command, hook,
-// cleanup), and each is a Cordis effect on the module's own context. So, as
+// cleanup, and `kernel.root`, which is the module's own Cordis context), and
+// each is a Cordis effect on that context. So, as
 // with any Cordis plugin, disposing a module takes back all it added, and the
 // modules that `use` it (Cordis `inject`) stop with it and start again when it
 // comes back. A module never calls defineHook itself: tests/checks/kernel-layers.mjs
@@ -93,6 +94,9 @@ export function loadModules(
         apply(ctx: any) {
           const own: ModuleKernel = {
             ...kernel,
+            // The module's own context stands in for the root: hooks it emits reach everyone, and
+            // what it listens to or starts with root.on and root.plugin stops with it.
+            root: ctx,
             provide(name, provider) {
               if (Object.hasOwn(services, name)) throw new Error(`The ${module.name} module can't provide ${name}: the kernel already has a service by that name`);
               RESERVED.add(name);
