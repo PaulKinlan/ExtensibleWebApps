@@ -190,7 +190,7 @@ export interface Manifest {
   name: string;
   version?: string;
   description?: string;
-  /** New-style capabilities (`hook:listen:notes:open`, `ui`, `audio`, ...) or editor-style permissions (`post:read`, `ui`). */
+  /** Capabilities: `hook:listen:notes:open`, `ui`, `audio`, ... */
   permissions: string[];
   order?: number;
   /** "shared" (default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or hold view state. */

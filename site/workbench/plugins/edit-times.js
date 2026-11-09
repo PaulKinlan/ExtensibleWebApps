@@ -1,12 +1,13 @@
-// Edit and save times: when the post was last edited and last saved.
+// Edit and save times: when the open note was last edited and last saved, in
+// the status bar. It hears the note through the notes plugin's hooks.
 
 export const manifest = {
   id: "edit-times",
   name: "Edit and save times",
   order: 30,
-  description: "Shows when you last edited and last saved the post.",
-  version: "1.0.0",
-  permissions: ["post:read", "ui"],
+  description: "Shows when you last edited and last saved the note.",
+  version: "2.0.0",
+  permissions: ["ui", "hook:listen:notes:open", "hook:listen:notes:change", "hook:listen:notes:save", "hook:listen:notes:close"],
 };
 
 function ago(time) {
@@ -20,44 +21,40 @@ function ago(time) {
 
 const clock = (time) => new Date(time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-export default function (editor) {
-  const status = editor.ui.status("times", "");
-  let path = null;
+export default function (ctx) {
+  let open = false;
   let edited = 0;
   let saved = 0;
   let text = "";
 
   const show = () => {
-    if (!path) return status.set("");
     const parts = [];
     if (edited) parts.push(`Edited ${ago(edited)}`);
     if (saved) parts.push(`Saved ${clock(saved)}`);
-    status.set(parts.join(" · "), [edited && `Last edit ${new Date(edited).toLocaleString()}`, saved && `Last save ${new Date(saved).toLocaleString()}`].filter(Boolean).join("\n"));
+    if (!open || !parts.length) return ctx.ui.render("status", "times", null);
+    const title = [edited && `Last edit ${new Date(edited).toLocaleString()}`, saved && `Last save ${new Date(saved).toLocaleString()}`].filter(Boolean).join("\n");
+    ctx.ui.render("status", "times", { type: "text", text: parts.join(" · "), title });
   };
 
-  editor.on("post:open", (post) => {
-    path = post.path;
-    text = post.text;
+  ctx.on("notes:open", (note) => {
+    open = true;
+    text = note.text;
     edited = saved = 0;
     show();
   });
-  editor.on("post:change", (post) => {
-    if (post.text !== text) edited = Date.now();
-    text = post.text;
+  ctx.on("notes:change", (note) => {
+    if (note.text !== text) edited = Date.now();
+    text = note.text;
     show();
   });
-  editor.on("post:save", (post) => {
+  ctx.on("notes:save", (note) => {
     saved = Date.now();
-    text = post.text;
+    text = note.text;
     show();
   });
-  editor.on("post:close", () => {
-    path = null;
+  ctx.on("notes:close", () => {
+    open = false;
     show();
   });
-  if (editor.document.post) {
-    path = editor.document.post.path;
-    text = editor.document.post.text;
-  }
   setInterval(show, 30_000);
 }

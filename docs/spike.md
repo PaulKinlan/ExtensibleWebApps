@@ -10,7 +10,7 @@ The spike checks that the plan's riskiest choices hold up: Cordis as the kernel,
 | Can a shared worker host the kernel? | Yes, and two tabs share one kernel and one set of notes. |
 | Can a shared worker create the plugin workers? | No. `Worker` is not defined in a shared worker (Chromium 153). One tab, the spawner, creates plugin workers and hands the kernel a `MessageChannel` port to each. |
 | What happens when the spawner tab closes? | The next tab becomes the spawner and the plugins start again there. Tabs are noticed leaving through a Web Lock each tab holds for its lifetime; `pagehide` alone was not reliable. |
-| Do Markdown editor extensions run unchanged? | Yes. `word-count.js` and `edit-times.js` are copied byte for byte and run through a shim of about 70 lines (`editorShim` in `src/sandbox/runtime.ts`). |
+| Do Markdown editor extensions run unchanged? | Yes, at the time: `word-count.js` and `edit-times.js` were copied byte for byte and ran through a shim of about 70 lines. The shim has since gone: the editor is now ported natively ([`demos/markdown-editor/`](../demos/markdown-editor/)), each extension a plugin of its own. |
 | Can a plugin in a worker block an action? | Yes. `no-shouting.js` blocks a save through the `serial` hook `data:beforeWrite`. |
 | Does the gate hold? | Yes. `sneaky.js` asks to intercept writes and to play audio without those capabilities; both are refused and show in the trace. |
 | Hook round trip to a plugin worker | p50 0.1 ms, p95 0.2 ms, max 1.5 ms over 500 calls (target: p95 under 2 ms). In-kernel p50 is under 0.1 ms. Timers are coarsened to 0.1 ms without cross-origin isolation. |
@@ -32,4 +32,3 @@ The spike checks that the plan's riskiest choices hold up: Cordis as the kernel,
 - ~~A content security policy on plugin workers~~ and ~~reading the manifest without running the module~~: done in phase 1.
 - An approval prompt. Built-in plugins are trusted with what they ask for.
 - Plugins defining their own hooks from a worker, and `waterfall` hooks across workers (the code path exists but no plugin uses it).
-- Plugin storage and settings in the editor shim (they are stubs).

@@ -83,4 +83,4 @@ No permission is needed for a plugin's own storage and settings (`ctx.storage`, 
 
 ## Editor permissions
 
-Plugins written for the Markdown editor can use its older permission names, which stand for capabilities: `post:read` is `hook:listen:notes:*`, and `post:write` is `data:read:notes` and `hook:intercept:data:beforeWrite:notes`: the notes plugin's hooks and collection.
+A permission is always a capability by its own name: there are no older aliases (the Markdown editor's `post:read` and `post:write` went with its shim; its features are now plugins of their own, in [`demos/markdown-editor/`](../demos/markdown-editor/)).

@@ -1471,14 +1471,6 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `transfer` | Call transfer.collections, transfer.export, transfer.import. |
 | `ui` | Call page.matches, page.slots. |
 
-Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:
-
-| Editor permission | Capabilities |
-| --- | --- |
-| `post:read` | `hook:listen:notes:*` |
-| `post:write` | `data:read:notes`, `hook:intercept:data:beforeWrite:notes` |
-| `ui` | `ui` |
-
 ## Manifest
 
 `export const manifest = { ... }` must be the module's first statement, a plain literal, read before any of the plugin's code runs.
@@ -1489,7 +1481,7 @@ Plugins written for the Markdown editor can use its permissions, which stand for
 | `name` | Required. The name the person sees. |
 | `version` | Optional. Shown nowhere yet. |
 | `description` | Optional. Shown as the name's tooltip in the plugins panel. |
-| `permissions` | Required, may be empty. Capabilities, or editor-style permissions that stand for them (see Capabilities). |
+| `permissions` | Required, may be empty. Capabilities (see Capabilities). |
 | `order` | Optional. Where the plugin's views go among others in the same slot; lower comes first. |
 | `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
 | `runs` | "browser" (the default): in the browser, on each device. "server": only in a space's kernel on its server, for an app opened in a space (/s/<space>/…), with no app open anywhere; it has no UI, no file system, and no network unless it asks for `network`. "both": in each. See docs/server.md. |

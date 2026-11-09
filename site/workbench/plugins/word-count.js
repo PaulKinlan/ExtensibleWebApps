@@ -1,31 +1,30 @@
-// Word count: the post's words and reading time in the status bar.
+// Word count: the open note's words and reading time in the status bar. It
+// hears the note through the notes plugin's hooks.
 
 export const manifest = {
   id: "word-count",
   name: "Word count",
   order: 10,
-  description: "Shows the post's word count and reading time in the status bar.",
-  version: "1.0.0",
-  permissions: ["post:read", "ui"],
+  description: "Shows the note's word count and reading time in the status bar.",
+  version: "2.0.0",
+  permissions: ["ui", "hook:listen:notes:open", "hook:listen:notes:change", "hook:listen:notes:save", "hook:listen:notes:close"],
 };
 
 const WORDS_PER_MINUTE = 230;
 
-function count(post) {
-  return (post.text.slice(post.bodyStart).match(/[\p{L}\p{N}’']+/gu) ?? []).length;
+function count(note) {
+  return (note.text.slice(note.bodyStart).match(/[\p{L}\p{N}’']+/gu) ?? []).length;
 }
 
-export default function (editor) {
-  const status = editor.ui.status("words", "");
-  const update = (post) => {
-    if (!post) return status.set("");
-    const words = count(post);
+export default function (ctx) {
+  const show = (note) => {
+    if (!note) return ctx.ui.render("status", "words", null);
+    const words = count(note);
     const minutes = Math.max(1, Math.round(words / WORDS_PER_MINUTE));
-    status.set(`${words.toLocaleString()} words · ${minutes} min read`, `Reading time at ${WORDS_PER_MINUTE} words a minute`);
+    ctx.ui.render("status", "words", { type: "text", text: `${words.toLocaleString()} words · ${minutes} min read`, title: `Reading time at ${WORDS_PER_MINUTE} words a minute` });
   };
-  editor.on("post:open", update);
-  editor.on("post:change", update);
-  editor.on("post:save", update);
-  editor.on("post:close", () => status.set(""));
-  if (editor.document.post) update(editor.document.post);
+  ctx.on("notes:open", show);
+  ctx.on("notes:change", show);
+  ctx.on("notes:save", show);
+  ctx.on("notes:close", () => show(null));
 }

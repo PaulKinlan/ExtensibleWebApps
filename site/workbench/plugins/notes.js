@@ -1,8 +1,7 @@
 // The notes app, as a plugin: a list of notes and an editor, kept in its own
 // `notes` collection. It turns what the person does into hooks of its own
 // (notes:open, notes:change, notes:save, notes:close, notes:selection), which
-// other plugins listen to, and which the Markdown editor's extensions hear as
-// post events through the shim in the sandbox. A paste or a drop goes through
+// other plugins listen to (the workbench's word count and edit times). A paste or a drop goes through
 // notes:paste and notes:drop first, so a plugin can change what goes in (a
 // link pasted onto a word becomes a Markdown link). Only the workbench links it.
 
@@ -200,7 +199,7 @@ export default async function (ctx) {
       await remember(here);
       status = "Changed by a plugin";
       render(here);
-      // Tell note listeners (word count, the editor shim) what the note now says.
+      // Tell note listeners (word count, edit times) what the note now says.
       return here.hooks.emit("save", snapshot(false));
     }
     render(here);

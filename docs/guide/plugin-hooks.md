@@ -66,7 +66,7 @@ export default function (ctx) {
 
 A plugin may listen before the plugin that defines the hook is installed: its listener waits, and starts hearing the hook once that plugin arrives. Apps can load their plugins in any order. Listening to a hook nobody will define is never an error, so check the name.
 
-The Markdown editor's extensions ([`word-count.js`](../../site/workbench/plugins/word-count.js), [`edit-times.js`](../../site/workbench/plugins/edit-times.js)) listen to `post:open`, `post:change`, `post:save` and `post:close`. The sandbox gives them a shim that maps those to the notes plugin's hooks, and their `post:read` permission stands for `hook:listen:notes:*`.
+The workbench's [`word-count.js`](../../site/workbench/plugins/word-count.js) and [`edit-times.js`](../../site/workbench/plugins/edit-times.js) listen to `notes:open`, `notes:change`, `notes:save` and `notes:close`, with `hook:listen:notes:*` in their permissions. The [Markdown editor](../../demos/markdown-editor/) does the same with its own `posts:*` hooks.
 
 ## Data and hooks
 

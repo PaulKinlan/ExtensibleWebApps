@@ -11,7 +11,6 @@
 
 import type { Api, ApiMember } from "../shared/api";
 import type { Command, Slot, View } from "../shared/protocol";
-import { EDITOR_PERMISSIONS } from "./gate";
 import { capabilityFor, hookOwners, hooks, type Mode } from "./hooks";
 import { ACTIONS, COMPONENTS, ELEMENT_ATTRIBUTES, ELEMENTS, GLOBAL_ATTRIBUTES, HTML_MAX, INPUT_TYPES } from "../shared/html";
 import { MANIFEST_FIELDS, RESERVED } from "./manifest";
@@ -202,7 +201,6 @@ export interface Reference {
   ctx: ({ member: string } & Doc)[];
   services: { name: string; description: string; methods: { name: string; args: string; returns: string; needs?: string; reviewed?: boolean; description: string }[] }[];
   capabilities: { name: string; about: string }[];
-  editorPermissions: { permission: string; capabilities: string[] }[];
   manifest: { field: string; about: string }[];
   reservedIds: string[];
   schema: { keyword: string; about: string }[];
@@ -250,7 +248,6 @@ export function reference(services: Record<string, ServiceProvider>, remote: Rem
     ctx: Object.entries(CTX).map(([member, doc]) => ({ member, ...doc })),
     services: serviceList,
     capabilities,
-    editorPermissions: Object.entries(EDITOR_PERMISSIONS).map(([permission, caps]) => ({ permission, capabilities: caps })),
     manifest: Object.entries(MANIFEST_FIELDS).map(([field, about]) => ({ field, about })),
     reservedIds: [...RESERVED].sort(),
     schema: Object.entries(SCHEMA_KEYWORDS).map(([keyword, about]) => ({ keyword, about })),
@@ -352,10 +349,6 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
     "A plugin lists what it needs in its manifest's `permissions`; the gate checks every message against them. A trailing `*` grants everything that starts with what comes before it.",
     "",
     table(["Capability", "Lets a plugin"], ref.capabilities.map((c) => [code(c.name), c.about])),
-    "",
-    "Plugins written for the Markdown editor can use its permissions, which stand for these capabilities:",
-    "",
-    table(["Editor permission", "Capabilities"], ref.editorPermissions.map((p) => [code(p.permission), p.capabilities.map(code).join(", ")])),
     "",
     "## Manifest",
     "",
