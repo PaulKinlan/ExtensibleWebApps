@@ -6,12 +6,18 @@
 // A system: a plugin that listens to the game loop's game:update hook (std/game)
 // and answers with the state, changed. Turn it off in Customize and nothing
 // falls; the rest of the game carries on.
+//
+// It runs in the browser and on a space's server (runs: "both"), so Glowfall
+// together (demos/glowfall-together/) uses this same plugin for its sky,
+// beside its own systems for many jars. On a server it does nothing until a
+// game named glowfall runs there.
 
 export const manifest = {
   id: "glowfall-sky",
   name: "Sky",
   description: "Drops fireflies and raindrops down the five lanes.",
   version: "1.0.0",
+  runs: "both",
   permissions: ["hook:intercept:game:update"],
   services: ["game"],
 };

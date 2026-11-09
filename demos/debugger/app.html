@@ -4,7 +4,7 @@
   on it. Open it beside any app on this site (every tab talks to the same
   kernel), pick that app's tab, and see what it is made of and what it does.
 
-  Five plugins, one per panel, each a pair of files:
+  A plugin for each panel, each a pair of files:
 
   target.js   every open tab and its app; picks the one to look at, and
               posts the choice on the bus topic `debugger-focus`
@@ -18,6 +18,8 @@
   space.js    in a space (/s/<space>/…), the kernel on the space's server:
               its plugins, permissions, hooks, routes, workers and the
               members connected, asked through sync.reflect
+  space-events.js  in a space, the server kernel's trace as it happens,
+              streamed through sync.trace
 
   They read the kernel through the `reflect` service (`reflect:read`, which
   sees every app open in this kernel) and the trace (`debug:read`). None of
@@ -40,6 +42,7 @@
   <link rel="plugin" href="events.js">
   <link rel="plugin" href="workers.js">
   <link rel="plugin" href="space.js">
+  <link rel="plugin" href="space-events.js">
   <style>
     .panels { display: grid; gap: var(--space-5, 24px); grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
     .wide { grid-column: 1 / -1; }
@@ -65,6 +68,7 @@
       <div class="wide"><slot name="events"></slot></div>
       <div class="wide"><slot name="workers"></slot></div>
       <div class="wide"><slot name="space"></slot></div>
+      <div class="wide"><slot name="space-events"></slot></div>
     </div>
   </main>
 </body>

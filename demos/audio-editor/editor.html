@@ -1,11 +1,13 @@
 <!--
   The sound editor's view. editor.js sends { has, name, clips: [{ id, name,
-  seconds, current }], peaks, duration, length, select, picked, part,
-  playing, isPlaying, effects: [{ id, name, description }], noEffects,
-  noUndo, noRedo, noPart, status }.
+  seconds, current, stereo }], stereo, kept, peaks, duration, length,
+  select, picked, part, playing, isPlaying, effects: [{ id, name,
+  description, tunable, knobs: [{ label, min, max, step, value, shown,
+  action }] }], noEffects, noUndo, noRedo, noPart, status }.
 
   The waveform sends `select` with { from, to } as the person picks; every
-  button sends its data-action. Effects are listed from whatever effect
+  button sends its data-action, and each knob (a slider) sends its action,
+  knob:<effect>:<option>, with the value set. Effects are listed from whatever effect
   plugins answered the editor's sound-editor:effects hook.
 -->
 <style>
@@ -22,8 +24,18 @@
   .group h3 { margin: 0; font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-2); }
   .buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
   .buttons button { min-height: 40px; }
+  .effects { align-items: stretch; }
+  .fx { display: flex; flex-direction: column; gap: var(--space-2); }
+  .fx[data-tunable] { padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); min-width: min(16rem, 100%); }
+  .knob { display: grid; grid-template-columns: 6rem minmax(0, 1fr) 4.5rem; gap: var(--space-2); align-items: center; font-size: var(--text-sm); color: var(--fg-2); }
+  .knob .value { font-variant-numeric: tabular-nums; text-align: right; color: var(--fg); }
+  .knob input { width: 100%; min-width: 0; }
+  .badge { font-size: var(--text-sm); padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--fg-2); }
   .effect { display: inline-flex; flex-direction: column; align-items: flex-start; text-align: left; gap: 0; }
   .effect small { color: var(--fg-2); font-weight: 400; }
+  .editor form.layer { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--space-2); align-items: end; justify-content: flex-start; justify-items: start; }
+  .editor form.layer label { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); color: var(--fg-2); }
+  .editor form.layer input[type="number"] { width: 7rem; }
   .status { min-height: 1.5em; margin: 0; color: var(--fg-2); font-size: var(--text-sm); }
   .muted { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
 </style>
@@ -32,7 +44,7 @@
     <div class="top">
       <label>Clip
         <select data-action="open-clip" aria-label="Clip">
-          <template for="c of clips"><option key="{{c.id}}" value="{{c.id}}" selected="{{c.current}}">{{c.name}} ({{c.seconds}} s)</option></template>
+          <template for="c of clips"><option key="{{c.id}}" value="{{c.id}}" selected="{{c.current}}">{{c.name}} ({{c.seconds}} s<template if="c.stereo">, stereo</template>)</option></template>
         </select>
       </label>
       <template if="has">
@@ -54,6 +66,8 @@
     <div class="transport">
       <button type="button" class="play primary" data-action="play"><template if="isPlaying">■ Stop</template><template if="!isPlaying">▶ Play</template></button>
       <button type="button" data-action="play-part" disabled="{{noPart}}">Play the part picked</button>
+      <template if="stereo"><span class="badge" data-stereo>Stereo</span></template>
+      <template if="kept"><span class="badge" title="Too long for the clips collection, so the audio service keeps its sound in your data folder">Long clip</span></template>
       <span class="part">{{part}} · {{length}} s</span>
     </div>
 
@@ -69,16 +83,38 @@
         <button type="button" data-action="edit:louder">Louder</button>
         <button type="button" data-action="edit:quieter">Quieter</button>
         <button type="button" data-action="edit:normalize">Normalise</button>
+        <template if="stereo"><button type="button" data-action="mono">Mix down to mono</button></template>
         <button type="button" data-action="undo" disabled="{{noUndo}}">Undo</button>
         <button type="button" data-action="redo" disabled="{{noRedo}}">Redo</button>
       </div>
     </div>
 
     <div class="group">
+      <h3>Layer another clip</h3>
+      <form class="layer" data-action="layer">
+        <label>Clip
+          <select name="clip" aria-label="Clip to lay over this one">
+            <template for="o of others"><option key="{{o.id}}" value="{{o.id}}">{{o.name}}</option></template>
+          </select>
+        </label>
+        <label>Starts at (s) <input name="at" type="number" min="0" step="0.05" value="{{layerAt}}"></label>
+        <label>Level <input name="gain" type="range" min="0" max="2" step="0.05" value="1"></label>
+        <label>Left to right <input name="pan" type="range" min="-1" max="1" step="0.1" value="0"></label>
+        <button type="submit" disabled="{{noOthers}}">Mix it in</button>
+      </form>
+      <template if="noOthers"><p class="muted">Make or open a second clip to lay over this one.</p></template>
+    </div>
+
+    <div class="group">
       <h3>Effects</h3>
       <div class="buttons effects">
         <template for="e of effects">
-          <button type="button" class="effect" key="{{e.id}}" data-action="effect:{{e.id}}" data-effect="{{e.id}}" title="{{e.description}}"><span>{{e.name}}</span><small>{{e.description}}</small></button>
+          <div class="fx" key="{{e.id}}" data-tunable="{{e.tunable}}">
+            <button type="button" class="effect" data-action="effect:{{e.id}}" data-effect="{{e.id}}" title="{{e.description}}"><span>{{e.name}}</span><small>{{e.description}}</small></button>
+            <template for="k of e.knobs">
+              <label class="knob" key="{{k.action}}"><span>{{k.label}}</span><input type="range" min="{{k.min}}" max="{{k.max}}" step="{{k.step}}" value="{{k.value}}" data-action="{{k.action}}" data-knob="{{k.action}}" aria-label="{{e.name}}: {{k.label}}"><span class="value">{{k.shown}}</span></label>
+            </template>
+          </div>
         </template>
       </div>
       <template if="noEffects"><p class="muted">No effects yet. Each effect is a plugin: turn one on in Customize.</p></template>

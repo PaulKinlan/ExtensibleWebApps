@@ -10,9 +10,18 @@
 // and puts the result back. So a new effect is a new plugin: echo.js,
 // crusher.js and tremolo.js here, and any a person adds.
 //
-// A clip is { rate, pcm }: pcm is base64 of 16-bit samples, one channel, the
-// audio service's format. The edits that need no effect (cut, fade, reverse…)
-// are done here, on the samples, in this worker.
+// A clip is { rate, pcm, channels? }: pcm is base64 of 16-bit samples, one
+// channel or two (stereo), the audio service's format. The edits that need no
+// effect (cut, fade, reverse…) are done here, on each channel's samples, in
+// this worker.
+//
+// An effect can say what can be tuned (knobs: { delay: { label, min, max,
+// step } }, beside its options); the editor draws a slider for each and
+// renders with the values set. Another clip can be laid over this one, as a
+// second track, starting where you say, louder or softer, to the left or
+// right (audio.mix): the result is stereo. A clip too long for the collection (it holds
+// 5 MB in all) is kept by the audio service in the person's data folder
+// (audio.keep), and its record says where (kept).
 
 export const manifest = {
   id: "sound-editor",
@@ -27,8 +36,8 @@ export const manifest = {
     effects: {
       mode: "waterfall",
       timeoutMs: 1000,
-      args: "{ effects: [{ id, name, processor, description?, options?, tail? }] }",
-      description: "The effects the editor offers. An effect plugin adds itself: its processor (registered with audio.registerProcessor), the options it is given, and tail, the ms an echo needs to ring on after the clip.",
+      args: "{ effects: [{ id, name, processor, description?, options?, knobs?, tail? }] }",
+      description: "The effects the editor offers. An effect plugin adds itself: its processor (registered with audio.registerProcessor), the options it is given, knobs (for each option the person may tune, { label, min, max, step? }: the editor draws a slider, and passes the value set in options), and tail, the ms an echo needs to ring on after the clip.",
     },
   },
   collections: {
@@ -36,11 +45,14 @@ export const manifest = {
       title: "Sound clips",
       schema: {
         type: "object",
-        required: ["name", "rate", "pcm"],
+        required: ["name", "rate"],
         properties: {
           name: { type: "string", title: "Name" },
           rate: { type: "integer", minimum: 3000, maximum: 96000 },
+          // The samples, or, for a long clip, the name the audio service kept them under (audio.keep).
           pcm: { type: "string" },
+          kept: { type: "string" },
+          channels: { type: "integer", minimum: 1, maximum: 2 },
           seconds: { type: "number", title: "Length (s)" },
         },
       },
@@ -52,15 +64,22 @@ const RATE = 22050;
 /** Columns in the waveform: enough to see the shape on a wide screen. */
 const COLUMNS = 480;
 const UNDO = 20;
+/** A clip longer than this, in base64, is kept by the audio service rather than in the collection, which holds 5 MB in all. */
+const INLINE = 1_000_000;
+/** The longest sound file it opens, in seconds. */
+const LONGEST = 300;
 
 export default async function (ctx) {
   const views = ctx.ui.views("editor.html");
   /** The clip being edited: its record, and its samples. */
   let clip = null;
-  let samples = new Float32Array(0);
+  /** Each channel's samples: one, or two for stereo. */
+  let chans = [new Float32Array(0)];
   let sel = { from: 0, to: 0 };
   let playing = null;
   let effects = [];
+  /** What the person set on each effect's knobs, by effect and option. */
+  const tuned = {};
   let status = "";
   let undo = [];
   let redo = [];
@@ -68,14 +87,36 @@ export default async function (ctx) {
 
   // Samples to and from the audio service's base64 16-bit format. Both scale by 32768, so a clip decoded and
   // encoded again is the same clip, sample for sample: undo gives back exactly what was there.
-  const decode = (pcm) => {
+  const decode1 = (pcm) => {
     const bytes = Uint8Array.from(atob(pcm), (c) => c.charCodeAt(0));
     const view = new DataView(bytes.buffer);
     const out = new Float32Array(bytes.length >> 1);
     for (let i = 0; i < out.length; i++) out[i] = view.getInt16(i * 2, true) / 32768;
     return out;
   };
-  const encode = (data) => {
+  /** A clip's channels, from interleaved samples if it has two. */
+  const decode = (pcm, channels = 1) => {
+    const all = decode1(pcm);
+    if (channels !== 2) return [all];
+    const left = new Float32Array(all.length >> 1);
+    const right = new Float32Array(all.length >> 1);
+    for (let i = 0; i < left.length; i++) {
+      left[i] = all[2 * i];
+      right[i] = all[2 * i + 1];
+    }
+    return [left, right];
+  };
+  /** Channels to base64, interleaved if there are two. */
+  const encode = (list) => {
+    if (list.length < 2) return encode1(list[0]);
+    const out = new Float32Array(list[0].length * 2);
+    for (let i = 0; i < list[0].length; i++) {
+      out[2 * i] = list[0][i];
+      out[2 * i + 1] = list[1][i];
+    }
+    return encode1(out);
+  };
+  const encode1 = (data) => {
     const view = new DataView(new ArrayBuffer(data.length * 2));
     for (let i = 0; i < data.length; i++) view.setInt16(i * 2, Math.max(-32768, Math.min(32767, Math.round(data[i] * 32768))), true);
     const bytes = new Uint8Array(view.buffer);
@@ -84,24 +125,28 @@ export default async function (ctx) {
     return btoa(text);
   };
   const rate = () => clip?.rate ?? RATE;
-  const seconds = () => samples.length / rate();
-  const at = (s) => Math.max(0, Math.min(samples.length, Math.round(s * rate())));
+  const frames = () => chans[0].length;
+  const seconds = () => frames() / rate();
+  const at = (s) => Math.max(0, Math.min(frames(), Math.round(s * rate())));
   const picked = () => sel.to > sel.from;
   /** The part an edit works on: the picked part, or the whole clip. */
-  const range = () => (picked() ? [at(sel.from), at(sel.to)] : [0, samples.length]);
+  const range = () => (picked() ? [at(sel.from), at(sel.to)] : [0, frames()]);
+  /** The clip as the audio service takes it. */
+  const asClip = (list = chans) => ({ rate: rate(), pcm: encode(list), ...(list.length === 2 ? { channels: 2 } : {}) });
 
   /** A low and a high for each column, from -100 to 100. */
   const peaks = () => {
-    if (!samples.length) return "";
+    if (!frames()) return "";
     const out = [];
-    const per = samples.length / COLUMNS;
+    const per = frames() / COLUMNS;
     for (let c = 0; c < COLUMNS; c++) {
       let low = 0;
       let high = 0;
-      for (let i = Math.floor(c * per), end = Math.min(samples.length, Math.floor((c + 1) * per) || 1); i < end; i++) {
-        if (samples[i] < low) low = samples[i];
-        if (samples[i] > high) high = samples[i];
-      }
+      for (const samples of chans)
+        for (let i = Math.floor(c * per), end = Math.min(samples.length, Math.floor((c + 1) * per) || 1); i < end; i++) {
+          if (samples[i] < low) low = samples[i];
+          if (samples[i] > high) high = samples[i];
+        }
       out.push(Math.round(low * 100), Math.round(high * 100));
     }
     return out.join(",");
@@ -113,7 +158,12 @@ export default async function (ctx) {
       has: !!clip,
       noClip: !clip,
       name: clip?.name ?? "",
-      clips: clips.map((c) => ({ id: c.id, name: c.name, seconds: (c.seconds ?? 0).toFixed(1), current: c.id === clip?.id })),
+      others: clips.filter((c) => c.id !== clip?.id).map((c) => ({ id: c.id, name: c.name })),
+      noOthers: clips.length < 2,
+      layerAt: sel.from.toFixed(2),
+      clips: clips.map((c) => ({ id: c.id, name: c.name, seconds: (c.seconds ?? 0).toFixed(1), current: c.id === clip?.id, stereo: c.channels === 2 })),
+      stereo: chans.length === 2,
+      kept: !!clip?.kept,
       peaks: peaks(),
       duration: seconds().toFixed(3),
       length: seconds().toFixed(2),
@@ -135,38 +185,73 @@ export default async function (ctx) {
   const collect = async () => {
     const answer = await ctx.hooks.call("effects", { effects: [] }).catch(() => null);
     const list = Array.isArray(answer?.effects) ? answer.effects : [];
-    effects = list.filter((e) => e && typeof e.id === "string" && typeof e.processor === "string").map((e) => ({ id: e.id, name: String(e.name || e.id), description: String(e.description || ""), processor: e.processor, options: e.options ?? {}, tail: Number(e.tail) || 0 }));
+    effects = list
+      .filter((e) => e && typeof e.id === "string" && typeof e.processor === "string")
+      .map((e) => {
+        const options = e.options && typeof e.options === "object" ? e.options : {};
+        // Each knob tunes one of the options, from min to max; what the person set stays when the effects are asked again.
+        const knobs = Object.entries(e.knobs && typeof e.knobs === "object" ? e.knobs : {})
+          .filter(([key, k]) => k && Number.isFinite(Number(k.min)) && Number.isFinite(Number(k.max)) && Number(k.max) > Number(k.min) && Number.isFinite(Number(options[key])))
+          .slice(0, 8)
+          .map(([key, k]) => {
+            const value = tuned[e.id]?.[key] ?? Number(options[key]);
+            const step = Number(k.step) > 0 ? Number(k.step) : (Number(k.max) - Number(k.min)) / 100;
+            return { key, label: String(k.label || key), min: Number(k.min), max: Number(k.max), step, value, shown: `${+value.toFixed(3)}${k.unit ? ` ${k.unit}` : ""}`, action: `knob:${e.id}:${key}` };
+          });
+        return { id: e.id, name: String(e.name || e.id), description: String(e.description || ""), processor: e.processor, options, knobs, tunable: knobs.length > 0, tail: Number(e.tail) || 0 };
+      });
   };
+  /** An effect's options, with what the person set on its knobs. */
+  const optionsOf = (effect) => ({ ...effect.options, ...Object.fromEntries(effect.knobs.map((k) => [k.key, k.value])) });
 
   /** Keeps the clip as it is now, and marks it as one step to undo. */
   const save = async (next, note) => {
     if (clip) {
-      undo.push({ pcm: clip.pcm, rate: clip.rate, sel });
+      undo.push({ pcm: encode(chans), channels: chans.length, rate: clip.rate, sel });
       if (undo.length > UNDO) undo.shift();
       redo = [];
     }
     await keep(next);
     status = note;
   };
+  /** Keeps the clip as `next` (a list of channels, or one channel's samples). */
   const keep = async (next) => {
-    const pcm = encode(next);
+    const list = Array.isArray(next) ? next : [next];
+    const pcm = encode(list);
     // What is edited is what is kept: 16-bit samples, not the finer numbers an edit worked out.
-    samples = decode(pcm);
-    clip = { ...clip, pcm, seconds: Math.round(seconds() * 100) / 100 };
+    chans = decode(pcm, list.length);
+    clip = { ...clip, pcm, channels: list.length, seconds: Math.round(seconds() * 100) / 100 };
     await put();
   };
-  /** Writes the clip to the collection, and notes the id a new one gets. */
+  /**
+   * Writes the clip to the collection, and notes the id a new one gets. A long one's samples go to the audio
+   * service's keeping (audio.keep), under a name the record holds, so the collection only holds the short ones.
+   */
   const put = async () => {
-    const { id, name, rate, pcm, seconds } = clip;
-    const result = await ctx.call("data", "put", "sound-clips", { ...(id ? { id } : {}), name, rate, pcm, seconds });
+    const { id, name, rate, pcm, seconds, channels } = clip;
+    let kept;
+    if (pcm.length > INLINE) {
+      kept = clip.kept ?? `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      await ctx.call("audio", "keep", { name: kept, clip: { rate, pcm, ...(channels === 2 ? { channels } : {}) } });
+    }
+    const record = { ...(id ? { id } : {}), name, rate, ...(kept ? { kept } : { pcm }), ...(channels === 2 ? { channels } : {}), seconds };
+    const result = await ctx.call("data", "put", "sound-clips", record);
     if (!result?.ok) throw new Error(`The clip wasn't kept: ${JSON.stringify(result?.errors ?? result)}`);
+    // A clip that got short enough to go in its record: the kept samples go only once the record holds them.
+    if (!kept && clip.kept) await ctx.call("audio", "forget", { name: clip.kept }).catch(() => {});
     clip.id = result.id;
+    clip.kept = kept;
   };
 
   const load = async (record) => {
     await stop();
-    clip = record;
-    samples = record ? decode(record.pcm) : new Float32Array(0);
+    clip = record ? { ...record } : null;
+    if (record?.kept && !record.pcm) {
+      const kept = await ctx.call("audio", "load", { name: record.kept });
+      clip.pcm = kept?.pcm ?? "";
+      if (!kept) status = `${record.name}'s sound isn't in this browser's data folder`;
+    }
+    chans = clip?.pcm ? decode(clip.pcm, clip.channels) : [new Float32Array(0)];
     sel = { from: 0, to: 0 };
     undo = [];
     redo = [];
@@ -216,8 +301,8 @@ export default async function (ctx) {
   // The edits.
   const edits = {
     // Neither leaves an empty clip: there would be nothing to keep, or to pick from.
-    cut: () => (picked() && at(sel.to) - at(sel.from) < samples.length ? [concat(samples.subarray(0, at(sel.from)), samples.subarray(at(sel.to))), "Cut"] : null),
-    trim: () => (picked() && at(sel.to) > at(sel.from) ? [samples.slice(at(sel.from), at(sel.to)), "Trimmed to the part picked"] : null),
+    cut: () => (picked() && at(sel.to) - at(sel.from) < frames() ? [chans.map((samples) => concat(samples.subarray(0, at(sel.from)), samples.subarray(at(sel.to)))), "Cut"] : null),
+    trim: () => (picked() && at(sel.to) > at(sel.from) ? [chans.map((samples) => samples.slice(at(sel.from), at(sel.to))), "Trimmed to the part picked"] : null),
     silence: () => change((part) => part.fill(0), "Silenced"),
     reverse: () => change((part) => part.reverse(), "Reversed"),
     fadein: () => change((part) => part.forEach((v, i) => (part[i] = v * (i / part.length))), "Faded in"),
@@ -226,9 +311,10 @@ export default async function (ctx) {
     quieter: () => change((part) => part.forEach((v, i) => (part[i] = v * 0.7)), "Quieter"),
     normalize: () =>
       change((part) => {
+        // Every channel by the same amount, so stereo keeps its balance.
         const peak = part.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
         if (peak > 0) part.forEach((v, i) => (part[i] = (v / peak) * 0.98));
-      }, "Normalised"),
+      }, "Normalised", true),
   };
   const concat = (a, b) => {
     const out = new Float32Array(a.length + b.length);
@@ -236,11 +322,19 @@ export default async function (ctx) {
     out.set(b, a.length);
     return out;
   };
-  /** Changes the part picked (or the whole clip) in a copy, and gives back [the new samples, the note]. */
-  const change = (fn, note) => {
-    const next = samples.slice();
+  /**
+   * Changes the part picked (or the whole clip) in a copy of each channel, and gives back [the new channels, the
+   * note]. `together` runs fn once over the channels side by side (as one array), for an edit that must treat them alike.
+   */
+  const change = (fn, note, together = false) => {
     const [a, b] = range();
-    fn(next.subarray(a, b));
+    const next = chans.map((samples) => samples.slice());
+    if (together && next.length > 1) {
+      const both = concat(next[0].subarray(a, b), next[1].subarray(a, b));
+      fn(both);
+      next[0].set(both.subarray(0, b - a), a);
+      next[1].set(both.subarray(b - a), a);
+    } else for (const samples of next) fn(samples.subarray(a, b));
     return [next, picked() ? `${note}: ${sel.from.toFixed(2)} to ${sel.to.toFixed(2)} s` : note];
   };
   const edit = async (name) => {
@@ -258,20 +352,54 @@ export default async function (ctx) {
     const effect = effects.find((e) => e.id === id);
     if (!clip || !effect) return "No such effect";
     const [a, b] = range();
-    const whole = a === 0 && b === samples.length;
+    const whole = a === 0 && b === frames();
     // What it applies to is fixed now: a pick made while it renders doesn't move where the result goes.
     const note = `${effect.name}${whole ? "" : `: ${sel.from.toFixed(2)} to ${sel.to.toFixed(2)} s`}`;
-    const before = samples;
+    const before = chans;
     status = `Applying ${effect.name}…`;
     await draw();
-    const part = { rate: rate(), pcm: encode(samples.subarray(a, b)) };
-    const out = decode((await ctx.call("audio", "render", { clip: part, chain: [{ processor: effect.processor, options: effect.options }], tail: whole ? effect.tail : 0 })).pcm);
+    const part = asClip(chans.map((samples) => samples.subarray(a, b)));
+    const rendered = await ctx.call("audio", "render", { clip: part, chain: [{ processor: effect.processor, options: optionsOf(effect) }], tail: whole ? effect.tail : 0 });
+    const out = decode(rendered.pcm, rendered.channels);
     // Edits run one at a time (serial), so nothing else changed the clip meanwhile; this is a check that stays true.
-    if (samples !== before) return "The clip changed while the effect ran";
+    if (chans !== before) return "The clip changed while the effect ran";
     // The whole clip may grow, for an echo's tail; a part keeps its length, so what follows stays in time.
-    const next = whole ? out : samples.slice();
-    if (!whole) next.set(out.subarray(0, b - a), a);
+    const next = whole
+      ? out
+      : chans.map((samples, c) => {
+          const copy = samples.slice();
+          copy.set((out[c] ?? out[0]).subarray(0, b - a), a);
+          return copy;
+        });
     await save(next, note);
+    await draw();
+    return status;
+  };
+
+  /**
+   * Lays another clip over this one, as a second track: it starts `at` seconds in, at `gain`, panned from -1 (left)
+   * to 1 (right). The audio service mixes the two (audio.mix), in stereo, and the mix replaces the clip, as one step to undo.
+   */
+  const layer = async (form) => {
+    if (!clip) return "No clip";
+    const records = await ctx.call("data", "list", "sound-clips");
+    const other = records.find((r) => r.id === form?.clip);
+    if (!other) return (status = "Pick a clip to lay over this one"), draw();
+    const otherPcm = other.kept && !other.pcm ? (await ctx.call("audio", "load", { name: other.kept }))?.pcm : other.pcm;
+    if (!otherPcm) return (status = `${other.name}'s sound isn't here`), draw();
+    const at = Math.max(0, Number(form.at) || 0);
+    const gain = Math.min(2, Math.max(0, Number(form.gain ?? 1)));
+    const pan = Math.min(1, Math.max(-1, Number(form.pan) || 0));
+    status = `Mixing in ${other.name}…`;
+    await draw();
+    const mixed = await ctx.call("audio", "mix", {
+      rate: rate(),
+      tracks: [
+        { clip: asClip() },
+        { clip: { rate: other.rate, pcm: otherPcm, ...(other.channels === 2 ? { channels: 2 } : {}) }, at, gain, pan },
+      ],
+    });
+    await save(decode(mixed.pcm, mixed.channels), `Mixed in ${other.name} at ${at.toFixed(2)} s`);
     await draw();
     return status;
   };
@@ -281,7 +409,7 @@ export default async function (ctx) {
     await stop();
     const from = part ? sel.from : 0;
     const to = part ? sel.to : seconds();
-    const { at: started, ms } = await ctx.call("audio", "playClip", { clip: { rate: rate(), pcm: clip.pcm }, from, to, group: "play" });
+    const { at: started, ms } = await ctx.call("audio", "playClip", { clip: { rate: rate(), pcm: clip.pcm, ...(chans.length === 2 ? { channels: 2 } : {}) }, from, to, group: "play" });
     playing = { at: started, from, to };
     stopTimer = setTimeout(() => {
       playing = null;
@@ -301,10 +429,10 @@ export default async function (ctx) {
   const back = async (from, to, note) => {
     const step = from.pop();
     if (!step) return "Nothing to " + note.toLowerCase();
-    to.push({ pcm: clip.pcm, rate: clip.rate, sel });
+    to.push({ pcm: encode(chans), channels: chans.length, rate: clip.rate, sel });
     clip = { ...clip, rate: step.rate };
     sel = step.sel;
-    await keep(decode(step.pcm));
+    await keep(decode(step.pcm, step.channels));
     status = note;
     await draw();
     return note;
@@ -316,7 +444,7 @@ export default async function (ctx) {
    */
   let queue = Promise.resolve();
   const serial = (work) => (queue = queue.then(work, work));
-  const CHANGES = /^(undo|redo|new:|open-clip|open-file|rename|edit:|effect:)/;
+  const CHANGES = /^(undo|redo|new:|open-clip|open-file|rename|edit:|effect:|mono|layer)/;
 
   ctx.ui.onEvent(async (action, value) => (CHANGES.test(action) ? serial(() => handle(action, value)) : handle(action, value)));
   async function handle(action, value) {
@@ -336,18 +464,38 @@ export default async function (ctx) {
       return draw();
     }
     if (action === "open-file") {
-      const opened = await ctx.call("audio", "open", { rate: RATE }).catch((error) => ((status = String(error.message ?? error)), null));
+      // Opened in stereo; a file whose two sides are the same is kept as one channel.
+      const opened = await ctx.call("audio", "open", { rate: RATE, channels: 2, maxSeconds: LONGEST }).catch((error) => ((status = String(error.message ?? error)), null));
       if (opened) {
         await load(null);
         clip = { name: opened.name, rate: opened.clip.rate };
-        await keep(decode(opened.clip.pcm));
-        status = `Opened ${opened.name}`;
+        const list = decode(opened.clip.pcm, opened.clip.channels);
+        await keep(list.length === 2 && list[0].every((v, i) => v === list[1][i]) ? [list[0]] : list);
+        status = `Opened ${opened.name}${chans.length === 2 ? ", in stereo" : ""}`;
       }
       return draw();
     }
     if (action === "save-file") {
-      if (clip) await ctx.call("audio", "save", { clip: { rate: rate(), pcm: clip.pcm }, name: clip.name });
+      if (clip) await ctx.call("audio", "save", { clip: asClip(), name: clip.name });
       return;
+    }
+    if (action === "layer") return layer(value);
+    if (action === "mono") {
+      if (!clip || chans.length < 2) return;
+      const mixed = chans[0].map((v, i) => (v + chans[1][i]) / 2);
+      await save([mixed], "Mixed down to one channel");
+      return draw();
+    }
+    if (action.startsWith("knob:")) {
+      const [, id, key] = action.split(":");
+      const effect = effects.find((e) => e.id === id);
+      const knob = effect?.knobs.find((k) => k.key === key);
+      const set = Number(value);
+      if (!knob || !Number.isFinite(set)) return;
+      knob.value = Math.min(knob.max, Math.max(knob.min, set));
+      (tuned[id] ??= {})[key] = knob.value;
+      await collect();
+      return draw();
     }
     if (action === "rename") {
       if (!clip || !String(value?.name ?? "").trim()) return;
@@ -367,6 +515,13 @@ export default async function (ctx) {
   ctx.commands.add({ id: "reverse", title: "Reverse", group: "Sound" }, () => serial(() => edit("reverse")));
   ctx.commands.add({ id: "normalize", title: "Normalise", group: "Sound" }, () => serial(() => edit("normalize")));
   ctx.commands.add({ id: "apply-effect", title: "Apply an effect", group: "Sound", args: { type: "object", properties: { effect: { type: "string", description: "The effect's id, as sound-editor:effects lists it" } }, required: ["effect"] } }, ({ effect }) => serial(() => apply(effect)));
+  ctx.commands.add(
+    { id: "tune-effect", title: "Tune an effect", group: "Sound", args: { type: "object", properties: { effect: { type: "string", description: "The effect's id" }, knob: { type: "string", description: "The option to tune, as the effect's knobs name it" }, value: { type: "number" } }, required: ["effect", "knob", "value"] } },
+    async ({ effect, knob, value }) => {
+      await handle(`knob:${effect}:${knob}`, value);
+      return `${effect} ${knob}: ${tuned[effect]?.[knob] ?? "not a knob"}`;
+    },
+  );
 
   // An effect plugin turned on or added later is offered once it has started, which takes a moment after it is
   // installed; so are the app's own effects that started after this one.

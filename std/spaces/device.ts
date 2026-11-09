@@ -11,7 +11,7 @@
 // Kept in the space's copy, beside its collections:
 //   sync/device.json   the last sequence number seen, each record's version, changes not yet sent, and drafts
 
-import type { Accepted, AppRequest, Outgoing, PluginRequest, ReflectRequest, SyncRecord, SyncToDevice, Verdict } from "../../src/shared/sync";
+import type { Accepted, AppRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, SyncRecord, SyncToDevice, TraceRequest, Verdict } from "../../src/shared/sync";
 import type { Hosts } from "../../src/kernel/hosts";
 import type { Change, Collections, StoredRecord } from "../../src/kernel/records";
 import type { Store } from "../../src/kernel/store";
@@ -289,8 +289,11 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     ready,
     heard,
     caughtUp: caughtUpHeard,
-    /** Sends a request about members' plugins, or a debugger's question (reflect.ts), if connected and caught up: whether it went. */
-    send(message: PluginRequest | ReflectRequest | AppRequest): boolean {
+    /**
+     * Sends a request about members' plugins, a debugger's question (reflect.ts) or its asking for the trace
+     * (trace.ts), a live message (live.ts), or a request about members' made apps (made-apps.ts), if connected and caught up: whether it went.
+     */
+    send(message: PluginRequest | ReflectRequest | LiveToSpace | TraceRequest | AppRequest): boolean {
       if (!socket || socket.readyState !== 1 || !caughtUp) return false;
       socket.send(JSON.stringify(message));
       return true;

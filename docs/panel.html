@@ -1,0 +1,34 @@
+<!--
+  The docs panel's two views. panel.js sends the switch { pressed }, and
+  the panel { file, title, pages: [{ file, title, current }], full, repo }:
+  file is the Markdown file to draw, relative to this folder, and full is
+  its address in the docs.
+-->
+<style>
+  .panel { display: flex; flex-direction: column; gap: var(--space-2); height: 100%; min-height: 0; }
+  .panel header { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .panel header h2 { margin: 0; font-size: var(--text-lg); flex: 1; }
+  .panel select { max-width: 100%; }
+  .panel .page { flex: 1; min-height: 0; overflow: auto; padding-right: var(--space-2); }
+  .panel .more { margin: 0; font-size: var(--text-sm); color: var(--fg-2); }
+</style>
+<template id="switch">
+  <button type="button" data-action="docs" aria-pressed="{{pressed}}" aria-controls="docs-panel">Docs</button>
+</template>
+<template id="panel">
+  <section class="panel" id="docs-panel" aria-label="Docs">
+    <header>
+      <h2>Docs</h2>
+      <button type="button" data-action="close" aria-label="Close the docs">Close</button>
+    </header>
+    <label class="more">Page
+      <select data-action="page" aria-label="Docs page">
+        <template for="p of pages"><option key="{{p.file}}" value="{{p.file}}" selected="{{p.current}}">{{p.title}}</option></template>
+      </select>
+    </label>
+    <div class="page">
+      <ui-markdown src="{{file}}" pages="/docs/" repo="{{repo}}"></ui-markdown>
+    </div>
+    <p class="more"><a href="{{full}}">Open this page in the docs</a>, with every page beside it.</p>
+  </section>
+</template>

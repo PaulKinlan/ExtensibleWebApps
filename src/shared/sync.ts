@@ -101,12 +101,20 @@ export type ReviewToSpace =
  */
 export type ReflectRequest = { t: "sync"; op: "reflect"; id: number; method: string; args?: unknown[] };
 
+/** A live message from a device to its space (std/spaces/live.ts): not kept, heard by the space's plugins as sync:live. */
+export type LiveToSpace = { t: "sync"; op: "live"; topic: string; value?: unknown };
+
+/** A member's debugger asks to hear the space's trace as it happens (std/spaces/trace.ts), or to stop. */
+export type TraceRequest = { t: "sync"; op: "trace"; on: boolean };
+
 // device -> space
 export type SyncToSpace =
   | PluginRequest
   | AppRequest
   | ReviewToSpace
   | ReflectRequest
+  | LiveToSpace
+  | TraceRequest
   /** Start hearing changes, with every one after `since` first. */
   | { t: "sync"; op: "hello"; since: number }
   | { t: "sync"; op: "push"; id: number; changes: Outgoing[] }
@@ -136,4 +144,8 @@ export type SyncToDevice =
   | { t: "sync"; op: "review"; action: "ask"; id: string; review: SpaceReview }
   | { t: "sync"; op: "review"; action: "done"; id: string }
   /** The answer to a ReflectRequest: what the space's reflect service returned, or why it couldn't. */
-  | { t: "sync"; op: "reflect:reply"; id: number; ok: boolean; value?: unknown; error?: string };
+  | { t: "sync"; op: "reflect:reply"; id: number; ok: boolean; value?: unknown; error?: string }
+  /** A live message from the space's server plugins (std/spaces/live.ts). */
+  | { t: "sync"; op: "live"; topic: string; value: unknown }
+  /** New events in the space's trace, for a debugger that asked (std/spaces/trace.ts); `on` says whether it still hears them. */
+  | { t: "sync"; op: "trace"; events?: unknown[]; on?: boolean; error?: string };

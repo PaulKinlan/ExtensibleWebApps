@@ -44,6 +44,8 @@ A plugin owns the collections its manifest declares, and reads and writes them f
 
 The same goes for a person's own plugins. One saved from the plugin editor waits for a card that shows its code and what it asks for. One added in **Customize** starts off, showing what it asks for, until the person turns it on.
 
+Before that card, a checker may look first. The kernel runs `plugins:beforeAdd` with the plugin's code and permissions whenever one of the person's own is saved or added, and a plugin or agent listening with `hook:intercept:plugins:beforeAdd` may stop it with a reason, which the caller gets as the error. A checker can only stop a plugin, never let one past the card. The homepage's [Security check](../site/home/security-check.js) does it with plain rules, and [`security.agent.md`](../site/home/security.agent.md) with a model.
+
 **Path checks** run before any file is read or written, whatever the plugin's capabilities ([`src/kernel/paths.ts`](../src/kernel/paths.ts)). Paths must be relative and inside a folder, with no `..` or hidden names. They can never touch the platform's own files (its plugins, grants, change log or keys). So a plugin can never install or approve another plugin by writing a file.
 
 ## 5. Views are data, sanitised on the page

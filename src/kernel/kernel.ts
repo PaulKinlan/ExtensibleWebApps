@@ -49,7 +49,9 @@ defineHook("debug:trace", { mode: "emit", needs: "debug:read", args: "[{ seq, at
 
 const hosts = new Hosts(where.kind);
 setSink((events) => {
-  hosts.broadcast({ t: "trace", events });
+  // A page's tabs see its kernel's trace. A space's server keeps its own to itself: a member's debugger asks to hear
+  // it (std/spaces/trace.ts), and other members' devices don't get it.
+  if (hosts.mode !== "server") hosts.broadcast({ t: "trace", events });
   root.emit("debug:trace", events);
 });
 
@@ -119,6 +121,7 @@ const openApps = new Map<string, { app?: string; links: { href: string; source: 
 /** Tabs whose app is still opening: their address waits for it (see the `url` message). */
 const opening = new Map<string, Promise<void>>();
 services.authoring = authoring(remote, apps, {
+  check: (value, dispatch) => root.serial(dispatch, "plugins:beforeAdd", value),
   store,
   userAdded,
   appIn: (tab) => openApps.get(tab)?.app,

@@ -17,6 +17,9 @@
 //   - made-apps.ts keeps the apps members made and share, and never runs them
 //   - reviews.ts sends its review cards to members' devices
 //   - reflect.ts answers a member's debugger: what runs in this kernel
+//   - trace.ts streams this kernel's trace to a member's debugger that asks
+//   - live.ts passes live messages (a game's moves and frames) between
+//     members' devices and the space's server plugins, without keeping them
 //
 // Everywhere, it gives the `sync` service (service.ts): how a page stands
 // with its space, its drafts, the space's members, and (for a debugger)
@@ -34,6 +37,8 @@ import { deviceMadeApps, spaceMadeApps } from "./made-apps";
 import { devicePlugins, spacePlugins } from "./plugins";
 import { deviceReviews, relayReviews } from "./reviews";
 import { spaceReflect } from "./reflect";
+import { liveSpace, type LiveSpace } from "./live";
+import { spaceTrace } from "./trace";
 import { serverApps } from "./server-apps";
 import service from "./service";
 
@@ -48,7 +53,9 @@ export default {
   apply(_ctx, kernel) {
     const where = env();
     const { root, store, hosts, remote, collections: records, reviews, userAdded, reopen } = kernel;
-    kernel.provide("sync", service(kernel));
+    /** This space's live messages, on its server (live.ts): the sync service's live() sends through it. Each space has its own. */
+    const space: { live?: LiveSpace } = {};
+    kernel.provide("sync", service(kernel, space));
 
     if (hosts.mode === "server") {
       /** The apps opened in the space, whose server plugins it runs: only on a server that runs plugins. */
@@ -61,6 +68,18 @@ export default {
       hub.apps = spaceMadeApps(store, hosts, (message) => hub.tell(message)).handle;
       // A member's debugger may ask what runs here, from the kernel's own reflect service (reflect.ts).
       hub.reflect = spaceReflect(remote, hosts, shared);
+      // A member's debugger may hear this kernel's trace as it happens (trace.ts).
+      const streamed = spaceTrace(root, hosts);
+      hub.trace = (host, message) => streamed.handle(host, message);
+      // Live messages between members' devices and the server plugins (live.ts).
+      const live = liveSpace(root, hosts);
+      space.live = live;
+      hub.live = (host, message) => live.heard(host, message);
+      const leaving = (host: Parameters<typeof hub.hostLeft>[0]) => {
+        streamed.left(host);
+        live.left(host);
+      };
+      hub.left.add(leaving);
       // A space's server has no screen: its reviews are shown on members' devices.
       kernel.cleanup(relayReviews(reviews, hub, (host, message) => hosts.send(host, message)));
       kernel.message("sync", (host, message) => hub.handle(host, message));
@@ -71,6 +90,12 @@ export default {
         hub.apps = undefined;
         hub.reviews = undefined;
         hub.reflect = undefined;
+        hub.trace = undefined;
+        hub.live = undefined;
+        hub.left.delete(leaving);
+        streamed.stop();
+        live.stop();
+        space.live = undefined;
         draining.set(store, hub.stop());
       });
       return;
