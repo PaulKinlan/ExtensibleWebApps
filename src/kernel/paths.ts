@@ -22,6 +22,8 @@ export const PLATFORM = new Set([
   "schedule",
   // Apps a person made in the browser, and their files' versions (std/maker/module.ts).
   "made",
+  // Where the person moved plugins' views in each app (src/kernel/moves.ts).
+  "moves",
 ]);
 
 export class PathError extends Error {}

@@ -89,10 +89,11 @@ function finish(code, name, spot) {
   let out = code;
   const quote = (s) => JSON.stringify(String(s));
   if (name?.trim()) {
-    out = out.replace(/(\bid\s*:\s*)(["'])(?:\\.|(?!\2).)*\2/, `$1${quote(slug(name))}`);
-    out = out.replace(/(\bname\s*:\s*)(["'])(?:\\.|(?!\2).)*\2/, `$1${quote(name.trim().replace(/["\\]/g, ""))}`);
+    // Callbacks, so a $ in a name or selector goes in as written.
+    out = out.replace(/(\bid\s*:\s*)(["'])(?:\\.|(?!\2).)*\2/, (_m, key) => `${key}${quote(slug(name))}`);
+    out = out.replace(/(\bname\s*:\s*)(["'])(?:\\.|(?!\2).)*\2/, (_m, key) => `${key}${quote(name.trim().replace(/["\\]/g, ""))}`);
   }
-  if (spot) out = out.replace(/(\bhere\s*:\s*\{\s*at\s*:\s*)(["'])(?:\\.|(?!\2).)*\2(\s*,\s*put\s*:\s*)(["'])(?:\\.|(?!\4).)*\4/, `$1${quote(spot.at)}$3${quote(spot.put)}`);
+  if (spot) out = out.replace(/(\bhere\s*:\s*\{\s*at\s*:\s*)(["'])(?:\\.|(?!\2).)*\2(\s*,\s*put\s*:\s*)(["'])(?:\\.|(?!\4).)*\4/, (_m, at, _q, put) => `${at}${quote(spot.at)}${put}${quote(spot.put)}`);
   return out;
 }
 
@@ -176,7 +177,31 @@ export default function (ctx) {
     if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, reopen, message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
     const tabs = { plugins: tab === "plugins", make: tab === "make", layout: tab === "layout" };
     const pressed = Object.fromEntries(Object.entries(tabs).map(([k, v]) => [k, String(v)]));
-    const base = { open, reopen, tabs, pressed, message, follow, space: page.space, inspect: page.inspect, arrange: page.arrange, busy };
+    const base = {
+      open,
+      reopen,
+      tabs,
+      pressed,
+      notMake: tab !== "make",
+      message,
+      follow,
+      space: page.space,
+      inspect: page.inspect,
+      arrange: page.arrange,
+      busy,
+      // Make is drawn on every tab, hidden on the others, so a draft in it survives a look at another tab.
+      make: {
+        ...make,
+        starters: STARTERS.map((s) => ({ ...s, pressed: String(s.file === make.starter) })),
+        started: !!make.starter,
+        spotLabel: make.spot?.label ?? "At the bottom of the page's main part (choose a spot to put it somewhere else)",
+        chosenSpot: !!make.spot,
+        ok: make.check?.ok,
+        problem: make.check && !make.check.ok ? make.check.error : "",
+        permissions: make.check?.ok ? make.check.permissions : [],
+        editorLinked: page.running.some((r) => r.id === "plugin-editor"),
+      },
+    };
     if (tab === "plugins") {
       const [packages, app] = await Promise.all([call("packages"), ctx.call("plugins", "app").catch(() => [])]);
       const list = Array.isArray(packages) ? packages : [];
@@ -207,22 +232,7 @@ export default function (ctx) {
         samples: page.samples.filter((s) => matches({ name: s.title, id: s.href })),
       });
     }
-    if (tab === "make") {
-      return views.render("customize", "panel", {
-        ...base,
-        make: {
-          ...make,
-          starters: STARTERS.map((s) => ({ ...s, pressed: String(s.file === make.starter) })),
-          started: !!make.starter,
-          spotLabel: make.spot?.label ?? "At the bottom of the page's main part (choose a spot to put it somewhere else)",
-          chosenSpot: !!make.spot,
-          ok: make.check?.ok,
-          problem: make.check && !make.check.ok ? make.check.error : "",
-          permissions: make.check?.ok ? make.check.permissions : [],
-          editorLinked: page.running.some((r) => r.id === "plugin-editor"),
-        },
-      });
-    }
+    if (tab === "make") return views.render("customize", "panel", base);
     const layout = await call("layout");
     return views.render("customize", "panel", { ...base, layout: layout?.slots ? { ...layout, noSlots: !layout.slots.length, noParts: !layout.parts.length } : { slots: [], parts: [], elements: [], noSlots: true, noParts: true } });
   };
@@ -292,6 +302,7 @@ export default function (ctx) {
       follow = null;
       return draw();
     }
+    const before = new Map(mine.map((m) => [m.id, !!m.on]));
     const result = await call("turn", p.id, !p.on);
     if (result?.ok === false) message = result.error;
     else {
@@ -300,7 +311,24 @@ export default function (ctx) {
       const why = p.on ? (also.length > 1 ? "which need it" : "which needs it") : "which it needs";
       message = `Turned ${p.name} ${p.on ? "off" : "on"}${also.length ? `, and ${also.join(" and ")}, ${why}` : ""}.`;
     }
-    follow = result?.ok === false ? null : { label: "Undo", action: "turn", value: p.id };
+    undo = result?.ok === false ? null : before;
+    follow = undo ? { label: "Undo", action: "undo-turn", value: p.id } : null;
+    await draw();
+  };
+
+  /** What the person's plugins were before the last turn, so Undo puts every one it changed back, not just the one clicked. */
+  let undo = null;
+  const undoTurn = async () => {
+    const before = undo;
+    undo = null;
+    follow = null;
+    const mine = await call("mine");
+    if (!before || !Array.isArray(mine)) return draw();
+    const changed = mine.filter((m) => before.has(m.id) && before.get(m.id) !== !!m.on);
+    // Off first, then on: turning one on brings what it needs, so the ones that were on end up on.
+    for (const m of changed.filter((m) => !before.get(m.id))) await call("turn", m.id, false);
+    for (const m of changed.filter((m) => before.get(m.id))) await call("turn", m.id, true);
+    message = changed.length ? `Put back ${changed.map((m) => m.name).join(" and ")}.` : "Nothing to put back.";
     await draw();
   };
 
@@ -341,6 +369,7 @@ export default function (ctx) {
       return draw();
     }
     if (action === "turn") return turn(String(value));
+    if (action === "undo-turn") return undoTurn();
     if (action === "remove") return run("remove", [value], "Removed");
     if (action === "share") {
       const mine = await call("mine");
@@ -389,6 +418,12 @@ export default function (ctx) {
     // Make a plugin.
     if (action === "starter") return start(String(value));
     if (action === "spot") {
+      // The draft as typed comes with it (the button is in the draft's form): keep it, and show it again as it was.
+      if (typeof value?.code === "string" && value.code !== make.code) {
+        make.code = value.code;
+        make.rev++;
+      }
+      if (typeof value?.name === "string") make.name = value.name;
       // The panel closed so the person can see the page; it opens again once they choose (or cancel).
       const spot = await call("choose", "Point at where your plugin should show, and click");
       if (spot && spot.at) make.spot = spot;

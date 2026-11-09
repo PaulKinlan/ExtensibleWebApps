@@ -195,7 +195,8 @@
         </template>
 
         <!-- Make: a starter, a spot, then a name and the code. -->
-        <template if="tabs.make">
+        <!-- Kept in the page while another tab shows, so a draft being written isn't lost by looking at Plugins or Layout. -->
+        <div hidden="{{notMake}}">
           <p class="muted">Make a plugin of your own for this app. It's kept on this device, and you see its code before it runs.</p>
           <div class="step">
             <h3 data-step="1">Start from</h3>
@@ -206,13 +207,15 @@
             </div>
             <slot name="customize.make"></slot>
           </div>
+          <!-- One form, so choosing a spot sends the name and code as they are now, and they come back as typed. -->
+          <form data-action="make-save" class="customize">
           <div class="step">
             <h3 data-step="2">Where it shows</h3>
             <p>{{make.spotLabel}}</p>
-            <template if="arrange"><p class="row"><button type="button" data-action="spot" data-spot data-close>Choose a spot on the page</button> <span class="muted">The panel gets out of the way while you point.</span></p></template>
+            <template if="arrange"><p class="row"><button type="submit" data-action="spot" data-spot data-close>Choose a spot on the page</button> <span class="muted">The panel gets out of the way while you point.</span></p></template>
           </div>
           <template if="make.started">
-            <form class="step" data-action="make-save">
+            <div class="step">
               <h3 data-step="3">Name it, and change it if you like</h3>
               <label class="field">Name <input name="name" type="text" value="{{make.name}}" data-make-name></label>
               <ui-code name="code" label="Plugin code" rows="16" revision="{{make.rev}}">{{make.code}}</ui-code>
@@ -226,12 +229,13 @@
                 <button type="submit" class="secondary" data-action="make-check">Check it</button>
               </div>
               <template if="make.status"><p role="status">{{make.status}}</p></template>
-            </form>
+            </div>
           </template>
+          </form>
           <template if="!make.editorLinked">
             <p class="muted">Want more room, a copy of one of this page's plugins to change, or its log as it runs? <button type="button" data-action="editor" data-add-editor>Add the plugin editor</button></p>
           </template>
-        </template>
+        </div>
 
         <!-- Layout: where plugins can go, and the elements views can use. -->
         <template if="tabs.layout">

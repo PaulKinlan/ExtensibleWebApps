@@ -133,6 +133,21 @@ export function arrange(host: ArrangeHost) {
     draw();
   }
 
+  /**
+   * Swaps a view with its neighbour at the same spot. The views there are numbered in the order they show
+   * first, so ties (every view starts at 0) don't make a step jump past more than one.
+   */
+  async function swap(m: Movable, peer: Movable, by: -1 | 1) {
+    const peers = movables().filter((o) => o.at === m.at && o.put === m.put);
+    const ranks = new Map(peers.map((o, i) => [o, i]));
+    const mine = ranks.get(m)!;
+    ranks.set(m, ranks.get(peer)!);
+    ranks.set(peer, mine);
+    // The others keep their place; only the ones whose number changed are written, this one last so its message stays.
+    for (const o of peers) if (o !== m && ranks.get(o) !== o.order) await host.command("place:move", { app: host.app, plugin: o.plugin, place: o.place, to: { at: o.at, put: o.put, order: ranks.get(o) } });
+    return save(m, { at: m.at, put: m.put, order: ranks.get(m) }, `${m.name} moved ${by < 0 ? "up" : "down"}.`);
+  }
+
   /** Steps a view past its neighbour: among views at the same spot it changes order; past the page's own element it moves to that element's other side. */
   function step(m: Movable, by: -1 | 1) {
     const first = m.containers[0];
@@ -142,7 +157,7 @@ export function arrange(host: ArrangeHost) {
     // Hidden things, scripts and other plugins' views at other spots aren't steps a person sees.
     while (next && (next.matches("script, style, template, link, meta, [hidden]") || next.closest(CHROME))) next = sibling(next);
     const peer = next ? movables().find((o) => o !== m && o.containers.includes(next as HTMLElement)) : undefined;
-    if (peer && peer.at === m.at && peer.put === m.put) return save(m, { at: m.at, put: m.put, order: peer.order + by }, `${m.name} moved ${by < 0 ? "up" : "down"}.`);
+    if (peer && peer.at === m.at && peer.put === m.put) return swap(m, peer, by);
     if (next && !next.matches(".place, [data-plugin]")) {
       const put: Put = by < 0 ? "before" : "after";
       return save(m, { at: selectorFor(next), put }, `${m.name} is now ${SAY[put]} ${nameOf(next)}.`);

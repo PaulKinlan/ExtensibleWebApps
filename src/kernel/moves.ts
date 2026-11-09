@@ -39,30 +39,54 @@ export function asMove(value: unknown): Moved | undefined {
   return { at: at.trim(), put: put as Moved["put"], ...(typeof order === "number" && Number.isFinite(order) ? { order: Math.max(-1000, Math.min(1000, Math.round(order))) } : {}) };
 }
 
+/** What was read from the file, keeping only well-formed moves: the file is the platform's, but read it as if it weren't. */
+function checked(value: unknown): Moves {
+  const out: Moves = {};
+  if (!value || typeof value !== "object") return out;
+  for (const [plugin, places] of Object.entries(value as Record<string, unknown>)) {
+    if (!places || typeof places !== "object") continue;
+    for (const [place, to] of Object.entries(places as Record<string, unknown>)) {
+      const move = asMove(to);
+      if (move) out[plugin] = { ...out[plugin], [place]: move };
+    }
+  }
+  return out;
+}
+
 export function moves(store: Store) {
   const cache = new Map<string, Moves>();
+  /** Each app's reads and writes, one after another, so two moves at once don't overwrite each other. */
+  const queues = new Map<string, Promise<unknown>>();
+  const queued = <T>(app: string, work: () => Promise<T>): Promise<T> => {
+    const next = (queues.get(app) ?? Promise.resolve()).then(work, work);
+    queues.set(app, next.catch(() => {}));
+    return next;
+  };
   const read = async (app: string): Promise<Moves> => {
     let all = cache.get(app);
     if (!all) {
-      all = await store.readJson<Moves>(file(app), {});
+      all = checked(await store.readJson<unknown>(file(app), {}));
       cache.set(app, all);
     }
     return all;
   };
   return {
     /** Every move the person made in an app. */
-    get: read,
+    get: (app: string) => queued(app, () => read(app)),
 
     /** Moves one of a plugin's places, or puts it back where the plugin said with `to` null. */
-    async set(app: string, plugin: string, place: string, to: Moved | null): Promise<void> {
-      const all = structuredClone(await read(app));
-      if (to) all[plugin] = { ...all[plugin], [place]: to };
-      else if (all[plugin]) {
-        delete all[plugin][place];
-        if (!Object.keys(all[plugin]).length) delete all[plugin];
-      }
-      cache.set(app, all);
-      await store.writeJson(file(app), all);
+    set(app: string, plugin: string, place: string, to: Moved | null): Promise<void> {
+      return queued(app, async () => {
+        const all = structuredClone(await read(app));
+        if (to) all[plugin] = { ...all[plugin], [place]: to };
+        else if (all[plugin]) {
+          delete all[plugin][place];
+          if (!Object.keys(all[plugin]).length) delete all[plugin];
+        }
+        await store.writeJson(file(app), all);
+        // Only what was written is what the app opens with.
+        cache.set(app, all);
+      });
     },
 
     /**
