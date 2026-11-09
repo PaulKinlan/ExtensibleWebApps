@@ -51,6 +51,43 @@ async function transferred(data) {
 }
 
 /**
+ * The browser's spell checker, on (spellcheck="true") or off (anything else, as CodeMirror has it).
+ * @param {any} cm @param {string | null} value
+ */
+const spelling = (cm, value) => cm.EditorView.contentAttributes.of({ spellcheck: value === "true" ? "true" : "false", autocorrect: "off" });
+
+/** The words this page added to the browser's custom dictionary, so a later list can take some away. */
+let taught = new Set();
+
+/**
+ * Makes the browser's spell check custom dictionary (Chrome 159's document.spellCheckCustomDictionary)
+ * hold exactly these words: a JSON list in the `words` attribute. A browser without one ignores it.
+ * @param {string | null} value
+ */
+function teach(value) {
+  const dictionary = /** @type {any} */ (document).spellCheckCustomDictionary;
+  if (!dictionary || value === null) return;
+  /** @type {unknown} */
+  let list;
+  try {
+    list = JSON.parse(value);
+  } catch {
+    return;
+  }
+  if (!Array.isArray(list)) return;
+  const next = new Set(list.filter((w) => typeof w === "string" && w && w.length <= 64 && !/\s/.test(w)).slice(0, 5000));
+  const gone = [...taught].filter((w) => !next.has(w));
+  const fresh = [...next].filter((w) => !taught.has(w));
+  try {
+    if (gone.length) dictionary.removeWords(gone);
+    if (fresh.length) dictionary.addWords(fresh);
+    taught = next;
+  } catch {
+    // An early version of the API, with other method names: the words just stay marked.
+  }
+}
+
+/**
  * The smallest edit that turns `a` into `b`: what they share at the start and the end stays, so the
  * selection and undo history around it are kept.
  * @param {string} a @param {string} b
@@ -66,7 +103,7 @@ function difference(a, b) {
 
 export default class UiEditor extends HTMLElement {
   static formAssociated = true;
-  static observedAttributes = ["document", "revision", "readonly", "label", "select", "annotations", "placeholder"];
+  static observedAttributes = ["document", "revision", "readonly", "label", "select", "annotations", "placeholder", "spellcheck", "words"];
   /** @type {HTMLTemplateElement | undefined} set by the host from ui-editor.html */
   static template;
 
@@ -109,7 +146,7 @@ export default class UiEditor extends HTMLElement {
     root.append(document.importNode(template.content, true));
     const cm = (this.#cm = await codemirror());
     const frame = /** @type {HTMLElement} */ (root.querySelector(".frame"));
-    this.#compartments = { readonly: new cm.Compartment(), placeholder: new cm.Compartment(), label: new cm.Compartment() };
+    this.#compartments = { readonly: new cm.Compartment(), placeholder: new cm.Compartment(), label: new cm.Compartment(), spellcheck: new cm.Compartment() };
     this.#view = new cm.EditorView({
       root,
       parent: frame,
@@ -118,6 +155,7 @@ export default class UiEditor extends HTMLElement {
     this.#internals.setFormValue(this.value);
     this.#annotate();
     this.#select();
+    teach(this.getAttribute("words"));
   }
 
   disconnectedCallback() {
@@ -226,6 +264,7 @@ export default class UiEditor extends HTMLElement {
       this.#compartments.readonly.of(cm.EditorState.readOnly.of(this.hasAttribute("readonly"))),
       this.#compartments.placeholder.of(this.getAttribute("placeholder") ? cm.placeholder(this.getAttribute("placeholder")) : []),
       this.#compartments.label.of(cm.EditorView.contentAttributes.of({ "aria-label": this.getAttribute("label") ?? "Text", "aria-multiline": "true" })),
+      this.#compartments.spellcheck.of(spelling(cm, this.getAttribute("spellcheck"))),
       cm.EditorView.updateListener.of((/** @type {any} */ update) => this.#updated(update)),
       cm.EditorView.domEventHandlers({
         paste: (/** @type {ClipboardEvent} */ e) => this.#take("paste-action", e, e.clipboardData, null),
@@ -311,6 +350,8 @@ export default class UiEditor extends HTMLElement {
     else if (name === "annotations") queueMicrotask(() => this.#annotate());
     else if (name === "readonly") this.#view.dispatch({ effects: this.#compartments.readonly.reconfigure(cm.EditorState.readOnly.of(after !== null)) });
     else if (name === "placeholder") this.#view.dispatch({ effects: this.#compartments.placeholder.reconfigure(after ? cm.placeholder(after) : []) });
+    else if (name === "spellcheck") this.#view.dispatch({ effects: this.#compartments.spellcheck.reconfigure(spelling(cm, after)) });
+    else if (name === "words") teach(after);
     else if (name === "label") this.#view.dispatch({ effects: this.#compartments.label.reconfigure(cm.EditorView.contentAttributes.of({ "aria-label": after ?? "Text", "aria-multiline": "true" })) });
   }
 

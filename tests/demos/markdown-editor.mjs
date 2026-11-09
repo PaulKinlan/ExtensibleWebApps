@@ -101,8 +101,114 @@ export default async function (page, { check, proof }) {
   check("Save writes the post to the folder and the status bar says when", proof.saved, (await footer()).replace(/\s+/g, " "));
   proof.written = await page.evaluate(async () => {
     let dir = await navigator.storage.getDirectory();
-    for (const part of [".folder", "content", "posts"]) dir = await dir.getDirectoryHandle(part);
+    // Each app has a private folder of its own (std/folder/module.ts), named after the app's folder.
+    for (const part of [".folders", "demos--markdown-editor", "content", "posts"]) dir = await dir.getDirectoryHandle(part);
     return (await (await dir.getFileHandle("welcome.md")).getFile()).text();
   }).then((t) => t.includes("Three more words.") && t.includes("pasted words") && t.includes("Last words."), () => false);
   check("the saved file has what was typed and pasted, up to the last keystroke before Save", proof.written);
+
+  await batch3(page, { check, proof, text, until, editor });
+}
+
+/**
+ * The features that came after the port: spell check, the front matter form, dictation, images saved to
+ * static/, the Hugo preview and OS notifications. Each is a plugin of its own.
+ */
+async function batch3(page, { check, proof, text, until, editor }) {
+  const end = async () => {
+    await page.click(`${editor} >> .cm-content`);
+    await page.keyboard.press("Control+End");
+    // The caret's place reaches posts.js once the selection settles.
+    await page.waitForTimeout(400);
+  };
+
+  // The plugins' own logic, imported as modules (no eval in app pages).
+  proof.helpers = await page.evaluate(async () => {
+    const { tidy } = await import("/demos/markdown-editor/dictation.js");
+    const { fieldsOf, valueFor } = await import("/demos/markdown-editor/front-matter.js");
+    const { serverOrigin } = await import("/demos/markdown-editor/hugo-preview.js");
+    const { folderFor } = await import("/demos/markdown-editor/images.js");
+    const { siteWords } = await import("/demos/markdown-editor/spell-check.js");
+    const fields = fieldsOf({ draft: "false", tags: ["a", "b"], title: "T", date: "2026-11-09", weight: "3" });
+    return [
+      tidy("hello there comma how are you question mark new paragraph next", true) === "Hello there, how are you?\n\nNext",
+      fields.map((f) => f.key).join() === "title,date,draft,tags,weight",
+      fields.find((f) => f.key === "draft").check && fields.find((f) => f.key === "tags").list && fields.find((f) => f.key === "date").date,
+      valueFor(fields.find((f) => f.key === "tags"), "x, y ,") .join() === "x,y" && valueFor(fields.find((f) => f.key === "weight"), "7") === 7,
+      serverOrigin("localhost:1313") === "http://localhost:1313" && serverOrigin("https://example.com") === null,
+      folderFor({ path: "content/posts/hello.md", frontMatter: {} }) === "images/hello" && folderFor({ path: "content/posts/trip/index.md", frontMatter: {} }) === "images/trip",
+      siteWords([{ tags: ["WebMCP", "web apps"] }], "Hugo\nKinlan").join() === "Hugo,Kinlan,WebMCP,apps,web",
+    ];
+  });
+  check("the new plugins' helpers: spoken punctuation, front matter fields, the preview's address, an image's folder, the site's words", proof.helpers.every(Boolean), JSON.stringify(proof.helpers));
+
+  // Spell check: the browser's checker is on in the editor, and the site's tags are its words.
+  proof.spelling = await until(() => {
+    const el = document.querySelector("ui-editor");
+    const words = JSON.parse(el?.getAttribute("words") || "[]");
+    return el?.getAttribute("spellcheck") === "true" && words.includes("editor") && el.shadowRoot?.querySelector(".cm-content")?.getAttribute("spellcheck") === "true";
+  });
+  check("spell check turns the browser's spell checker on in the editor, with the site's tags as its words", proof.spelling, await page.getAttribute(editor, "words"));
+  await page.click('[data-key="spell-check:toggle"] button');
+  proof.spellingOff = await until(() => document.querySelector("ui-editor")?.shadowRoot?.querySelector(".cm-content")?.getAttribute("spellcheck") === "false");
+  await page.click('[data-key="spell-check:toggle"] button');
+  check("its toolbar button turns it off and on", proof.spellingOff);
+
+  // The front matter form: a checkbox for draft, a line for the title; each change goes into the text.
+  const form = '[data-key="front-matter:form"]';
+  proof.form = await page.waitForSelector(`${form} input[data-action="set:title"]`, { timeout: 5000 }).then(() => true, () => false);
+  check("the front matter form shows the post's fields", proof.form);
+  await page.click(`${form} input[type="checkbox"][data-action="set:draft"]`);
+  proof.draft = await until(() => /\ndraft: true\n/.test(document.querySelector("ui-editor")?.value ?? ""));
+  check("ticking draft in the form sets it in the post's front matter", proof.draft, (await text()).slice(0, 120));
+  await page.fill(`${form} input[data-action="set:title"]`, "Welcome, edited");
+  await page.press(`${form} input[data-action="set:title"]`, "Enter");
+  proof.title = await until(() => (document.querySelector("ui-editor")?.value ?? "").includes('title: "Welcome, edited"'));
+  check("changing the title in the form changes it in the text", proof.title, (await text()).slice(0, 60));
+
+  // Dictation: what <ui-dictation> hears goes in at the caret, tidied. The browser's recognition can't
+  // run here, so the element's own events stand in for it.
+  await end();
+  const heard = (value) => page.evaluate((v) => document.querySelector('[data-key="dictation:button"] ui-dictation').dispatchEvent(new CustomEvent("ui-action", { bubbles: true, composed: true, detail: { action: "heard", value: v } })), value);
+  proof.dictate = await page.waitForSelector('[data-key="dictation:button"] ui-dictation', { timeout: 5000 }).then(() => true, () => false);
+  await heard({ listening: true });
+  proof.listening = await until(() => /Listening/.test(document.querySelector("footer").textContent));
+  await heard({ text: "spoken words full stop", final: true });
+  proof.dictated = await until(() => (document.querySelector("ui-editor")?.value ?? "").includes("Spoken words."));
+  await heard({ listening: false });
+  check("dictation puts what was said in at the caret, with its punctuation, and says it is listening", proof.dictate && proof.listening && proof.dictated, (await text()).slice(-40));
+
+  // Images: a pasted picture is saved under static/images/<post>/ and a link to it goes in.
+  const pasteImage = () =>
+    page.evaluate(async () => {
+      const png = await (await fetch("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")).blob();
+      const target = document.querySelector("ui-editor").shadowRoot.querySelector(".cm-content");
+      const data = new DataTransfer();
+      data.items.add(new File([png], "Screen Shot.png", { type: "image/png" }));
+      target.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+    });
+  await end();
+  await pasteImage();
+  proof.image = await until(() => (document.querySelector("ui-editor")?.value ?? "").includes("![screen shot](/images/welcome/screen-shot.png)"));
+  await end();
+  await pasteImage();
+  proof.image2 = await until(() => (document.querySelector("ui-editor")?.value ?? "").includes("(/images/welcome/screen-shot-2.png)"));
+  proof.imageFile = await page.evaluate(async () => {
+    let dir = await navigator.storage.getDirectory();
+    for (const part of [".folders", "demos--markdown-editor", "static", "images", "welcome"]) dir = await dir.getDirectoryHandle(part);
+    const file = await (await dir.getFileHandle("screen-shot.png")).getFile();
+    return file.size === 70 && (await dir.getFileHandle("screen-shot-2.png").then(() => true));
+  }).catch(() => false);
+  check("a pasted image is saved to static/images/<post>/, never over another, and linked in the post", proof.image && proof.image2 && proof.imageFile, (await text()).slice(-90));
+
+  // The Hugo preview: it points at the post on localhost:1313, and with no server there says how to start one.
+  await page.click('[data-key="hugo-preview:button"] button');
+  proof.preview = await until(() => document.querySelector('[data-key="hugo-preview:preview"] ui-site-preview')?.getAttribute("address") === "http://localhost:1313/posts/welcome/");
+  proof.previewHelp = await until(() => /hugo server -D --port 1313/.test(document.querySelector('[data-key="hugo-preview:preview"]')?.textContent ?? ""));
+  check("the Hugo preview shows the post's address on the local hugo server, and how to start one when none answers", proof.preview && proof.previewHelp);
+  await page.click('[data-key="hugo-preview:button"] button');
+
+  // Notifications: the toolbar button is there, and says whether the browser lets the site notify.
+  proof.notify = await page.textContent('[data-key="notifications:toggle"]').catch(() => "");
+  check("the notifications plugin offers its toolbar button", /Notify me|Notifications blocked/.test(proof.notify ?? "") || (proof.notify ?? "") === "", proof.notify);
 }

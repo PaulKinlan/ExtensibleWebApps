@@ -1,0 +1,48 @@
+<!--
+  The front matter form: { shown, fields: [{ key, label, value, check | list
+  | date | long | line, number }], empty, problem }. Each control sends
+  set:<key> with its value when the change is committed; now:<key> puts in
+  the time, remove:<key> takes the field out, and `add` adds one.
+-->
+<style>
+  .fm .grid { display: grid; grid-template-columns: max-content minmax(0, 1fr) auto; gap: var(--space-2); align-items: center; }
+  .fm label { color: var(--fg-2); font-size: var(--text-sm); text-transform: capitalize; }
+  .fm input:not([type="checkbox"]), .fm textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+  .fm .row { display: flex; gap: var(--space-1); }
+  .fm .remove { padding-inline: var(--space-2); }
+  .fm form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: var(--space-2); }
+  .fm p { margin: 0; color: var(--fg-2); }
+  .fm .problem { color: var(--danger, #b91c1c); }
+</style>
+<template id="form">
+  <ui-card class="fm">
+    <ui-stack gap="2">
+      <ui-stack direction="row" justify="between" align="center">
+        <h3>Front matter</h3>
+        <button type="button" data-action="toggle" aria-expanded="{{shown}}"><template if="shown">Hide</template><template if="!shown">Show</template></button>
+      </ui-stack>
+      <template if="shown">
+        <template if="problem"><p class="problem" role="alert">{{problem}}</p></template>
+        <template if="empty"><p>This post has no front matter yet. Add a field below.</p></template>
+        <div class="grid">
+          <template for="f of fields">
+            <label for="fm-{{f.key}}" key="label-{{f.key}}">{{f.label}}</label>
+            <div key="control-{{f.key}}">
+              <template if="f.check"><input id="fm-{{f.key}}" type="checkbox" checked="{{f.value}}" data-action="set:{{f.key}}"></template>
+              <template if="f.list"><input id="fm-{{f.key}}" value="{{f.value}}" placeholder="comma, separated" data-action="set:{{f.key}}"></template>
+              <template if="f.date"><div class="row"><input id="fm-{{f.key}}" value="{{f.value}}" data-action="set:{{f.key}}"><button type="button" data-action="now:{{f.key}}" title="Set to now">Now</button></div></template>
+              <template if="f.long"><textarea id="fm-{{f.key}}" rows="3" data-action="set:{{f.key}}">{{f.value}}</textarea></template>
+              <template if="f.line"><input id="fm-{{f.key}}" value="{{f.value}}" data-action="set:{{f.key}}"></template>
+            </div>
+            <button type="button" class="remove" key="remove-{{f.key}}" data-action="remove:{{f.key}}" aria-label="Remove {{f.key}}" title="Remove {{f.key}}">×</button>
+          </template>
+        </div>
+        <form data-action="add">
+          <input name="key" placeholder="New field" aria-label="New field's name" required>
+          <input name="value" placeholder="Value" aria-label="New field's value">
+          <button type="submit">Add</button>
+        </form>
+      </template>
+    </ui-stack>
+  </ui-card>
+</template>

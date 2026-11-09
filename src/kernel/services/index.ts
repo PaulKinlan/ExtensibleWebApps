@@ -35,6 +35,8 @@ export interface Kernel {
   userAdded: UserPlugins;
   /** Opens an app again in every tab that has it open, after its plugins changed. */
   reopen(app: string): Promise<void>;
+  /** The app open in a tab: its folder, as the page names it (`demos/markdown-editor`). Undefined for a tab with no app (the workbench). */
+  appIn(tab: string): string | undefined;
   /** Whether the kernel has its data folder yet (the first page said hello). Until then, root hears internal/started once it has. */
   started(): boolean;
 }

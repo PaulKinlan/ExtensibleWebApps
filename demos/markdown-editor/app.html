@@ -14,12 +14,18 @@
                       readability, repetition, seo-check, style-guide,
                       data-checker, link-checker
   Underlines:         readability, seo-check, style-guide, link-checker
-  Panels:             outline, writing-streak, data-checker, and the pickers
-                      of emoji, snippets, tag-suggester and word-goal
+  Panels:             front-matter, outline, writing-streak, data-checker,
+                      hugo-preview, and the pickers of emoji, snippets,
+                      tag-suggester and word-goal
+  In the toolbar:     dictation, spell-check, and notifications, which tells
+                      your computer when the assistant is done
+  Pastes and drops:   images, which saves pictures to the site's static/
   In Customize:       repetition and autosave, off until you add them
   For the assistant:  writer.agent.md, which the plugins' tools and quick
                       edits work through, and alerts, which tells you when
                       it is done. The builder writes new plugins for you.
+  For other agents:   editor-agents, which offers an agent in the browser
+                      the writer's tools through WebMCP
 
   How it all fits together, with diagrams: docs/guide/markdown-editor.md.
 
@@ -54,6 +60,13 @@
   <link rel="plugin" href="emoji.js">
   <link rel="plugin" href="snippets.js">
   <link rel="plugin" href="alerts.js">
+  <link rel="plugin" href="dictation.js">
+  <link rel="plugin" href="editor-agents.js">
+  <link rel="plugin" href="front-matter.js">
+  <link rel="plugin" href="hugo-preview.js">
+  <link rel="plugin" href="images.js">
+  <link rel="plugin" href="notifications.js">
+  <link rel="plugin" href="spell-check.js">
   <!-- Off until you add them in Customize, as in the editor. -->
   <link rel="plugin-sample" href="repetition.js" title="Repetition">
   <link rel="plugin-sample" href="autosave.js" title="Autosave">

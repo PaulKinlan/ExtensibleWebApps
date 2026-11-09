@@ -1,0 +1,41 @@
+<!--
+  ui-site-preview: a page from a web server running on the person's own
+  device, such as a Hugo site's `hugo server`, in a frame:
+
+    <ui-site-preview address="http://localhost:1313/posts/welcome/" revision="3"
+      action="preview" label="The post, as Hugo shows it"></ui-site-preview>
+
+  Attributes: address (an http: or https: address on this device: localhost,
+  *.localhost, 127.0.0.1 or [::1]; anything else isn't shown), revision
+  (changing it checks the server again and reloads the page, after a save
+  say), label (what it shows, for screen readers), action (sent with "up",
+  "down" or "blocked" each time it checks the server, so the plugin can say
+  how to start one; "blocked" means the browser refused to let this site
+  reach the device, which the person can allow in the site's settings).
+
+  It only ever shows a server on the device, never another site, so a
+  plugin can't use it to put someone else's page in front of the person. The
+  page in the frame keeps its own origin and can't reach this one.
+
+  The behaviour is in ui-site-preview.js, linked below.
+-->
+<template>
+  <style>
+    :host { display: block; }
+    .frame { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg); }
+    .bar { display: flex; gap: var(--space-2, 8px); align-items: center; padding: var(--space-1, 4px) var(--space-2, 8px); border-bottom: 1px solid var(--border); font-size: var(--text-sm); color: var(--fg-2); }
+    .bar .where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono, monospace); }
+    .bar a { margin-left: auto; color: var(--accent); white-space: nowrap; }
+    .dot { flex: none; width: 0.6em; height: 0.6em; border-radius: 50%; background: var(--fg-2); }
+    .dot[data-state="up"] { background: var(--ok, #16a34a); }
+    .dot[data-state="down"], .dot[data-state="blocked"] { background: var(--danger, #dc2626); }
+    iframe { display: block; width: 100%; height: var(--preview-height, 32rem); border: 0; background: white; }
+    .none { padding: var(--space-3, 16px); margin: 0; color: var(--fg-2); }
+  </style>
+  <div class="frame" part="frame">
+    <div class="bar"><span class="dot" aria-hidden="true"></span><span class="where"></span><a target="_blank" rel="noopener" hidden>Open in its own tab</a></div>
+    <p class="none" hidden></p>
+    <iframe title="" hidden referrerpolicy="no-referrer"></iframe>
+  </div>
+</template>
+<script type="module" src="ui-site-preview.js"></script>

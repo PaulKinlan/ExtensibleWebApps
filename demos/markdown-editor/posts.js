@@ -14,7 +14,8 @@
 // and changes the open post through its `document` service, as the person
 // would: edits go into the editor as edits they can undo, and are saved only
 // when the post is saved. Underlines (annotate) and moving the selection
-// (select) are the service's too.
+// (select) are the service's too, and so is how the editor works
+// (setOption: the browser's spell check, and the words it accepts).
 //
 // A snapshot is { path, url, title, siteName, text, bodyStart, frontMatter,
 // selection, unsaved }: offsets count characters in the whole file, front
@@ -99,6 +100,16 @@ export const manifest = {
           description: "Sets one top-level front matter field (null removes it): a string, number, boolean or list of strings.",
         },
         save: { args: "()", params: [], returns: "true or false", needs: "document:write", description: "Saves the open post, as the Save button does (before-save listeners run first)." },
+        setOption: {
+          args: "(name, value)",
+          params: [
+            { name: "name", schema: { type: "string", enum: ["spellcheck", "words"], description: "spellcheck: whether the browser checks the spelling; words: words it should accept" } },
+            { name: "value", schema: { description: "true or false for spellcheck; a list of words for words" } },
+          ],
+          returns: "true or false",
+          needs: "document:write",
+          description: "Changes how the editor works, not the post: whether the browser checks the spelling as you type (spellcheck), and the words it should accept (words, such as the site's tags and product names).",
+        },
       },
     },
   },
@@ -294,6 +305,8 @@ export default async function (ctx) {
   let status = "";
   let problem = "";
   let saving = false;
+  /** How the editor works, which plugins change with document.setOption. */
+  const options = { spellcheck: false, words: [] };
 
   const unsaved = () => !!open && draft !== open.saved;
   /**
@@ -336,6 +349,8 @@ export default async function (ctx) {
       revision: `${open?.path ?? ""}#${revision}`,
       select: selectAt,
       annotations: JSON.stringify([...notes.values()].flat().slice(0, 2000)),
+      spellcheck: options.spellcheck ? "true" : "false",
+      words: JSON.stringify(options.words),
     });
   };
 
@@ -588,6 +603,13 @@ export default async function (ctx) {
       return true;
     },
     save: () => save(ctx),
+    setOption(name, value) {
+      if (name === "spellcheck") options.spellcheck = value === true;
+      else if (name === "words" && Array.isArray(value)) options.words = [...new Set(value.filter((w) => typeof w === "string" && w && w.length <= 64 && !/\s/.test(w)))].slice(0, 5000);
+      else return false;
+      draw();
+      return true;
+    },
   });
 
   try {
