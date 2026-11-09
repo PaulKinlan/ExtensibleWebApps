@@ -176,6 +176,8 @@ async function open(context, url, errors) {
   await page.waitForFunction(() => window.__host, null, { timeout: 20000 });
   return page;
 }
+/** Whether text a person reads has Markdown's marks left in it: the pages show answers as plain text. */
+const markdown = (text) => /\*\*|`|^#{1,4} /m.test(String(text ?? ""));
 const has = (page, selector, timeout = 10000) => page.waitForSelector(selector, { state: "attached", timeout }).then(() => true, () => false);
 
 /** Leaves Gemini as the only model switched on, as a person with only a Gemini key would, from the page's switchboard. */
@@ -228,6 +230,7 @@ await feature("ask", async ({ context, errors, info, track }) => {
   check("the answer is about the plugin's code: it names the hook that stops the save", /beforeWrite|data:before/i.test(text), text.slice(0, 300));
   const about = (await page.textContent(`${ask} .about-answer`).catch(() => "")) ?? "";
   check("it says which model answered and what it cost", /Answered by Gemini, \S+ · \d+ in, \d+ out tokens/.test(about), about);
+  check("the answer reads as plain text, with no Markdown marks left in it", answered && !markdown(text), text.slice(0, 300));
   info.notes.answer = clean(text).slice(0, 2000);
   info.notes.about = about;
   await page.locator(ask).scrollIntoViewIfNeeded().catch(() => {});
@@ -279,6 +282,7 @@ await feature("builder", async ({ context, errors, info, track }) => {
   info.cards = person.seen.cards;
   check("the Gemini key card came up and took the key", person.seen.keys === 1 && !person.seen.refusedKeyCards.length, `${person.seen.keys} key cards; ${person.seen.refusedKeyCards.join(" | ")}`);
   check("the builder finishes and answers in the chat", lines.length >= 2 && reply?.tone === "accent", `${reply?.tone}: ${reply?.text?.slice(0, 500)}`);
+  check("its answer reads as plain text, with no Markdown marks left in it", !!reply && !markdown(reply.text), reply?.text?.slice(0, 300));
   check("it asked to act for the person, then showed its plugin on a review card", person.seen.cards.some((c) => /act for you\?/.test(c)) && person.seen.cards.some((c) => /wants to change your plugins: adds /.test(c)), person.seen.cards.map((c) => c.slice(0, 120)).join(" | "));
   const after = await page.evaluate(() => window.__host.command("user:list", { app: "root" })).catch(() => []);
   const made = after.filter((p) => !before.some((b) => b.id === p.id));
@@ -287,7 +291,7 @@ await feature("builder", async ({ context, errors, info, track }) => {
   await sleep(2000);
   const failed = (await story(page)).filter((l) => made.some((p) => l.includes(p.id)) && /plugin:failed|plugin:stopped|^error /.test(l));
   check("the plugin it wrote runs without an error", made.length >= 1 && failed.length === 0, failed.slice(0, 3).join(" | "));
-  const drawn = made.length ? await page.evaluate((ids) => ids.map((id) => [...document.querySelectorAll(`[data-key^="${id}:"], [data-key^="${id}@"]`)].map((el) => el.innerText.trim().slice(0, 200))).flat(), made.map((p) => p.id)) : [];
+  const drawn = made.length ? await page.evaluate((ids) => ids.map((id) => [...document.querySelectorAll(`[data-key^="${id}:"], [data-key^="${id}@"]`)].map((el) => [el.innerText.trim(), ...[...el.querySelectorAll("[value], [label]")].map((x) => `${x.getAttribute("label") ?? ""} ${x.getAttribute("value") ?? ""}`.trim())].filter(Boolean).join(" · ").slice(0, 200))).flat(), made.map((p) => p.id)) : [];
   info.notes.drawn = drawn;
   check("what it drew is on the page, with a number in it", drawn.some((t) => /\d/.test(t)), drawn.join(" | ").slice(0, 400));
   for (const p of made) {
@@ -328,6 +332,7 @@ await feature("plugin-maker", async ({ context, errors, info, track }) => {
   info.cards = person.seen.cards;
   check("the Gemini key card came up and took the key", person.seen.keys === 1 && !person.seen.refusedKeyCards.length, `${person.seen.keys} key cards; ${person.seen.refusedKeyCards.join(" | ")}`);
   check("the Plugin maker finishes without an error line", lines.length >= 2 && !lines.some((l) => l.tone === "danger"), lines.filter((l) => l.tone === "danger").map((l) => l.text.slice(0, 300)).join(" | ") || lines.at(-1)?.text?.slice(0, 300));
+  check("its answer reads as plain text, with no Markdown marks left in it", lines.length >= 2 && !markdown(lines.at(-1).text), lines.at(-1)?.text?.slice(0, 300));
   const after = await command("user:list", {}).catch(() => []);
   const made = after.filter((p) => !before.some((b) => b.id === p.id));
   info.notes.made = made.map((p) => p.id);
@@ -336,7 +341,7 @@ await feature("plugin-maker", async ({ context, errors, info, track }) => {
   const failed = (await story(page)).filter((l) => made.some((p) => l.includes(p.id)) && /plugin:failed|plugin:stopped|^error /.test(l));
   check("the plugin it wrote runs without an error", made.length >= 1 && failed.length === 0, failed.slice(0, 3).join(" | "));
   const people = await page.$$eval("ui-table tbody tr", (rows) => rows.length).catch(() => 0);
-  const drawn = made.length ? await page.evaluate((ids) => ids.map((id) => [...document.querySelectorAll(`[data-key^="${id}:"], [data-key^="${id}@"]`)].map((el) => el.innerText.trim().slice(0, 200))).flat(), made.map((p) => p.id)) : [];
+  const drawn = made.length ? await page.evaluate((ids) => ids.map((id) => [...document.querySelectorAll(`[data-key^="${id}:"], [data-key^="${id}@"]`)].map((el) => [el.innerText.trim(), ...[...el.querySelectorAll("[value], [label]")].map((x) => `${x.getAttribute("label") ?? ""} ${x.getAttribute("value") ?? ""}`.trim())].filter(Boolean).join(" · ").slice(0, 200))).flat(), made.map((p) => p.id)) : [];
   info.notes.drawn = drawn;
   info.notes.rowsOnPage = people;
   check("what it drew is on the page, with a number in it", drawn.some((t) => /\d/.test(t)), drawn.join(" | ").slice(0, 400));
@@ -414,7 +419,8 @@ await feature("app-maker", async ({ context, errors, info, track }) => {
       await field.fill(title);
       const form = tab.locator("main form").filter({ has: field }).first();
       await form.locator('button[type="submit"], button:not([type])').first().click().catch(() => field.press("Enter"));
-      added = await tab.waitForFunction((t) => [...document.querySelectorAll("main *")].some((el) => !el.closest("form") && el.children.length === 0 && el.textContent.includes(t)), title, { timeout: 8000 }).then(() => true, () => false);
+      // getByText reads what is shown, inside the platform's elements too, and never a field's value.
+      added = await tab.locator("main").getByText(title).first().waitFor({ timeout: 8000 }).then(() => true, () => false);
     }
     check(`${label}: a book typed into its form shows in its list`, added, added ? title : (await tab.evaluate(() => document.querySelector("main")?.innerHTML.slice(0, 600) ?? "no main")));
     await shot(tab, `app-maker-${label}-desktop`, { fullPage: true });
@@ -432,6 +438,7 @@ await feature("app-maker", async ({ context, errors, info, track }) => {
   await shot(page, "app-maker-made", { fullPage: true });
   check("the Gemini key card came up and took the key", person.seen.keys === 1 && !person.seen.refusedKeyCards.length, `${person.seen.keys} key cards; ${person.seen.refusedKeyCards.join(" | ")}`);
   check("the app maker finishes and says where the app is", first.tone !== "danger" && /\/apps\/[a-z0-9-]+\//.test(first.answer), `${first.tone}: ${first.answer.slice(0, 600)}`);
+  check("its answer reads as plain text, with no Markdown marks left in it", !markdown(first.answer), first.answer.slice(0, 300));
   const firstFiles = await save("made-1");
   const names = [...new Set(Object.keys(firstFiles).map((p) => p.split("/")[0]))].filter((n) => firstFiles[`${n}/app.html`]);
   info.notes.apps = names;

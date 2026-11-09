@@ -17,11 +17,6 @@
 name: Real model checks
 
 on:
-  # TEMPORARY, removed before this merges: GitHub only lets a workflow be started by hand once it knows the file,
-  # and it learns a file that isn't on main yet from a push. The job below is skipped on a push, so the key isn't used.
-  push:
-    branches: [claude/project-thread-rwiazo]
-    paths: [.github/workflows/real-model.yml]
   workflow_dispatch:
     inputs:
       features:

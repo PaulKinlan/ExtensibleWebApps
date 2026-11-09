@@ -47,7 +47,7 @@ const SUGGESTED = [
 const CODE = 40_000;
 
 const SYSTEM = `You answer questions about a web page built on Extensible Web Apps: a small kernel, and plugins that each run in their own Web Worker and can do only what their manifest's permissions allow. Hooks are named events: an emit hook tells listeners, a serial hook asks each listener in turn and any one can stop the action.
-Answer from the plugins described below, in plain words for someone who may not code. Name plugins by their names. Keep it short: a few sentences or a short list. If the page doesn't say, say so.`;
+Answer from the plugins described below, in plain words for someone who may not code. Name plugins by their names. Keep it short: a few sentences or a short list. Your answer is shown as plain text, so don't use Markdown: no **bold**, no backticks, no # headings. If the page doesn't say, say so.`;
 
 export default function (ctx) {
   const views = ctx.ui.views("ask-the-page.html");
