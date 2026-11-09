@@ -72,10 +72,13 @@ function serviceFiles() {
   return [...files, ...modules];
 }
 
-// What each service method and hook needs, read from docs/api.md, which the
-// kernel writes (and the tests keep up to date).
+// What each service method and hook needs, read from the reference the kernel prints: docs/api.md, which
+// main rewrites after each merge, or .build/api.md, which `npm test` writes from this checkout's kernel
+// (so a branch that adds a kernel method can use it before main's copy has it), whichever is newer.
 function loadReference() {
-  const md = readFileSync(join(ROOT, "docs/api.md"), "utf8");
+  const files = [join(ROOT, "docs/api.md"), join(ROOT, ".build/api.md")].filter((f) => existsSync(f));
+  const newest = files.sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs)[0];
+  const md = readFileSync(newest, "utf8");
   const methods = new Map();
   for (const m of md.matchAll(/^#### (\w+)\.(\w+)\n[^]*?^Needs: (.*)$/gm)) {
     const needs = [...m[3].matchAll(/`([^`]+)`/g)].map((x) => x[1]);

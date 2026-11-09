@@ -3,8 +3,10 @@
 #
 # Each time main changes, for every open PR whose branch is in this repo:
 #   - main merges cleanly: push the merge commit.
-#   - the only conflict is docs/api.md: that file is generated, so take
-#     either side, run `npm run reference`, and push.
+#   - the only conflicts are generated files: take main's docs/api.md (only
+#     main writes it) and drop the registry files (the build makes them, and
+#     they aren't committed), then push. Branches from before they stopped
+#     being committed are tidied this way.
 #   - anything else conflicts: leave the branch alone and keep one comment on
 #     the PR up to date with the files that need a person.
 #
@@ -46,9 +48,9 @@ jobs:
           set -u
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          GENERATED="docs/api.md"
+          # Generated files no pull request should carry (regenerate-reference.yml, scripts/generated.mjs).
+          GENERATED="docs/api.md packages/catalog.json packages/index.html packages/index.json"
           MARKER="<!-- keep-prs-current -->"
-          tools_ready=""
 
           # The comment this workflow keeps on a PR: written, replaced, or removed.
           note() {
@@ -72,6 +74,14 @@ jobs:
             fi
           }
 
+          # After a merge: the branch's generated files go back to main's (docs/api.md) or out of the repo
+          # (the rest), folded into the merge commit, so the branch carries none of them.
+          tidy() {
+            git checkout -q origin/main -- docs/api.md
+            for f in $GENERATED; do [ "$f" = "docs/api.md" ] || git rm -q --cached --ignore-unmatch -- "$f"; done
+            git diff --cached --quiet || git commit -q --amend --no-edit
+          }
+
           gh pr list --repo "$REPO" --state open --json number,headRefName,isCrossRepository \
             --jq '.[] | select(.isCrossRepository | not) | "\(.number) \(.headRefName)"' |
           while read -r pr branch; do
@@ -81,29 +91,23 @@ jobs:
             if git merge-base --is-ancestor origin/main HEAD; then echo "already current"; note "$pr" ""; echo "::endgroup::"; continue; fi
 
             if git merge -q --no-edit origin/main; then
-              push
+              tidy && push
             else
               conflicts=$(git diff --name-only --diff-filter=U)
-              if [ "$conflicts" = "$GENERATED" ]; then
-                git checkout --theirs -- "$GENERATED"
-                if [ -z "$tools_ready" ]; then
-                  npm ci && npm i --no-save playwright@1.65.0 && npx playwright install --with-deps chromium && tools_ready=1
-                fi
-                if npm run reference; then
-                  git add "$GENERATED"
-                  git commit -q --no-edit && push
-                else
-                  git merge --abort
-                  note "$pr" "Main has moved on and \`$GENERATED\` conflicts, but \`npm run reference\` failed on the merged code, so this needs a person: merge main and fix what the build reports."
-                fi
+              others=$(for f in $conflicts; do case " $GENERATED " in *" $f "*) ;; *) echo "$f";; esac; done)
+              if [ -z "$others" ]; then
+                for f in $conflicts; do
+                  if [ "$f" = "docs/api.md" ]; then git checkout -q origin/main -- "$f"; else git rm -q --cached --ignore-unmatch -- "$f"; rm -f -- "$f"; fi
+                done
+                git commit -q --no-edit && tidy && push
               else
                 git merge --abort
-                list=$(echo "$conflicts" | sed 's/^/- `/; s/$/`/')
+                list=$(echo "$others" | sed 's/^/- `/; s/$/`/')
                 note "$pr" "Main has moved on and these files conflict with this branch, so they need a person to merge:
 
           $list
 
-          If \`$GENERATED\` is among them, take either side: it is regenerated on this branch after you push."
+          Generated files (\`docs/api.md\`, \`packages/index.*\`, \`packages/catalog.json\`) never need a person: take main's \`docs/api.md\` and \`git rm\` the others."
               fi
             fi
             echo "::endgroup::"

@@ -8,7 +8,7 @@
 
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { watchPolicy } from "./policy-watch.mjs";
 
@@ -125,8 +125,12 @@ export default (ctx) => {
 
   // Self-description: the kernel prints its own API reference.
   const reference = await a.evaluate(() => window.__host.command("reference"));
-  const onDisk = readFileSync(new globalThis.URL("../docs/api.md", import.meta.url), "utf8");
-  check("docs/api.md is what the kernel prints about itself", reference.markdown === onDisk, reference.markdown === onDisk ? "" : "run npm run reference");
+  // docs/api.md is this, written on main after each merge (.github/workflows/regenerate-reference.yml), never in a
+  // pull request, so pull requests can't conflict over it. Here it only has to print.
+  check("the kernel prints its own reference as Markdown", reference.markdown.startsWith("# ") && /\n## /.test(reference.markdown));
+  // This checkout's reference, for npm run check (scripts/check.mjs), which CI runs after the tests.
+  mkdirSync(new globalThis.URL("../.build/", import.meta.url), { recursive: true });
+  writeFileSync(new globalThis.URL("../.build/api.md", import.meta.url), reference.markdown);
   const hookNames = await a.evaluate(() => window.__host.command("reference").then((r) => r.data.hooks.map((h) => h.name)));
   check("the reference lists every hook and service the kernel has", ["debug:trace", "bench:ping", "commands:ran"].every((h) => hookNames.includes(h)) && ["audio", "files", "hooks", "storage", "kernel", "settings", "data", "debug"].every((s) => reference.data.services.some((x) => x.name === s)));
   check("the kernel's reference has no app's hooks in it: the notes plugin's and its collection's are its own", !hookNames.some((h) => h.startsWith("notes:") || h.startsWith("note:") || h.startsWith("data:")), hookNames.filter((h) => /^(notes?|data):/.test(h)).join(" "));

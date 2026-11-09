@@ -28,7 +28,7 @@ A package is a folder `packages/<id>/` holding `<id>.js`, a plugin whose manifes
 
 ```
 packages/
-  index.json              the list Customize shows, made by npm run packages
+  index.json              the list Customize shows, made by the build (not in the repo)
   catalog.json            every plugin, agent and built-in service the site ships, made with it
   index.html              the page at /packages/, made with it (registry.js and registry.css are its search and styles)
   std.json                the standard plugins the registry offers
@@ -45,7 +45,7 @@ packages/
 
 1. Make the folder, with the plugin and its files.
 2. Put its id under a group in `packages/groups.json`.
-3. Run `npm run packages`, which reads every manifest and rewrites `packages/index.json`, `packages/catalog.json` and the page `packages/index.html`. The tests fail if any is out of date, or an offered plugin has no group. To offer a standard plugin instead, add its path to `packages/std.json`; if it draws, its manifest needs `places`, and `files` for its templates.
+3. There is nothing to run or commit: the site reads every manifest and makes `packages/index.json`, `packages/catalog.json` and the page `packages/index.html` as it serves (`npm run dev`) and builds (`npm run build`, into `dist/packages/`), with [scripts/generated.mjs](../../scripts/generated.mjs). They aren't in the repo, so two pull requests that each add a plugin never conflict over them. `npm run packages` says what they will list, and fails if an offered plugin has no group. To offer a standard plugin instead, add its path to `packages/std.json`; if it draws, its manifest needs `places`, and `files` for its templates.
 4. Check it in Customize on any demo.
 
 A registry plugin is an ordinary sandboxed plugin. It runs in its own worker, can do only what its manifest asks for, and the person sees what that is before they turn it on.

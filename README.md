@@ -137,7 +137,7 @@ Plugins live in three places:
 npm install
 npm run dev        # http://localhost:5173 is the homepage, /workbench/ the workbench; /demos/reading-list/app.html is a demo app; ?kernel=dedicated runs the kernel in a dedicated worker
 npm test           # build, then every check in Chromium, and the measurements (needs Playwright: npm i -g playwright && npx playwright install chromium)
-npm run reference  # rewrite docs/api.md from the running kernel (CI also does this on every PR branch and on main)
+npm run reference  # print docs/api.md from the running kernel (only main commits it: CI rewrites it after each merge)
 npm run check      # find mistakes in every app in demos/ (or the folders you name) without a browser; --json for tools
 npm run new-app -- my-app   # copy starter/ to demos/my-app/, a small app to begin from
 npm create extensible-app my-app   # no checkout needed (or npx github:PaulKinlan/ExtensibleWebApps my-app): a project of your own, my-app/, with the app's files at the top and the platform as a dependency; served at / (docs/guide/your-own-app.md)

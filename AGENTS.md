@@ -47,8 +47,7 @@ npm run dev          # open http://localhost:5173/demos/<app>/app.html; the work
 npm test             # builds, then opens every app in demos/ and checks each linked plugin draws
 npm run test:server  # after changing anything a space's server runs: the server checks on Node and wrangler dev
 npm run typecheck
-npm run reference    # after changing the kernel's API: rewrites docs/api.md (the tests check it; CI also does it for you)
-npm run packages     # after adding a plugin or changing any plugin's manifest: rewrites the registry in packages/ (the tests check it)
+npm run packages     # optional: says what the plugin registry (/packages/) will list, or fails on a plugin it can't list
 ```
 
 A new app in `demos/` is picked up by the tests automatically. Put checks for what it does in a new file, `tests/demos/<app>.mjs` (copy [`tests/demos/habits.mjs`](tests/demos/habits.mjs)), and checks for a platform feature in `tests/checks/<feature>.mjs`. The runner finds both, so you never edit [`tests/platform.test.mjs`](tests/platform.test.mjs) to add a check.
@@ -62,7 +61,7 @@ Many people and agents work on this repo, and on the sites built with it, at onc
 - **Keep shared lists merge-friendly.** When a change has to add to a list (a JS array or object, `<link>` lines in HTML, imports, a docs table), put one entry per line with a trailing comma, and sorted where order doesn't matter. Then two changes that each add an entry touch different lines.
 - **No running totals in prose.** Don't write counts that every change bumps, like the number of checks; the test run prints it.
 - **Keep old APIs working.** Add a new call beside the old one, so a demo only has to change when the change is about that demo. When a demo does need to change for the tests to pass, change it in the same PR.
-- **Generated files are regenerated, not hand-merged.** If `docs/api.md` conflicts, take either side and push: the [Regenerate API reference](.github/workflows/regenerate-reference.yml) workflow runs `npm run reference` on every PR branch and on main, and commits the file when it changed, so pull before pushing again. Running it yourself still works.
+- **Never commit generated files.** There is nothing to run before pushing. The plugin registry (`packages/index.json`, `packages/catalog.json`, `packages/index.html`) and the demo gallery's lists in `demos/index.html` are made by the build from the plugins' manifests and the apps' `<meta>` tags ([scripts/generated.mjs](scripts/generated.mjs)), so they aren't in the repo (the gallery page is committed with its lists empty). `docs/api.md` is in the repo so it reads on GitHub, but only main writes it: the [Regenerate API reference](.github/workflows/regenerate-reference.yml) workflow rewrites it after each merge. A pull request that changes any of these fails a check that says how to put them back. A new generated file follows the same pattern: add it to `scripts/generated.mjs`, not to the repo.
 - **Base each PR on `main`.** If a PR has to stack on another, merge the parent with a merge commit, not a squash, so the child still merges cleanly.
 
 ## Where to look
