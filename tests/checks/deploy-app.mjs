@@ -23,7 +23,7 @@ export default async function ({ check }) {
     const config = JSON.parse(readFileSync(join(out, "wrangler.jsonc"), "utf8").replace(/^\/\/.*$/gm, ""));
     check(
       "an app's Worker is the site's Worker under the app's name",
-      config.name === "habits" && config.assets.directory === "./site" && existsSync(resolve(out, config.main)) && config.durable_objects.bindings.length >= 2 && config.worker_loaders?.length === 1 && config.vars?.EXTENSIBLE_APP === "demos/habits",
+      config.name === "habits" && config.assets.directory === "./site" && existsSync(resolve(out, config.main)) && config.durable_objects.bindings.length >= 2 && config.worker_loaders?.length === 1 && config.vars?.EXTENSIBLE_APP === "demos/habits" && !("AUTH_PROVIDERS" in config.vars),
       JSON.stringify(config),
     );
     const deployed = readFileSync(join(site, "demos/habits/app.html"), "utf8");

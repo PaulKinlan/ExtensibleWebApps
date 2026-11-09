@@ -40,12 +40,11 @@ export default async function ({ check, context, URL, errors }) {
     await page.click(`${review} button:has-text("Accept")`);
     await page.waitForSelector(review, { state: "detached", timeout: 10000 }).catch(() => {});
   };
-  /** Adds a registry package from Customize, and turns it on. */
+  /** Adds a registry package from Customize, which turns it on once its review is accepted. */
   const addFromRegistry = async (id, name) => {
     await page.click("ui-panel .launch");
     await page.click(`[data-package="${id}"]`);
     await accept(`adds ${name}`);
-    await page.click(`[data-toggle="${id}"]`);
     await page.waitForSelector(`[data-toggle="${id}"]:has-text("Turn off")`, { timeout: 10000 });
     await page.click("ui-panel .close, ui-panel [data-action='panel']").catch(() => page.keyboard.press("Escape"));
   };

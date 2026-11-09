@@ -155,6 +155,8 @@ In the browser the kernel starts with the manifests only. Each listed service ha
 - the page runs one of its commands or sends one of its messages,
 - or something reads the whole kernel: the API reference, or an agent's tools (the `tools` module offers every service's methods, so it starts them all).
 
+One module starts with every kernel: `history`. Undo has to hold every write from the first, and a module that started later would list only the writes made after it did, so its manifest says `"starts": "always"`. It is still a file of its own, fetched as the kernel starts and not part of the kernel's file. A module earns `"always"` only when starting late would lose something, never to save a fetch.
+
 A module that starts after the tabs opened hears each tab's address again (`internal/url`), so the router knows the screen. A module that can't be fetched is an error in the trace, calls to its service fail saying so, and the next use tries again.
 
 The manifest is held to. A module that adds something its manifest doesn't list fails to start. A manifest that lists what its module never adds, a module with no manifest, a key the kernel doesn't know, and two modules listing the same name all fail the build or [`tests/checks/module-manifests.mjs`](../tests/checks/module-manifests.mjs). A site's settings and a module's promises are never quietly ignored.
@@ -172,7 +174,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `email` | [`std/email/module.ts`](../std/email/module.ts) | The `email` service: mail from a space's server to its members, with daily limits |
 | `folder` | [`std/folder/module.ts`](../std/folder/module.ts) | The `folder` service: a folder of files the person works on (a Hugo site), picked on their disk or private in the browser; plugins other than its keeper propose writes, which the person reviews |
 | `game` | [`std/game/module.ts`](../std/game/module.ts) | The `game` service: a game loop whose rules are plugins (`game:update`, `game:rules`, `game:frame` hooks each tick); see [Games and audio](guide/games-and-audio.md) |
-| `history` | [`std/history/module.ts`](../std/history/module.ts) | The `history` service: undo and redo across every plugin's writes |
+| `history` | [`std/history/module.ts`](../std/history/module.ts) | The `history` service: undo and redo across every plugin's writes. Starts with every kernel |
 | `launch` | [`std/launch/module.ts`](../std/launch/module.ts) | The `launch` service: files opened with an app installed from the browser (its manifest's `file_handlers`), handed to a plugin of that app once |
 | `llm` | [`std/llm/module.ts`](../std/llm/module.ts) | The `llm` service: the one interface to every model; the vendors are std plugins beside it ([`std/llm/`](../std/llm/)) |
 | `maker` | [`std/maker/module.ts`](../std/maker/module.ts) | The `maker` service: apps a person makes in the browser (by describing them to the app maker agent), kept on their device and served at /apps/<name>/, saved after a review, with each file's versions and checks |

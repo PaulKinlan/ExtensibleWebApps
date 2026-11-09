@@ -2,7 +2,7 @@
 // page in arrange mode (src/host/arrange.ts), the move is kept for them and
 // app (src/kernel/moves.ts) across a reload, and Put back undoes it. The
 // picker lists services apart from what shows on the page, and says a plugin
-// it just added is off with a button to turn it on. Make a plugin starts
+// it just added is on, with a button to turn it off again. Make a plugin starts
 // from a starter, puts it where the person points, and saves it after a
 // review. Layout lists the page's parts and the ui-* elements.
 export default async function ({ check, openTab, URL }) {
@@ -21,10 +21,11 @@ export default async function ({ check, openTab, URL }) {
     await page.click('[data-package="switchboard"]');
     await page.waitForSelector(`${review} >> text=Switchboard`, { timeout: 15000 }).catch(() => {});
     await page.click(`${review} >> text=Accept`, { timeout: 5000 }).catch(() => {});
-    const follow = await page.waitForSelector('[data-follow][data-value="switchboard"]', { timeout: 10000 }).then(() => true, () => false);
-    check("after adding a plugin, the picker says it is off and offers to turn it on", follow);
-    await page.click("[data-follow]");
-    await page.waitForSelector(`${view} [data-plugin]`, { timeout: 10000 });
+    // Accepting its review is the person saying they want it: it is turned on, and the panel says so with a way back.
+    const shown = await page.waitForSelector(`${view} [data-plugin]`, { timeout: 10000 }).then(() => true, () => false);
+    const said = await page.waitForSelector('ui-panel .status >> text=/Added Switchboard, and turned it on/', { timeout: 5000 }).then(() => true, () => false);
+    const back = !!(await page.$('[data-follow][data-value="switchboard"]'));
+    check("adding a plugin turns it on once its review is accepted, and the panel says so with a way to turn it off", shown && said && back, JSON.stringify({ shown, said, back }));
 
     // Move it above the trip's heading, in arrange mode.
     await page.click('[data-move^="switchboard/"]');

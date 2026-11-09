@@ -43,7 +43,15 @@
   "send_email": [{ "name": "EMAIL" }],
   // Plain settings, kept in Git so a deploy doesn't drop them. keep_vars leaves any other variable set in
   // the dashboard alone; secrets (OAuth client secrets) are never in this file.
+  //
+  // AUTH_PROVIDERS is who people can sign in with on extensibleweb.app besides a passkey (docs/server.md).
+  // GitHub's client id is public; its secret is the Worker secret GITHUB_CLIENT_SECRET, set in the
+  // dashboard or with `npx wrangler secret put GITHUB_CLIENT_SECRET`, and a deploy leaves secrets alone.
+  // Bluesky needs no id or secret. A Worker with this list and no secret doesn't start its accounts, on
+  // purpose, so: `wrangler dev` reads .dev.vars, which turns the list off on this machine, and a Worker
+  // for one app (scripts/deploy-app.mjs) leaves the list out, since its sign-in would need its own OAuth app.
   "vars": {
+    "AUTH_PROVIDERS": "[{\"id\":\"github\",\"clientId\":\"Ov23liBsAoR2YWkZcYfZ\"},{\"id\":\"bluesky\"}]",
     "EMAIL_FROM": "paul@extensibleweb.app"
   },
   "keep_vars": true,
