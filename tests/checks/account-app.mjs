@@ -3,6 +3,7 @@
 // account app's own plugins may use. A person's plugin that asks for it is
 // refused, in the account app as in any other. And a new agent key shows the
 // MCP address of the app the person names, not always the reading list's.
+import { watchErrors } from "../page-errors.mjs";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -23,7 +24,7 @@ export default async function ({ check, context, errors }) {
   const server = await serve({ port: 0, host: "localhost", spaces, site: "dist", kernel: ".build/server/space.js" });
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(`account-app: ${e.message}`));
+  watchErrors(page, errors, "account-app");
   try {
     const cdp = await own.newCDPSession(page);
     await cdp.send("WebAuthn.enable");

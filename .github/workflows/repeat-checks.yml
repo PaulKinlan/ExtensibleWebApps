@@ -1,0 +1,78 @@
+# Runs the platform's checks (npm test) several times at once on one commit,
+# to find a check that only fails now and then. Each run's failed checks are
+# listed on the run's page.
+#
+# Start it by hand (Actions, "Repeat platform checks", Run workflow) on any
+# branch. It also runs on a pull request that changes the test runner itself,
+# since that is when a new flake is most likely to arrive.
+
+name: Repeat platform checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      times:
+        description: How many runs, at most 10
+        default: "5"
+  pull_request:
+    paths:
+      - .github/workflows/repeat-checks.yml
+      - tests/page-errors.mjs
+      - tests/platform.test.mjs
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repeat-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      runs: ${{ steps.runs.outputs.runs }}
+    steps:
+      - id: runs
+        shell: bash
+        env:
+          TIMES: ${{ inputs.times || '5' }}
+        run: |
+          case "$TIMES" in ''|*[!0-9]*) TIMES=5 ;; esac
+          if [ "$TIMES" -lt 1 ]; then TIMES=1; fi
+          if [ "$TIMES" -gt 10 ]; then TIMES=10; fi
+          echo "runs=[$(seq -s, 1 "$TIMES")]" >> "$GITHUB_OUTPUT"
+
+  checks:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      # Every run finishes, so each failure is seen, not only the first.
+      fail-fast: false
+      matrix:
+        run: ${{ fromJSON(needs.plan.outputs.runs) }}
+    name: run ${{ matrix.run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The same pinned browser as platform-checks.yml: change it there and here together.
+      - name: Install
+        run: npm ci && npm i --no-save playwright@1.65.0 && npx playwright install --with-deps chromium
+
+      - name: npm test
+        shell: bash
+        run: npm test 2>&1 | tee test.log
+
+      - name: Say what failed
+        if: failure()
+        shell: bash
+        run: |
+          if grep -q '^FAIL  ' test.log 2>/dev/null; then
+            { echo '### Failed checks'; echo; echo '```'; grep -A3 '^FAIL  ' test.log | cut -c1-2000 | head -200; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi

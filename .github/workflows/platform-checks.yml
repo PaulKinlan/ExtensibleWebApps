@@ -42,7 +42,17 @@ jobs:
         run: npm ci && npm i --no-save playwright@1.65.0 && npx playwright install --with-deps chromium
 
       - name: npm test
-        run: npm test
+        shell: bash
+        run: npm test 2>&1 | tee test.log
+
+      # The failed checks, on the run's own page, so nobody has to search a long log for them.
+      - name: Say what failed
+        if: failure()
+        shell: bash
+        run: |
+          if grep -q '^FAIL  ' test.log 2>/dev/null; then
+            { echo '### Failed checks'; echo; echo '```'; grep -A3 '^FAIL  ' test.log | cut -c1-2000 | head -200; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Typecheck
         run: npm run typecheck

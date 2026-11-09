@@ -2,10 +2,12 @@
 // every app links a manifest, one made from its page when its folder has none;
 // an app's own manifest wins; an app made in the browser (/apps/<name>/) gets
 // one too; and each opens with the network gone once it has been opened.
+import { watchErrors } from "../page-errors.mjs";
+
 export default async function ({ check, context, URL, errors }) {
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(`installable: ${e.message}`));
+  watchErrors(page, errors, "installable");
 
   /** Opens an address, and again once the service worker controls the page, so it has kept what the page loads. */
   const open = async (address, drawn) => {

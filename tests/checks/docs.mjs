@@ -3,10 +3,12 @@
 // sent to GitHub, and ```mermaid blocks drawn as diagrams.
 //
 // It runs in a browser context of its own, so its pages stay out of the other checks.
+import { watchErrors } from "../page-errors.mjs";
+
 export default async function ({ check, context, URL, errors }) {
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "docs");
   const shown = 'ui-markdown[sets-title]';
   const contents = 'ui-markdown[compact]';
   const drawn = (selector, timeout = 10000) => page.waitForFunction((s) => document.querySelector(s)?.shadowRoot?.querySelector("article h1, article a, .missing"), selector, { timeout }).then(() => true, () => false);

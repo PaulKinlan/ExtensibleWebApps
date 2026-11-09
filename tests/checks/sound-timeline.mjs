@@ -3,11 +3,13 @@
 // the canvas and turned down, after it is in the mix; the mix plays, and is
 // kept as a clip the editor opens (a write the person allows on a card).
 // Then a clip goes to the app's folder as a WAV and opens again from there.
+import { watchErrors } from "../page-errors.mjs";
+
 export default async function ({ check, context, URL, errors }) {
   // A context of its own: an empty sound-clips collection, so the clip names are ours.
   const own = await context.browser().newContext({ viewport: { width: 1280, height: 1000 } });
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "sound-timeline");
   try {
     await page.goto(`${URL}demos/audio-editor/app.html`);
     const editor = '[data-key^="sound-editor"]';

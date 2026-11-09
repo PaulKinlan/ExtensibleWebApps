@@ -26,6 +26,43 @@ function ask(/** @type {Element} */ el, /** @type {string} */ type, /** @type {R
   return detail;
 }
 
+// The bound elements of one view show together. Each hears from the kernel on its own, so a table could
+// draw under a form that had nothing in it yet, and jump down the page when the form filled in. Until every
+// bound element in the view has drawn once (or half a second has passed), each keeps its room and stays unseen.
+/** @type {WeakMap<Element, { waiting: Set<BoundElement>, unseen: Set<BoundElement>, timer: ReturnType<typeof setTimeout> }>} */
+const together = new WeakMap();
+/** @type {WeakMap<BoundElement, Element>} the view each waiting element was held in */
+const heldIn = new WeakMap();
+const TOGETHER_MS = 500;
+
+function reveal(/** @type {Element} */ view) {
+  const group = together.get(view);
+  if (!group) return;
+  together.delete(view);
+  clearTimeout(group.timer);
+  for (const el of group.unseen) el.style.removeProperty("visibility");
+}
+
+function hold(/** @type {BoundElement} */ el) {
+  const view = el.closest("[data-key]");
+  if (!view) return;
+  let group = together.get(view);
+  if (!group) together.set(view, (group = { waiting: new Set(), unseen: new Set(), timer: setTimeout(() => reveal(view), TOGETHER_MS) }));
+  heldIn.set(el, view);
+  group.waiting.add(el);
+  group.unseen.add(el);
+  el.style.setProperty("visibility", "hidden");
+}
+
+/** `el` has drawn what the kernel sent, or has left the page: the view's others wait for it no longer. */
+function drew(/** @type {BoundElement} */ el) {
+  const view = heldIn.get(el);
+  const group = view && together.get(view);
+  heldIn.delete(el);
+  if (!view || !group || !group.waiting.delete(el)) return;
+  if (!group.waiting.size) reveal(view);
+}
+
 export class BoundElement extends HTMLElement {
   /** Set by the platform from the element's .html file before it is defined. */
   /** @type {HTMLTemplateElement | undefined} */
@@ -46,6 +83,9 @@ export class BoundElement extends HTMLElement {
   }
 
   disconnectedCallback() {
+    // Gone from the page (its view may be too): nothing waits on it, and it is seen if it comes back.
+    drew(this);
+    this.style.removeProperty("visibility");
     this.#unbind?.();
     this.#unbind = undefined;
     this.#bound = undefined;
@@ -67,9 +107,11 @@ export class BoundElement extends HTMLElement {
     this.show();
     this.reset();
     this.#bound = `${owner}/${collection}`;
+    hold(this);
     const listener = (/** @type {Bound} */ message) => {
       this.state = { ...this.state, ...message };
       this.draw();
+      drew(this);
     };
     this.#unbind = /** @type {(() => void) | undefined} */ (ask(this, "ui-bind", { collection, listener }).unbind);
   }

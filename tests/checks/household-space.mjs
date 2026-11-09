@@ -6,6 +6,7 @@
 // and when it's back the phones agree, with the version the space didn't
 // take kept as a draft that std/sync.js shows. The platform's own sync checks
 // are tests/checks/space-sync.mjs; this one is about an app made to share.
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -28,7 +29,7 @@ async function withAuthenticator(context, page) {
 async function signUp(browser, address, name, errors) {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
+  watchErrors(page, errors, `household-space ${name}`);
   await withAuthenticator(context, page);
   await page.goto(address);
   await page.fill('form[data-action="register"] input[name="name"]', name);
