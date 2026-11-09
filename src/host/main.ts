@@ -38,7 +38,7 @@ const params = new URLSearchParams(location.search);
 const useShared = typeof SharedWorker !== "undefined" && params.get("kernel") !== "dedicated";
 /**
  * A page at /s/<space>/… is in a space that people share: it gets a kernel of that space's own, with a
- * copy of its data kept apart from the person's own, which syncs with the space (src/kernel/sync-device.ts).
+ * copy of its data kept apart from the person's own, which syncs with the space (std/spaces/device.ts).
  */
 const space = /^\/s\/([a-z0-9][a-z0-9-]{0,62})\//.exec(location.pathname)?.[1];
 const kernelName = space ? `kernel:${space}` : "kernel";

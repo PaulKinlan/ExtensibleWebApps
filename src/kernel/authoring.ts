@@ -36,7 +36,7 @@ export interface Saving {
   reopen(app: string): Promise<void>;
   /** Clears a plugin's saved "off", so saving one the person had switched off runs it again. */
   turnOn(ids: string[]): Promise<void>;
-  /** In a kernel for a space: its plugins on this device (shared-plugins.ts), which the person's own can be shared with. */
+  /** In a kernel for a space: its plugins on this device (std/spaces/plugins.ts), which the person's own can be shared with. */
   shared(): Sharing | undefined;
   /** The site's address, where the plugin registry is (/packages/index.json). */
   origin: string;

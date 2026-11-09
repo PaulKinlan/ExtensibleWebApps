@@ -3,7 +3,7 @@
 // inside a space is answered with the same address outside it, and a page gets a
 // <base> inside the space, so its links and screens stay there. The page then starts
 // a kernel of the space's own, which keeps a copy of its data and syncs with it
-// (src/host/main.ts, src/kernel/sync-device.ts).
+// (src/host/main.ts, std/spaces/device.ts).
 //
 // /s/<space>/kernel is the space's kernel itself, on the server: it goes to the network.
 

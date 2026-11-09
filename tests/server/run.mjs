@@ -203,8 +203,8 @@ async function device(base, space, cookie, { claim } = {}) {
   };
 }
 
-/** Sync (src/kernel/sync.ts): the space orders changes from its members' devices, refuses stale ones, and lets a device catch up. */
-/** Space plugins (src/kernel/shared-plugins.ts): the space keeps what members share, tells every device, and never runs it. */
+/** Sync (std/spaces/hub.ts): the space orders changes from its members' devices, refuses stale ones, and lets a device catch up. */
+/** Space plugins (std/spaces/plugins.ts): the space keeps what members share, tells every device, and never runs it. */
 async function sharedPluginChecks(base, check, owner) {
   const cal = await person(base).account("Cal");
   await owner.call("/auth/spaces", { name: "club" });
@@ -363,7 +363,7 @@ async function syncChecks(base, check, owner, restart) {
   check("sync: someone who isn't a member can't connect to sync", !(await opens(url, "shared", outsider.cookie)));
 }
 
-/** Server plugins (src/kernel/server-apps.ts): an app's plugin that runs on the space's server, in an isolate. */
+/** Server plugins (std/spaces/server-apps.ts): an app's plugin that runs on the space's server, in an isolate. */
 async function serverPluginChecks(base, check, owner, restart, host) {
   await owner.call("/auth/spaces", { name: "guarded" });
   const phone = await device(base, "guarded", owner.cookie);

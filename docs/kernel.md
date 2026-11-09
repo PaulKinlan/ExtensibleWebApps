@@ -10,10 +10,10 @@ The same kernel code ([`src/kernel/kernel.ts`](../src/kernel/kernel.ts)) runs in
 | --- | --- | --- | --- | --- |
 | A shared worker, one for every tab of the site | `shared` | [`browser.ts`](../src/kernel/browser.ts) | The spawner tab ([`hosts.ts`](../src/kernel/hosts.ts)) | The origin private file system |
 | A dedicated worker, one per tab, where shared workers are missing (or with `?kernel=dedicated`) | `dedicated` | `browser.ts` | Its tab | The same |
-| A shared worker for one space, `kernel:<space>`, in every tab open at `/s/<space>/…` | `shared` | `browser.ts`, with `space` set | The spawner tab | `spaces/<space>/` on the device, kept in step with the space's server ([`sync-device.ts`](../src/kernel/sync-device.ts)) |
-| A space's kernel on a server | `server` | [`src/server/space.ts`](../src/server/space.ts) (Node), [`src/server/cloudflare/kernel.ts`](../src/server/cloudflare/kernel.ts) | Its own stand-in for a tab, which starts each plugin in an isolate ([`isolate-host.ts`](../src/kernel/isolate-host.ts)) | The space's folder on the server; it orders every change ([`sync.ts`](../src/kernel/sync.ts)) |
+| A shared worker for one space, `kernel:<space>`, in every tab open at `/s/<space>/…` | `shared` | `browser.ts`, with `space` set | The spawner tab | `spaces/<space>/` on the device, kept in step with the space's server ([`device.ts`](../std/spaces/device.ts)) |
+| A space's kernel on a server | `server` | [`src/server/space.ts`](../src/server/space.ts) (Node), [`src/server/cloudflare/kernel.ts`](../src/server/cloudflare/kernel.ts) | Its own stand-in for a tab, which starts each plugin in an isolate ([`isolate-host.ts`](../src/kernel/isolate-host.ts)) | The space's folder on the server; it orders every change ([`hub.ts`](../std/spaces/hub.ts)) |
 
-On a server, the kernel runs only the plugins whose manifest says `runs: "server"` or `"both"`, from the apps opened in the space ([`server-apps.ts`](../src/kernel/server-apps.ts)), answers their public routes, and wakes for their scheduled jobs. A browser kernel leaves out plugins that run only on the server. [Servers and spaces](server.md) has the details.
+On a server, the kernel runs only the plugins whose manifest says `runs: "server"` or `"both"`, from the apps opened in the space ([`server-apps.ts`](../std/spaces/server-apps.ts)), answers their public routes, and wakes for their scheduled jobs. A browser kernel leaves out plugins that run only on the server. [Servers and spaces](server.md) has the details.
 
 ## Plugins
 

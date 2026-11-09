@@ -1,7 +1,7 @@
 // Two people's devices sharing a space, in a real browser: each opens the
 // reading list at /s/<space>/demos/reading-list/, keeps a copy of the space's
 // data in its own kernel, and syncs with the Node host's space kernel
-// (src/kernel/sync-device.ts, src/kernel/sync.ts). Then the server goes away
+// (std/spaces/device.ts, std/spaces/hub.ts). Then the server goes away
 // for a while: both keep working, and when it's back, what each did reaches
 // the other, and a record both changed ends up the same, with the loser's
 // version kept as a draft. tests/server/run.mjs checks the space's side alone.
@@ -117,7 +117,7 @@ export default async function ({ check, context, errors }) {
 
     // Both change the same book while the server is away: when it's back they agree, and the version
     // the space didn't take is kept as a draft on the device that made it.
-    // Each page logs who made each change to a book it hears of (src/kernel/sync-device.ts keeps who made the record it puts back).
+    // Each page logs who made each change to a book it hears of (std/spaces/device.ts keeps who made the record it puts back).
     const watcher = `export const manifest = { id: 'book-watcher', name: 'Book watcher', permissions: ['data:read:library'] };
 export default (ctx) => { ctx.on('data:changed:library', (change) => ctx.log('book ' + (change.after?.title ?? change.id) + ' by ' + (change.by ?? 'nobody'))); };`;
     for (const page of [ann.page, ben.page]) await page.evaluate((source) => window.__host.command("install", source), watcher);

@@ -95,7 +95,7 @@ Each kind of code has its own place:
     - [`apps.ts`](src/kernel/apps.ts) runs the plugins an open app links, while a tab has it open
     - [`routes.ts`](src/kernel/routes.ts) answers requests for plugin routes, which the service worker passes on
     - [`hosts.ts`](src/kernel/hosts.ts) keeps the open tabs and picks the spawner, the tab that starts plugin workers
-    - [`services/`](src/kernel/services/) holds one file per service (`data`, `hooks`, `reflect`, `schedule`, `email`, `sync`…), found by name
+    - [`services/`](src/kernel/services/) holds one file per core service (`files`, `hooks`, `kernel`, `storage`), found by name; optional services are kernel modules in `std/<name>/module.ts`
     - [`agents/`](src/kernel/agents/) runs an agent's Markdown file as a plugin
   - **Data:**
     - [`store.ts`](src/kernel/store.ts) is the data folder
@@ -104,8 +104,7 @@ Each kind of code has its own place:
     - [`user-plugins.ts`](src/kernel/user-plugins.ts) keeps a person's own plugins for each app
     - [`secrets.ts`](src/kernel/secrets.ts) and [`net.ts`](src/kernel/net.ts) keep keys and put them into requests a plugin can't read
   - **Spaces and servers:**
-    - [`sync.ts`](src/kernel/sync.ts) is a space's side of sync, and [`sync-device.ts`](src/kernel/sync-device.ts) a device's
-    - [`server-apps.ts`](src/kernel/server-apps.ts) starts the server plugins of the apps opened in a space
+    - spaces are a kernel module, [`std/spaces/`](std/spaces/module.ts): [`hub.ts`](std/spaces/hub.ts) is a space's side of sync, [`device.ts`](std/spaces/device.ts) a device's, and [`server-apps.ts`](std/spaces/server-apps.ts) starts the server plugins of the apps opened in a space
     - [`isolate-host.ts`](src/kernel/isolate-host.ts) stands in for a tab on a server, starting each plugin in an isolate
   - **Keeping the person in charge:**
     - [`review.ts`](src/kernel/review.ts) shows a diff before a plugin changes data it doesn't own

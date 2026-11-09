@@ -7,15 +7,15 @@
 //   sync/head.json          the latest sequence number, and each record's version
 //   sync/log/<chunk>.json   the accepted changes, a hundred to a file, so a device catches up from any point
 
-import type { Dispatch } from "../shared/protocol";
-import type { Accepted, Outgoing, PluginRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, Verdict } from "../shared/sync";
-import { env } from "./env";
-import { hooks } from "./hooks";
-import type { Host, Hosts } from "./hosts";
-import type { Collections, StoredRecord } from "./records";
-import { validate } from "./schema";
-import type { Store } from "./store";
-import { record as trace } from "./trace";
+import type { Dispatch } from "../../src/shared/protocol";
+import type { Accepted, Outgoing, PluginRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, Verdict } from "../../src/shared/sync";
+import { env } from "../../src/kernel/env";
+import { hooks } from "../../src/kernel/hooks";
+import type { Host, Hosts } from "../../src/kernel/hosts";
+import type { Collections, StoredRecord } from "../../src/kernel/records";
+import { validate } from "../../src/kernel/schema";
+import type { Store } from "../../src/kernel/store";
+import { record as trace } from "../../src/kernel/trace";
 
 const HEAD = "sync/head.json";
 const CHUNK = 100;
@@ -194,9 +194,9 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
   }
 
   const api = {
-    /** Members' plugins (shared-plugins.ts): the space's kernel sets this. */
+    /** Members' plugins (plugins.ts): the space's kernel sets this. */
     plugins: undefined as ((host: Host, message: PluginRequest) => unknown) | undefined,
-    /** Reviews the space's server asks its members for (space-reviews.ts): the space's kernel sets this. */
+    /** Reviews the space's server asks its members for (reviews.ts): the space's kernel sets this. */
     reviews: undefined as ((host: Host, message: ReviewToSpace) => unknown) | undefined,
     /** Sends a message to every device that said hello. */
     tell(message: SyncToDevice) {

@@ -15,7 +15,7 @@ export const PLATFORM = new Set([
   "user",
   "user-plugins.json",
   "secrets.json",
-  // A space's sync log and a device's sync state (sync.ts, sync-device.ts), and a server's apps (server-apps.ts).
+  // A space's sync log and a device's sync state (std/spaces/hub.ts, device.ts), and a server's apps (std/spaces/server-apps.ts).
   "sync",
   "server",
   // Plugins' scheduled jobs (std/schedule/module.ts).

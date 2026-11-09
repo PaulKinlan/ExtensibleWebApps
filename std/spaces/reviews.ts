@@ -9,12 +9,12 @@
 // This is what lets an outside agent change a space's data over MCP
 // (std/outside/module.ts) with the same card a plugin's change gets.
 
-import type { SpaceReview, SyncToDevice } from "../shared/sync";
-import type { Host } from "./hosts";
-import type { Request, Reviews } from "./review";
-import type { syncDevice } from "./sync-device";
-import type { syncHub } from "./sync";
-import { record } from "./trace";
+import type { SpaceReview, SyncToDevice } from "../../src/shared/sync";
+import type { Host } from "../../src/kernel/hosts";
+import type { Request, Reviews } from "../../src/kernel/review";
+import type { syncDevice } from "./device";
+import type { syncHub } from "./hub";
+import { record } from "../../src/kernel/trace";
 
 const asked = (id: string, r: Request): SyncToDevice => ({
   t: "sync",
@@ -24,7 +24,7 @@ const asked = (id: string, r: Request): SyncToDevice => ({
   review: { plugin: r.plugin, name: r.name, place: r.place, target: r.target, before: r.before, after: r.after, reason: r.reason, ...(r.kind ? { kind: r.kind } : {}), ...(r.once ? { once: true } : {}) },
 });
 
-/** On a space's server: its reviews go to members' devices, and their answers come back. */
+/** On a space's server: its reviews go to members' devices, and their answers come back. Returns how to stop. */
 export function relayReviews(reviews: Reviews, sync: ReturnType<typeof syncHub>, send: (host: Host, message: SyncToDevice) => void) {
   reviews.relay = (id, request) => sync.tell(asked(id, request));
   reviews.relayDone = (id) => sync.tell({ t: "sync", op: "review", action: "done", id });
@@ -36,6 +36,10 @@ export function relayReviews(reviews: Reviews, sync: ReturnType<typeof syncHub>,
       record({ kind: "note", name: "review:answered", detail: `${message.outcome}, by ${host.member}` });
       reviews.answer(message.id, message.outcome, `review-by-${host.member}`);
     }
+  };
+  return () => {
+    reviews.relay = undefined;
+    reviews.relayDone = undefined;
   };
 }
 

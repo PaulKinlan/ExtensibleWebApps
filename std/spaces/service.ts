@@ -1,10 +1,10 @@
 // The `sync` service: how a page in a space (/s/<space>/…) stands with the
-// space, and the drafts it keeps. Found by name: this file is
-// src/kernel/services/sync.ts, so it is `ctx.call("sync", …)`.
+// space, and the drafts it keeps. The spaces module (module.ts) gives it,
+// from this file, as `ctx.call("sync", …)`.
 //
 // A change the space refused (someone changed the record first) is replaced
 // by the space's record, and the person's version is kept as a draft
-// (src/kernel/sync-device.ts). This service lists the drafts, and lets the
+// (device.ts). This service lists the drafts, and lets the
 // person keep theirs after all, which makes it a new change to the record,
 // or let it go. A plugin calls it for the person, from buttons (std/sync.js).
 // Keeping a draft writes a record without a review, so `sync` is a permission
@@ -12,32 +12,29 @@
 //
 // In a kernel that keeps no space, state() says so and there's nothing to do.
 
-import { env } from "../env";
-import { defineHook } from "../hooks";
-import type { Kernel } from "./index";
-import type { ServiceProvider } from "../remote";
-import { thisDevice } from "../sync-device";
+import { env } from "../../src/kernel/env";
+import type { ModuleKernel } from "../../src/kernel/modules";
+import type { ServiceProvider } from "../../src/kernel/remote";
+import { thisDevice } from "./device";
 
-defineHook("sync:changed", {
-  mode: "emit",
-  needs: "sync",
-  args: "{}",
-  description: "This page's sync with its space changed: it connected or lost the server, sent what it had, or kept or let go of a draft. Read sync.state().",
-});
-
-defineHook("members:changed", {
-  mode: "emit",
-  needs: "members",
-  args: "{}",
-  description: "The space told this page who its members are and which one this page is signed in as, or that changed. Read sync.members().",
-});
-
-export default ({ root, collections }: Kernel): ServiceProvider => {
+export default ({ root, collections, hook, cleanup }: ModuleKernel): ServiceProvider => {
+  hook("sync:changed", {
+    mode: "emit",
+    needs: "sync",
+    args: "{}",
+    description: "This page's sync with its space changed: it connected or lost the server, sent what it had, or kept or let go of a draft. Read sync.state().",
+  });
+  hook("members:changed", {
+    mode: "emit",
+    needs: "members",
+    args: "{}",
+    description: "The space told this page who its members are and which one this page is signed in as, or that changed. Read sync.members().",
+  });
   // Many changes at once (a whole push answered) are told once, just after the last.
   let soon: ReturnType<typeof setTimeout> | undefined;
   /** The members as last told, to tell members:changed only when they change. */
   let told = "";
-  thisDevice.changed.add(() => {
+  const heard = () => {
     clearTimeout(soon);
     soon = setTimeout(async () => {
       root.emit({}, "sync:changed", {});
@@ -48,6 +45,11 @@ export default ({ root, collections }: Kernel): ServiceProvider => {
         root.emit({}, "members:changed", {});
       }
     }, 50);
+  };
+  thisDevice.changed.add(heard);
+  cleanup(() => {
+    thisDevice.changed.delete(heard);
+    clearTimeout(soon);
   });
 
   async function state() {

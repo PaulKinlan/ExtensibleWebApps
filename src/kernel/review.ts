@@ -45,7 +45,7 @@ export interface Request {
   /** Asked every time: the card offers no "always allow", and no earlier grant answers it. */
   once?: boolean;
   /**
-   * Asked for a space's server (space-reviews.ts): the answer goes back there, which keeps any grant, so
+   * Asked for a space's server (std/spaces/reviews.ts): the answer goes back there, which keeps any grant, so
    * none is kept here and none here answers it.
    */
   elsewhere?: boolean;
@@ -73,7 +73,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     onGrants: undefined as ((plugin: string) => void) | undefined,
     /**
      * On a space's server, which has no screen: told of each request as it is asked, and when it is settled,
-     * to show it on members' devices instead (space-reviews.ts).
+     * to show it on members' devices instead (std/spaces/reviews.ts).
      */
     relay: undefined as ((id: string, request: Request) => void) | undefined,
     relayDone: undefined as ((id: string) => void) | undefined,

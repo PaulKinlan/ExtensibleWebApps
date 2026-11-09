@@ -11,11 +11,11 @@
 // Kept in the space's copy, beside its collections:
 //   sync/device.json   the last sequence number seen, each record's version, changes not yet sent, and drafts
 
-import type { Accepted, Outgoing, PluginRequest, SyncRecord, SyncToDevice, Verdict } from "../shared/sync";
-import type { Hosts } from "./hosts";
-import type { Change, Collections, StoredRecord } from "./records";
-import type { Store } from "./store";
-import { record as trace } from "./trace";
+import type { Accepted, Outgoing, PluginRequest, SyncRecord, SyncToDevice, Verdict } from "../../src/shared/sync";
+import type { Hosts } from "../../src/kernel/hosts";
+import type { Change, Collections, StoredRecord } from "../../src/kernel/records";
+import type { Store } from "../../src/kernel/store";
+import { record as trace } from "../../src/kernel/trace";
 
 const STATE = "sync/device.json";
 const MAX_PUSH = 100;
@@ -37,7 +37,7 @@ export interface Draft {
   at: string;
 }
 
-/** This kernel's sync, if it keeps a copy of a space, and who hears when what it has changes (services/sync.ts). */
+/** This kernel's sync, if it keeps a copy of a space, and who hears when what it has changes (service.ts). */
 export const thisDevice: { sync?: ReturnType<typeof syncDevice>; changed: Set<() => void> } = { changed: new Set() };
 const changed = () => {
   for (const heard of thisDevice.changed) heard();
@@ -78,7 +78,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   let retry = 1000;
   let stopped = false;
   const status = { connected: false };
-  /** Who hears the space's other messages (members' plugins, shared-plugins.ts), and when this device has caught up. */
+  /** Who hears the space's other messages (members' plugins, plugins.ts), and when this device has caught up. */
   const heard = new Set<(message: SyncToDevice) => void>();
   const caughtUpHeard = new Set<() => void>();
   /** The apps opened on this device in the space, which the space hears of each time it connects. */
@@ -94,7 +94,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   setTimeout(() => first(), 5000);
 
   // Changes made here: remember them, and send them when connected.
-  records.local.add((change: Change) => {
+  const local = (change: Change) => {
     void loaded.then(() => {
       const k = key(change.collection, change.id);
       const base = state.pending[k]?.base ?? state.versions[k] ?? 0;
@@ -102,7 +102,8 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       save();
       push();
     });
-  });
+  };
+  records.local.add(local);
 
   function push() {
     if (!socket || socket.readyState !== 1 || !caughtUp || inFlight) return;
@@ -330,6 +331,8 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     },
     stop() {
       stopped = true;
+      records.local.delete(local);
+      first();
       socket?.close();
       if (thisDevice.sync === api) thisDevice.sync = undefined;
     },

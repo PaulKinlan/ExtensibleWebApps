@@ -42,6 +42,7 @@ Some folders here also hold a `module.ts`: a **kernel module**, trusted code tha
 | [`router/module.ts`](router/module.ts) | The `router` service: a screen for every address in an app |
 | [`schedule/module.ts`](schedule/module.ts) | The `schedule` service behind `ctx.schedule`: plugins' jobs, kept so they outlive a restart |
 | [`share/module.ts`](share/module.ts) | The `share` service: the system's share sheet, and things shared to an installed app |
+| [`spaces/module.ts`](spaces/module.ts) | Spaces: an app opened at `/s/<space>/…` keeps a copy of the space's data and syncs it; the space's server orders every change, runs its apps' server plugins, keeps the plugins members share, and sends its review cards to members' devices. Also the `sync` service behind [`sync.js`](sync.js). A site without it keeps no spaces |
 | [`tools/module.ts`](tools/module.ts) | The `tools` service: the service methods a plugin may call, offered to a model as tools |
 | [`transfer/module.ts`](transfer/module.ts) | The `transfer` service behind [`import-export.js`](import-export.js): import and export of collections, as CSV or JSON |
 

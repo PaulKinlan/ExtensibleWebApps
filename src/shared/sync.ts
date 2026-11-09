@@ -37,7 +37,7 @@ export type Verdict =
   /** Refused for another reason; when the change named a record, the record as the space has it, so the device can put it back. */
   | { ok: false; error: string; version?: number; record?: SyncRecord | null };
 
-/** A file of a plugin a member shared with the space (src/kernel/shared-plugins.ts): text, or binary as base64. */
+/** A file of a plugin a member shared with the space (std/spaces/plugins.ts): text, or binary as base64. */
 export type SharedFile = { name: string; text: string } | { name: string; base64: string };
 
 /** A plugin the space keeps for an app, as the list names it: `hash` changes whenever any of its files does. */
@@ -57,7 +57,7 @@ export type PluginRequest =
   | { t: "sync"; op: "plugins"; id: number; action: "add"; app: string; files: SharedFile[] }
   | { t: "sync"; op: "plugins"; id: number; action: "remove"; app: string; plugin: string };
 
-/** A change a space's server asks its members to review (src/kernel/space-reviews.ts), as the card shows it. */
+/** A change a space's server asks its members to review (std/spaces/reviews.ts), as the card shows it. */
 export interface SpaceReview {
   plugin: string;
   name: string;

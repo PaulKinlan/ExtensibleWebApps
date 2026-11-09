@@ -21,7 +21,7 @@ export interface KernelEnv {
   onError(report: (name: string, detail: string) => void): void;
   /** The kernel's folder, when the host has one. Without it, the first tab to connect passes its folder handle. */
   folder?: Files;
-  /** In a browser, the space this kernel keeps a copy of and syncs with (sync-device.ts), if it isn't the person's own. */
+  /** In a browser, the space this kernel keeps a copy of and syncs with (std/spaces/device.ts), if it isn't the person's own. */
   space?: string;
   /** On a server, where the space's plugins run (src/seams/index.ts): without it, no plugin runs there. */
   isolates?: Isolates;
@@ -34,7 +34,7 @@ export interface KernelEnv {
   addresses?(): Promise<string[]>;
   /**
    * On a server, the space's members with the names they gave on their accounts, so a page can show who
-   * made a change (`by` is a member's id) by name (sync.ts sends them to each device).
+   * made a change (`by` is a member's id) by name (std/spaces/hub.ts sends them to each device).
    */
   members?(): Promise<{ id: string; name: string }[]>;
   /**

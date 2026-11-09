@@ -29,7 +29,7 @@
 //   streaming, which is all its tools need.
 //
 // On the server, a review is sent to the members' devices that have the space
-// open (src/kernel/space-reviews.ts), since the server has no screen. An MCP
+// open (std/spaces/reviews.ts), since the server has no screen. An MCP
 // call waits for the answer for up to REVIEW_WAIT_MS, then says it is still
 // waiting.
 //
