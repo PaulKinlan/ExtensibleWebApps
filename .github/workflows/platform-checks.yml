@@ -18,8 +18,10 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request stops the run on the older one. On main every merge's run finishes, so each
+# merge has a result of its own, and a merge that broke main is the one that shows red.
 concurrency:
-  group: platform-checks-${{ github.ref }}
+  group: platform-checks-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: true
 
 jobs:
