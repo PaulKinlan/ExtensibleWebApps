@@ -48,19 +48,12 @@
   // GitHub's client id is public; its secret is the Worker secret GITHUB_CLIENT_SECRET, set in the
   // dashboard or with `npx wrangler secret put GITHUB_CLIENT_SECRET`, and a deploy leaves secrets alone.
   // Bluesky needs no id or secret. A Worker with this list and no secret doesn't start its accounts, on
-  // purpose, so: a branch's preview has a list of its own (`previews`, below), `wrangler dev` reads .env, which turns the list off on this machine, and a Worker
+  // purpose, so: `wrangler dev` reads .env, which turns the list off on this machine, and a Worker
   // for one app (scripts/deploy-app.mjs) leaves the list out, since its sign-in would need its own OAuth app.
   "vars": {
     "AUTH_PROVIDERS": "[{\"id\":\"github\",\"clientId\":\"Ov23liBsAoR2YWkZcYfZ\"},{\"id\":\"bluesky\"}]",
     "EMAIL_FROM": "paul@extensibleweb.app"
   },
   "keep_vars": true,
-  // A branch's preview (`wrangler preview`) hasn't the Worker's secrets, so with GitHub in its list its
-  // accounts wouldn't start, and nothing under /auth/ would answer. Previews sign in with a passkey or
-  // Bluesky, which needs no secret.
-  "previews": {
-    "vars": {
-      "AUTH_PROVIDERS": "[{\"id\":\"bluesky\"}]"
-    }
-  }
+  "previews": {}
 }
