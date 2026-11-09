@@ -8,6 +8,7 @@
 
 import type { Opened } from "../../shared/protocol";
 import type { places } from "../places";
+import type { Arranger } from "../arrange";
 
 export interface BridgeHost {
   /** This tab's id, as the kernel knows it. */
@@ -24,6 +25,8 @@ export interface BridgeHost {
   running: () => Opened[];
   /** Starts inspect mode (inspect.ts), on a page that has it. */
   inspect?: () => void;
+  /** Arrange mode (arrange.ts), on a page that has Customize. */
+  arrange?: () => Promise<Arranger>;
 }
 
 type Methods = Record<string, (...args: any[]) => unknown>;

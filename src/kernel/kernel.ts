@@ -32,6 +32,7 @@ import { switches } from "./switches";
 import { isolateHost } from "./isolate-host";
 import { asPlugin } from "./agents/file";
 import { authoring } from "./authoring";
+import { asMove, moves as makeMoves } from "./moves";
 import { record, recent, setSink, startedAt, tap } from "./trace";
 import { checkApp, userPlugins } from "./user-plugins";
 import type { Opened } from "../shared/protocol";
@@ -111,6 +112,8 @@ services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
 const userAdded = userPlugins(store, where.origin, where.kind === "server" ? undefined : where.space);
+/** Where the person moved plugins' views in each app (moves.ts). */
+const moved = makeMoves(store);
 /**
  * Spaces (sync with a space, its server's apps, members' shared plugins and reviews) are the spaces module's
  * (std/spaces/module.ts): it answers `sync` messages and lends the core what a space adds, here.
@@ -144,6 +147,10 @@ services.authoring = authoring(remote, apps, {
     else await reviews.forget(plugin, grant);
     await reopen(app);
   },
+  move: async (app, plugin, place, to) => {
+    await moved.set(app, plugin, place, to);
+    await reopen(app);
+  },
 });
 
 /**
@@ -156,6 +163,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
   if (!hosts.list.includes(host)) return;
   let mine: { href: string; source: string }[] = [];
   let ids = new Set<string>();
+  let moves: Awaited<ReturnType<typeof moved.get>> = {};
   try {
     if (app !== undefined) {
       checkApp(app);
@@ -163,6 +171,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
       space()?.use?.(app);
       mine = await userAdded.links(app);
       ids = await userAdded.ids(app);
+      moves = await moved.get(app);
     }
   } catch {
     app = undefined;
@@ -198,7 +207,10 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
     // A plugin turned off (in the workbench, say) changes nothing in the page.
     const manifest = installed?.enabled ? installed.manifest : undefined;
     const unlocked = app ? reviews.grantsFor(o.id).flatMap((g) => (g.startsWith(`unlock:${app}#`) ? [g.split("#")[1]] : [])) : [];
-    return { ...o, name: installed?.manifest.name, places: manifest?.places, theme: manifest?.theme, unlocked, user: ids.has(o.id) };
+    // The places the person moved go where they put them (moves.ts).
+    const places = moved.apply(manifest?.places, moves[o.id]);
+    const shifted = Object.keys(moves[o.id] ?? {}).filter((name) => manifest?.places?.[name] && places?.[name] !== manifest.places[name]);
+    return { ...o, name: installed?.manifest.name, places, theme: manifest?.theme, unlocked, user: ids.has(o.id), ...(shifted.length && { moved: shifted }) };
   };
   await apps.open(host, linked, describe);
 }
@@ -471,6 +483,14 @@ async function customize(name: string, arg: unknown): Promise<unknown> {
         {},
       );
       return allowed(outcome);
+    }
+    case "place:move": {
+      // The person moved a view in the page's arrange mode (src/host/arrange.ts), or put it back with `to` null.
+      const to = a.to === null ? null : asMove(a.to);
+      if (to === undefined) return { ok: false, error: "A move is { at, put } with put before, after, prepend or append" };
+      await moved.set(app, id, String(a.place), to);
+      await reopen(app);
+      return { ok: true };
     }
     case "place:unlock":
     case "place:lock": {

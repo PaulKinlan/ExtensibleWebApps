@@ -10,6 +10,8 @@ export default async function ({ check, openTab, URL }) {
 
   // From Customize, as a person would.
   await page.click("ui-panel .launch");
+  // Inspect is in Customize's Layout tab, beside Arrange.
+  await page.click('[data-tab="layout"]');
   await page.click("[data-inspect-start]");
   await page.hover(target);
   const told = (await page.textContent("#inspect")) ?? "";

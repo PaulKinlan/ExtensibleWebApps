@@ -35,7 +35,7 @@ export function wholeView(el: Element): boolean {
 }
 
 /** Parts of the page that are the platform's own, never inspected. */
-const CHROME = "#inspect, slot[name=\"customize\"], #review, #notice";
+const CHROME = "#inspect, #arrange, slot[name=\"customize\"], #review, #notice";
 /** data-* attributes the platform sets, which say nothing the author chose. */
 const OURS = new Set(["data-plugin", "data-key", "data-place", "data-owner", "data-canvas"]);
 

@@ -103,6 +103,20 @@ Customize is itself a standard plugin, [`std/customize.js`](../../std/customize.
 
 User plugins run with the same rules as any other: their own worker, only what their manifest asks for, and a review card before they change data they don't own. No plugin can add another by writing files: `user/` belongs to the platform.
 
+## Moving a plugin's view
+
+A plugin says where its view goes, but the person has the last word there too. In **Customize**, each plugin's spot has a **Move** button, and the **Layout** tab has **Arrange the page**: every view that sits in a place of its own is outlined and named, the person picks one, points at any part of the page, and says **above it**, **below it**, or **inside it, at the top** or **bottom**. The arrows step a view past its neighbour, and among views at the same spot they change which comes first. **Put back** returns it to where its plugin said.
+
+A move is kept for that person and app, on their device ([`src/kernel/moves.ts`](../../src/kernel/moves.ts)), and used in place of the manifest's `at` and `put` whenever the app opens; the plugin's code doesn't change. It is only ever before, after, prepend or append, with an `order` among views at the same spot, so a move can't hide or replace anything, and the author's marks still hold at the new spot: a view moved into a locked area isn't drawn, and Customize says why. A place that hides, replaces, draws in every match (`each`) or changes another plugin's view (`in`) is its plugin's to say, so it has no Move button.
+
+A plugin or agent with `plugins:manage` can do the same with `authoring.move(plugin, place, { at, put, order? })`, or `null` to put it back.
+
+## Making one from Customize
+
+Customize's **Make a plugin** tab makes one of the person's own in three steps: pick a starter (a note, a list of links, a tally, or blank, from [`std/customize.templates/`](../../std/customize.templates/)), point at where it should show (the same pointing as Arrange, through `authoring.choose()`, which fills in the starter's `here` place), then name it, change the code if they like, and save it after the usual review. Other plugins can offer more ways to make one by drawing in the `customize.make` slot in that tab, such as an agent that writes a plugin from a description.
+
+The **Layout** tab is the map for it: the app's slots and which plugins draw in each, the parts of the page its author named (ids, `data-part`, landmarks) with whether each is open, for review or locked, and every `ui-*` element a view can use (`authoring.layout()`).
+
 ## What places aren't for
 
 - **Changing another plugin's view**, on its own. A place reaches the author's page unless it names a plugin with `in`, which needs `ui:transform:<plugin>`: see [Slots in views, and view transforms](slots-and-transforms.md).
