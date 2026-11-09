@@ -1,0 +1,59 @@
+# Asks a branch's preview on Cloudflare for /auth/providers, to show that
+# sign-in answers there. A preview has only the bindings wrangler.jsonc lists
+# under `previews`; with one missing, the front page still loads and /auth/
+# answers "error code: 1101" (tests/checks/preview-config.mjs checks the list
+# on every pull request; this asks the real thing).
+#
+# Run it from the Actions tab ("Preview sign-in" → Run workflow) on the branch
+# to check, or with
+#   gh workflow run preview-sign-in.yml --ref <branch>
+#
+# It needs no secrets: a preview's address is public. Cloudflare builds the
+# preview itself when the branch is pushed, so this waits a few minutes for it.
+
+name: Preview sign-in
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "The branch whose preview to ask. Empty: the branch this runs on"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  ask:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Ask the preview for its sign-in providers
+        env:
+          BRANCH: ${{ inputs.branch || github.ref_name }}
+        run: |
+          # A preview is named after its branch, in lower case, with anything but letters and digits as "-".
+          name=$(printf '%s' "$BRANCH" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g')
+          url="https://$name.extensibleweb.dev"
+          echo "Asking $url"
+          for attempt in $(seq 1 30); do
+            front=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' "$url/" || true)
+            status=$(curl -sS -m 20 -o providers.json -w '%{http_code}' "$url/auth/providers" || true)
+            if [ "$front" = "200" ] && [ "$status" = "200" ] && node -e 'const p = JSON.parse(require("fs").readFileSync("providers.json", "utf8")); if (!Array.isArray(p.providers)) process.exit(1)'; then
+              {
+                echo "### Sign-in answers on \`$BRANCH\`'s preview"
+                echo "$url/auth/providers:"
+                echo '```json'
+                cat providers.json
+                echo
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+              cat providers.json
+              exit 0
+            fi
+            echo "try $attempt: / answered $front, /auth/providers answered $status: $(head -c 200 providers.json 2>/dev/null || true)"
+            sleep 10
+          done
+          echo "::error::$url/auth/providers never answered with a list of providers (last: $status). 'error code: 1101' means the preview's Worker threw: a binding it reads is missing under previews in wrangler.jsonc."
+          exit 1
