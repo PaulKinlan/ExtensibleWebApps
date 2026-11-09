@@ -13,7 +13,6 @@
 
 import { folder as appFolder, followLinks, screen } from "./router";
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
-import { customize } from "./customize";
 import { inspect } from "./inspect";
 import { themeCss } from "../shared/theme";
 import { places as makePlaces } from "./places";
@@ -200,10 +199,22 @@ function listen(entry: Entry) {
 
 // ---- The app ----
 
-/** The plugins this page's app links, and its agents (Markdown files the kernel runs as plugins); the kernel answers with their ids. */
-const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"], link[rel~="agent"]')].map((link) => link.href);
 /** The platform's own page, with the trace. Every other page is an app, even one that links no plugins. */
 const isWorkbench = !!document.getElementById("devtools");
+/**
+ * Every app gets Customize (std/customize.js), where the person adds their own plugins, as if it linked it. An
+ * author can leave it out with <meta name="customize" content="off">; the person still has the last word:
+ * ?customize brings it back.
+ */
+const withCustomize = !isWorkbench && (document.querySelector('meta[name="customize"]')?.getAttribute("content")?.trim().toLowerCase() !== "off" || params.has("customize"));
+/** The plugins this page's app links, and its agents (Markdown files the kernel runs as plugins); the kernel answers with their ids. */
+const links = [...document.querySelectorAll<HTMLLinkElement>('link[rel~="plugin"], link[rel~="agent"]')].map((link) => link.href);
+const CUSTOMIZE = new URL("/std/customize.js", location.origin).href;
+if (withCustomize && !links.includes(CUSTOMIZE)) {
+  links.push(CUSTOMIZE);
+  // Its button goes in a slot of its own, which the platform pins to a corner (styles.css).
+  if (!document.querySelector('slot[name="customize"]')) document.body.append(Object.assign(document.createElement("slot"), { name: "customize" }));
+}
 /** The app's folder, which names where the person's own plugins for it are kept: `demos/trip` for /demos/trip/app.html, and for its screens, /demos/trip/day/2. */
 const app = appFolder.replace(/^\/s\/[^/]+\//, "/").replace(/^\/+|\/+$/g, "") || "root";
 /** The page's own slots hold the room they took last time while the app loads (reserve.ts). */
@@ -273,7 +284,6 @@ function opened(plugins: Opened[]) {
     held.delete(id);
     render(message.slot, message.key, message.owner, message.order, message.view);
   }
-  panel?.refresh();
 }
 
 /** The design tokens the app's plugins set (ui:theme), in the plugins layer: below the page's own styles. */
@@ -467,9 +477,15 @@ function reviewDialog(): HTMLDialogElement {
 /** Opens the review dialog when it holds a card, and closes it when the last one is answered. */
 function syncReview(dialog: HTMLDialogElement, count: number) {
   if (count && !dialog.open) {
+    // Also a popover, so it is in the top layer: above anything else open over the page, such as Customize's panel.
+    if (!dialog.popover && "showPopover" in dialog) dialog.popover = "manual";
     dialog.show();
+    if (dialog.popover && !dialog.matches(":popover-open")) dialog.showPopover();
     dialog.querySelector<HTMLElement>("button")?.focus();
-  } else if (!count && dialog.open) dialog.close();
+  } else if (!count && dialog.open) {
+    if (dialog.popover && dialog.matches(":popover-open")) dialog.hidePopover();
+    dialog.close();
+  }
 }
 
 /** After a container's entries change: show its fallback when empty, and tell its place. */
@@ -644,6 +660,8 @@ function spawn(plugin: string, source: string, network: boolean) {
 const bridge = bridges({
   workers,
   places: pagePlaces,
+  running: () => running,
+  inspect: withCustomize ? () => inspector?.start() : undefined,
   declared: (plugin, name) => {
     slotWatchers.set(name, (slotWatchers.get(name) ?? new Set()).add(plugin));
     return slotData(name);
@@ -742,13 +760,8 @@ const folder = await navigator.storage
 send({ t: "hello", tab, folder });
 introduced = true;
 for (const message of unsent.splice(0)) send(message);
-/**
- * Every app gets the Customize button, where the person adds their own plugins. An author can leave it
- * out with <meta name="customize" content="off">; the person still has the last word: ?customize brings it back.
- */
-const withCustomize = !isWorkbench && (document.querySelector('meta[name="customize"]')?.getAttribute("content")?.trim().toLowerCase() !== "off" || params.has("customize"));
+// Inspect mode comes with Customize, which starts it (bridges/customize.ts).
 const inspector = withCustomize ? inspect({ app, command, places: () => pagePlaces.status() }) : undefined;
-const panel = !withCustomize ? undefined : customize({ app, command, running: () => running, places: () => pagePlaces.status(), inspect: () => inspector?.start() });
 // The workbench is an app too: it links the demo plugins in plugins/, which no other page runs.
 await openApp();
 sendUrl();

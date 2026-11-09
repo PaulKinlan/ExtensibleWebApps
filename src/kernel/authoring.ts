@@ -8,13 +8,20 @@
 // (user-plugins.ts), and turns it on. The person sees the code and what it
 // asks for first, on a review card, every time; a plugin can't save one
 // without them.
+//
+// It is also everything the Customize panel does with the person's own
+// plugins, so a plugin can do it too: add one from this site (the registry
+// at /packages/), turn one on or off, remove it, and in a space, share it
+// with the other members or stop sharing it. Each change but on and off
+// waits for the person to accept a review card that shows the code; on and
+// off need plugins:manage, as switching the app's own plugins does.
 
 import { readManifest } from "./manifest";
 import type { Dispatch } from "../shared/protocol";
 import type { RemotePlugins, ServiceProvider } from "./remote";
 import { allowed, type Outcome, type Request } from "./review";
 import type { Store } from "./store";
-import type { UserPlugins } from "./user-plugins";
+import type { UserPlugin, UserPlugins } from "./user-plugins";
 
 type Apps = { linkedBy(tab: string): string[] | undefined; tabsWith?(id: string): string[] };
 
@@ -29,6 +36,34 @@ export interface Saving {
   reopen(app: string): Promise<void>;
   /** Clears a plugin's saved "off", so saving one the person had switched off runs it again. */
   turnOn(ids: string[]): Promise<void>;
+  /** In a kernel for a space: its plugins on this device (shared-plugins.ts), which the person's own can be shared with. */
+  shared(): Sharing | undefined;
+  /** The site's address, where the plugin registry is (/packages/index.json). */
+  origin: string;
+  /** The services this kernel has now, from a module or a running plugin: a registry package that needs one adds no provider for it. */
+  services(): string[];
+  /** Asks the page in a tab (src/host/bridges/customize.ts). */
+  page(tab: string, method: string, args: unknown[], dispatch: Dispatch): Promise<unknown>;
+  /** Lets a plugin into a place the app's author locked, or locks it again, and opens the app again so it shows. */
+  unlock(app: string, plugin: string, place: string, on: boolean): Promise<void>;
+}
+
+/** A plugin in the registry's index (packages/index.json, built by scripts/packages.mjs). */
+interface Package {
+  id: string;
+  name: string;
+  description: string;
+  href: string;
+  permissions: string[];
+  provides: string[];
+  services: string[];
+}
+
+/** Sharing the person's own plugins with a space. */
+export interface Sharing {
+  mark<T extends { id?: string }>(app: string, plugins: T[]): Promise<(T & { shared: boolean })[]>;
+  share(app: string, id: string): Promise<boolean>;
+  unshare(app: string, id: string): Promise<boolean>;
 }
 
 /** The longest file `file()` reads, and the longest draft `check()` takes. */
@@ -81,7 +116,7 @@ export function explain(permission: string): string {
   if (kind === "hook" && verb === "intercept") return `Change or stop ${what} before it happens.`;
   if (permission === "plugins:read") return "See which plugins this page has, which are on, and their code.";
   if (permission === "plugins:manage") return "Turn this page's plugins on and off.";
-  if (permission === "plugins:author") return "Read the code of this page's plugins, and save plugins you write. Each save is shown to you first.";
+  if (permission === "plugins:author") return "Read the code of this page's plugins, and add, change, remove or share your own. Each change is shown to you first.";
   if (kind === "provide" && verb) return `Answer every call this page's plugins make to the ${[verb, what].filter(Boolean).join(":")} service.`;
   if (permission === "debug:read") return "See everything every plugin does, as the debug console does.";
   return `Use ${permission}.`;
@@ -118,7 +153,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
   const words = (permissions: string[]) => (permissions.length ? permissions.map(explain).join(" ") : "Nothing: it can't draw, read or change anything.");
 
   return {
-    description: "Helps a plugin editor: reads the code of the plugins in the caller's app and files next to the caller, checks a draft's manifest, and saves the person's own plugins, after they review each one. The caller must be tab-scoped.",
+    description: "The person's own plugins for an app, for a plugin editor, a Customize panel or an agent: reads the code of the plugins in the caller's app and files next to the caller, checks a draft's manifest, and adds, saves, turns on and off, removes and shares the person's own plugins. Every change but on and off waits for them to accept a review. The caller must be tab-scoped, or linked by an open app.",
     methods: {
       source: {
         args: "(id)",
@@ -135,10 +170,81 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       mine: {
         args: "()",
-        returns: "[{ id, name, on, error? }]",
+        returns: "[{ id, name, description, permissions, places, on, shared, error? }]",
         needs: "plugins:author",
-        description: "The person's own plugins for the caller's app.",
+        description: "The person's own plugins for the caller's app. In a space, shared says which are the space's plugins.",
         params: [],
+      },
+      add: {
+        args: "(url)",
+        returns: "{ ok: true, id } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn().",
+        params: [{ name: "url", schema: { type: "string", description: "The plugin's .js file on this site: /packages/clock/clock.js" } }],
+      },
+      turn: {
+        args: "(id, on)",
+        returns: "{ ok: true } or { ok: false, error }",
+        needs: "plugins:manage",
+        description: "Turns one of the person's own plugins for the caller's app on or off. The app's own plugins are switched with plugins.setEnabled.",
+        params: [
+          { name: "id", schema: { type: "string", description: "The id of one of the person's own plugins" } },
+          { name: "on", schema: { type: "boolean", description: "true to turn it on, false to turn it off" } },
+        ],
+      },
+      page: {
+        args: "()",
+        returns: "{ space, places: [{ plugin, name, at, put, each, state, matches, fragile }], running: [{ id, name, user, unlocked }], samples: [{ href, title }], inspect }",
+        needs: "plugins:read",
+        description: "The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample), and whether it has inspect mode.",
+        params: [],
+      },
+      packages: {
+        args: "()",
+        returns: "[{ id, name, description, href, permissions, added, adds: [href] }]",
+        needs: "plugins:read",
+        description: "The site's plugin registry (/packages/): each package, whether the person has added it to this app, and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.",
+        params: [],
+      },
+      pick: {
+        args: "()",
+        returns: "{ ok: true, ids } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Opens the file chooser, right after the person clicks, and adds the plugin they pick (with any files it lists) to their own for the caller's app, once they accept a review of its code. It is added off.",
+        params: [],
+      },
+      unlock: {
+        args: "(plugin, place)",
+        returns: "{ ok: true } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Lets a plugin into a part of the page the app's author locked, once the person accepts a review that says so.",
+      },
+      lock: {
+        args: "(plugin, place)",
+        returns: "{ ok: true }",
+        needs: "plugins:author",
+        description: "Locks a part of the page again, for a plugin that was let into it.",
+      },
+      inspect: {
+        args: "()",
+        returns: "true",
+        needs: "plugins:read",
+        description: "Starts the page's inspect mode, where the person points at a part to see which plugin drew it.",
+        params: [],
+      },
+      share: {
+        args: "(id)",
+        returns: "{ ok: true } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "In a space: shares one of the person's own plugins with the other members, once they accept a review that shows its code. It reaches the others' devices turned off.",
+        params: [{ name: "id", schema: { type: "string", description: "The id of one of the person's own plugins" } }],
+      },
+      unshare: {
+        args: "(id)",
+        returns: "{ ok: true } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "In a space: stops sharing a space plugin, once the person accepts a review. It goes from the other members' devices and stays here as theirs.",
+        params: [{ name: "id", schema: { type: "string", description: "The id of a plugin shared with the space" } }],
       },
       save: {
         args: "(code)",
@@ -169,7 +275,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
     },
     // Reading code and checking a manifest only look, so a viewer such as std/view-source.js needs no more than plugins:read (plugins:author includes it).
-    capability: (method) => (method === "source" || method === "check" ? "plugins:read" : "plugins:author"),
+    capability: (method) => (["source", "check", "page", "packages", "inspect"].includes(method) ? "plugins:read" : method === "turn" ? "plugins:manage" : "plugins:author"),
     call: async (instance, method, args, dispatch) => {
       const tab = tabOf(instance);
       if (method === "source") {
@@ -225,9 +331,81 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       if (method === "mine") {
         const app = saving.appIn(tab);
         if (!app) return [];
-        return (await saving.userAdded.list(app)).map((p) => ({ id: p.id ?? p.file, name: p.name ?? p.file, on: p.on, ...(p.error ? { error: p.error } : {}) }));
+        const list = await saving.userAdded.list(app);
+        const marked: (UserPlugin & { shared?: boolean })[] = (await saving.shared()?.mark(app, list)) ?? list;
+        return marked.map((p) => ({
+          id: p.id ?? p.file,
+          name: p.name ?? p.file,
+          description: p.description ?? "",
+          permissions: p.permissions ?? [],
+          places: Object.values(p.places ?? {}).map((at) => `${at.put}${at.each ? " each" : ""} ${at.at}`),
+          on: p.on,
+          shared: !!p.shared,
+          ...(p.error ? { error: p.error } : {}),
+        }));
       }
-      if (method === "save" || method === "remove") {
+      if (method === "page") {
+        return { space: !!saving.shared(), ...((await saving.page(tab, "state", [], dispatch)) as object) };
+      }
+      if (method === "inspect") return saving.page(tab, "inspect", [], dispatch);
+      if (method === "packages") {
+        const app = saving.appIn(tab);
+        let packages: Package[] = [];
+        try {
+          const response = await fetch(new URL("/packages/index.json", saving.origin));
+          if (response.ok) packages = ((await response.json()) as { packages?: Package[] }).packages ?? [];
+        } catch {
+          // No registry on this site.
+        }
+        const have = new Set(app ? (await saving.userAdded.list(app)).map((p) => p.id) : []);
+        const running = new Set(saving.services());
+        const providerOf = (service: string) => (running.has(service) ? undefined : packages.find((p) => p.provides.includes(service)));
+        /** The package and, first, every package that provides a service it needs and isn't here yet. */
+        const withNeeds = (pkg: Package, seen = new Set<string>()): Package[] => {
+          if (seen.has(pkg.id)) return [];
+          seen.add(pkg.id);
+          const needs = pkg.services.map(providerOf).filter((p): p is Package => !!p && !have.has(p.id));
+          return [...needs.flatMap((p) => withNeeds(p, seen)), pkg];
+        };
+        return packages.map((pkg) => ({
+          id: pkg.id,
+          name: pkg.name,
+          description: pkg.description,
+          href: pkg.href,
+          permissions: pkg.permissions,
+          added: have.has(pkg.id),
+          adds: withNeeds(pkg).filter((p) => !have.has(p.id)).map((p) => ({ id: p.id, name: p.name, href: p.href })),
+        }));
+      }
+      if (method === "unlock" || method === "lock") {
+        const [plugin, place] = args;
+        const app = appOf(tab);
+        const at = typeof plugin === "string" && typeof place === "string" ? remote.installed.get(plugin)?.manifest.places?.[place] : undefined;
+        if (!at || !(apps.linkedBy(tab) ?? []).concat([...(await saving.userAdded.ids(app))]).includes(plugin as string)) return { ok: false, error: `${String(plugin)} has no place ${String(place)} in this app` };
+        if (method === "unlock") {
+          const caller = instance.split("@")[0];
+          const name = remote.installed.get(plugin as string)?.manifest.name ?? plugin;
+          const yes = allowed(
+            await saving.ask(
+              { plugin: caller, instance, name: remote.installed.get(caller)?.manifest.name ?? caller, place: `author:${app}`, target: `the page: lets ${name} ${at.put} ${at.at}`, before: "", after: "", reason: "The app's author locked this part of the page, so plugins can't change it.", once: true },
+              dispatch,
+            ),
+          );
+          if (!yes) return { ok: false, error: "Still locked" };
+        }
+        await saving.unlock(app, plugin as string, place as string, method === "unlock");
+        return { ok: true };
+      }
+      if (method === "turn") {
+        const [id, on] = args;
+        const app = appOf(tab);
+        if (typeof on !== "boolean") return { ok: false, error: "turn(id, on) takes true or false" };
+        if (typeof id !== "string" || !(await saving.userAdded.list(app)).some((p) => p.id === id)) return { ok: false, error: `${String(id)} isn't one of your plugins here` };
+        await (on ? saving.userAdded.on(app, id) : saving.userAdded.off(app, id));
+        await saving.reopen(app);
+        return { ok: true };
+      }
+      if (["save", "remove", "add", "pick", "share", "unshare"].includes(method)) {
         const app = appOf(tab);
         const caller = instance.split("@")[0];
         const mine = await saving.userAdded.list(app);
@@ -249,6 +427,83 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
             asking.delete(key);
           }
         };
+
+        if (method === "add") {
+          const [url] = args;
+          if (typeof url !== "string") return { ok: false, error: "add(url) takes the plugin's .js file on this site" };
+          const fetched = await saving.userAdded.fetch(url);
+          if (!fetched.ok) return fetched;
+          const wrongAdd = await saving.userAdded.problem(app, fetched.files);
+          if (wrongAdd) return { ok: false, error: wrongAdd };
+          let m;
+          try {
+            m = readManifest(fetched.source);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : String(error) };
+          }
+          const taken = takenCollection(m);
+          if (taken) return { ok: false, error: taken };
+          if (!mine.some((p) => p.id === m.id) && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page` };
+          const manifest = m;
+          return once(manifest.id, async () => {
+            const before = await current(manifest.id);
+            if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", fetched.source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
+            if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
+            // The files the person saw, not the site's files read again.
+            const added = await saving.userAdded.add(app, fetched.files);
+            if (!added.ok) return added;
+            // Adding a plugin again turns it off: stop the copy that was running.
+            await saving.reopen(app);
+            return { ok: true, id: manifest.id };
+          });
+        }
+
+        if (method === "pick") {
+          const files = (await saving.page(tab, "pick", [], dispatch)) as { name: string; data: string | Blob }[] | null;
+          if (!files?.length) return { ok: false, error: "No file chosen" };
+          const main = files.filter((f) => f.name.endsWith(".js") && typeof f.data === "string");
+          if (main.length !== 1) return { ok: false, error: "Pick one plugin's .js file, and any files it lists" };
+          const wrongPick = await saving.userAdded.problem(app, files);
+          if (wrongPick) return { ok: false, error: wrongPick };
+          const source = main[0].data as string;
+          let m;
+          try {
+            m = readManifest(source);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : String(error) };
+          }
+          const taken = takenCollection(m);
+          if (taken) return { ok: false, error: taken };
+          if (!mine.some((p) => p.id === m.id) && remote.installed.has(m.id)) return { ok: false, error: `${m.id} is already a plugin on this page` };
+          const manifest = m;
+          return once(manifest.id, async () => {
+            const before = await current(manifest.id);
+            if (!(await ask(`your plugins: ${before === undefined ? "adds" : "changes"} ${manifest.name}`, before ?? "", source, `It is added off. Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
+            if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
+            const added = await saving.userAdded.add(app, files);
+            if (!added.ok) return added;
+            await saving.reopen(app);
+            return { ok: true, ids: added.ids };
+          });
+        }
+
+        if (method === "share" || method === "unshare") {
+          const [id] = args;
+          const sharing = saving.shared();
+          if (!sharing) return { ok: false, error: "Only a plugin in a space can be shared with it" };
+          const own = mine.find((p) => p.id === id);
+          if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
+          return once(id, async () => {
+            const code = (await current(id)) ?? "";
+            const toShare = method === "share";
+            const target = `the space: ${toShare ? "shares" : "stops sharing"} ${own.name ?? id}`;
+            const reason = toShare ? "Everyone in this space gets it on their devices, turned off, and each decides whether to turn it on." : "It goes from everyone else's devices, and stays here as yours.";
+            if (!(await ask(target, toShare ? "" : code, toShare ? code : "", reason))) return { ok: false, error: toShare ? "Not shared" : "Still shared" };
+            if ((await current(id)) !== code) return { ok: false, error: changed };
+            const done = await (toShare ? sharing.share(app, id) : sharing.unshare(app, id));
+            return done ? { ok: true } : { ok: false, error: toShare ? `${id} couldn't be shared` : `${id} isn't shared with the space` };
+          });
+        }
 
         if (method === "remove") {
           const [id] = args;

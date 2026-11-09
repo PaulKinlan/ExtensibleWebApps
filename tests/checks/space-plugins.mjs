@@ -69,11 +69,12 @@ export default async function ({ check, context, errors }) {
     check("space plugins: a plugin a member adds in a space is their own until they share it", added?.ok && !leaked.ok && note(await list(ann.page))?.shared === false, JSON.stringify({ added, ben: leaked.seen }));
 
     // She shares it from Customize.
-    await ann.page.click(".customize-button");
+    await ann.page.click("ui-panel .launch");
     const share = ann.page.locator('button[data-share="shelf-note"]');
     await share.waitFor({ timeout: 8000 });
-    ann.page.once("dialog", (d) => d.accept());
     await share.click();
+    // Customize is a plugin, so sharing waits for her to accept a review card.
+    await ann.page.click('[data-key^="review:"] >> text=Accept', { timeout: 8000 }).catch(() => {});
     await ann.page.locator('button[data-share="shelf-note"]', { hasText: "Stop sharing" }).waitFor({ timeout: 8000 }).catch(() => {});
     const arrived = await until(ben.page, (l) => !!note(l));
     check(

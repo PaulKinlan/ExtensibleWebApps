@@ -6,6 +6,7 @@
 // Each file's default export takes what it needs from the host and returns its
 // methods.
 
+import type { Opened } from "../../shared/protocol";
 import type { places } from "../places";
 
 export interface BridgeHost {
@@ -15,6 +16,10 @@ export interface BridgeHost {
   places: ReturnType<typeof places>;
   /** The slots plugins declare in their views: each one's data, for the plugin asking, which then hears when they change. */
   declared: (plugin: string, name: string) => { data: Record<string, string> }[];
+  /** The plugins running for this tab's app, as the kernel last said. */
+  running: () => Opened[];
+  /** Starts inspect mode (inspect.ts), on a page that has it. */
+  inspect?: () => void;
 }
 
 type Methods = Record<string, (...args: any[]) => unknown>;
