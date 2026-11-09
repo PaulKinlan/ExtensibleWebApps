@@ -3,7 +3,9 @@
 The [Markdown editor](../../demos/markdown-editor/) is a whole writing app
 made of small plugins: the editor from
 [MarkdownEdiitor](https://github.com/PaulKinlan/MarkdownEdiitor), ported to
-this platform. This page takes it apart. It covers:
+this platform. Try it [here](https://extensibleweb.app/demos/markdown-editor/app.html), or on a
+[Worker of its own](https://extensible-markdown.kinlan-test.workers.dev/)
+([Deploying one app](deploying-an-app.md)). This page takes it apart. It covers:
 
 - what each file does;
 - how the plugins hear the post and change it;
