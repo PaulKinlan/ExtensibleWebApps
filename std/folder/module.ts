@@ -45,6 +45,10 @@ const NO_APP = "~workbench";
 /** An app's private folder's name: its folder, with ~ for / (an app folder's parts are letters, digits, _ and -, so no two apps share one). */
 const privateName = (app: string) => app.replace(/\//g, "~");
 const MAX_FILE = 5_000_000;
+/** A file that isn't text (writeData, readData) may be larger: five minutes of stereo sound as a WAV is about 27 MB. */
+const MAX_DATA = 32_000_000;
+/** The type a data: URL from readData says, by the file's extension. */
+const TYPES: Record<string, string> = { wav: "audio/wav", mp3: "audio/mpeg", ogg: "audio/ogg", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", pdf: "application/pdf" };
 const MAX_LISTED = 5000;
 /** Folders a listing never goes into: version control, dependencies and builds, which a site has plenty of. */
 const SKIPPED = new Set(["node_modules", "public", "resources", "dist"]);
@@ -259,11 +263,28 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return (tab && kernel.appIn(tab)) || NO_APP;
   };
 
-  /** A file's bytes from a data: URL (base64), at most MAX_FILE of them. */
+  /** A file's bytes as a base64 data: URL, or null if there is no such file. */
+  const readData = async (app: string, path: string): Promise<string | null> => {
+    try {
+      const { at, name } = await locate(app, path, false);
+      const file = await (await at.getFileHandle(name)).getFile();
+      if (file.size > MAX_DATA) throw new Error(`${path} is larger than ${MAX_DATA / 1_000_000} MB`);
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+      const type = TYPES[name.split(".").pop()!.toLowerCase()] ?? "application/octet-stream";
+      return `data:${type};base64,${btoa(binary)}`;
+    } catch (error) {
+      if (gone(error)) return null;
+      throw error;
+    }
+  };
+
+  /** A file's bytes from a data: URL (base64), at most MAX_DATA of them. */
   const bytes = (value: unknown) => {
     const match = typeof value === "string" ? /^data:[\w.+-]+\/[\w.+-]+(;[\w-]+=[\w.-]+)*;base64,([A-Za-z0-9+/]*={0,2})$/.exec(value) : null;
     if (!match) throw new Error("folder.writeData takes the file as a base64 data: URL");
-    if ((match[2].length * 3) / 4 > MAX_FILE) throw new Error("The file is too large");
+    if ((match[2].length * 3) / 4 > MAX_DATA) throw new Error("The file is too large");
     const binary = atob(match[2]);
     const out = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
@@ -293,7 +314,14 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         ],
         returns: "{ ok, path }",
         needs: "folder:write",
-        description: "Writes a file that isn't text, such as an image the person dropped, from a data: URL; at most 5 MB. As write, it doesn't ask the person.",
+        description: "Writes a file that isn't text, such as an image the person dropped or a sound, from a data: URL; at most 32 MB. As write, it doesn't ask the person.",
+      },
+      readData: {
+        args: "(path)",
+        params: [{ name: "path", schema: { type: "string", description: "Relative to the folder, with /" } }],
+        returns: "dataUrl or null",
+        needs: "folder:read",
+        description: "A file that isn't text, such as a sound or an image, as a base64 data: URL (its type from its extension), or null if there is no such file. At most 32 MB.",
       },
       exists: { args: "(path)", params: [{ name: "path", schema: { type: "string", description: "Relative to the folder, with /" } }], returns: "true or false", needs: "folder:read", description: "Whether there is a file at path, whatever is in it (an image, say)." },
       propose: {
@@ -338,6 +366,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
           await write(app, path, text(args[1], "write"));
           return { ok: true, path };
         }
+        case "readData":
+          return readData(app, String(args[0]));
         case "writeData": {
           const path = checkPath(args[0]).join("/");
           await write(app, path, bytes(args[1]));

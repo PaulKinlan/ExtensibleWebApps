@@ -1,7 +1,9 @@
 <!--
   The lobby. lobby.js sends { away, inSpace, joined, waiting, running, idle,
-  note, team, lives, players: [{ key, name, n, you, score, jar }] }. n is the
-  player's colour, as together.js numbers them: the swatch's class.
+  note, team, lives, players: [{ key, name, n, you, score, jar, aside }],
+  refused, refereed, calls: [{ key, text }], quiet }. n is the player's
+  colour, as together.js numbers them: the swatch's class. aside is how many
+  of their moves the referee set aside; calls are what it put right.
 -->
 <style>
   .lobby { display: flex; flex-direction: column; gap: var(--space-3); }
@@ -20,6 +22,10 @@
   .players .points { margin-left: auto; font-variant-numeric: tabular-nums; }
   .muted { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
   .start { min-height: 44px; }
+  .players .aside { font-size: var(--text-sm); color: var(--fg-2); }
+  .referee { display: flex; flex-direction: column; gap: var(--space-1); }
+  .referee h3 { margin: 0; font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-2); }
+  .referee ul { margin: 0; padding-left: 1.1em; font-size: var(--text-sm); }
 </style>
 <template id="lobby">
   <section class="lobby" aria-label="Players">
@@ -35,10 +41,18 @@
       <template if="running"><p class="muted">Playing. Tap or drag on the meadow, or use the arrow keys.</p></template>
       <ul class="players">
         <template for="p of players">
-          <li key="{{p.key}}" data-you="{{p.you}}" data-jar="{{p.jar}}"><span class="swatch c{{p.n}}"></span><span>{{p.name}}<template if="p.you"> (you)</template></span><span class="points">{{p.score}}</span></li>
+          <li key="{{p.key}}" data-you="{{p.you}}" data-jar="{{p.jar}}"><span class="swatch c{{p.n}}"></span><span>{{p.name}}<template if="p.you"> (you)</template></span><template if="p.aside"><span class="aside" title="Moves the referee set aside: faster than a person can">{{p.aside}} set aside</span></template><span class="points">{{p.score}}</span></li>
         </template>
       </ul>
+      <template if="refereed">
+        <div class="referee" data-referee>
+          <h3>Referee</h3>
+          <template if="quiet"><p class="muted">One jar each, moves at a person's pace, points only for fireflies caught. All fair so far.</p></template>
+          <ul><template for="c of calls"><li key="{{c.key}}">{{c.text}}</li></template></ul>
+        </div>
+      </template>
     </template>
+    <template if="refused"><button type="button" data-action="join">Try to join again</button></template>
     <template if="note"><p class="muted" role="status">{{note}}</p></template>
   </section>
 </template>

@@ -22,14 +22,20 @@
 // right (audio.mix): the result is stereo. A clip too long for the collection (it holds
 // 5 MB in all) is kept by the audio service in the person's data folder
 // (audio.keep), and its record says where (kept).
+//
+// A clip, long or short, can also go to the app's folder as a WAV file
+// (sounds/<name>.wav, through the folder service): a folder the person
+// picks on their disk, or until they do, a private one in the browser.
+// Whatever is in sounds/ opens again from there, on any device that has the
+// folder, which a clip kept in the browser's data can't.
 
 export const manifest = {
   id: "sound-editor",
   name: "Sound editor",
   description: "A clip's waveform to pick parts of, play, edit and run through effects.",
   version: "1.0.0",
-  permissions: ["ui", "audio", "commands", "plugins:read"],
-  services: ["audio", "commands"],
+  permissions: ["ui", "audio", "commands", "plugins:read", "audio:kept:sound-timeline", "folder:read", "folder:write", "folder:choose"],
+  services: ["audio", "commands", "folder"],
   // A tab of its own: its sound plays, and files are opened and saved, where the person is; each tab keeps its own undo.
   scope: "tab",
   hooks: {
@@ -52,6 +58,8 @@ export const manifest = {
           // The samples, or, for a long clip, the name the audio service kept them under (audio.keep).
           pcm: { type: "string" },
           kept: { type: "string" },
+          // Which plugin kept them, if not this one: the timeline keeps a long mix it made into a clip (timeline.js).
+          keptBy: { type: "string" },
           channels: { type: "integer", minimum: 1, maximum: 2 },
           seconds: { type: "number", title: "Length (s)" },
         },
@@ -68,6 +76,8 @@ const UNDO = 20;
 const INLINE = 1_000_000;
 /** The longest sound file it opens, in seconds. */
 const LONGEST = 300;
+/** Where in the app's folder the sounds go. */
+const SOUNDS = "sounds";
 
 export default async function (ctx) {
   const views = ctx.ui.views("editor.html");
@@ -84,6 +94,8 @@ export default async function (ctx) {
   let undo = [];
   let redo = [];
   let stopTimer;
+  /** The app's folder: its name, whether the person picked it, whether it can be used now, and the sounds in it. */
+  let folder = { name: "", picked: false, allowed: true, sounds: [] };
 
   // Samples to and from the audio service's base64 16-bit format. Both scale by 32768, so a clip decoded and
   // encoded again is the same clip, sample for sample: undo gives back exactly what was there.
@@ -177,6 +189,11 @@ export default async function (ctx) {
       noUndo: !undo.length,
       noRedo: !redo.length,
       noPart: !picked(),
+      folderName: folder.name || "the app's folder",
+      folderPicked: folder.picked,
+      folderBlocked: !folder.allowed,
+      folderSounds: folder.sounds.map((path) => ({ path, name: path.slice(SOUNDS.length + 1, -4) })),
+      noFolderSounds: !folder.sounds.length,
       status,
     });
   };
@@ -231,23 +248,25 @@ export default async function (ctx) {
     const { id, name, rate, pcm, seconds, channels } = clip;
     let kept;
     if (pcm.length > INLINE) {
-      kept = clip.kept ?? `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      // A clip another plugin kept is copied into this one's keeping once it is edited: the other's stays as it was.
+      kept = (!clip.keptBy && clip.kept) || `clip-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
       await ctx.call("audio", "keep", { name: kept, clip: { rate, pcm, ...(channels === 2 ? { channels } : {}) } });
     }
     const record = { ...(id ? { id } : {}), name, rate, ...(kept ? { kept } : { pcm }), ...(channels === 2 ? { channels } : {}), seconds };
     const result = await ctx.call("data", "put", "sound-clips", record);
     if (!result?.ok) throw new Error(`The clip wasn't kept: ${JSON.stringify(result?.errors ?? result)}`);
     // A clip that got short enough to go in its record: the kept samples go only once the record holds them.
-    if (!kept && clip.kept) await ctx.call("audio", "forget", { name: clip.kept }).catch(() => {});
+    if (!kept && clip.kept && !clip.keptBy) await ctx.call("audio", "forget", { name: clip.kept }).catch(() => {});
     clip.id = result.id;
     clip.kept = kept;
+    delete clip.keptBy;
   };
 
   const load = async (record) => {
     await stop();
     clip = record ? { ...record } : null;
     if (record?.kept && !record.pcm) {
-      const kept = await ctx.call("audio", "load", { name: record.kept });
+      const kept = await ctx.call("audio", "load", { name: record.kept, ...(record.keptBy ? { of: record.keptBy } : {}) });
       clip.pcm = kept?.pcm ?? "";
       if (!kept) status = `${record.name}'s sound isn't in this browser's data folder`;
     }
@@ -255,6 +274,96 @@ export default async function (ctx) {
     sel = { from: 0, to: 0 };
     undo = [];
     redo = [];
+  };
+
+  /** What the app's folder is, and the sounds in it. */
+  const lookInFolder = async () => {
+    try {
+      const about = await ctx.call("folder", "about");
+      const sounds = about.allowed ? (await ctx.call("folder", "list", SOUNDS)).filter((p) => /\.wav$/i.test(p)) : [];
+      folder = { name: about.name ?? "", picked: !!about.picked, allowed: !!about.allowed, sounds };
+    } catch (error) {
+      folder = { ...folder, allowed: false, sounds: [] };
+    }
+  };
+
+  /** The clip as a WAV file's bytes, in a data: URL: 16-bit samples, one channel or two. */
+  const wav = () => {
+    const samples = atob(encode(chans));
+    const channels = chans.length;
+    const header = new DataView(new ArrayBuffer(44));
+    const text = (at, s) => [...s].forEach((c, i) => header.setUint8(at + i, c.charCodeAt(0)));
+    text(0, "RIFF");
+    header.setUint32(4, 36 + samples.length, true);
+    text(8, "WAVE");
+    text(12, "fmt ");
+    header.setUint32(16, 16, true);
+    header.setUint16(20, 1, true);
+    header.setUint16(22, channels, true);
+    header.setUint32(24, rate(), true);
+    header.setUint32(28, rate() * channels * 2, true);
+    header.setUint16(32, channels * 2, true);
+    header.setUint16(34, 16, true);
+    text(36, "data");
+    header.setUint32(40, samples.length, true);
+    return `data:audio/wav;base64,${btoa(String.fromCharCode(...new Uint8Array(header.buffer)) + samples)}`;
+  };
+
+  /** A WAV file's clip, from a data: URL: 16-bit PCM, one channel or two, as this editor saves them. */
+  const fromWav = (url) => {
+    const bytes = Uint8Array.from(atob(url.slice(url.indexOf(",") + 1)), (c) => c.charCodeAt(0));
+    const view = new DataView(bytes.buffer);
+    const tag = (at) => String.fromCharCode(...bytes.subarray(at, at + 4));
+    if (tag(0) !== "RIFF" || tag(8) !== "WAVE") throw new Error("That isn't a WAV file");
+    let format = null;
+    for (let at = 12; at + 8 <= bytes.length; ) {
+      const size = view.getUint32(at + 4, true);
+      if (tag(at) === "fmt ") format = { code: view.getUint16(at + 8, true), channels: view.getUint16(at + 10, true), rate: view.getUint32(at + 12, true), bits: view.getUint16(at + 22, true) };
+      if (tag(at) === "data") {
+        if (!format || format.code !== 1 || format.bits !== 16 || format.channels > 2) throw new Error("Only 16-bit WAV opens from the folder: use Open a sound file… for others");
+        const data = bytes.subarray(at + 8, Math.min(bytes.length, at + 8 + size));
+        let text = "";
+        for (let i = 0; i < data.length; i += 0x8000) text += String.fromCharCode(...data.subarray(i, i + 0x8000));
+        return { rate: format.rate, channels: format.channels, pcm: btoa(text) };
+      }
+      at += 8 + size + (size % 2);
+    }
+    throw new Error("That WAV file has no sound in it");
+  };
+
+  /** A clip's name as a file name: no characters a disk refuses. */
+  const fileName = (name) => name.replace(/[\u0000-\u001f/\\:*?"<>|]+/g, "-").replace(/^[.\s]+|[.\s]+$/g, "").slice(0, 80) || "clip";
+
+  const saveToFolder = async () => {
+    if (!clip) return "No clip";
+    const path = `${SOUNDS}/${fileName(clip.name)}.wav`;
+    try {
+      await ctx.call("folder", "writeData", path, wav());
+      status = `Saved to ${folder.picked ? folder.name : "the private folder"}: ${path}`;
+    } catch (error) {
+      status = `Not saved: ${error instanceof Error ? error.message : error}`;
+    }
+    await lookInFolder();
+    await draw();
+    return status;
+  };
+
+  const openFromFolder = async (path) => {
+    if (!folder.sounds.includes(path)) return (status = "Pick a sound in the folder"), draw(), status;
+    try {
+      const url = await ctx.call("folder", "readData", path);
+      if (!url) throw new Error(`${path} is gone`);
+      const opened = fromWav(url);
+      if (opened.rate < 3000 || opened.rate > 96000) throw new Error("Its sample rate is outside 3,000 to 96,000");
+      await load(null);
+      clip = { name: path.slice(SOUNDS.length + 1, -4), rate: opened.rate };
+      await keep(decode(opened.pcm, opened.channels));
+      status = `Opened ${path} from ${folder.picked ? folder.name : "the private folder"}`;
+    } catch (error) {
+      status = `Not opened: ${error instanceof Error ? error.message : error}`;
+    }
+    await draw();
+    return status;
   };
 
   // Clips to start from, made here: a plucked phrase (Karplus-Strong strings) and a drum loop.
@@ -385,7 +494,7 @@ export default async function (ctx) {
     const records = await ctx.call("data", "list", "sound-clips");
     const other = records.find((r) => r.id === form?.clip);
     if (!other) return (status = "Pick a clip to lay over this one"), draw();
-    const otherPcm = other.kept && !other.pcm ? (await ctx.call("audio", "load", { name: other.kept }))?.pcm : other.pcm;
+    const otherPcm = other.kept && !other.pcm ? (await ctx.call("audio", "load", { name: other.kept, ...(other.keptBy ? { of: other.keptBy } : {}) }))?.pcm : other.pcm;
     if (!otherPcm) return (status = `${other.name}'s sound isn't here`), draw();
     const at = Math.max(0, Number(form.at) || 0);
     const gain = Math.min(2, Math.max(0, Number(form.gain ?? 1)));
@@ -444,7 +553,7 @@ export default async function (ctx) {
    */
   let queue = Promise.resolve();
   const serial = (work) => (queue = queue.then(work, work));
-  const CHANGES = /^(undo|redo|new:|open-clip|open-file|rename|edit:|effect:|mono|layer)/;
+  const CHANGES = /^(undo|redo|new:|open-clip|open-file|rename|edit:|effect:|mono|layer|folder-open)/;
 
   ctx.ui.onEvent(async (action, value) => (CHANGES.test(action) ? serial(() => handle(action, value)) : handle(action, value)));
   async function handle(action, value) {
@@ -480,6 +589,13 @@ export default async function (ctx) {
       return;
     }
     if (action === "layer") return layer(value);
+    if (action === "folder-save") return saveToFolder();
+    if (action === "folder-open") return openFromFolder(value?.path);
+    if (action === "folder-pick" || action === "folder-allow") {
+      await ctx.call("folder", action === "folder-pick" ? "choose" : "allow").catch((error) => (status = String(error.message ?? error)));
+      await lookInFolder();
+      return draw();
+    }
     if (action === "mono") {
       if (!clip || chans.length < 2) return;
       const mixed = chans[0].map((v, i) => (v + chans[1][i]) / 2);
@@ -531,8 +647,11 @@ export default async function (ctx) {
   ctx.on("plugins:changed", recollect);
   recollect();
 
+  ctx.commands.add({ id: "save-to-folder", title: "Save the clip to the folder", group: "Sound" }, () => serial(saveToFolder));
+
   // Start with the first clip there is, or make one.
   await collect();
+  await lookInFolder();
   const clips = await ctx.call("data", "list", "sound-clips");
   if (clips.length) await load(clips.sort((a, b) => a.name.localeCompare(b.name))[0]);
   else await create("pluck");

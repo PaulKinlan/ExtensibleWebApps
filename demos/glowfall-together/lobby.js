@@ -3,6 +3,10 @@
 // "join", which also starts this device hearing the game's frames), and
 // shows each player by the name on their account (sync.members). Outside a
 // space there's no server to play on, so it says how to get to one.
+//
+// With the referee on (referee.js), the state carries its calls: what it
+// put right, and how many of each player's moves it set aside. The lobby
+// shows them, and why a seat was refused.
 
 export const manifest = {
   id: "glowfall-lobby",
@@ -28,21 +32,30 @@ export default async function (ctx) {
   let names = new Map();
   let note = "";
   let lastDrawn = 0;
+  let refused = false;
+
+  /** A player's name, from their device. */
+  const who = (device) => (device === me ? "You" : (names.get(players.find((p) => p.device === device)?.member) ?? "A player"));
 
   const draw = () => {
     lastDrawn = Date.now();
     const scores = state?.players ?? {};
+    const referee = state?.referee;
     views.render("side", "lobby", {
       away: !inSpace,
       inSpace,
       joined,
-      waiting: inSpace && !joined,
+      waiting: inSpace && !joined && !refused,
+      refused,
       running,
       idle: joined && !running,
       note,
       team: state?.team ?? 0,
       lives: state?.lives ?? 5,
-      players: players.map((p) => ({ key: p.device, name: names.get(p.member) ?? "A member", n: p.n ?? 0, you: p.device === me, score: scores[p.device]?.score ?? 0, jar: scores[p.device]?.jar ?? "" })),
+      players: players.map((p) => ({ key: p.device, name: names.get(p.member) ?? "A member", n: p.n ?? 0, you: p.device === me, score: scores[p.device]?.score ?? 0, jar: scores[p.device]?.jar ?? "", aside: referee?.aside?.[p.device] ?? 0 })),
+      refereed: !!referee,
+      calls: (referee?.calls ?? []).map((c, i) => ({ key: `${c.tick}-${i}`, text: `${c.device ? `${who(c.device)}: ` : ""}${c.what}` })).reverse(),
+      quiet: !!referee && !referee.calls?.length,
     });
   };
 
@@ -52,6 +65,11 @@ export default async function (ctx) {
       me = value.device;
       joined = true;
       running = !!value.running;
+    } else if (value.type === "refused") {
+      // The referee (or another plugin on the host's join hook) said no to a seat.
+      joined = false;
+      refused = true;
+      note = `No seat: ${value.reason}.`;
     } else if (value.type === "players") players = value.players ?? [];
     else if (value.type === "started") {
       running = true;
@@ -93,7 +111,12 @@ export default async function (ctx) {
 
   ctx.ui.onEvent(async (action) => {
     if (action === "start") await ctx.call("sync", "live", TOPIC, { type: "start" }).catch((e) => ((note = e.message), draw()));
-    if (action === "join") await join();
+    if (action === "join") {
+      refused = false;
+      note = "";
+      draw();
+      await join();
+    }
   });
 
   const join = async () => {
@@ -113,10 +136,10 @@ export default async function (ctx) {
   draw();
   if (!inSpace) return;
   // The page may still be connecting to its space: try for a while.
-  for (let tries = 0; tries < 20 && !joined; tries++) {
+  for (let tries = 0; tries < 20 && !joined && !refused; tries++) {
     if (await join()) {
       note = "";
-      for (let wait = 0; wait < 10 && !joined; wait++) await new Promise((r) => setTimeout(r, 200));
+      for (let wait = 0; wait < 10 && !joined && !refused; wait++) await new Promise((r) => setTimeout(r, 200));
     } else await new Promise((r) => setTimeout(r, 1000));
   }
   draw();

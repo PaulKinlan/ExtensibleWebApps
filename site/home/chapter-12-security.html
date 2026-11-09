@@ -23,7 +23,7 @@
     <ol>
       <li><strong>A hook before the card.</strong> Whenever a plugin of your own is added or changed, by the editor, the builder agent or Customize, the kernel runs <code>plugins:beforeAdd</code> with its code and what it asks for. A checker may stop it there, with a reason.</li>
       <li><strong>The checker is a plugin.</strong> On this page it's Security check: plain rules, no model. It stops a plugin that may read your data and also reach the internet, and code that builds code from text. It's on the switchboard, so you can turn it off.</li>
-      <li><strong>Or an agent.</strong> <code>/home/security.agent.md</code> does the same job with a model, reading the code like a person would. It's an agent file with one <code>check: plugins:beforeAdd</code>, woken only for plugins that ask to reach the internet. Link it beside a model and your key.</li>
+      <li><strong>And an agent, once you set a key.</strong> <code>/home/security.agent.md</code> does the same job with a model, reading the code like a person would. It's an agent file with one <code>check: plugins:beforeAdd</code>, woken only for plugins that ask to reach the internet. This page links it for everyone, but it reads only once a model has your key: without one it never stops to ask, and the plain rules are the only check.</li>
       <li><strong>You still decide.</strong> A checker can only stop a plugin, never let one in: what gets past it still waits for your card.</li>
     </ol>
     <p>Try saving a plugin that reads your notes and sends them to a server:</p>
