@@ -176,14 +176,16 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
   };
   const replaced = new Set(mine.map(idOf).filter((id): id is string => !!id));
   const linked: { href: string; source: string; runner?: string }[] = [...links.filter((link) => !replaced.has(idOf(link) ?? "")), ...mine];
-  // A copy of a plugin with other code (the app's, where the person's now replaces it, or the person's, where
+  // A copy of a plugin with other code or from another address (the app's, where the person's now replaces it, or the person's, where
   // they turned it off) is stopped first, when only tabs with this app open use it: the new code then starts
   // under the same id. A copy another app still runs stays, and this one is refused as a clash, as before.
   if (app !== undefined) {
     for (const link of linked) {
       const id = idOf(link);
       const running = id ? remote.installed.get(id) : undefined;
-      if (!id || running?.origin !== "app" || running.source === asPlugin(link.href, link.source, link.runner)) continue;
+      // The same code from the same address is the same plugin; the person's copy of the app's, with the same code but
+      // its own templates beside it, isn't.
+      if (!id || running?.origin !== "app" || (running.source === asPlugin(link.href, link.source, link.runner) && running.href === link.href)) continue;
       if (apps.tabsWith(id).every((tab) => tab === host.tab || openApps.get(tab)?.app === app)) remote.uninstall(id);
     }
   }

@@ -32,8 +32,8 @@ export function isOwnNetwork(hostname: string): boolean {
   return (a & 0xfe00) === 0xfc00 || (a & 0xffc0) === 0xfe80 || (a & 0xff00) === 0xff00; // unique local, link-local, multicast
 }
 
-function privateV4([a, b]: number[]): boolean {
-  return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0) || (a === 198 && (b === 18 || b === 19));
+function privateV4([a, b, c]: number[]): boolean {
+  return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0 && c === 0) || (a === 198 && (b === 18 || b === 19));
 }
 
 /** An IPv6 address's eight groups, or undefined. */
@@ -52,27 +52,47 @@ const refusal = (where: string) => new Error(`A server plugin can't reach ${wher
 /** The most redirects a request follows, as fetch does. */
 const HOPS = 20;
 
+/** A host as written in a URL or a setting, lower case and without brackets: [::1] and ::1 are the same. */
+const bare = (host: string) => host.toLowerCase().replace(/^\[|\]$/g, "");
+
+/** Headers that belong to the site they were sent to, so a redirect to another site doesn't carry them on (as fetch does). */
+const CREDENTIALS = ["authorization", "cookie", "proxy-authorization"];
+
 export class NetworkGuard extends WorkerEntrypoint<unknown, { allow?: string[] }> {
   async fetch(request: Request): Promise<Response> {
-    const allow = new Set((this.ctx.props?.allow ?? []).map((h) => h.toLowerCase()));
+    const allow = new Set((this.ctx.props?.allow ?? []).map(bare));
     const check = (url: URL) => {
       if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`A server plugin can only fetch http: and https:, not ${url.protocol}`);
-      if (!allow.has(url.hostname.toLowerCase()) && isOwnNetwork(url.hostname)) throw refusal(url.host);
+      if (!allow.has(bare(url.hostname)) && isOwnNetwork(url.hostname)) throw refusal(url.host);
     };
     // Each redirect is followed here, so each address it leads to is checked before it is asked.
     const follow = request.redirect !== "manual";
-    let current = request;
+    // The body is read once, so a 307 or 308 can send it again.
+    const body = request.body && follow ? await request.arrayBuffer() : request.body;
+    let method = request.method;
+    let headers = new Headers(request.headers);
+    let url = new URL(request.url);
+    let sent: ArrayBuffer | ReadableStream | null = body;
     for (let hop = 0; ; hop++) {
-      check(new URL(current.url));
-      const answer = await fetch(current, { redirect: "manual" });
+      check(url);
+      const answer = await fetch(new Request(url, { method, headers, body: sent, redirect: "manual" }));
       const location = answer.headers.get("location");
       if (!follow || ![301, 302, 303, 307, 308].includes(answer.status) || !location) return answer;
       if (request.redirect === "error") throw new TypeError("A redirect was refused, as the request asked");
       if (hop >= HOPS) throw new TypeError("Too many redirects");
-      const next = new URL(location, current.url);
+      const next = new URL(location, url);
       // 303, and 301 or 302 after a POST, go on as a GET with no body, as fetch does.
-      const asGet = answer.status === 303 || ((answer.status === 301 || answer.status === 302) && current.method === "POST");
-      current = new Request(next, asGet ? { method: current.method === "HEAD" ? "HEAD" : "GET", headers: current.headers, redirect: "manual" } : { method: current.method, headers: current.headers, body: current.body, redirect: "manual" });
+      if (answer.status === 303 || ((answer.status === 301 || answer.status === 302) && method === "POST")) {
+        if (method !== "HEAD") method = "GET";
+        sent = null;
+        headers = new Headers(headers);
+        for (const name of ["content-type", "content-length", "content-encoding", "content-language", "content-location"]) headers.delete(name);
+      }
+      if (next.origin !== url.origin) {
+        headers = new Headers(headers);
+        for (const name of CREDENTIALS) headers.delete(name);
+      }
+      url = next;
     }
   }
 }
