@@ -88,7 +88,7 @@ What it writes reaches every member's device as a change by `plugin:<id>`.
 
 ## The rules a server plugin runs under
 
-- **Only the app's own files run there.** When a device opens an app in a space, the space reads that app's `app.html` from the site and starts the plugins it links that run on the server. It never runs code a member's browser sent, and a person's own plugins stay in their browser. So a server plugin is always the author's, as the site serves it.
+- **Only the app's own files run there.** When a device opens an app in a space, the space reads that app's `app.html` from the site and starts the plugins it links that run on the server. It never runs code a member's browser sent: a plugin a member adds in the space is their own, and one they share with the space goes to the other members' browsers, turned off until each of them turns it on, never to the server. So a server plugin is always the author's, as the site serves it.
 - **Each runs in an isolate of its own.** On Node, a process under Node's permission model, with no file system, no child processes and none of the server's environment. On Cloudflare, a Dynamic Worker with no bindings and no network unless it asks for `network`.
 - **They start again by themselves.** The space remembers the apps opened in it and starts their server plugins whenever its kernel starts.
 

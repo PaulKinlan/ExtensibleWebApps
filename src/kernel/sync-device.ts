@@ -11,7 +11,7 @@
 // Kept in the space's copy, beside its collections:
 //   sync/device.json   the last sequence number seen, each record's version, changes not yet sent, and drafts
 
-import type { Accepted, Outgoing, SyncRecord, SyncToDevice, Verdict } from "../shared/sync";
+import type { Accepted, Outgoing, PluginRequest, SyncRecord, SyncToDevice, Verdict } from "../shared/sync";
 import type { Hosts } from "./hosts";
 import type { Change, Collections, StoredRecord } from "./records";
 import type { Store } from "./store";
@@ -74,6 +74,9 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   let retry = 1000;
   let stopped = false;
   const status = { connected: false };
+  /** Who hears the space's other messages (members' plugins, shared-plugins.ts), and when this device has caught up. */
+  const heard = new Set<(message: SyncToDevice) => void>();
+  const caughtUpHeard = new Set<() => void>();
   /** The apps opened on this device in the space, which the space hears of each time it connects. */
   const using = new Set<string>();
   /**
@@ -222,9 +225,11 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       if (!caughtUp) {
         caughtUp = true;
         push();
+        for (const then of caughtUpHeard) then();
       }
     } else if (m.op === "pushed") await pushed(m.id, m.results);
     else if (m.op === "refused") trace({ kind: "error", name: "sync:refused", detail: m.error });
+    else for (const listener of heard) listener(m);
   }
 
   function connect() {
@@ -269,6 +274,14 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   const api = {
     status,
     ready,
+    heard,
+    caughtUp: caughtUpHeard,
+    /** Sends a request about members' plugins, if connected and caught up: whether it went. */
+    send(message: PluginRequest): boolean {
+      if (!socket || socket.readyState !== 1 || !caughtUp) return false;
+      socket.send(JSON.stringify(message));
+      return true;
+    },
     /** An app opened here: the space starts its plugins that run on the server. */
     use(app: string) {
       if (using.has(app)) return;

@@ -1442,6 +1442,8 @@ For devtools and tests, from the page: `window.__host.command(name, arg)`.
 | `user:on` | ({ app, id }) Turns a user plugin on, and opens the app again in every tab that has it open. |
 | `user:off` | ({ app, id }) Turns a user plugin off, and opens the app again in every tab that has it open. |
 | `user:remove` | ({ app, id }) Removes a user plugin and the files it lists. |
+| `user:share` | ({ app, id }) In a space: shares one of the person's own plugins with every member (it reaches them turned off). |
+| `user:unshare` | ({ app, id }) In a space: stops sharing a space plugin. It goes from the other members' devices and stays here as the person's own. |
 | `place:ask` | ({ app, plugin, place, target, what }) Asks the person, on a review card, to let a plugin change a place the author marked review. |
 | `place:unlock` | ({ app, plugin, place }) Lets a plugin into a place the author locked, because the person said so. |
 | `place:lock` | ({ app, plugin, place }) Takes that back. |

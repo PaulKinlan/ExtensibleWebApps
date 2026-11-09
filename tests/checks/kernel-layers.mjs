@@ -59,6 +59,7 @@ const SERVICES = [
   "services/router.ts",
   "services/share.ts",
   "services/sync.ts",
+  "shared-plugins.ts",
   "sync-device.ts",
   "sync.ts",
 ];
