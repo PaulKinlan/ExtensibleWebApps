@@ -127,6 +127,8 @@ People can also sign in with an account they have elsewhere, over OAuth 2 with P
 | `AUTH_PROVIDERS` | JSON, such as `[{ "id": "github", "clientId": "Iv1..." }]`. A provider with no preset adds `authorize`, `token` and `user` URLs, and can add `scope` and `name`. |
 | `<ID>_CLIENT_SECRET` | Each provider's client secret, such as `GITHUB_CLIENT_SECRET`. Keep it as a secret, never in the JSON. |
 
+If `AUTH_PROVIDERS` is set up wrong (not JSON, an entry missing its client id or secret, an id this host has no module or URLs for, or one listed twice), the server doesn't start, and its error names each wrong entry. Nothing is quietly left out.
+
 At the provider, register the callback URL `https://<your host>/auth/oauth/<id>/callback`. On Cloudflare, `AUTH_PROVIDERS` is a var and the secret is a Worker secret (`npx wrangler secret put GITHUB_CLIENT_SECRET`).
 
 | Route | What it does |
