@@ -232,7 +232,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
 
   /** Who hears every write by a plugin, with the plugin that made it (std/history/module.ts). */
   const written = new Set<(change: Change, instance: string) => void>();
-  /** Who hears every change made on this device (a write, or an undo), but not one from another device (sync-device.ts). */
+  /** Who hears every change made on this device (a write, or an undo), but not one from another device (std/spaces/device.ts). */
   const local = new Set<(change: Change) => void>();
 
   /**
@@ -268,7 +268,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
   }
 
   /**
-   * Puts a record as another device made it (`after`, or deleted when it is null), for sync (sync.ts):
+   * Puts a record as another device made it (`after`, or deleted when it is null), for sync (std/spaces/hub.ts):
    * no review, as the person who made it already did, and the collection needn't be known here yet.
    * Views and `data:changed` listeners hear it as they hear any write, with `by`, who made it, when sync knows.
    */

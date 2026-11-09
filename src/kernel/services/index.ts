@@ -13,6 +13,8 @@ import type { Collections } from "../records";
 import type { Reference } from "../reference";
 import type { RemotePlugins, ServiceProvider } from "../remote";
 import type { Store } from "../store";
+import type { Reviews } from "../review";
+import type { UserPlugins } from "../user-plugins";
 
 /** What a service file can use. */
 export interface Kernel {
@@ -27,6 +29,14 @@ export interface Kernel {
   describe(): Reference;
   /** The collections: their registry, and every write to them as it happens. */
   collections: Collections;
+  /** Review cards: asked, answered, and relayed to members' devices from a space's server. */
+  reviews: Reviews;
+  /** The person's own plugins for each app (user-plugins.ts). */
+  userAdded: UserPlugins;
+  /** Opens an app again in every tab that has it open, after its plugins changed. */
+  reopen(app: string): Promise<void>;
+  /** Whether the kernel has its data folder yet (the first page said hello). Until then, root hears internal/started once it has. */
+  started(): boolean;
 }
 
 const files = import.meta.glob<{ default: (kernel: Kernel) => ServiceProvider }>(["./*.ts", "!./index.ts"], { eager: true });

@@ -1,6 +1,6 @@
 // On a space's server: the apps opened in the space, and their plugins that
 // run there (`runs: "server"` or `"both"` in the manifest). A device that
-// opens an app in the space says so (sync-device.ts, as the sync message
+// opens an app in the space says so (device.ts, as the sync message
 // `app`); the space reads the app's app.html from the site, and installs and
 // starts each plugin it links that runs on the server. They keep running with
 // no app open anywhere, and start again when the space's kernel does.
@@ -13,11 +13,11 @@
 // Kept in the space's folder:
 //   server/apps.json   the apps opened in the space
 
-import { readManifest } from "./manifest";
-import type { RemotePlugins } from "./remote";
-import type { Store } from "./store";
-import { record } from "./trace";
-import { checkApp } from "./user-plugins";
+import { readManifest } from "../../src/kernel/manifest";
+import type { RemotePlugins } from "../../src/kernel/remote";
+import type { Store } from "../../src/kernel/store";
+import { record } from "../../src/kernel/trace";
+import { checkApp } from "../../src/kernel/user-plugins";
 
 const FILE = "server/apps.json";
 const MAX_APPS = 50;

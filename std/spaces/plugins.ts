@@ -23,12 +23,12 @@
 // list when it has caught up, and again whenever the space says a member
 // changed it, then fetches each plugin it hasn't got, one message each.
 
-import type { PluginRequest, SharedFile, SharedSummary, SyncToDevice } from "../shared/sync";
-import type { Host, Hosts } from "./hosts";
-import { readManifest } from "./manifest";
-import type { Store } from "./store";
-import { record as trace } from "./trace";
-import { checkApp, type UserPlugins } from "./user-plugins";
+import type { PluginRequest, SharedFile, SharedSummary, SyncToDevice } from "../../src/shared/sync";
+import type { Host, Hosts } from "../../src/kernel/hosts";
+import { readManifest } from "../../src/kernel/manifest";
+import type { Store } from "../../src/kernel/store";
+import { record as trace } from "../../src/kernel/trace";
+import { checkApp, type UserPlugins } from "../../src/kernel/user-plugins";
 
 const INDEX = "user/shared.json";
 const STATE = "sync/plugins.json";
@@ -183,7 +183,7 @@ export function spacePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts,
   };
 }
 
-/** What a device's sync (sync-device.ts) gives this: its socket, and what it hears on it. */
+/** What a device's sync (device.ts) gives this: its socket, and what it hears on it. */
 interface DeviceSocket {
   send(message: PluginRequest): boolean;
   heard: Set<(message: SyncToDevice) => void>;
@@ -246,12 +246,13 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts
     refresh();
   };
   // A person's own plugins stay theirs. A new version of a space plugin, made here, goes to the space; one removed here goes from it.
-  userAdded.changed.add(({ app, added, removed }) => {
+  const changed = ({ app, added, removed }: { app: string; added?: string[]; removed?: string }) => {
     void loaded.then(async () => {
       for (const id of added ?? []) if (isShared(key(app, id))) await mark(key(app, id), "add");
       if (removed && isShared(key(app, removed))) await mark(key(app, removed), "remove");
     });
-  });
+  };
+  userAdded.changed.add(changed);
 
   /** One refresh at a time; one asked for meanwhile runs again after it. */
   let running: Promise<void> | undefined;
@@ -364,6 +365,10 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts
       if (!isShared(key(app, id))) return false;
       await mark(key(app, id), "remove");
       return true;
+    },
+    /** Stops hearing the person's changes, when the spaces module stops. */
+    stop() {
+      userAdded.changed.delete(changed);
     },
   };
 }

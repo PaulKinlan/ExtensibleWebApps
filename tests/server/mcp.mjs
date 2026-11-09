@@ -3,7 +3,7 @@
 // browser connects with it to /s/<space>/mcp/reading-list-agents, lists the
 // reading list's tools, reads the library, and changes it. The change is the
 // door's plugin's, to a collection it doesn't own, so the space sends the
-// review to the member's device (src/kernel/space-reviews.ts), which answers.
+// review to the member's device (std/spaces/reviews.ts), which answers.
 
 /** A member's device in the space, speaking sync, that can answer the space's reviews. */
 async function device(base, space, cookie) {

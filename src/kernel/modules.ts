@@ -27,6 +27,8 @@
 // doesn't list, stops the build or the kernel: it never quietly goes without.
 
 import type { Kernel } from "./services/index";
+import type { Sharing } from "./authoring";
+import type { Host } from "./hosts";
 import type { ServiceProvider } from "./remote";
 import type { RouteRequest, RouteResponse } from "./routes";
 import { RESERVED } from "./manifest";
@@ -35,6 +37,29 @@ import { record } from "./trace";
 
 /** The Cordis service a module's service is also registered as, so other modules can `inject` it. */
 const cordisName = (name: string) => `kernel.${name}`;
+
+/**
+ * What the spaces module (std/spaces/module.ts) lends the core while it runs. The core asks it, and never
+ * names it: a kernel without it keeps no space.
+ */
+export interface SpaceSeam {
+  /** In a browser kernel for a space: settles once a device new to the space has what the space has, so an app opening sees it. */
+  ready?(): Promise<void>;
+  /** In a browser kernel for a space: an app opened here, so the space starts its plugins that run on the server. */
+  use?(app: string): void;
+  /** In a browser kernel for a space: sharing the person's own plugins with its members (Customize, authoring). */
+  sharing?: Sharing;
+  /** On a space's server: its apps' server plugins starting, so a request for a route one adds waits for them. */
+  server?: { starting(): boolean; settled(): Promise<unknown>; finishedAt(): number };
+}
+
+/** Where a module's messages and space seam go in the core (loadModules). */
+export interface Seams {
+  /** Host messages by type (`sync`), and the module that answers each. */
+  messages: Map<string, (host: Host, message: any) => unknown>;
+  /** The space seam, while a module lends one. */
+  space: { current?: SpaceSeam };
+}
 
 /** What a module is given: the kernel's parts, and ways to add to it. */
 export interface ModuleKernel extends Kernel {
@@ -51,6 +76,10 @@ export interface ModuleKernel extends Kernel {
   hook(name: string, spec: HookSpec): void;
   /** Runs when the module stops: clear its timers, end what waits on it. */
   cleanup(fn: () => void): void;
+  /** Answers the messages of one type a page or device sends the kernel (`sync`: a device's sync with its space). */
+  message(type: string, handle: (host: Host, message: any) => unknown): void;
+  /** Lends the core what a space adds (SpaceSeam). One module at a time. */
+  space(seam: SpaceSeam): void;
 }
 
 /** A module: a Cordis plugin the kernel runs with its parts as the config. */
@@ -86,6 +115,8 @@ export function loadModules(
   doors: Map<string, (request: RouteRequest) => Promise<RouteResponse | null> | RouteResponse | null>,
   /** The kernel's own page commands, which a module may not take. */
   coreCommand: (name: string) => boolean,
+  /** Where messages and the space seam go. */
+  seams: Seams = { messages: new Map(), space: {} },
 ) {
   const names = new Set(modules.map((m) => m.name));
   for (const module of modules) {
@@ -134,6 +165,20 @@ export function loadModules(
             },
             cleanup(fn) {
               ctx.effect(() => fn, "cleanup");
+            },
+            message(type, handle) {
+              if (seams.messages.has(type)) throw new Error(`The ${module.name} module can't answer ${type} messages: another module does`);
+              ctx.effect(() => {
+                seams.messages.set(type, handle);
+                return () => void seams.messages.delete(type);
+              }, `message ${type}`);
+            },
+            space(seam) {
+              if (seams.space.current) throw new Error(`The ${module.name} module can't lend a space: another module does`);
+              ctx.effect(() => {
+                seams.space.current = seam;
+                return () => void (seams.space.current = undefined);
+              }, "space");
             },
           };
           // The first effect, so it is the last undone: "stop" is traced once all the module added is gone.

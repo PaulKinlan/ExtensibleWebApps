@@ -1,4 +1,4 @@
-// Space plugins, in a real browser (src/kernel/shared-plugins.ts): a plugin a
+// Space plugins, in a real browser (std/spaces/plugins.ts): a plugin a
 // member adds to an app in a space is theirs alone until they share it with
 // the space (from Customize); then it reaches the other member's device,
 // turned off there; turning it on is each person's own choice; a change to it

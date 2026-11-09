@@ -24,17 +24,12 @@ import { collections } from "./records";
 import { reference, toMarkdown } from "./reference";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { loadServices } from "./services";
-import { loadModules } from "./modules";
+import { loadModules, type Seams } from "./modules";
 import modules from "virtual:kernel-modules";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
-import { syncHub } from "./sync";
-import { syncDevice } from "./sync-device";
-import { devicePlugins, spacePlugins } from "./shared-plugins";
 import { isolateHost } from "./isolate-host";
-import { deviceReviews, relayReviews } from "./space-reviews";
-import { serverApps } from "./server-apps";
 import { asPlugin } from "./agents/file";
 import { authoring } from "./authoring";
 import { record, recent, setSink, startedAt, tap } from "./trace";
@@ -111,18 +106,13 @@ remote.onDispose = (instance) => {
 services.settings = plugins.service;
 const records = collections(root, store, hosts, remote, reviewed);
 const apps = makeApps(remote, hosts, plugins.isOff);
-/** On a server that runs plugins: the apps opened in the space, whose server plugins it runs. */
-const onServer = where.isolates ? serverApps(remote, store, where.origin, where.site) : undefined;
-const sync = syncHub(root, store, records, hosts, (app) => onServer?.use(app));
-/** In a browser kernel for a space (a page at /s/<space>/…): its sync with the space, once the folder is known. */
-let device: ReturnType<typeof syncDevice> | undefined;
-/** In a browser kernel for a space: the space's plugins on this device (shared-plugins.ts). */
-let spaceShared: ReturnType<typeof devicePlugins> | undefined;
 const userAdded = userPlugins(store, where.origin, where.kind === "server" ? undefined : where.space);
-// A space keeps the plugins its members share with each other, and never runs them (shared-plugins.ts).
-if (where.kind === "server") sync.plugins = spacePlugins(userAdded, store, hosts, (message) => sync.tell(message)).handle;
-// A space's server has no screen: its reviews are shown on members' devices (space-reviews.ts).
-if (where.kind === "server") relayReviews(reviews, sync, (host, message) => hosts.send(host, message));
+/**
+ * Spaces (sync with a space, its server's apps, members' shared plugins and reviews) are the spaces module's
+ * (std/spaces/module.ts): it answers `sync` messages and lends the core what a space adds, here.
+ */
+const seams: Seams = { messages: new Map(), space: {} };
+const space = () => seams.space.current;
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
@@ -135,7 +125,7 @@ services.authoring = authoring(remote, apps, {
   ask: (request, dispatch) => reviews.ask(request, dispatch),
   reopen: (app) => reopen(app),
   turnOn: (ids) => plugins.turnOn(ids),
-  shared: () => spaceShared,
+  shared: () => space()?.sharing,
   origin: where.origin,
   services: () => Object.keys(services),
   page: (tab, method, args, dispatch) => {
@@ -157,7 +147,7 @@ services.authoring = authoring(remote, apps, {
  */
 async function openApp(host: (typeof hosts.list)[number], links: { href: string; source: string; runner?: string }[], app?: string) {
   // A device new to a space gets what the space has before its app starts, so the app sees the space's data.
-  await device?.ready;
+  await space()?.ready?.();
   if (!hosts.list.includes(host)) return;
   let mine: { href: string; source: string }[] = [];
   let ids = new Set<string>();
@@ -165,7 +155,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
     if (app !== undefined) {
       checkApp(app);
       // In a space, the space hears which app is open, so the plugins of it that run on the server start there.
-      device?.use(app);
+      space()?.use?.(app);
       mine = await userAdded.links(app);
       ids = await userAdded.ids(app);
     }
@@ -219,19 +209,19 @@ where.serve?.(async (request) => {
     const answer = doors.get(request.door);
     if (!answer) return null;
     const deadline = Date.now() + 10_000;
-    while (onServer?.starting() && Date.now() < deadline) await Promise.race([onServer.settled(), new Promise((r) => setTimeout(r, 250))]);
+    while (space()?.server?.starting() && Date.now() < deadline) await Promise.race([space()!.server!.settled(), new Promise((r) => setTimeout(r, 250))]);
     return (await answer(request)) as RouteResponse | null;
   }
   // A HEAD request is answered by a HEAD route if a plugin has one, else by its GET route.
   const keys = request.method === "HEAD" ? [`HEAD ${request.path}`, `GET ${request.path}`] : [`${request.method} ${request.path}`];
   const found = () => keys.find((key) => remote.routes.includes(key));
   const deadline = Date.now() + 10_000;
-  let starting = !found() && onServer?.starting();
+  let starting = !found() && space()?.server?.starting();
   while (!found() && Date.now() < deadline) {
-    const finished = (await Promise.race([onServer?.settled(), new Promise<undefined>((r) => setTimeout(r, 250))])) ?? 0;
-    starting = onServer?.starting();
+    const finished = Number((await Promise.race([space()?.server?.settled(), new Promise<undefined>((r) => setTimeout(r, 250))])) ?? 0);
+    starting = space()?.server?.starting();
     // Settled, and long enough since for a plugin's code to have added its routes: there's no such route.
-    if (!starting && Date.now() - (finished || onServer?.finishedAt() || 0) > 3000) break;
+    if (!starting && Date.now() - (finished || space()?.server?.finishedAt() || 0) > 3000) break;
     await new Promise((r) => setTimeout(r, 100));
   }
   const key = found();
@@ -254,16 +244,20 @@ services.plugins = pluginSwitches.service;
 const describe = () => reference(services, remote);
 
 // The rest of the core's services are a file each in services/, found by name.
-const parts = { root, store, hosts, remote, apps, reviewed, describe, collections: records };
+const parts = { root, store, hosts, remote, apps, reviewed, describe, collections: records, reviews, userAdded, reopen, started: () => started };
 Object.assign(services, loadServices(parts));
 // Then the kernel modules the site lists in kernel.json (docs/layers.md): each may add services and page commands.
 /** The page commands the kernel answers itself; a module's commands (loadModules) can't take these names. */
-const CORE_COMMANDS = new Set(["changes", "install", "reference", "reload", "restart-module", "route", "sync", "trace", "uninstall"]);
+const CORE_COMMANDS = new Set(["changes", "install", "reference", "reload", "restart-module", "route", "trace", "uninstall"]);
 
 const commands = new Map<string, (arg: unknown) => unknown>();
 /** What the modules answer at the server's doors (ModuleKernel.door). */
 const doors = new Map<string, (request: RouteRequest) => Promise<RouteResponse | null> | RouteResponse | null>();
-const kernelModules = loadModules(modules, parts, services, commands, doors, (name) => CORE_COMMANDS.has(name) || /^(user|place):/.test(name));
+const kernelModules = loadModules(modules, parts, services, commands, doors, (name) => CORE_COMMANDS.has(name) || /^(user|place):/.test(name), seams);
+// A space's server is nothing without its spaces: no module answering sync is a site that can't serve one. Fail, never go without.
+if (hosts.mode === "server") void kernelModules.ready.then(() => {
+  if (!seams.messages.has("sync")) record({ kind: "error", name: "kernel:no-spaces", detail: "This is a space's server, but kernel.json lists no module that answers sync (std/spaces)" });
+});
 // A plugin can't take a service's name as its id, whichever way the service was added.
 for (const name of Object.keys(services)) RESERVED.add(name);
 
@@ -274,11 +268,8 @@ hosts.onHello = (host, folder) => {
   if (!started) {
     started = true;
     store.use(where.folder ?? folder);
-    if (where.space && where.kind !== "server") {
-      device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
-      spaceShared = devicePlugins(userAdded, store, hosts, device, reopen);
-      deviceReviews(reviews, device);
-    }
+    // Modules that wait for the data folder (the spaces module's sync with a space) start their part now.
+    root.emit("internal/started");
     return;
   }
   remote.hostJoined(host);
@@ -288,7 +279,7 @@ hosts.onLeave = (host) => {
   remote.hostLeft(host);
   records.hostLeft(host);
   apps.hostLeft(host);
-  sync.hostLeft(host);
+  root.emit("internal/left", host);
   openApps.delete(host.tab);
 };
 
@@ -363,11 +354,14 @@ hosts.onMessage = async (host, message) => {
       return void root.emit("internal/url", host, message.path, message.query, openApps.get(host.tab)?.app);
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
-    case "sync":
-      return sync.handle(host, message);
     case "command": {
       const value = await command(message.name, message.arg);
       return hosts.send(host, { t: "command:result", id: message.id, value });
+    }
+    default: {
+      // A message a module answers (ModuleKernel.message): `sync`, from a device in a space.
+      const answer = seams.messages.get((message as { t: string }).t);
+      if (answer) return answer(host, message);
     }
   }
 };
@@ -383,7 +377,6 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "trace") return recent();
   if (name === "route") return routes.answer(arg);
   if (name === "changes") return log.list();
-  if (name === "sync") return device ? device.state() : { space: false };
   // The panel's commands answer { ok: false, error } rather than throw, so the page always hears back.
   if (name.startsWith("user:") || name.startsWith("place:")) return customize(name, arg).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
   if (name === "reference") {
@@ -400,11 +393,16 @@ async function customize(name: string, arg: unknown): Promise<unknown> {
   const id = typeof a.id === "string" ? a.id : typeof a.plugin === "string" ? a.plugin : "";
   switch (name) {
     case "user:list":
-      return spaceShared ? spaceShared.mark(app, await userAdded.list(app)) : userAdded.list(app);
+    {
+      const sharing = space()?.sharing;
+      return sharing ? sharing.mark(app, await userAdded.list(app)) : userAdded.list(app);
+    }
     case "user:share":
-    case "user:unshare":
-      if (!spaceShared) return { ok: false, error: "Only a plugin in a space can be shared with it" };
-      return { ok: await (name === "user:share" ? spaceShared.share(app, id) : spaceShared.unshare(app, id)) };
+    case "user:unshare": {
+      const sharing = space()?.sharing;
+      if (!sharing) return { ok: false, error: "Only a plugin in a space can be shared with it" };
+      return { ok: await (name === "user:share" ? sharing.share(app, id) : sharing.unshare(app, id)) };
+    }
     case "user:add": {
       const added = typeof a.url === "string" ? await userAdded.addFromUrl(app, a.url) : await userAdded.add(app, a.files as { name: string; data: Blob | string }[]);
       // Adding a plugin again turns it off: stop the copy that was running.

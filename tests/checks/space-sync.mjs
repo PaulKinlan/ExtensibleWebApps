@@ -1,7 +1,7 @@
 // Two people's devices sharing a space, in a real browser: each opens the
 // reading list at /s/<space>/demos/reading-list/, keeps a copy of the space's
 // data in its own kernel, and syncs with the Node host's space kernel
-// (src/kernel/sync-device.ts, src/kernel/sync.ts). Then the server goes away
+// (std/spaces/device.ts, std/spaces/hub.ts). Then the server goes away
 // for a while: both keep working, and when it's back, what each did reaches
 // the other, and a record both changed ends up the same, with the loser's
 // version kept as a draft. tests/server/run.mjs checks the space's side alone.
@@ -117,7 +117,7 @@ export default async function ({ check, context, errors }) {
 
     // Both change the same book while the server is away: when it's back they agree, and the version
     // the space didn't take is kept as a draft on the device that made it.
-    // Each page logs who made each change to a book it hears of (src/kernel/sync-device.ts keeps who made the record it puts back).
+    // Each page logs who made each change to a book it hears of (std/spaces/device.ts keeps who made the record it puts back).
     const watcher = `export const manifest = { id: 'book-watcher', name: 'Book watcher', permissions: ['data:read:library'] };
 export default (ctx) => { ctx.on('data:changed:library', (change) => ctx.log('book ' + (change.after?.title ?? change.id) + ' by ' + (change.by ?? 'nobody'))); };`;
     for (const page of [ann.page, ben.page]) await page.evaluate((source) => window.__host.command("install", source), watcher);
@@ -139,8 +139,15 @@ export default (ctx) => { ctx.on('data:changed:library', (change) => ctx.log('bo
     // The page that lost hears whose version won.
     const winner = final.ann[0]?.includes("by Ann") ? "ann" : "ben";
     const lost = winner === "ann" ? ben.page : ann.page;
-    const heard = await lost.evaluate(() => window.__host.traces.filter((e) => e.plugin?.startsWith("book-watcher") && e.detail?.startsWith("book Middlemarch, by")).map((e) => e.detail));
-    check("a space: the device whose edit lost hears who made the version that won", heard.includes(`book Middlemarch, by ${winner === "ann" ? "Ann" : "Ben"} by ${who[winner]}`), JSON.stringify({ heard, who, winner }));
+    // The page hears the plugin's log a moment after the change is put back, so it is given a few seconds.
+    const expected = `book Middlemarch, by ${winner === "ann" ? "Ann" : "Ben"} by ${who[winner]}`;
+    const logged = () => lost.evaluate(() => window.__host.traces.filter((e) => e.plugin?.startsWith("book-watcher") && e.detail?.startsWith("book Middlemarch, by")).map((e) => e.detail));
+    let heard = await logged();
+    for (let i = 0; i < 20 && !heard.includes(expected); i++) {
+      await lost.waitForTimeout(250);
+      heard = await logged();
+    }
+    check("a space: the device whose edit lost hears who made the version that won", heard.includes(expected), JSON.stringify({ heard, who, winner }));
     for (const page of [ann.page, ben.page]) await page.evaluate(() => window.__host.command("uninstall", "book-watcher")).catch(() => {});
 
     // The page that lost shows its draft (std/sync.js); "Use mine" makes it the record again, everywhere.

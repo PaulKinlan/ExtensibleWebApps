@@ -1,7 +1,14 @@
 // Signing in with another site's account (OAuth 2), as configuration: a
 // provider is a few URLs and how to read a person's id and name from its
-// answer. GitHub is a preset; another provider that speaks plain OAuth 2 is
-// one more entry, in code here or in the host's configuration.
+// answer. A provider that speaks plain OAuth 2 is one entry in the host's
+// configuration, with no code.
+//
+// A provider that needs code of its own is a provider module, a file or
+// folder in providers/, listed once in providers/index.ts, which each host
+// passes to providersFrom. So the accounts never name a provider, and a
+// site that leaves one out of the list doesn't build it in:
+//   providers/github.ts     GitHub, as a preset of plain OAuth 2
+//   providers/bluesky/      Bluesky (atproto), a flow with steps of its own
 //
 // A host turns providers on from its environment (Node's process.env, or a
 // Worker's vars and secrets):
@@ -11,10 +18,8 @@
 //
 // Bluesky (atproto) signs in with OAuth too, but its own way (a client
 // metadata URL, PAR, DPoP, and checking the account's DID), so it's a Flow:
-// a module with its own steps, in bluesky/. It's turned on the same way, with
+// a module with its own steps. It's turned on the same way, with
 // { "id": "bluesky" } in AUTH_PROVIDERS, and needs no client id or secret.
-
-import { bluesky } from "./bluesky/index.ts";
 
 /** Another site to sign in with: plain OAuth 2, or a flow with steps of its own. */
 export type Provider = OAuthProvider | Flow;
@@ -55,20 +60,11 @@ export interface Flow {
 
 export const isFlow = (provider: Provider): provider is Flow => "finish" in provider;
 
-type Preset = Omit<OAuthProvider, "id" | "clientId" | "clientSecret">;
+/** Plain OAuth 2 with its URLs filled in: a provider module that needs only a client id and secret (providers/github.ts). */
+export type Preset = Omit<OAuthProvider, "id" | "clientId" | "clientSecret">;
 
-const PRESETS: Record<string, Preset> = {
-  github: {
-    name: "GitHub",
-    authorize: "https://github.com/login/oauth/authorize",
-    token: "https://github.com/login/oauth/access_token",
-    user: "https://api.github.com/user",
-    // No scope: only the public profile, which is all sign-in needs.
-    scope: "",
-    id_: (p) => String(p.id),
-    name_: (p) => String(p.name || p.login || "GitHub user"),
-  },
-};
+/** A provider module: a preset of plain OAuth 2, or what makes a flow from its AUTH_PROVIDERS entry. */
+export type ProviderModule = { preset: Preset } | { flow: (entry: Record<string, unknown>) => Flow };
 
 /** A provider with no preset: plain OAuth 2, whose user API answers with `id` (or `sub`) and `name`. */
 const plain = (entry: Record<string, unknown>): Preset => ({
@@ -81,8 +77,11 @@ const plain = (entry: Record<string, unknown>): Preset => ({
   name_: (p) => String(p.name ?? p.login ?? p.preferred_username ?? "Someone"),
 });
 
-/** The providers a host's environment turns on. One that is missing a part is left out, with a warning. */
-export function providersFrom(env: Record<string, unknown>): Provider[] {
+/**
+ * The providers a host's environment turns on, from the provider modules the host builds in (providers/index.ts).
+ * One that is missing a part is left out, with a warning.
+ */
+export function providersFrom(env: Record<string, unknown>, modules: Record<string, ProviderModule>): Provider[] {
   let entries: Record<string, unknown>[] = [];
   try {
     entries = typeof env.AUTH_PROVIDERS === "string" && env.AUTH_PROVIDERS ? JSON.parse(env.AUTH_PROVIDERS) : [];
@@ -96,12 +95,13 @@ export function providersFrom(env: Record<string, unknown>): Provider[] {
       continue;
     }
     const id = String(entry.id ?? "");
-    if (id === "bluesky") {
-      out.push(bluesky(entry));
+    const module = Object.hasOwn(modules, id) ? modules[id] : undefined;
+    if (module && "flow" in module) {
+      out.push(module.flow(entry));
       continue;
     }
     const secret = env[`${id.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_CLIENT_SECRET`];
-    const preset = (Object.hasOwn(PRESETS, id) ? PRESETS[id] : undefined) ?? (entry.authorize && entry.token && entry.user ? plain(entry) : undefined);
+    const preset = (module && "preset" in module ? module.preset : undefined) ?? (entry.authorize && entry.token && entry.user ? plain(entry) : undefined);
     if (!/^[a-z0-9-]{1,32}$/.test(id) || !preset || !entry.clientId || typeof secret !== "string") {
       console.warn(`Sign-in provider ${id || "(no id)"} is missing a part, so it's off`);
       continue;

@@ -19,7 +19,7 @@ flowchart TB
 | --- | --- | --- | --- |
 | Apps | `demos/`, `site/`, your own folder | The page, plus its plugins' workers | The app's author (`app.html`), and the person (Customize) |
 | std plugins | [`std/`](../std/) | A sandboxed worker each | Each app, with `<link rel="plugin">` |
-| Kernel services | Kernel modules in `std/<name>/module.ts`, and spaces in [`src/kernel/`](../src/kernel/) | Inside the kernel, trusted | Modules: the site, in [`kernel.json`](../kernel.json). Spaces: built into every kernel for now ([where this is going](#where-this-is-going)) |
+| Kernel services | Kernel modules in `std/<name>/module.ts` | Inside the kernel, trusted | The site, in [`kernel.json`](../kernel.json) |
 | Kernel core | [`src/kernel/`](../src/kernel/) | Inside the kernel, trusted | Always there |
 | Cordis | `node_modules/cordis` ([cordiverse/cordis](https://github.com/cordiverse/cordis)) | Inside the kernel | Pinned in `package.json` |
 
@@ -35,7 +35,7 @@ The plugins in the top two layers reach an app at three levels. The level says w
 | **Space plugins** | A member, sharing one of their own with a space | Browsers only, never the server | Every member of that space, turned off until each turns it on |
 | **User plugins** | A person, in Customize, or their agent ([the registry](guide/plugin-registry.md) is one place to find them) | Their browser only | Them, on that device |
 
-Customize ([`std/customize.js`](../std/customize.js), a standard plugin the host adds to every app) works on them through the core `authoring` service. The kernel keeps user plugins ([`user-plugins.ts`](../src/kernel/user-plugins.ts)), and a space keeps its space plugins ([`shared-plugins.ts`](../src/kernel/shared-plugins.ts)). [Servers and spaces](server.md#space-plugins) says how a plugin is shared, turned on and removed.
+Customize ([`std/customize.js`](../std/customize.js), a standard plugin the host adds to every app) works on them through the core `authoring` service. The kernel keeps user plugins ([`user-plugins.ts`](../src/kernel/user-plugins.ts)), and a space keeps its space plugins ([`plugins.ts`](../std/spaces/plugins.ts)). [Servers and spaces](server.md#space-plugins) says how a plugin is shared, turned on and removed.
 
 ## Cordis
 
@@ -61,6 +61,7 @@ The core is what every app and every space server needs to run any plugin at all
 | Asking the person | [`review.ts`](../src/kernel/review.ts), [`diff.ts`](../src/kernel/diff.ts) | Review cards for writes outside a plugin's own data, with a line diff |
 | Keys and the network | [`secrets.ts`](../src/kernel/secrets.ts), [`net.ts`](../src/kernel/net.ts), [`address.ts`](../src/kernel/address.ts) | Secrets a plugin can use but never read, the requests made with them, and what counts as an email address (for the `email` module and the servers' accounts) |
 | Which plugins run | [`apps.ts`](../src/kernel/apps.ts), [`catalog.ts`](../src/kernel/catalog.ts), [`switches.ts`](../src/kernel/switches.ts) | An app's linked plugins, installed plugins, and their on/off switches |
+| Plugins' routes | [`routes.ts`](../src/kernel/routes.ts) | Requests for the routes plugins add: the site's, which the service worker passes on, and a space's public ones on its server |
 | The person's own plugins | [`user-plugins.ts`](../src/kernel/user-plugins.ts), [`authoring.ts`](../src/kernel/authoring.ts) | Plugins a person (or their agent) adds to an app, and the help to write them |
 | Describing itself | [`reference.ts`](../src/kernel/reference.ts) | The [API reference](api.md), built from the tables the kernel enforces |
 | Wiring | [`kernel.ts`](../src/kernel/kernel.ts) | Puts the pieces together |
@@ -71,12 +72,11 @@ And the services every plugin relies on: `kernel`, `settings`, `plugins`, `stora
 
 ## Kernel services
 
-These are capabilities with trusted code in the kernel: an app may use them, but not every app does. Most are now kernel modules (below), which a site picks. What is left here is still **built into every kernel**, in the browser and on a server, whether an app uses it or not: the agent file reader, and spaces. Spaces are core-adjacent (sync is wired into the store and the data layer), so they move last, once the core reads them through hooks.
+These are capabilities with trusted code in the kernel: an app may use them, but not every app does. They are kernel modules (below), which a site picks, spaces included. One piece is still **built into every kernel**, whether an app uses it or not: the agent file reader.
 
 | Service | Files | Why it is trusted code |
 | --- | --- | --- |
 | agent files | [`agents/file.ts`](../src/kernel/agents/file.ts) | Turns an app's `rel="agent"` file into the plugin that runs the agent loop. The loop itself isn't core: it is a file the site serves, [`std/agents/runner.js`](../std/agents/runner.js) unless the agent's frontmatter names another with `runner:` ([`src/shared/agent-runner.ts`](../src/shared/agent-runner.ts)). The `agents` service is a module (below); `file.ts` stays until the core reads links through a hook, so it needn't know about agent files |
-| spaces | [`sync.ts`](../src/kernel/sync.ts), [`sync-device.ts`](../src/kernel/sync-device.ts), [`server-apps.ts`](../src/kernel/server-apps.ts), [`shared-plugins.ts`](../src/kernel/shared-plugins.ts), [`routes.ts`](../src/kernel/routes.ts), [`services/sync.ts`](../src/kernel/services/sync.ts), [`space-reviews.ts`](../src/kernel/space-reviews.ts) | Sync with a space, space plugins (shared to members' browsers), plugins on its server, public routes, and reviews a space's server asks members' devices to show |
 
 ### Kernel modules
 
@@ -94,12 +94,14 @@ Most services have moved out of the core into **kernel modules**. A module is a 
     "folder",
     "history",
     "llm",
+    "maker",
     "outside",
     "page",
     "reflect",
     "router",
     "schedule",
     "share",
+    "spaces",
     "tools",
     "transfer"
   ]
@@ -108,7 +110,7 @@ Most services have moved out of the core into **kernel modules**. A module is a 
 
 Only the listed modules are built into the kernel, in the browser and on the site's servers ([`vite.kernel-modules.ts`](../vite.kernel-modules.ts)). A name with no `module.ts` stops the build, and a module that `uses` another the site doesn't list stops the kernel: neither quietly goes without. [`src/kernel/modules.ts`](../src/kernel/modules.ts) says how to write one.
 
-A module keeps the promise any Cordis plugin keeps. Everything it adds goes through the `kernel` it is given (`provide`, `command`, `hook`, `cleanup`, and `kernel.root`, which is the module's own Cordis context), and each is a Cordis effect on that context. What the core tells modules (a tab's address, a plugin instance stopping) it emits as `internal/*` events, which only trusted code hears, so a module's listeners go with it too. So stopping a module takes back its service, commands and hooks, and ends whatever waits on it. The modules that use it stop first, and they start again when it does. The page command `restart-module` does this to one module, and [`tests/checks/module-restart.mjs`](../tests/checks/module-restart.mjs) restarts each one the site runs and checks the kernel looks the same afterwards. A module that calls `defineHook` itself, or sets one of the core's callbacks (`remote.onDispose = …`), fails the layer check, since either would outlive it.
+A module keeps the promise any Cordis plugin keeps. Everything it adds goes through the `kernel` it is given (`provide`, `command`, `hook`, `cleanup`, and `kernel.root`, which is the module's own Cordis context), and each is a Cordis effect on that context. What the core tells modules (a tab's address, a plugin instance stopping, a tab leaving, the data folder ready) it emits as `internal/*` events, which only trusted code hears, so a module's listeners go with it too. So stopping a module takes back its service, commands and hooks, and ends whatever waits on it. The modules that use it stop first, and they start again when it does. The page command `restart-module` does this to one module, and [`tests/checks/module-restart.mjs`](../tests/checks/module-restart.mjs) restarts each one the site runs and checks the kernel looks the same afterwards. A module that calls `defineHook` itself, or sets one of the core's callbacks (`remote.onDispose = …`), fails the layer check, since either would outlive it.
 
 | Module | File | What it adds |
 | --- | --- | --- |
@@ -128,6 +130,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `router` | [`std/router/module.ts`](../std/router/module.ts) | The `router` service: a screen for every address, from the tab's address (the core passes it on as `internal/url`) |
 | `schedule` | [`std/schedule/module.ts`](../std/schedule/module.ts) | The `schedule` service behind `ctx.schedule`: keeps plugins' jobs and wakes them, even a sleeping space |
 | `share` | [`std/share/module.ts`](../std/share/module.ts) | The `share` service: sharing out with the system's share sheet, and sharing in to an app installed as a share target |
+| `spaces` | [`std/spaces/module.ts`](../std/spaces/module.ts), with [`hub.ts`](../std/spaces/hub.ts), [`device.ts`](../std/spaces/device.ts), [`server-apps.ts`](../std/spaces/server-apps.ts), [`plugins.ts`](../std/spaces/plugins.ts), [`reviews.ts`](../std/spaces/reviews.ts) and [`service.ts`](../std/spaces/service.ts) | Spaces: a device's sync with its space and the space's side of it, the server plugins of the apps members open, space plugins (shared to members' browsers), reviews a space's server asks members' devices to show, and the `sync` service. It answers `sync` messages (`kernel.message`) and lends the core what a space adds (`kernel.space`): a site without it keeps no spaces |
 | `tools` | [`std/tools/module.ts`](../std/tools/module.ts) | The `tools` service: reads the whole API reference to offer a plugin's service methods to a model as tools |
 | `transfer` | [`std/transfer/module.ts`](../std/transfer/module.ts), [`std/transfer/csv.ts`](../std/transfer/csv.ts) | The `transfer` service: import and export, reviewed once for the whole file |
 
@@ -150,7 +153,7 @@ The kernel's own services (`data`, `storage`, `settings` and the rest above) are
 
 The plan, being reviewed now, splits this layer out of the core:
 
-1. Every optional service is a kernel module except spaces and the agent file reader, which need the core to read them through hooks first. This repo's `kernel.json` lists every module, so no demo changes.
+1. Every optional service is a kernel module, spaces included, except the agent file reader, which needs the core to read an app's links through a hook first. This repo's `kernel.json` lists every module, so no demo changes.
 2. A smaller site lists fewer, and has less built in.
 3. Services that don't need trusted code become std plugins that provide them (below), such as email delivery.
 
@@ -214,4 +217,4 @@ Some of the platform isn't in any of these layers, because it never runs in the 
 - **The host** ([`src/host/`](../src/host/)): the code in each page that draws views and passes the person's actions on.
 - **The service worker** ([`sw/`](../sw/)): serves app folders and screens, and plugin routes.
 - **The `ui-*` elements** ([`elements/`](../elements/)): custom elements a page loads only if it uses them.
-- **The servers** ([`src/server/`](../src/server/)): the front door for spaces, including sign-in ([`src/server/auth/`](../src/server/auth/)), which decides who may reach a space's plugins at all, so it can't be a plugin. Which sign-in providers a server offers is configuration ([Servers and spaces](server.md)).
+- **The servers** ([`src/server/`](../src/server/)): the front door for spaces, including sign-in ([`src/server/auth/`](../src/server/auth/)), which decides who may reach a space's plugins at all, so it can't be a plugin. Which sign-in providers a server offers is configuration, and a provider that needs code of its own (GitHub's URLs, Bluesky's steps) is a provider module in [`src/server/auth/providers/`](../src/server/auth/providers/), listed once in its `index.ts` as `kernel.json` lists kernel modules ([Servers and spaces](server.md#signing-in-with-another-site)).

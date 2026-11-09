@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serve } from "../../src/server/serve.ts";
 import { providersFrom } from "../../src/server/auth/providers.ts";
+import { providerModules } from "../../src/server/auth/providers/index.ts";
 import { smtpMailer } from "../../src/server/smtp.ts";
 import { fakeSmtp } from "./fake-smtp.mjs";
 import { authenticator } from "./authenticator.mjs";
@@ -63,7 +64,7 @@ const hosts = {
     async start() {
       site ??= await siteWithFixtures();
       // 127.0.0.1, as written, is the one private host server plugins may reach here (the network guard's checks use it).
-      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env), allowPrivate: ["127.0.0.1"], email: smtpMailer({ url: `smtp://127.0.0.1:${mailbox.port}`, from: FROM }) });
+      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env, providerModules), allowPrivate: ["127.0.0.1"], email: smtpMailer({ url: `smtp://127.0.0.1:${mailbox.port}`, from: FROM }) });
     },
     /** Whether a message with this subject went out to `to`, with these words. */
     /** The text of the last message sent to an address. */
@@ -203,8 +204,8 @@ async function device(base, space, cookie, { claim } = {}) {
   };
 }
 
-/** Sync (src/kernel/sync.ts): the space orders changes from its members' devices, refuses stale ones, and lets a device catch up. */
-/** Space plugins (src/kernel/shared-plugins.ts): the space keeps what members share, tells every device, and never runs it. */
+/** Sync (std/spaces/hub.ts): the space orders changes from its members' devices, refuses stale ones, and lets a device catch up. */
+/** Space plugins (std/spaces/plugins.ts): the space keeps what members share, tells every device, and never runs it. */
 async function sharedPluginChecks(base, check, owner) {
   const cal = await person(base).account("Cal");
   await owner.call("/auth/spaces", { name: "club" });
@@ -350,6 +351,30 @@ async function syncChecks(base, check, owner, restart) {
   phone.close();
   laptop.close();
 
+  // The spaces module stopped and started again on the space's server (restart-module): the devices still
+  // connected are asked to say hello again, catch up, and keep hearing each other; numbers go on from the log.
+  await owner.call("/auth/spaces", { name: "again" });
+  const one = await device(base, "again", owner.cookie);
+  const other = await device(base, "again", owner.cookie);
+  await one.hello(0);
+  await other.hello(0);
+  const before = await one.push([{ collection: "books", id: "a", base: 0, after: { id: "a", title: "A" } }]);
+  const admin = await client(base, "again", owner.cookie);
+  const restarted = await admin.command("restart-module", "spaces");
+  await other.settle();
+  const asked = [one, other].every((d) => d.heard.some((m) => m.op === "again"));
+  await one.hello(1);
+  await other.hello(1);
+  const after = await one.push([{ collection: "books", id: "b", base: 0, after: { id: "b", title: "B" } }]);
+  await other.settle();
+  const reached = other.changes().find((c) => c.id === "b");
+  check(
+    "sync: when the spaces module restarts on a space's server, connected devices are asked to say hello again, and changes go on reaching them with the next number",
+    before?.[0]?.seq === 1 && restarted?.ok && asked && after?.[0]?.ok && after[0].seq === 2 && reached?.seq === 2,
+    JSON.stringify({ before, restarted, asked, after, reached }),
+  );
+  for (const d of [one, other, admin]) d.close();
+
   // A device that was away catches up from the last number it saw, after the space has restarted too.
   const url = await restart();
   const away = await device(url, "shared", bea.cookie);
@@ -363,7 +388,7 @@ async function syncChecks(base, check, owner, restart) {
   check("sync: someone who isn't a member can't connect to sync", !(await opens(url, "shared", outsider.cookie)));
 }
 
-/** Server plugins (src/kernel/server-apps.ts): an app's plugin that runs on the space's server, in an isolate. */
+/** Server plugins (std/spaces/server-apps.ts): an app's plugin that runs on the space's server, in an isolate. */
 async function serverPluginChecks(base, check, owner, restart, host) {
   await owner.call("/auth/spaces", { name: "guarded" });
   const phone = await device(base, "guarded", owner.cookie);
@@ -802,7 +827,7 @@ async function oauthChecks(base, check) {
     JSON.stringify({ late, notLinked, invited }),
   );
 
-  const parsed = providersFrom({ AUTH_PROVIDERS: JSON.stringify([null, { id: "constructor", clientId: "c", authorize: "https://a.example/a", token: "https://a.example/t", user: "https://a.example/u" }]), CONSTRUCTOR_CLIENT_SECRET: "s" });
+  const parsed = providersFrom({ AUTH_PROVIDERS: JSON.stringify([null, { id: "constructor", clientId: "c", authorize: "https://a.example/a", token: "https://a.example/t", user: "https://a.example/u" }]), CONSTRUCTOR_CLIENT_SECRET: "s" }, providerModules);
   check("other sites: a configuration entry that isn't an object is skipped, and any id without a preset uses its own URLs", parsed.length === 1 && parsed[0].authorize === "https://a.example/a", JSON.stringify(parsed.map((p) => p.authorize)));
 }
 

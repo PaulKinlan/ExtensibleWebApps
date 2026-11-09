@@ -32,6 +32,7 @@ const CORE = [
   "reference.ts",
   "remote.ts",
   "review.ts",
+  "routes.ts",
   "schema.ts",
   "secrets.ts",
   "services/files.ts",
@@ -48,13 +49,6 @@ const CORE = [
 /** Kernel services an app may not use, and the files that belong to them, being split out of the core. */
 const SERVICES = [
   "agents/file.ts",
-  "routes.ts",
-  "server-apps.ts",
-  "services/sync.ts",
-  "shared-plugins.ts",
-  "space-reviews.ts",
-  "sync-device.ts",
-  "sync.ts",
 ];
 
 const files = (dir = "") =>

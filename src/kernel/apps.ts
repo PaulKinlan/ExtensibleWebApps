@@ -62,7 +62,7 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     } catch (error) {
       return { href, error: error instanceof Error ? error.message : String(error) };
     }
-    // A plugin that runs only on a space's server (runs: "server") isn't started here (server-apps.ts). Its
+    // A plugin that runs only on a space's server (runs: "server") isn't started here (std/spaces/server-apps.ts). Its
     // collections are still known here, so this app's own plugins and views can use the records it keeps.
     if (manifest.runs === "server") {
       // (On a server, this is a member's client talking: the space takes collections only from the site's copy.)

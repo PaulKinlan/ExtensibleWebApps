@@ -60,7 +60,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
   const save = () => store.writeJson(STATE, state);
   /**
    * Who hears when a plugin is added or removed here by the person, so a device in a space can share it
-   * with the space (shared-plugins.ts). What the space sends is added with `quiet`, and isn't heard.
+   * with the space (std/spaces/plugins.ts). What the space sends is added with `quiet`, and isn't heard.
    */
   const changed = new Set<(change: { app: string; added?: string[]; removed?: string }) => void>();
   const tell = (change: { app: string; added?: string[]; removed?: string }) => {

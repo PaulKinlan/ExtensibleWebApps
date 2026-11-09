@@ -9,7 +9,7 @@
 //   <link rel="plugin" href="/std/sync.js">
 //   <slot name="sync"></slot>
 //
-// The kernel keeps the drafts (src/kernel/sync-device.ts) and the `sync`
+// The kernel keeps the drafts (std/spaces/device.ts) and the `sync`
 // service hands them out; this plugin only draws them. Using a draft writes
 // the record without a review, so the plugin does it only when the person
 // presses the button.

@@ -76,7 +76,7 @@ export interface ServiceProvider {
 }
 
 /** Where a plugin came from: bundled with the platform, kept in the data folder, linked by an open app's app.html, or an app's server plugin. */
-/** "server": an app's plugin that runs on a space's server (server-apps.ts), the only kind that runs there. */
+/** "server": an app's plugin that runs on a space's server (std/spaces/server-apps.ts), the only kind that runs there. */
 export type Origin = "built-in" | "data" | "app" | "server";
 
 export interface Installed {
@@ -141,7 +141,7 @@ export class RemotePlugins {
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }
-    // On a space's server only the site's own plugins are installed (server-apps.ts) and the kernel's
+    // On a space's server only the site's own plugins are installed (std/spaces/server-apps.ts) and the kernel's
     // built-in ones: not one a member's client sent (an app's link, a plugin they added), which could
     // otherwise claim a collection before the space's own plugin does.
     if (this.hosts.mode === "server" && (options.origin === "app" || options.origin === "data" || options.origin === undefined)) {
@@ -202,7 +202,7 @@ export class RemotePlugins {
 
   /**
    * On a server only the plugins of the apps opened in the space run, as the site serves them
-   * (server-apps.ts): never source a member's client sent (an app it says it opened, a plugin it added).
+   * (std/spaces/server-apps.ts): never source a member's client sent (an app it says it opened, a plugin it added).
    */
   private runsHere(plugin: Installed): boolean {
     if (this.hosts.mode === "server") return plugin.origin === "server";
