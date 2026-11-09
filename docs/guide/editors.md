@@ -76,10 +76,15 @@ are read and written in place. After a reload the browser asks again before
 the folder can be used: `folder.about()` says `allowed: false`, and
 `folder.allow()`, after a click, asks.
 
+Each app has its own: the app a call comes from (the tab it was made in)
+decides which folder it reaches, so two apps that both use the service never
+see each other's files, and picking a folder in one leaves the other's as it
+was.
+
 | Method | Needs |
 | --- | --- |
-| `about()`, `list(prefix?)`, `entries(path?)`, `read(path)` | `folder:read` |
-| `write(path, text)` | `folder:write` |
+| `about()`, `list(prefix?)`, `entries(path?)`, `read(path)`, `exists(path)` | `folder:read` |
+| `write(path, text)`, `writeData(path, dataUrl)` for a file that isn't text (an image) | `folder:write` |
 | `propose(path, text, reason)`: the person sees a diff and allows it | `folder:propose` |
 | `choose()`, `allow()`, `forget()` | `folder:choose` |
 

@@ -38,6 +38,7 @@ Some folders here also hold a `module.ts`: a **kernel module**, trusted code tha
 | [`history/module.ts`](history/module.ts) | The `history` service behind [`undo.js`](undo.js): undo and redo across every plugin's writes |
 | [`llm/module.ts`](llm/module.ts) | The `llm` service: one way for any plugin to ask a model; the vendor plugins in [`llm/`](llm/) answer behind it |
 | [`maker/module.ts`](maker/module.ts) | The `maker` service: apps a person makes in the browser, kept in their data folder and served at `/apps/<name>/` by the service worker ([`sw/routes/made.js`](../sw/routes/made.js)); saves after one review of every file, each file's versions, and checks as written and as it runs |
+| [`notify/module.ts`](notify/module.ts) | The `notify` service: the operating system's notifications, for telling the person something while they are away from the app |
 | [`page/module.ts`](page/module.ts) | The `page` service: the app's own page, as far as a plugin's places reach into it |
 | [`reflect/module.ts`](reflect/module.ts) | The `reflect` service: a read-only view of the whole kernel, for debuggers |
 | [`router/module.ts`](router/module.ts) | The `router` service: a screen for every address in an app |

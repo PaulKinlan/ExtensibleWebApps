@@ -1,0 +1,41 @@
+<!--
+  The Hugo preview panel: { origin, src, revision, title, none, private,
+  down, blocked, draft, command, problem }. The <ui-site-preview> checks the
+  server and sends `preview` with "up", "down" or "blocked"; the help below
+  it says what to do about the last two. `server` changes the address, and
+  `again` checks once more.
+-->
+<style>
+  .preview { --preview-height: 60vh; }
+  .preview form { display: flex; gap: var(--space-2); }
+  .preview form input { flex: 1; min-width: 0; font-family: var(--mono, monospace); }
+  .preview p { margin: 0; color: var(--fg-2); }
+  .preview pre { margin: 0; padding: var(--space-2); border-radius: var(--radius); background: var(--bg-2); overflow-x: auto; }
+  .preview .problem { color: var(--danger, #b91c1c); }
+</style>
+<template id="preview">
+  <ui-card class="preview">
+    <ui-stack gap="2">
+      <ui-stack direction="row" justify="between" align="center"><h3>Hugo preview</h3><button type="button" data-action="toggle">Close</button></ui-stack>
+      <form data-action="server">
+        <input name="origin" value="{{origin}}" aria-label="Preview server" placeholder="localhost:1313">
+        <button type="submit">Use</button>
+      </form>
+      <template if="problem"><p class="problem" role="alert">{{problem}}</p></template>
+      <template if="none"><p>Open a post to preview it.</p></template>
+      <template if="!none">
+        <ui-site-preview address="{{src}}" revision="{{revision}}" action="preview" label="{{title}}, as Hugo shows it"></ui-site-preview>
+        <template if="private"><p>Hugo can only show posts in a folder on your disk: use <strong>Open folder…</strong> to open your site, then start Hugo there.</p></template>
+        <template if="down">
+          <p>Start Hugo in your site's folder<template if="draft">, with -D so drafts show</template>:</p>
+          <pre>{{command}}</pre>
+          <button type="button" data-action="again">Try again</button>
+        </template>
+        <template if="blocked">
+          <p>Your browser doesn't let this site reach your computer. Allow <strong>Local network access</strong> in the site's settings (the icon left of the address), then try again.</p>
+          <button type="button" data-action="again">Try again</button>
+        </template>
+      </template>
+    </ui-stack>
+  </ui-card>
+</template>

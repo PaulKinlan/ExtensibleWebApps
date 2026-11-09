@@ -17,6 +17,10 @@
     select="from,to"     selects that range and scrolls to it, when it changes
     annotations          JSON: [{ from, to, severity, message }] to underline,
                          severity "info", "warning" or "error"
+    spellcheck="true"    the browser checks the spelling (off otherwise)
+    words                JSON: ["Hugo", "WebMCP"], words the browser's spell
+                         checker accepts (Chrome's custom dictionary, where
+                         the browser has one)
 
   The text to start with is the element's text content:
 

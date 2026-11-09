@@ -4,7 +4,7 @@
   files: { folder: { name, picked, allowed, needsAllow }, sections: [{ name,
            posts: [{ path, title, date, draft, open }] }], empty, problem }
   editor: { open, title, path, unsaved, status, text, revision, select,
-            annotations }
+            annotations, spellcheck, words }
 
   The editor is a <ui-editor>: what the person types comes back as `edit`
   after a pause, the selection as `select`, and pastes and drops as `paste`
@@ -69,7 +69,7 @@
         <span class="path" role="status">{{status}}</span>
         <button type="button" class="primary" data-action="save">Save</button>
       </header>
-      <ui-editor name="text" label="{{title}}" action="edit" selection-action="select" paste-action="paste" drop-action="drop" document="{{path}}" revision="{{revision}}" select="{{select}}" annotations="{{annotations}}">{{text}}</ui-editor>
+      <ui-editor name="text" label="{{title}}" action="edit" selection-action="select" paste-action="paste" drop-action="drop" document="{{path}}" revision="{{revision}}" select="{{select}}" annotations="{{annotations}}" spellcheck="{{spellcheck}}" words="{{words}}">{{text}}</ui-editor>
     </article>
   </template>
   <template if="!open"><ui-empty heading="No post open"><p>Pick a post on the left, or start a new one.</p></ui-empty></template>
