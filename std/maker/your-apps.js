@@ -13,6 +13,9 @@
 //
 // Without a model it still lists, previews and restores the apps already
 // made: they are plain files, and none of them needs the model to run.
+// "Save to a folder" writes a copy of an app's files to the person's disk,
+// and "Open from a folder" makes an app from one, after a review, so an app
+// can go to another device or into a checkout.
 
 export const manifest = {
   id: "your-apps",
@@ -42,6 +45,8 @@ export default function (ctx) {
   let steps = [];
   let answer = null;
   let target = "";
+  /** What the last folder save or open said. */
+  let folder = null;
 
   const draw = () => {
     const app = apps.find((a) => a.name === picked);
@@ -56,6 +61,7 @@ export default function (ctx) {
       none: !apps.length,
       apps: apps.map((a) => ({ ...a, picked: a.name === picked })),
       app: app ? { ...app, revision } : null,
+      folder,
       files: files.map((f) => ({ ...f, open: f.name === open, versions: f.versions.map((v) => ({ ...v, when: new Date(v.at).toLocaleString(), current: v.version === f.latest })) })),
     });
   };
@@ -136,6 +142,19 @@ export default function (ctx) {
       return draw();
     }
     if (action === "reload") return reload();
+    if (action === "folder" && picked) {
+      const result = await ctx.call("maker", "saveToFolder", picked).catch((error) => ({ ok: false, error: error.message }));
+      folder = result.ok ? { text: `Saved ${result.files.length} files to the folder ${result.folder}.`, tone: "ok" } : { text: `Not saved: ${result.error}`, tone: "warn" };
+      return draw();
+    }
+    if (action === "open-folder") {
+      const result = await ctx.call("maker", "openFolder").catch((error) => ({ ok: false, error: error.message }));
+      folder = result.ok
+        ? { text: `Opened ${result.app} from the folder${result.skipped?.length ? `, leaving out ${result.skipped.join(", ")}` : ""}.`, tone: "ok" }
+        : { text: `Not opened: ${result.error}`, tone: "warn" };
+      if (result.ok) picked = result.app;
+      return load();
+    }
     if (action === "history") {
       open = open === value ? "" : String(value);
       return draw();

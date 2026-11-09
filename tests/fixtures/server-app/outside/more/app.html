@@ -1,0 +1,14 @@
+<!doctype html>
+<!--
+  A second app in the same space, whose plugin keeps the collection jot-notes.
+  Opening it there gives the door in ../app.html a new tool, so an MCP client
+  connected to that door is told the tools changed (tests/server/mcp-more.mjs).
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>More jots</title>
+  <link rel="plugin" href="jots.js">
+</head>
+<body><slot name="main"></slot></body>
+</html>

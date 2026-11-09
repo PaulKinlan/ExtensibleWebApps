@@ -1,0 +1,8 @@
+<!--
+  Dictation's toolbar button: { open }. The <ui-dictation> element listens in
+  the page and sends `heard` with what it hears (elements/ui-dictation.html).
+  With no post open there's nowhere for the words to go, so it isn't shown.
+-->
+<template id="button">
+  <template if="open"><ui-dictation action="heard" label="Dictate"></ui-dictation></template>
+</template>

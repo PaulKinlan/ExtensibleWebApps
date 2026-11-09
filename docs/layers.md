@@ -97,6 +97,7 @@ Most services have moved out of the core into **kernel modules**. A module is a 
     "launch",
     "llm",
     "maker",
+    "notify",
     "outside",
     "page",
     "reflect",
@@ -128,6 +129,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `launch` | [`std/launch/module.ts`](../std/launch/module.ts) | The `launch` service: files opened with an app installed from the browser (its manifest's `file_handlers`), handed to a plugin of that app once |
 | `llm` | [`std/llm/module.ts`](../std/llm/module.ts) | The `llm` service: the one interface to every model; the vendors are std plugins beside it ([`std/llm/`](../std/llm/)) |
 | `maker` | [`std/maker/module.ts`](../std/maker/module.ts) | The `maker` service: apps a person makes in the browser (by describing them to the app maker agent), kept on their device and served at /apps/<name>/, saved after a review, with each file's versions and checks |
+| `notify` | [`std/notify/module.ts`](../std/notify/module.ts) | The `notify` service: the operating system's notifications, shown from a tab with the plugin's app open while nobody is looking at it (the host's [`notify` bridge](../src/host/bridges/notify.ts)) |
 | `outside` | [`std/outside/module.ts`](../std/outside/module.ts) | The `outside` service: agents outside the app use a plugin's tools, as WebMCP tools in the page (the host's [`webmcp` bridge](../src/host/bridges/webmcp.ts)) and as an MCP server on a space's server. Uses `tools` |
 | `page` | [`std/page/module.ts`](../std/page/module.ts) | The `page` service: the app's own page, as far as a plugin's places reach into it, and the slots plugins declare |
 | `reflect` | [`std/reflect/module.ts`](../std/reflect/module.ts) | The `reflect` service: a read-only view of the whole kernel, for debuggers |

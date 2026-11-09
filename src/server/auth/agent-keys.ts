@@ -21,6 +21,9 @@ export interface AgentKey {
   space: string;
   created: number;
   used?: number;
+  /** For a key an MCP client got by signing in (mcp-oauth.ts): the one door it may use, and the client it was given to. */
+  plugin?: string;
+  client?: string;
 }
 
 /** What is kept for a key, under its hash. */
@@ -56,17 +59,17 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
     async list(user: string): Promise<AgentKey[]> {
       const index = await indexOf(user);
       const keys = await Promise.all(Object.values(index).map((h) => read<Kept>(`agent-keys/${h}.json`)));
-      return keys.flatMap((k) => (k ? [{ id: k.id, name: k.name, space: k.space, created: k.created, ...(k.used ? { used: k.used } : {}) }] : [])).sort((a, b) => a.created - b.created);
+      return keys.flatMap((k) => (k ? [{ id: k.id, name: k.name, space: k.space, created: k.created, ...(k.used ? { used: k.used } : {}), ...(k.plugin ? { plugin: k.plugin } : {}), ...(k.client ? { client: k.client } : {}) }] : [])).sort((a, b) => a.created - b.created);
     },
 
-    async make(user: string, space: string, name: string): Promise<{ key: string; made: AgentKey } | { error: string; status: number }> {
+    async make(user: string, space: string, name: string, only: { plugin?: string; client?: string } = {}): Promise<{ key: string; made: AgentKey } | { error: string; status: number }> {
       if (!(await accounts.isMember(space, user))) return { error: "You aren't in that space", status: 403 };
       const label = name.trim().slice(0, 64);
       if (!label) return { error: "Name the key after the agent it's for", status: 400 };
       const index = await indexOf(user);
       if (Object.keys(index).length >= MAX_KEYS) return { error: `You have ${MAX_KEYS} keys: revoke one first`, status: 400 };
       const key = PREFIX + random(32);
-      const kept: Kept = { id: random(9), name: label, space, user, created: Date.now() };
+      const kept: Kept = { id: random(9), name: label, space, user, created: Date.now(), ...(only.plugin ? { plugin: only.plugin } : {}), ...(only.client ? { client: only.client } : {}) };
       const h = await hash(key);
       await files.write(`agent-keys/${h}.json`, JSON.stringify(kept));
       await files.write(`agent-keys/users/${user}.json`, JSON.stringify({ ...index, [kept.id]: h }));
@@ -84,13 +87,16 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
       return true;
     },
 
-    /** The member an `Authorization: Bearer <key>` header is for, if the key is for this space and they're still in it. */
-    async member(authorization: string | null, space: string): Promise<{ user: string; key: string } | null> {
+    /**
+     * The member an `Authorization: Bearer <key>` header is for, if the key is for this space (and, for a key
+     * limited to one door, this plugin's) and they're still in it.
+     */
+    async member(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string } | null> {
       const token = /^Bearer\s+(\S+)$/i.exec(authorization ?? "")?.[1];
       if (!token || !KEY.test(token)) return null;
       const h = await hash(token);
       const kept = await read<Kept>(`agent-keys/${h}.json`);
-      if (!kept || kept.space !== space || !(await accounts.isMember(space, kept.user))) return null;
+      if (!kept || kept.space !== space || (kept.plugin && kept.plugin !== plugin) || !(await accounts.isMember(space, kept.user))) return null;
       if (!kept.used || Date.now() - kept.used > USED_EVERY_MS) await files.write(`agent-keys/${h}.json`, JSON.stringify({ ...kept, used: Date.now() }));
       return { user: kept.user, key: kept.id };
     },

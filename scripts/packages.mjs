@@ -49,8 +49,8 @@ export async function buildIndex() {
     });
   }
   // The standard plugins offered too (packages/std.json): they stay in std/, where apps link them, and a
-  // person adds them from there. Customize and the plugin editor aren't offered: the host adds Customize, and
-  // the editor's starting templates are in a folder beside it, which can't be copied with it.
+  // person adds them from there, with the files their manifests list (the plugin editor's starting templates
+  // come from the folder beside it). Customize isn't offered: the host adds it to every app.
   const STD = new URL("../std/", import.meta.url);
   const { std = [] } = JSON.parse(readFileSync(new URL("std.json", ROOT), "utf8"));
   if (JSON.stringify([...std].sort()) !== JSON.stringify(std)) throw new Error("packages/std.json: list the plugins sorted, one per line");

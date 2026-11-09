@@ -18,17 +18,32 @@
 // as a diff first, as they do a write to another plugin's data. Picking the
 // folder needs `folder:choose`.
 //
-// There is one folder for the browser profile, as the editor has one open
-// site. Spaces' servers have none.
+// Each app has its own folder: the app a call comes from (the tab it was made
+// in, or the tabs that have the plugin's app open) picks which, so the
+// Markdown editor's site and another app's folder never mix. Before folders
+// were per app there was one for the browser profile; the first app to use
+// the service after that keeps it, picked folder and private files alike.
+// Spaces' servers have none.
 
 import { service, type ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
 import type { Dispatch } from "../../src/shared/protocol";
 
 const DB = "ewa-folder";
-const KEY = "folder";
-/** The private folder used until the person picks one, in the browser's own storage. Hidden, so the files service can't reach it. */
-const PRIVATE = ".folder";
+/** Where the one folder for the whole profile was kept, before each app had its own. */
+const OLD_KEY = "folder";
+/** The app that took over that folder, and its private files. */
+const OLD_OWNER = "old-folder-owner";
+/** Each app's picked folder is kept under this and the app's name. */
+const KEY = "app:";
+/** The private folders used until the person picks one, in the browser's own storage. Hidden, so the files service can't reach them. */
+const PRIVATE = ".folders";
+/** The private folder from before folders were per app: the app that took it over still uses it. */
+const OLD_PRIVATE = ".folder";
+/** What a plugin no app links (one the workbench installed) uses as its app. */
+const NO_APP = "~workbench";
+/** An app's private folder's name: its folder, with ~ for / (an app folder's parts are letters, digits, _ and -, so no two apps share one). */
+const privateName = (app: string) => app.replace(/\//g, "~");
 const MAX_FILE = 5_000_000;
 const MAX_LISTED = 5000;
 /** Folders a listing never goes into: version control, dependencies and builds, which a site has plenty of. */
@@ -66,38 +81,95 @@ function idb<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBReq
 }
 
 const make = (kernel: ModuleKernel): ServiceProvider => {
-  const { hosts, reviewed } = kernel;
+  const { hosts, reviewed, apps } = kernel;
   const inBrowser = typeof navigator !== "undefined" && !!navigator.storage?.getDirectory && typeof indexedDB !== "undefined";
-  let picked: Handle | null | undefined;
+  /** Each app's picked folder (null: none, the private one), once read from IndexedDB. */
+  const picked = new Map<string, Handle | null>();
+  /** The app that took over the profile's one folder from before folders were per app ("" if there was none). */
+  let oldOwner: Promise<string> | undefined;
 
-  const remembered = async (): Promise<Handle | null> => {
-    if (picked !== undefined) return picked;
-    picked = ((await idb("readonly", (s) => s.get(KEY)).catch(() => null)) as Handle | undefined) ?? null;
-    return picked;
+  /**
+   * Settles, once, which app keeps the folder from before: the first to ask, if there was one. Its picked
+   * folder moves to that app's key; its private files stay where they are, in OLD_PRIVATE.
+   */
+  const ownerOfOld = (app: string) =>
+    (oldOwner ??= (async () => {
+      const files = await (await navigator.storage.getDirectory()).getDirectoryHandle(OLD_PRIVATE).then(
+        () => true,
+        () => false,
+      );
+      // One readwrite transaction: IndexedDB runs them one at a time across every kernel on this
+      // origin (a tab's own, a space's), so only one app ever takes the old folder over.
+      return new Promise<string>((resolve, reject) => {
+        const open = indexedDB.open(DB, 1);
+        open.onupgradeneeded = () => open.result.createObjectStore("handles");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const tx = open.result.transaction("handles", "readwrite");
+          const store = tx.objectStore("handles");
+          let owner = "";
+          const known = store.get(OLD_OWNER);
+          known.onsuccess = () => {
+            if (typeof known.result === "string") {
+              owner = known.result;
+              return;
+            }
+            const old = store.get(OLD_KEY);
+            old.onsuccess = () => {
+              const handle = old.result as Handle | undefined;
+              owner = handle || files ? app : "";
+              if (handle) {
+                store.put(handle, KEY + app);
+                store.delete(OLD_KEY);
+              }
+              store.put(owner, OLD_OWNER);
+            };
+          };
+          tx.oncomplete = () => (open.result.close(), resolve(owner));
+          tx.onerror = () => (open.result.close(), reject(tx.error));
+        };
+      });
+    })().catch((error) => {
+      // Asked again next time, rather than remembering the failure.
+      oldOwner = undefined;
+      throw error;
+    }));
+
+  const remembered = async (app: string): Promise<Handle | null> => {
+    const known = picked.get(app);
+    if (known !== undefined) return known;
+    await ownerOfOld(app);
+    const handle = ((await idb("readonly", (s) => s.get(KEY + app)).catch(() => null)) as Handle | undefined) ?? null;
+    picked.set(app, handle);
+    return handle;
   };
-  const privateFolder = async () => (await navigator.storage.getDirectory()).getDirectoryHandle(PRIVATE, { create: true });
+  const privateFolder = async (app: string) => {
+    const storage = await navigator.storage.getDirectory();
+    if ((await ownerOfOld(app)) === app) return storage.getDirectoryHandle(OLD_PRIVATE, { create: true });
+    return (await storage.getDirectoryHandle(PRIVATE, { create: true })).getDirectoryHandle(privateName(app), { create: true });
+  };
 
-  /** The folder to use: the one picked, once the browser lets us, or the private one. */
-  const root = async (): Promise<Handle> => {
+  /** The app folder to use: the one picked, once the browser lets us, or the private one. */
+  const root = async (app: string): Promise<Handle> => {
     if (!inBrowser) throw new Error("There is no folder here: the folder service runs in the browser, not on a space's server");
-    const handle = await remembered();
-    if (!handle) return privateFolder();
+    const handle = await remembered(app);
+    if (!handle) return privateFolder(app);
     const state = (await handle.queryPermission?.({ mode: "readwrite" })) ?? "granted";
     if (state !== "granted") throw new Error(`needs-permission: the browser needs the person's go-ahead to open “${handle.name}” again (folder.allow, after a click)`);
     return handle;
   };
 
-  const locate = async (path: string, create: boolean, base?: Handle) => {
+  const locate = async (app: string, path: string, create: boolean, base?: Handle) => {
     const parts = checkPath(path);
     const name = parts.pop()!;
-    let at: FileSystemDirectoryHandle = base ?? (await root());
+    let at: FileSystemDirectoryHandle = base ?? (await root(app));
     for (const part of parts) at = await at.getDirectoryHandle(part, { create });
     return { at, name };
   };
 
-  const read = async (path: string, base?: Handle): Promise<string | null> => {
+  const read = async (app: string, path: string, base?: Handle): Promise<string | null> => {
     try {
-      const { at, name } = await locate(path, false, base);
+      const { at, name } = await locate(app, path, false, base);
       const file = await (await at.getFileHandle(name)).getFile();
       if (file.size > MAX_FILE) throw new Error(`${path} is larger than 5 MB`);
       return await file.text();
@@ -107,17 +179,17 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     }
   };
 
-  const write = async (path: string, text: string, base?: Handle) => {
-    const { at, name } = await locate(path, true, base);
+  const write = async (app: string, path: string, text: string | Uint8Array, base?: Handle) => {
+    const { at, name } = await locate(app, path, true, base);
     const writable = await (await at.getFileHandle(name, { create: true })).createWritable();
     await writable.write(text);
     await writable.close();
   };
 
-  const list = async (prefix: string): Promise<string[]> => {
+  const list = async (app: string, prefix: string): Promise<string[]> => {
     const start = prefix ? checkPath(prefix.replace(/\/+$/, "")) : [];
     const out: string[] = [];
-    let at: FileSystemDirectoryHandle = await root();
+    let at: FileSystemDirectoryHandle = await root(app);
     try {
       for (const part of start) at = await at.getDirectoryHandle(part);
     } catch (error) {
@@ -138,8 +210,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   };
 
   /** What is in one folder: its files and folders, by name, folders first. */
-  const entries = async (path: string) => {
-    let at: FileSystemDirectoryHandle = await root();
+  const entries = async (app: string, path: string) => {
+    let at: FileSystemDirectoryHandle = await root(app);
     try {
       for (const part of path ? checkPath(path.replace(/\/+$/, "")) : []) at = await at.getDirectoryHandle(part);
     } catch (error) {
@@ -153,9 +225,9 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return out.sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === "directory" ? -1 : 1));
   };
 
-  const about = async () => {
+  const about = async (app: string) => {
     if (!inBrowser) return { name: null, picked: false, allowed: false };
-    const handle = await remembered();
+    const handle = await remembered(app);
     if (!handle) return { name: "Private folder", picked: false, allowed: true };
     const state = (await handle.queryPermission?.({ mode: "readwrite" })) ?? "granted";
     return { name: handle.name, picked: true, allowed: state === "granted" };
@@ -175,6 +247,29 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return hosts.list.find((h) => (tab ? h.tab === tab : kernel.apps.linkedBy(h.tab)?.includes(id)));
   };
 
+  /**
+   * The app a call is for: the app of the tab it was made in, if that app links the plugin, or else the
+   * app of the plugin's own tab, or of the first tab whose app links it. A plugin no app links has the workbench's.
+   */
+  const appOf = (plugin: string, dispatch: Dispatch = {}) => {
+    const [id, own] = plugin.split("@");
+    const tabs = own ? [own] : apps.tabsWith(id);
+    const from = dispatch.trace?.split("-")[0];
+    const tab = from && tabs.includes(from) ? from : tabs[0];
+    return (tab && kernel.appIn(tab)) || NO_APP;
+  };
+
+  /** A file's bytes from a data: URL (base64), at most MAX_FILE of them. */
+  const bytes = (value: unknown) => {
+    const match = typeof value === "string" ? /^data:[\w.+-]+\/[\w.+-]+(;[\w-]+=[\w.-]+)*;base64,([A-Za-z0-9+/]*={0,2})$/.exec(value) : null;
+    if (!match) throw new Error("folder.writeData takes the file as a base64 data: URL");
+    if ((match[2].length * 3) / 4 > MAX_FILE) throw new Error("The file is too large");
+    const binary = atob(match[2]);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    return out;
+  };
+
   const text = (value: unknown, method: string) => {
     if (typeof value !== "string") throw new Error(`folder.${method} takes the file's whole text as a string`);
     if (value.length > MAX_FILE) throw new Error("The file is too large");
@@ -190,6 +285,17 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       entries: { args: "(path?)", params: [{ name: "path", schema: { type: "string", description: "A folder; leave out for the top" }, optional: true }], returns: "[{ name, kind }] or null", needs: "folder:read", description: "What is in one folder (the top if left out): each file's and folder's name, and kind \"file\" or \"directory\", folders first. null if there is no such folder. Hidden names are left out." },
       read: { args: "(path)", params: [{ name: "path", schema: { type: "string", description: "Relative to the folder, with /" } }], returns: "text or null", needs: "folder:read", description: "A file's text, or null if there is no such file. At most 5 MB." },
       write: { args: "(path, text)", params: [{ name: "path", schema: { type: "string", description: "Relative to the folder, with /" } }, { name: "text", schema: { type: "string", description: "The file's whole text" } }], returns: "{ ok, path }", needs: "folder:write", description: "Writes a file, making its folders. For the plugin that keeps the folder's files: it doesn't ask the person." },
+      writeData: {
+        args: "(path, dataUrl)",
+        params: [
+          { name: "path", schema: { type: "string", description: "Relative to the folder, with /" } },
+          { name: "dataUrl", schema: { type: "string", description: "The file's bytes, as a base64 data: URL" } },
+        ],
+        returns: "{ ok, path }",
+        needs: "folder:write",
+        description: "Writes a file that isn't text, such as an image the person dropped, from a data: URL; at most 5 MB. As write, it doesn't ask the person.",
+      },
+      exists: { args: "(path)", params: [{ name: "path", schema: { type: "string", description: "Relative to the folder, with /" } }], returns: "true or false", needs: "folder:read", description: "Whether there is a file at path, whatever is in it (an image, say)." },
       propose: {
         args: "(path, text, reason)",
         params: [
@@ -206,34 +312,49 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       allow: { args: "()", returns: "{ name, allowed }", needs: "folder:choose", description: "Asks the browser to let the picked folder be used again, after a reload (right after a click)." },
       forget: { args: "()", returns: "true", needs: "folder:choose", description: "Goes back to the private folder. The picked folder's files are left as they are." },
     },
-    capability: (method) => (method === "write" ? "folder:write" : method === "propose" ? "folder:propose" : method === "choose" || method === "allow" || method === "forget" ? "folder:choose" : "folder:read"),
+    capability: (method) => (method === "write" || method === "writeData" ? "folder:write" : method === "propose" ? "folder:propose" : method === "choose" || method === "allow" || method === "forget" ? "folder:choose" : "folder:read"),
     async call(plugin, method, args, dispatch) {
+      const app = appOf(plugin, dispatch);
       switch (method) {
         case "about":
-          return about();
+          return about(app);
         case "list":
-          return list(args[0] === undefined ? "" : String(args[0]));
+          return list(app, args[0] === undefined ? "" : String(args[0]));
         case "entries":
-          return entries(args[0] === undefined ? "" : String(args[0]));
+          return entries(app, args[0] === undefined ? "" : String(args[0]));
         case "read":
-          return read(String(args[0]));
+          return read(app, String(args[0]));
+        case "exists":
+          try {
+            const { at, name } = await locate(app, String(args[0]), false);
+            await at.getFileHandle(name);
+            return true;
+          } catch (error) {
+            if (gone(error)) return false;
+            throw error;
+          }
         case "write": {
           const path = checkPath(args[0]).join("/");
-          await write(path, text(args[1], "write"));
+          await write(app, path, text(args[1], "write"));
+          return { ok: true, path };
+        }
+        case "writeData": {
+          const path = checkPath(args[0]).join("/");
+          await write(app, path, bytes(args[1]));
           return { ok: true, path };
         }
         case "propose": {
           const path = checkPath(args[0]).join("/");
           const after = text(args[1], "propose");
           // The folder the person reviews the change in is the one it is written to.
-          const base = await root();
-          const before = await read(path, base);
+          const base = await root(app);
+          const before = await read(app, path, base);
           if (before === after) return { ok: true, unchanged: true };
           const outcome = await reviewed(plugin, `folder:${path.split("/")[0]}`, path, before ?? "", after, args[2], dispatch);
-          if (!(await base.isSameEntry(await root()))) throw new Error(`Another folder was picked while the review of ${path} was open`);
+          if (!(await base.isSameEntry(await root(app)))) throw new Error(`Another folder was picked while the review of ${path} was open`);
           // Written only if the file is still what the person reviewed.
-          if ((await read(path, base)) !== before) throw new Error(`${path} changed while the review was open`);
-          await write(path, after, base);
+          if ((await read(app, path, base)) !== before) throw new Error(`${path} changed while the review was open`);
+          await write(app, path, after, base);
           return { ok: true, path, outcome };
         }
         case "choose": {
@@ -242,12 +363,13 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
           if (!host) throw new Error("No tab has this plugin's app open");
           const handle = (await hosts.bridge("folder", "pick", [], dispatch, host)) as Handle | null;
           if (!handle) return null;
-          await idb("readwrite", (s) => s.put(handle, KEY));
-          picked = handle;
+          await ownerOfOld(app);
+          await idb("readwrite", (s) => s.put(handle, KEY + app));
+          picked.set(app, handle);
           return { name: handle.name };
         }
         case "allow": {
-          const handle = await remembered();
+          const handle = await remembered(app);
           if (!handle) return { name: "Private folder", allowed: true };
           const host = tabOf(plugin, dispatch);
           if (!host) throw new Error("No tab has this plugin's app open");
@@ -255,8 +377,9 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
           return { name: handle.name, allowed };
         }
         case "forget":
-          await idb("readwrite", (s) => s.delete(KEY));
-          picked = null;
+          await ownerOfOld(app);
+          await idb("readwrite", (s) => s.delete(KEY + app));
+          picked.set(app, null);
           return true;
       }
       throw new Error(`folder.${method} is not a method`);

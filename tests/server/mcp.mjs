@@ -6,7 +6,7 @@
 // review to the member's device (std/spaces/reviews.ts), which answers.
 
 /** A member's device in the space, speaking sync, that can answer the space's reviews. */
-async function device(base, space, cookie) {
+export async function device(base, space, cookie) {
   const ws = new WebSocket(`${base.replace("http", "ws")}/s/${space}/kernel`, { headers: { cookie } });
   const heard = [];
   ws.onmessage = (e) => {

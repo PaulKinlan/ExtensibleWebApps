@@ -179,6 +179,12 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
 
 /** Opens an app again in every tab that has it open, after its user plugins or places changed. */
 async function reopen(app: string) {
+  // Every tab lets go of what the app no longer links first, so nothing a plugin replaces is still held by another tab.
+  const mine = await userAdded.links(app).catch(() => []);
+  for (const host of hosts.list) {
+    const open = openApps.get(host.tab);
+    if (open?.app === app) apps.drop(host, [...open.links, ...mine]);
+  }
   for (const host of hosts.list) {
     const open = openApps.get(host.tab);
     if (open?.app === app) {
@@ -247,7 +253,7 @@ services.plugins = pluginSwitches.service;
 const describe = () => reference(services, remote);
 
 // The rest of the core's services are a file each in services/, found by name.
-const parts = { root, store, hosts, remote, apps, reviewed, describe, collections: records, reviews, userAdded, reopen, started: () => started };
+const parts = { root, store, hosts, remote, apps, reviewed, describe, collections: records, reviews, userAdded, reopen, appIn: (tab: string) => openApps.get(tab)?.app, started: () => started };
 Object.assign(services, loadServices(parts));
 // Then the kernel modules the site lists in kernel.json (docs/layers.md): each may add services and page commands.
 /** The page commands the kernel answers itself; a module's commands (loadModules) can't take these names. */
@@ -415,7 +421,7 @@ async function customize(name: string, arg: unknown): Promise<unknown> {
     case "user:on":
     case "user:off":
       // As in Customize (authoring.ts): the person's plugins that provide what it needs come on with it.
-      await (name === "user:on" ? userAdded.onWithNeeds(app, id, (service) => Object.hasOwn(services, service)) : userAdded.offWithDependents(app, id, (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not));
+      await (name === "user:on" ? userAdded.onWithNeeds(app, id, (service) => Object.hasOwn(services, service), (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not) : userAdded.offWithDependents(app, id, (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not));
       await reopen(app);
       return true;
     case "user:remove": {

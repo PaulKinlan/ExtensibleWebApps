@@ -6,6 +6,7 @@
 // third host gets it by calling this.
 //
 //   /auth/…              → auth     the accounts answer (src/server/auth/accounts.ts)
+//   /.well-known/oauth-… → auth     where an MCP client signs in (src/server/auth/mcp-oauth.ts)
 //   /s/<space>/kernel    → join     a member's WebSocket to the space's kernel, from this site's pages
 //   /s/<space>/<path>    → route    one of the space's server plugins may answer (src/server/routes.ts);
 //                                   if none does, `unrouted` says what then
@@ -60,7 +61,8 @@ export function sameOrigin(origin: string | null, url: URL): boolean {
 /** Where a request goes. */
 export async function frontDoor(knock: Knock, accounts: Accounts): Promise<Decision> {
   const { pathname } = knock.url;
-  if (pathname.startsWith("/auth/")) return { door: "auth" };
+  // An MCP client finding where to sign in (src/server/auth/mcp-oauth.ts) is the accounts' too.
+  if (pathname.startsWith("/auth/") || /^\/\.well-known\/(oauth-protected-resource|oauth-authorization-server)(\/|$)/.test(pathname)) return { door: "auth" };
 
   const kernel = /^\/s\/([^/]+)\/kernel$/.exec(pathname);
   if (kernel) {

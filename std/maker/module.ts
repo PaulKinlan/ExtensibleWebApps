@@ -12,6 +12,11 @@
 //              code is in plugins, each in its worker.
 //   history    every file keeps its earlier versions, with who saved each
 //   restore    and why; restoring one is a save like any other, reviewed.
+//   folder     saveToFolder writes a copy of an app's files into a folder
+//              the person picks on their disk, and openFolder reads one
+//              back in (a review, as any save), so a made app can leave the
+//              device that made it: to another device, or to a checkout,
+//              where `npm run check` reads it as it reads the demos.
 //   check      the checks `npm run check` makes (checks.js), and, when the
 //              app is open (the preview on /new/ reloads it), what went
 //              wrong as it ran: plugins that didn't start, errors, refused
@@ -27,10 +32,12 @@ import { diffLines, trim } from "../../src/kernel/diff";
 import { capabilities, grants } from "../../src/kernel/gate";
 import { readManifest } from "../../src/kernel/manifest";
 import type { Param, ServiceProvider } from "../../src/kernel/remote";
-import { recent } from "../../src/kernel/trace";
-import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENTS, ELEMENT_ATTRIBUTES, GLOBAL_ATTRIBUTES } from "../../src/shared/html";
+import { recent, record } from "../../src/kernel/trace";
+import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENTS, ELEMENT_ATTRIBUTES, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../../src/shared/html";
+import { fromAgentFile } from "../../src/kernel/agents/file";
+import { DEFAULT_RUNNER, runnerName } from "../../src/shared/agent-runner";
 import { service, type ModuleKernel } from "../../src/kernel/modules";
-import { checkFiles } from "./checks.js";
+import { checkFiles, siteFiles } from "./checks.js";
 import { APP_NAME, FILE_NAME, appUrl, pageParts, pageProblems } from "../../sw/made-page.js";
 
 /** Where made apps and their versions are kept in the data folder. `made` is one of the platform's folders (paths.ts), so no plugin can write there itself. */
@@ -64,7 +71,7 @@ function checkFile(name: unknown): string {
 }
 
 const make = (kernel: ModuleKernel): ServiceProvider => {
-  const { root, store, remote } = kernel;
+  const { root, store, remote, hosts, apps } = kernel;
   kernel.hook("maker:changed", { mode: "emit", needs: "apps:read", args: "{ app, files, removed? }", description: "A made app's files were saved, restored or removed (maker.save, maker.restore, maker.remove)." });
   kernel.hook("maker:check", { mode: "emit", needs: "apps:read", args: "{ app }", description: "maker.check wants the app opened again, to see it run: a preview of it (std/maker/your-apps.js) reloads." });
 
@@ -115,6 +122,10 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       GLOBAL_ATTRIBUTES,
       ELEMENT_ATTRIBUTES,
       DROPPED_WITH_CONTENT,
+      INPUT_TYPES,
+      fromAgentFile,
+      runnerName,
+      DEFAULT_RUNNER,
       methods,
       hooks: new Map(reference.hooks.map((h) => [h.name, h.listen])),
       services: new Set(reference.services.map((s) => s.name)),
@@ -126,6 +137,27 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         return running.href ? new URL(running.href).pathname : running.manifest.name;
       },
     };
+  };
+
+  /**
+   * The checks of a made app's files, with the files elsewhere on the site that it links read first: the
+   * standard plugins and registry packages (/packages/…) it uses, so the services they provide count, and
+   * a link to one that isn't there is found.
+   */
+  const checked = async (name: string, files: Map<string, string>) => {
+    const r = rules(name);
+    const site = new Map<string, string>();
+    const origin = (globalThis as { location?: Location }).location?.origin;
+    if (origin) {
+      await Promise.all(
+        siteFiles(files, name, r).map(async (path) => {
+          const response = await fetch(new URL(path, origin), { credentials: "same-origin" }).catch(() => undefined);
+          // A site that answers every address with a page (a fallback) hasn't got the file.
+          if (response?.ok && !(/\.js$/.test(path) && /text\/html/.test(response.headers.get("content-type") ?? ""))) site.set(path, await response.text());
+        }),
+      );
+    }
+    return checkFiles(files, r, name, site);
   };
 
   /**
@@ -214,7 +246,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     if (stale) return { ok: false, error: `${stale} changed while the review was open, so nothing was saved. Read it again and try once more.` };
     if (isNew) await indexed(name, true);
     root.emit(dispatch, "maker:changed", { app: name, files: changed.map(([f]) => f) });
-    const { problems } = checkFiles(await filesOf(name), rules(name), name);
+    const { problems } = await checked(name, await filesOf(name));
     return { ok: true, url: appUrl(name), saved: changed.map(([f]) => f), versions, problems };
   }
 
@@ -274,6 +306,38 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return { ran: true, problems: problems.slice(0, 30) };
   }
 
+  /** The tab to pick a folder in: the caller's own, or the first with its app open (as transfer does). */
+  const tabOf = (instance: string) => {
+    const [id, tab] = instance.split("@");
+    const host = hosts.list.find((h) => (tab ? h.tab === tab : apps.linkedBy(h.tab)?.includes(id))) ?? hosts.list[0];
+    if (!host) throw new Error("No tab is open to pick a folder in");
+    return host;
+  };
+
+  /** Writes a copy of a made app's files into a folder the person picks. */
+  async function saveToFolder(instance: string, name: string, dispatch: { trace?: string }) {
+    const files = await filesOf(name);
+    if (!files.has("app.html")) return { ok: false, error: `There is no app called ${name}` };
+    const done = (await hosts.bridge("maker", "write", [[...files].map(([f, text]) => ({ name: f, text }))], dispatch, tabOf(instance))) as { folder: string; written: string[] } | null;
+    if (!done) return { ok: false, error: "No folder was picked, so nothing was saved" };
+    record({ kind: "lifecycle", name: "maker:folder-save", detail: `${name} → ${done.folder}: ${done.written.join(", ")}` });
+    return { ok: true, folder: done.folder, files: done.written };
+  }
+
+  /** Reads an app's files from a folder the person picks, and saves them as a made app after a review. */
+  async function openFolder(instance: string, wanted: unknown, dispatch: { trace?: string }) {
+    const got = (await hosts.bridge("maker", "read", [MAX_FILE, MAX_FILES], dispatch, tabOf(instance))) as { folder: string; files: { name: string; text: string }[]; skipped: string[] } | null;
+    if (!got) return { ok: false, error: "No folder was picked" };
+    // Named as asked, or after the folder: "Plant care" becomes plant-care.
+    const name = wanted === undefined || wanted === "" ? got.folder.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^[^a-z]+|-+$/g, "").slice(0, 48) : String(wanted);
+    if (!APP_NAME.test(name)) return { ok: false, error: `${got.folder} can't be an app's name: give one, of lowercase letters, digits and dashes` };
+    const files = got.files.filter((f) => FILE_NAME.test(f.name));
+    const skipped = [...got.skipped, ...got.files.filter((f) => !FILE_NAME.test(f.name)).map((f) => f.name)];
+    if (!files.some((f) => f.name === "app.html")) return { ok: false, error: `${got.folder} has no app.html, so it isn't an app` };
+    const saved = await save(instance, name, files, `Opened from the folder ${got.folder}`, dispatch);
+    return { ...saved, app: name, ...(skipped.length ? { skipped } : {}) };
+  }
+
   const fileList: Param = {
     name: "files",
     schema: {
@@ -315,6 +379,21 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         description: "Puts an earlier version of a file back, once the person accepts. It becomes the newest version, so it can be undone the same way.",
         params: [app(), file, { name: "version", schema: { type: "integer" } }],
       },
+      saveToFolder: {
+        args: "(app)",
+        returns: "{ ok, folder, files } or { ok: false, error }",
+        needs: "apps:read",
+        description: "Writes a copy of the app's files into a folder the person picks on their disk (call it right after they click), replacing files there with the same names. The copy is a plain app folder: open it again with openFolder, here or on another device, or check it in a checkout with npm run check.",
+        params: [app()],
+      },
+      openFolder: {
+        args: "(app?)",
+        returns: "{ ok, app, url, saved, problems, skipped? } or { ok: false, error }",
+        needs: "apps:make",
+        reviewed: true,
+        description: "Reads an app's files from a folder the person picks (call it right after they click): app.html and the plugins, templates, styles and agents beside it. Saves them as the made app named app, or after the folder, once the person accepts one review. Other files are skipped.",
+        params: [{ ...app({ description: "The app to save it as; the folder's name if not given" }), optional: true }],
+      },
       check: {
         args: "(app)",
         returns: "{ ok, ran, problems: [{ level, file, line?, message }], plugins }",
@@ -323,7 +402,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         params: [app()],
       },
     },
-    capability: (method) => (["save", "remove", "restore"].includes(method) ? "apps:make" : "apps:read"),
+    capability: (method) => (["save", "remove", "restore", "openFolder"].includes(method) ? "apps:make" : "apps:read"),
     call: async (instance, method, args, dispatch) => {
       if (method === "list") {
         const out = [];
@@ -335,7 +414,9 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         }
         return out;
       }
+      if (method === "openFolder") return openFolder(instance, args[0], dispatch);
       const name = checkName(args[0]);
+      if (method === "saveToFolder") return saveToFolder(instance, name, dispatch);
       if (method === "read") {
         const text = await read(name, checkFile(args[1]));
         if (text === undefined) throw new Error(`${name} has no ${String(args[1])}`);
@@ -383,7 +464,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       if (method === "check") {
         const files = await filesOf(name);
         if (!files.size) throw new Error(`There is no app called ${name}`);
-        const { problems, plugins } = checkFiles(files, rules(name), name);
+        const { problems, plugins } = await checked(name, files);
         const running = await ran(name, files, plugins, dispatch);
         const all = [...problems, ...running.problems];
         return { ok: !all.some((p) => p.level === "error"), ran: running.ran, url: appUrl(name), problems: all, plugins, ...(running.ran ? {} : { note: "It isn't open anywhere, so only the files were checked. Open it, or its preview, to see it run." }) };
