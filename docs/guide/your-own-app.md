@@ -48,7 +48,7 @@ A file or folder at the top of the project can't have the name of one of the pla
 
 ## The platform, as a dependency
 
-`package.json` names the platform as `"extensible-web-apps": "github:PaulKinlan/ExtensibleWebApps"`. Installing it from GitHub builds it (its `prepack` script), so the first `npm install` takes a minute; running `npm install github:PaulKinlan/ExtensibleWebApps` again brings the newer `main`. Once the platform is published to npm, the dependency becomes a version, installs without building, and `npm update` brings new ones. To try a project against a checkout of the platform, install that instead: `npm install ../ExtensibleWebApps` (built there first with `npm run build && npm run build:server`), or make the project with `--platform file:../ExtensibleWebApps`.
+`package.json` names the platform as `"extensible-web-apps": "github:PaulKinlan/ExtensibleWebApps"`. Installing it from GitHub builds it (its `prepare` script, which also runs on `npm install` in a checkout of the repo and takes a few seconds), so the first `npm install` takes a minute; running `npm install github:PaulKinlan/ExtensibleWebApps` again brings the newer `main`. Once the platform is published to npm, the dependency becomes a version, installs without building, and `npm update` brings new ones. To try a project against a checkout of the platform, install that instead: `npm install ../ExtensibleWebApps` (built there first with `npm run build && npm run build:server`), or make the project with `--platform file:../ExtensibleWebApps`.
 
 The site's own choices that are built into the platform, such as which kernel modules it runs ([The layers](../layers.md)), are the platform's defaults in a project.
 

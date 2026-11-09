@@ -19,7 +19,7 @@ export default async function ({ check, context, URL, errors }) {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
   check("npx finds scripts/create-app.mjs as the repo's one command", pkg.bin?.["create-extensible-app"] === "scripts/create-app.mjs" && readFileSync("scripts/create-app.mjs", "utf8").startsWith("#!/usr/bin/env node"));
   check("a project runs the platform's extensible-app command", pkg.bin?.["extensible-app"] === "scripts/extensible-app.mjs" && readFileSync("scripts/extensible-app.mjs", "utf8").startsWith("#!/usr/bin/env node"));
-  check("installing the platform from GitHub builds it, and the package keeps what it built", /npm run build\b/.test(pkg.scripts?.prepack ?? "") && /build:server/.test(pkg.scripts?.prepack ?? "") && !/^\/?(dist|\.build)\/?$/m.test(readFileSync(".npmignore", "utf8")));
+  check("installing the platform from GitHub builds it, and the package keeps what it built", /npm run build\b/.test(pkg.scripts?.prepare ?? "") && /build:server/.test(pkg.scripts?.prepare ?? "") && !/^\/?(dist|\.build)\/?$/m.test(readFileSync(".npmignore", "utf8")));
 
   const wrapper = JSON.parse(readFileSync("scripts/create-extensible-app/package.json", "utf8"));
   const runs = readFileSync("scripts/create-extensible-app/index.mjs", "utf8");

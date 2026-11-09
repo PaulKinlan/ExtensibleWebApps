@@ -25,7 +25,7 @@
     "reference": "vite build && node scripts/reference.mjs",
     "packages": "node scripts/packages.mjs",
     "gallery": "node scripts/gallery.mjs",
-    "prepack": "npm run build && npm run build:server"
+    "prepare": "npm run build && npm run build:server"
   },
   "dependencies": {
     "cordis": "4.0.0-rc.11",

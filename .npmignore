@@ -1,5 +1,5 @@
 # What a package of the platform leaves out (npm pack, npm publish, and an
-# install from GitHub, which runs `prepack` to build it). Unlike .gitignore,
+# install from GitHub, which runs `prepare` to build it). Unlike .gitignore,
 # it keeps dist/ and .build/: a project that depends on the platform serves
 # and deploys the built files (scripts/extensible-app.mjs), with no build of
 # its own.

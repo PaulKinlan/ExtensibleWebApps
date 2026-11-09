@@ -20,7 +20,7 @@
 // address is `/`, and its page is app.html, also served as the front page.
 //
 // It needs the platform built: an install from GitHub or npm builds it
-// (`prepack`), and in a checkout of this repo `npm run build && npm run build:server`
+// (its `prepare` script), and in a checkout of this repo `npm run build && npm run build:server`
 // does. It writes only in the project's .extensible/ folder, which is never committed.
 
 import { spawnSync } from "node:child_process";
