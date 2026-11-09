@@ -45,13 +45,13 @@
         <button type="button" data-filter="agent" aria-pressed="false">Agents</button>
         <button type="button" data-filter="builtin" aria-pressed="false">Built-in services</button>
       </div>
-      <p class="shown" role="status" aria-live="polite">189 plugins and services</p>
+      <p class="shown" role="status" aria-live="polite">190 plugins and services</p>
     </search>
     <nav class="toc" aria-label="On this page">
       <a href="#add">Add to any app <span class="count">18</span></a>
       <a href="#built-in">Built into this site <span class="count">22</span></a>
       <a href="#std">For app authors <span class="count">7</span></a>
-      <a href="#demos">From the demos <span class="count">110</span></a>
+      <a href="#demos">From the demos <span class="count">111</span></a>
       <a href="#site">This site's pages <span class="count">32</span></a>
     </nav>
 
@@ -344,7 +344,7 @@
         <li class="card" id="service-schedule" data-kind="builtin" data-search="schedule schedule work a plugin wants done later, once or again and again, with the `schedule` permission.">
           <h4><code>schedule</code> <span class="tags"><span class="tag builtin">Built in</span></span></h4>
           <p>Work a plugin wants done later, once or again and again, with the `schedule` permission.</p>
-          <ul class="facts"><li><b>Used by</b> 2 plugins here: Feed fetcher, Survey answers</li></ul>
+          <ul class="facts"><li><b>Used by</b> 3 plugins here: Feed fetcher, Read feeds here, Survey answers</li></ul>
           <p class="actions"><a href="/docs/api#schedule">How to call it</a> <a href="https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/schedule/module.ts">Code</a></p>
         </li>
         <li class="card" id="service-share" data-kind="builtin" data-search="share share sharing out, and sharing in: a plugin can hand a link or some text to the system's share sheet (web share), and an app installed from the browser can be a place to share to (a share target), so a page shared from the browser lands in the reading list.">
@@ -356,7 +356,7 @@
         <li class="card" id="service-sync" data-kind="builtin" data-search="sync spaces what lets an app open in a space (/s/&lt;space&gt;/…) and be shared by its members.">
           <h4><code>sync</code> <span class="tags"><span class="tag builtin">Built in</span></span></h4>
           <p>What lets an app open in a space (/s/&lt;space&gt;/…) and be shared by its members.</p>
-          <ul class="facts"><li><b>Used by</b> 6 plugins here: Sync, Feeds, Field, Lobby, Glowfall together, Surveys</li></ul>
+          <ul class="facts"><li><b>Used by</b> 7 plugins here: Sync, Feeds, Read feeds here, Field, Lobby, Glowfall together, …</li></ul>
           <p class="actions"><a href="/docs/api#sync">How to call it</a> <a href="https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/spaces/module.ts">Code</a></p>
         </li>
         <li class="card" id="service-tools" data-kind="builtin" data-search="tools tools the service methods a plugin may call, described as tools a language model can call.">
@@ -682,7 +682,7 @@
       </ul>
       </section>
       <section class="app" data-section>
-        <h4 class="group"><a href="/demos/feeds/app.html">Feeds</a> <span class="count">2</span></h4>
+        <h4 class="group"><a href="/demos/feeds/app.html">Feeds</a> <span class="count">3</span></h4>
       <ul class="cards">
         <li class="card" id="feeds-fetch" data-kind="background" data-search="feed fetcher fetch reads each feed over https on the space's server, every half hour, and keeps the stories.  behind the scenes network schedule data:read:feeds feeds">
           <h4>Feed fetcher <span class="tags"><span class="tag background">Behind the scenes</span><span class="tag background">Runs on a space's server</span></span></h4>
@@ -691,12 +691,19 @@
           <details><summary>Asks for 3 permissions</summary><ul class="asks"><li><code>network</code> Connect to sites on the internet.</li><li><code>schedule</code> Use the schedule service: work a plugin wants done later, once or again and again, with the `schedule` permission.</li><li><code>data:read:feeds</code> Read the feeds records, and hear when they change.</li></ul></details>
           <p class="actions"><a href="/demos/feeds/fetch.js">Code</a> <button type="button" class="copy" data-copy="/demos/feeds/fetch.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;plugin&quot; href=&quot;/demos/feeds/fetch.js&quot;&gt;">Copy link tag</button></p>
         </li>
-        <li class="card" id="feeds-feeds" data-kind="ui" data-search="feeds feeds follow rss and atom feeds, and read their stories.  on the page ui data:read:items data:read:fetched sync feeds">
+        <li class="card" id="feeds-feeds" data-kind="ui" data-search="feeds feeds follow rss and atom feeds, and read their stories.  on the page ui data:read:items data:read:fetched data:read:here-items data:read:here-fetched sync feeds">
           <h4>Feeds <span class="tags"><span class="tag ui">On the page</span></span></h4>
           <p>Follow RSS and Atom feeds, and read their stories.</p>
           <ul class="facts"><li><b>In</b> <a href="/demos/feeds/app.html">Feeds</a></li></ul>
-          <details><summary>Asks for 4 permissions</summary><ul class="asks"><li><code>ui</code> Draw on this page.</li><li><code>data:read:items</code> Read the items records, and hear when they change.</li><li><code>data:read:fetched</code> Read the fetched records, and hear when they change.</li><li><code>sync</code> Use the sync service: what lets an app open in a space (/s/&lt;space&gt;/…) and be shared by its members.</li></ul></details>
+          <details><summary>Asks for 6 permissions</summary><ul class="asks"><li><code>ui</code> Draw on this page.</li><li><code>data:read:items</code> Read the items records, and hear when they change.</li><li><code>data:read:fetched</code> Read the fetched records, and hear when they change.</li><li><code>data:read:here-items</code> Read the here-items records, and hear when they change.</li><li><code>data:read:here-fetched</code> Read the here-fetched records, and hear when they change.</li><li><code>sync</code> Use the sync service: what lets an app open in a space (/s/&lt;space&gt;/…) and be shared by its members.</li></ul></details>
           <p class="actions"><a href="/demos/feeds/feeds.js">Code</a> <button type="button" class="copy" data-copy="/demos/feeds/feeds.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;plugin&quot; href=&quot;/demos/feeds/feeds.js&quot;&gt;">Copy link tag</button></p>
+        </li>
+        <li class="card" id="feeds-feeds-here" data-kind="background" data-search="read feeds here feeds-here without a space, reads the feeds you follow on this device, through this site, while the app is open.  behind the scenes network schedule sync data:read:feeds sync feeds">
+          <h4>Read feeds here <span class="tags"><span class="tag background">Behind the scenes</span></span></h4>
+          <p>Without a space, reads the feeds you follow on this device, through this site, while the app is open.</p>
+          <ul class="facts"><li><b>Needs</b> <code>sync</code></li><li><b>In</b> <a href="/demos/feeds/app.html">Feeds</a></li></ul>
+          <details><summary>Asks for 4 permissions</summary><ul class="asks"><li><code>network</code> Connect to sites on the internet.</li><li><code>schedule</code> Use the schedule service: work a plugin wants done later, once or again and again, with the `schedule` permission.</li><li><code>sync</code> Use the sync service: what lets an app open in a space (/s/&lt;space&gt;/…) and be shared by its members.</li><li><code>data:read:feeds</code> Read the feeds records, and hear when they change.</li></ul></details>
+          <p class="actions"><a href="/demos/feeds/read-here.js">Code</a> <button type="button" class="copy" data-copy="/demos/feeds/read-here.js">Copy address</button> <button type="button" class="copy" data-copy="&lt;link rel=&quot;plugin&quot; href=&quot;/demos/feeds/read-here.js&quot;&gt;">Copy link tag</button></p>
         </li>
       </ul>
       </section>
