@@ -8,6 +8,7 @@ const KERNEL = new URL("../../src/kernel/", import.meta.url);
 
 /** Needed to run any plugin, in any app or space server. */
 const CORE = [
+  "address.ts",
   "apps.ts",
   "authoring.ts",
   "browser-env.ts",
@@ -46,24 +47,18 @@ const CORE = [
 
 /** Kernel services an app may not use, and the files that belong to them, being split out of the core. */
 const SERVICES = [
-  "address.ts",
   "agents/file.ts",
   "agents/runner.js",
-  "csv.ts",
   "routes.ts",
   "server-apps.ts",
   "services/audio.ts",
   "services/commands.ts",
-  "services/email.ts",
   "services/history.ts",
-  "services/llm.ts",
   "services/page.ts",
   "services/reflect.ts",
   "services/router.ts",
-  "services/schedule.ts",
   "services/share.ts",
   "services/sync.ts",
-  "services/transfer.ts",
   "sync-device.ts",
   "sync.ts",
 ];

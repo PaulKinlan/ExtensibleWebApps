@@ -179,7 +179,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
 
   /**
    * Writes (or, with `fields` null, deletes) a record as `instance`. Reviewed unless the plugin owns the collection,
-   * or `reviewed` says the person already reviewed it with others (services/transfer.ts reviews an import once).
+   * or `reviewed` says the person already reviewed it with others (std/transfer/module.ts reviews an import once).
    */
   async function write(instance: string, name: string, id: string | undefined, fields: Fields | null, reason: unknown, dispatch: Dispatch, reviewed = false) {
     const collection = known(name);

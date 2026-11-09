@@ -29,7 +29,11 @@ Some folders here also hold a `module.ts`: a **kernel module**, trusted code tha
 | [`agents/module.ts`](agents/module.ts) | The `agents` service: agents' runs and tokens counted by the kernel, and the `agent:*` hooks that say what they did. Needs `tools` |
 | [`bus/module.ts`](bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person |
 | [`debug/module.ts`](debug/module.ts) | The `debug` service, which the debug console and other developer tools read the trace from, and the `bench` and `reload-test` commands the tests run |
+| [`email/module.ts`](email/module.ts) | The `email` service: mail a space's server plugins send, only to the space's members, with daily limits |
+| [`llm/module.ts`](llm/module.ts) | The `llm` service: one way for any plugin to ask a model; the vendor plugins in [`llm/`](llm/) answer behind it |
+| [`schedule/module.ts`](schedule/module.ts) | The `schedule` service behind `ctx.schedule`: plugins' jobs, kept so they outlive a restart |
 | [`tools/module.ts`](tools/module.ts) | The `tools` service: the service methods a plugin may call, offered to a model as tools |
+| [`transfer/module.ts`](transfer/module.ts) | The `transfer` service behind [`import-export.js`](import-export.js): import and export of collections, as CSV or JSON |
 
 ## The command palette
 

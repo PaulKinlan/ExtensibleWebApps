@@ -3,6 +3,10 @@
     "agents",
     "bus",
     "debug",
-    "tools"
+    "email",
+    "llm",
+    "schedule",
+    "tools",
+    "transfer"
   ]
 }

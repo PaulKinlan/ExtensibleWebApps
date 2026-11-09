@@ -47,7 +47,7 @@ The core is what every app and every space server needs to run any plugin at all
 | Seeing what happened | [`trace.ts`](../src/kernel/trace.ts), [`changes.ts`](../src/kernel/changes.ts) | The trace of every dispatch, and the change log |
 | The data | [`store.ts`](../src/kernel/store.ts), [`paths.ts`](../src/kernel/paths.ts), [`records.ts`](../src/kernel/records.ts), [`schema.ts`](../src/kernel/schema.ts) | The data folder, path checks, collections and their schemas |
 | Asking the person | [`review.ts`](../src/kernel/review.ts), [`diff.ts`](../src/kernel/diff.ts) | Review cards for writes outside a plugin's own data, with a line diff |
-| Keys and the network | [`secrets.ts`](../src/kernel/secrets.ts), [`net.ts`](../src/kernel/net.ts) | Secrets a plugin can use but never read, and the requests made with them |
+| Keys and the network | [`secrets.ts`](../src/kernel/secrets.ts), [`net.ts`](../src/kernel/net.ts), [`address.ts`](../src/kernel/address.ts) | Secrets a plugin can use but never read, the requests made with them, and what counts as an email address (for the `email` module and the servers' accounts) |
 | Which plugins run | [`apps.ts`](../src/kernel/apps.ts), [`catalog.ts`](../src/kernel/catalog.ts), [`switches.ts`](../src/kernel/switches.ts) | An app's linked plugins, installed plugins, and their on/off switches |
 | The person's own plugins | [`user-plugins.ts`](../src/kernel/user-plugins.ts), [`authoring.ts`](../src/kernel/authoring.ts) | Plugins a person (or their agent) adds to an app, and the help to write them |
 | Describing itself | [`reference.ts`](../src/kernel/reference.ts) | The [API reference](api.md), built from the tables the kernel enforces |
@@ -59,15 +59,11 @@ And the services every plugin relies on: `kernel`, `settings`, `plugins`, `stora
 
 ## Kernel services
 
-These are capabilities with trusted code in the kernel: an app may use them, but not every app does. Most are still a file in [`src/kernel/services/`](../src/kernel/services/) (some with helpers beside it), and **each of those is built into every kernel**, in the browser and on a server, whether an app uses it or not, and nobody can leave one out. Each is also made when the kernel starts, not when first called: most only define their hooks then, but some start work of their own. `schedule` reads its saved jobs and sets their timers, and `sync` listens for this device's changes. A site that leaves a service out will skip that start-up work as well.
+These are capabilities with trusted code in the kernel: an app may use them, but not every app does. Most are still a file in [`src/kernel/services/`](../src/kernel/services/) (some with helpers beside it), and **each of those is built into every kernel**, in the browser and on a server, whether an app uses it or not, and nobody can leave one out. Each is also made when the kernel starts, not when first called: most only define their hooks then, but some start work of their own: `sync` listens for this device's changes. A site that leaves a service out will skip that start-up work as well.
 
 | Service | Files | Why it is trusted code |
 | --- | --- | --- |
 | agent files | [`agents/file.ts`](../src/kernel/agents/file.ts), [`agents/runner.js`](../src/kernel/agents/runner.js) | Turns an app's `rel="agent"` file into the plugin that runs the agent loop. The `agents` service is a module (below); these stay until the core reads links through a hook, so it needn't know about agent files |
-| `llm` | [`services/llm.ts`](../src/kernel/services/llm.ts) | The one interface to every model; the vendors are std plugins ([`std/llm/`](../std/llm/)) |
-| `transfer` | [`services/transfer.ts`](../src/kernel/services/transfer.ts), [`csv.ts`](../src/kernel/csv.ts) | Import and export, reviewed once for the whole file |
-| `email` | [`services/email.ts`](../src/kernel/services/email.ts), [`address.ts`](../src/kernel/address.ts) | Mail from a space's server to its members, with daily limits |
-| `schedule` | [`services/schedule.ts`](../src/kernel/services/schedule.ts) | Wakes plugins that aren't running |
 | `history` | [`services/history.ts`](../src/kernel/services/history.ts) | Undo across every plugin's writes |
 | `commands` | [`services/commands.ts`](../src/kernel/services/commands.ts) | Commands from any plugin, run from a palette or a key |
 | `router`, `share`, `audio`, `page` | [`services/router.ts`](../src/kernel/services/router.ts), [`services/share.ts`](../src/kernel/services/share.ts), [`services/audio.ts`](../src/kernel/services/audio.ts), [`services/page.ts`](../src/kernel/services/page.ts) | Bridges to what only a page can do |
@@ -84,7 +80,11 @@ The first services have moved out of the core into **kernel modules**. A module 
     "agents",
     "bus",
     "debug",
-    "tools"
+    "email",
+    "llm",
+    "schedule",
+    "tools",
+    "transfer"
   ]
 }
 ```
@@ -98,7 +98,11 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `agents` | [`std/agents/module.ts`](../std/agents/module.ts) | The `agents` service: counts each agent's runs and tokens, so an agent can't misreport its own use, and tells the app what agents do (`agent:*` hooks). Uses `tools` |
 | `bus` | [`std/bus/module.ts`](../std/bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person, with replies and topics |
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
+| `email` | [`std/email/module.ts`](../std/email/module.ts) | The `email` service: mail from a space's server to its members, with daily limits |
+| `llm` | [`std/llm/module.ts`](../std/llm/module.ts) | The `llm` service: the one interface to every model; the vendors are std plugins beside it ([`std/llm/`](../std/llm/)) |
+| `schedule` | [`std/schedule/module.ts`](../std/schedule/module.ts) | The `schedule` service behind `ctx.schedule`: keeps plugins' jobs and wakes them, even a sleeping space |
 | `tools` | [`std/tools/module.ts`](../std/tools/module.ts) | The `tools` service: reads the whole API reference to offer a plugin's service methods to a model as tools |
+| `transfer` | [`std/transfer/module.ts`](../std/transfer/module.ts), [`std/transfer/csv.ts`](../std/transfer/csv.ts) | The `transfer` service: import and export, reviewed once for the whole file |
 
 ### Saying which services a plugin needs
 
@@ -119,7 +123,7 @@ The kernel's own services (`data`, `storage`, `settings` and the rest above) are
 
 The plan, being reviewed now, splits this layer out of the core:
 
-1. Each of the services above becomes a kernel module, as `debug`, `agents`, `bus` and `tools` have, naming the modules it `uses`. This repo's `kernel.json` lists them all, so no demo changes.
+1. Each of the services above becomes a kernel module, as `agents`, `bus`, `debug`, `email`, `llm`, `schedule`, `tools` and `transfer` have, naming the modules it `uses`. This repo's `kernel.json` lists them all, so no demo changes.
 2. A smaller site lists fewer, and has less built in.
 3. Services that don't need trusted code become std plugins that provide them (below), such as email delivery.
 
