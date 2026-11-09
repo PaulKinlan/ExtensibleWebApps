@@ -1,8 +1,8 @@
 <!--
   Chapter 10's words. chapter-10-your-app.js sends { appHtml }: the smallest
   app.html, shown as text. The commands are written here; the one that makes a
-  project is scripts/create-app.mjs, and the one that deploys an app is
-  scripts/deploy-app.mjs.
+  project is scripts/create-app.mjs, and the project runs, checks and deploys
+  its app with scripts/extensible-app.mjs.
 -->
 <style>
   .chapter h2 { margin-top: 0; }
@@ -18,18 +18,18 @@
     <p>Everything you've tried on this page works in it too. Whoever opens it can switch its plugins off, read them, and add their own with <strong>Customize</strong>, kept on their device.</p>
 
     <h3>Make one with a single command</h3>
-    <p>You need <a href="https://nodejs.org/">Node.js</a> 22 or later. In a terminal:</p>
+    <p>You need <a href="https://nodejs.org/">Node.js</a> 22.18 or later. In a terminal:</p>
     <pre><code>npm create extensible-app packing-list
 cd packing-list
 npm run dev</code></pre>
-    <p>The first line makes a folder called <code>packing-list</code> with a copy of the whole platform in it, installs it, and makes your app in <code>demos/packing-list/</code> from the starter: a list you can add to and tick off. Then open <code>http://localhost:5173/demos/packing-list/</code>. Change <code>main.js</code> and <code>app.html</code>, and run <code>npm run check</code> to find mistakes before you open the page.</p>
-    <p class="note">The command runs the platform's own create script straight from GitHub, so you always get the latest. <code>npx github:PaulKinlan/ExtensibleWebApps packing-list</code> does the same without the npm package. The copy is yours: the platform, the standard plugins and every demo, to read and change. Already have a checkout of the repo? <code>npm run new-app -- packing-list</code> makes just the app.</p>
+    <p>The first line makes a folder called <code>packing-list</code> holding just your app: <code>app.html</code>, <code>main.js</code> and its template, made from the starter (a list you can add to and tick off), and a <code>package.json</code> that brings in the platform as a dependency. Then open <code>http://localhost:5173/</code>: the app is the whole site. Change <code>main.js</code> and <code>app.html</code>, and run <code>npm run check</code> to find mistakes before you open the page.</p>
+    <p class="note">The command runs the platform's own create script straight from GitHub, so you always get the latest; <code>npx github:PaulKinlan/ExtensibleWebApps packing-list</code> does the same without the npm package. The platform isn't copied in: <code>npm run dev</code> serves it around your files. Working on the platform itself, in a checkout of this repo? <code>npm run new-app -- packing-list</code> makes an app among the demos instead.</p>
 
     <h3>Put it online by itself</h3>
     <pre><code>npx wrangler login
-npm run deploy:app -- demos/packing-list</code></pre>
-    <p>That puts your app on a <a href="https://workers.cloudflare.com/">Cloudflare Worker</a> of its own, at <code>https://packing-list.&lt;you&gt;.workers.dev/</code>, with the platform and the server side (spaces, accounts, server plugins), and nothing else from this site. The first line is needed once per machine. If your project is on GitHub, the <strong>Deploy one app</strong> workflow does the same from the Actions tab, with nothing to run on your machine.</p>
+npm run deploy</code></pre>
+    <p>That puts your app on a <a href="https://workers.cloudflare.com/">Cloudflare Worker</a> of its own, at <code>https://packing-list.&lt;you&gt;.workers.dev/</code>, with the platform and the server side (spaces, accounts, server plugins), and nothing else from this site. The first line is needed once per machine.</p>
     <p>Each app's address is a world of its own: its own data on the device, its own accounts and its own spaces.</p>
-    <p>Read more: <a href="/docs/guide/how-an-app-works">how an app works</a>, <a href="/docs/guide/writing-a-plugin">writing a plugin</a>, and <a href="/docs/guide/deploying-an-app">deploying one app on its own</a>.</p>
+    <p>Read more: <a href="/docs/guide/your-own-app">an app of your own</a>, <a href="/docs/guide/how-an-app-works">how an app works</a>, and <a href="/docs/guide/writing-a-plugin">writing a plugin</a>.</p>
   </ui-card>
 </template>
