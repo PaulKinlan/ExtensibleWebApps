@@ -13,7 +13,7 @@ import { env } from "./env";
 import { defineHook, hooks } from "./hooks";
 import { Hosts } from "./hosts";
 import { apps as makeApps } from "./apps";
-import { makeRoutes } from "./routes";
+import { makeRoutes, type RouteRequest, type RouteResponse } from "./routes";
 import { catalog } from "./catalog";
 import { changeLog } from "./changes";
 import { allowed, reviews as makeReviews } from "./review";
@@ -33,6 +33,7 @@ import { syncHub } from "./sync";
 import { syncDevice } from "./sync-device";
 import { devicePlugins, spacePlugins } from "./shared-plugins";
 import { isolateHost } from "./isolate-host";
+import { deviceReviews, relayReviews } from "./space-reviews";
 import { serverApps } from "./server-apps";
 import { asPlugin } from "./agents/file";
 import { authoring } from "./authoring";
@@ -120,6 +121,8 @@ let spaceShared: ReturnType<typeof devicePlugins> | undefined;
 const userAdded = userPlugins(store, where.origin, where.kind === "server" ? undefined : where.space);
 // A space keeps the plugins its members share with each other, and never runs them (shared-plugins.ts).
 if (where.kind === "server") sync.plugins = spacePlugins(userAdded, store, hosts, (message) => sync.tell(message)).handle;
+// A space's server has no screen: its reviews are shown on members' devices (space-reviews.ts).
+if (where.kind === "server") relayReviews(reviews, sync, (host, message) => hosts.send(host, message));
 
 /** For each tab with an app open: the app's folder and the plugins its app.html links, to open it again. */
 const openApps = new Map<string, { app?: string; links: { href: string; source: string }[] }>();
@@ -196,6 +199,15 @@ const routes = makeRoutes(root, remote, shared, where.space);
 // about to add, so the request waits while the space's apps are starting (and a little after), up to 10 s.
 where.serve?.(async (request) => {
   wake();
+  // A door the host let in (an MCP request from a member's agent, src/server/mcp.ts): the module that answers
+  // it answers that door (ModuleKernel.door). Its plugins may still be starting, as for a route.
+  if (typeof request.door === "string") {
+    const answer = doors.get(request.door);
+    if (!answer) return null;
+    const deadline = Date.now() + 10_000;
+    while (onServer?.starting() && Date.now() < deadline) await Promise.race([onServer.settled(), new Promise((r) => setTimeout(r, 250))]);
+    return (await answer(request)) as RouteResponse | null;
+  }
   // A HEAD request is answered by a HEAD route if a plugin has one, else by its GET route.
   const keys = request.method === "HEAD" ? [`HEAD ${request.path}`, `GET ${request.path}`] : [`${request.method} ${request.path}`];
   const found = () => keys.find((key) => remote.routes.includes(key));
@@ -235,7 +247,9 @@ Object.assign(services, loadServices(parts));
 const CORE_COMMANDS = new Set(["changes", "install", "reference", "reload", "restart-module", "route", "sync", "trace", "uninstall"]);
 
 const commands = new Map<string, (arg: unknown) => unknown>();
-const kernelModules = loadModules(modules, parts, services, commands, (name) => CORE_COMMANDS.has(name) || /^(user|place):/.test(name));
+/** What the modules answer at the server's doors (ModuleKernel.door). */
+const doors = new Map<string, (request: RouteRequest) => Promise<RouteResponse | null> | RouteResponse | null>();
+const kernelModules = loadModules(modules, parts, services, commands, doors, (name) => CORE_COMMANDS.has(name) || /^(user|place):/.test(name));
 // A plugin can't take a service's name as its id, whichever way the service was added.
 for (const name of Object.keys(services)) RESERVED.add(name);
 
@@ -249,6 +263,7 @@ hosts.onHello = (host, folder) => {
     if (where.space && where.kind !== "server") {
       device = syncDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts);
       spaceShared = devicePlugins(userAdded, store, hosts, device, reopen);
+      deviceReviews(reviews, device);
     }
     return;
   }

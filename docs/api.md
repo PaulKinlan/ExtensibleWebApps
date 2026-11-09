@@ -656,6 +656,34 @@ Needs: `network:<host>`.
 
 Fetches `url` (https:, or http: on localhost) and returns the answer as text, up to 4 MB, within two minutes. A header given as `{ secret: name }` is filled with that secret, if the plugin has `secret:<name>` and the host is one the secret is for.
 
+### outside
+
+Lets agents outside the app use it: a plugin that opens the door gives them its own tools, as WebMCP tools in the page and as an MCP server on a space's server, with its own permissions and reviews.
+
+#### outside.close
+
+`outside.close()` → { ok }
+
+Needs: `outside`.
+
+Closes the door: outside agents can no longer call this plugin's tools.
+
+#### outside.open
+
+`outside.open({ instructions? })` → { ok, tools: number }
+
+Needs: `outside`.
+
+Opens the door for outside agents: they may call this plugin's tools (tools.list), as this plugin. In a tab, its tools appear to the browser's agents through WebMCP; on a space's server, at /s/<space>/mcp/<plugin> for members' agents. `instructions` tells them what the app is for.
+
+#### outside.status
+
+`outside.status()` → { open, tools: [name], via: ["webmcp" | "mcp"] }
+
+Needs: `outside`.
+
+Whether this plugin's door is open, which tools it offers, and how outside agents reach it here.
+
 ### page
 
 The app's own page, as far as a plugin's places reach into it, and the slots plugins declare in their views.
@@ -1116,6 +1144,14 @@ Mode: `waterfall`, 2000 ms per listener, fails open. Listening needs `provide:ll
 
 Listeners get `{ providers: [{ id, name, model?, ready }] }`.
 
+### `outside:called`
+
+An outside agent called one of a plugin's tools, through WebMCP in a tab or MCP on a space's server. It carries the tool's name, not its arguments or answer.
+
+Mode: `emit`. Listening needs `outside`.
+
+Listeners get `{ plugin, tool, via: "webmcp" | "mcp", member?, ok }`.
+
 ### `plugins:changed`
 
 A plugin was installed, removed, or turned on or off (`change` is install, uninstall, enable or disable, and `id` is the plugin), or a tab opened its app (`change` is open, and `id` is the tab), so plugins.app() may answer differently.
@@ -1197,6 +1233,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `history` | Call history.state, history.undo, history.redo. |
 | `llm` | Call llm.providers, llm.models, llm.complete. |
 | `network:<host>` | Call net.fetch. |
+| `outside` | Call outside.open, outside.close, outside.status. |
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.save, authoring.remove, authoring.file. |
 | `plugins:manage` | Call plugins.setEnabled. |
 | `plugins:read` | Call authoring.source, authoring.check, plugins.app. |
@@ -1256,6 +1293,7 @@ Reserved ids, which no plugin can take:
 - `kernel`
 - `llm`
 - `net`
+- `outside`
 - `page`
 - `plugins`
 - `reflect`

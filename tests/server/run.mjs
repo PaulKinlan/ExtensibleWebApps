@@ -18,6 +18,7 @@ import { serve } from "../../src/server/serve.ts";
 import { providersFrom } from "../../src/server/auth/providers.ts";
 import { authenticator } from "./authenticator.mjs";
 import { blueskyChecks } from "./bluesky.mjs";
+import { mcpChecks } from "./mcp.mjs";
 import { fakeAtproto } from "./fake-atproto.mjs";
 import { fakeProvider } from "./fake-oauth.mjs";
 
@@ -929,6 +930,7 @@ async function suite(name, make) {
       return server.url;
     });
     await surveyChecks(server.url, check, owner);
+    await mcpChecks(server.url, check, owner, await person(server.url).account("Stranger"));
 
     // Workers can't reach a private network in production; wrangler's local runtime isn't a guide to that.
     if (name === "node") await networkGuardChecks(server.url, check);

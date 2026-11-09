@@ -26,6 +26,9 @@
 //   POST /auth/invites/accept    { token }  joins the space an invite is for
 //   POST /auth/spaces/<name>/leave { user? } leaves it, or (its owner) removes someone
 //
+// And the keys members give agents outside the browser, to reach a space's MCP server (agent-keys.ts):
+//   GET  /auth/keys, POST /auth/keys { space, name }, POST /auth/keys/revoke { id }
+//
 // A host lets a client join a space's kernel only if `member()` says it's in it.
 //
 // A session is a random token in an HttpOnly cookie; the server keeps only its
@@ -33,6 +36,7 @@
 
 import { isAddress } from "../../kernel/address.ts";
 import type { Files } from "../../seams/index.ts";
+import { agentKeys } from "./agent-keys.ts";
 import { isFlow, type OAuthProvider, type Provider } from "./providers.ts";
 import { ALGORITHMS, b64url, unb64url, type CredentialJSON, type PublicKey, verifyAssertion, verifyRegistration } from "./webauthn.ts";
 
@@ -296,6 +300,8 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   /** A space's record, if the name is a space's. */
   const spaceOf = (name: string) => (SPACE_NAME.test(name) ? read<Space>(`spaces/${name}.json`) : Promise.resolve(null));
 
+  const keys = agentKeys(files, { isMember: async (name, user) => !!(await spaceOf(name))?.members[user] });
+
   const join = async (space: Space, user: string, role: Role) => {
     space.members[user] = role;
     await write(`spaces/${space.name}.json`, space);
@@ -388,6 +394,9 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       return users.flatMap((u) => (u?.email ? [u.email] : []));
     },
 
+    /** Which member of a space an agent's key (an `Authorization` header) is for: for a host to ask before an MCP request. */
+    agent: (authorization: string | null, name: string) => keys.member(authorization, name),
+
     /** Whether a space by this name exists: for a host to ask before waking it for a public route. */
     async exists(name: string): Promise<boolean> {
       return (await spaceOf(name)) !== null;
@@ -403,6 +412,10 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         return current ? json({ user: current.user }) : json({ error: "Not signed in" }, 401);
       }
       if (request.method === "GET" && url.pathname.startsWith("/auth/spaces")) return spaces(request, url.pathname, {});
+      if (route === "GET /auth/keys") {
+        const current = await session(request);
+        return current ? json({ keys: await keys.list(current.user.id) }) : json({ error: "Not signed in" }, 401);
+      }
       if (route === "GET /auth/providers") return json({ providers: providers.map((p) => ({ id: p.id, name: p.name, ...(isFlow(p) && p.ask ? { ask: p.ask } : {}) })) });
       const other = /^\/auth\/oauth\/([a-z0-9-]+)\/([a-z0-9.-]+)$/.exec(url.pathname);
       if (other && request.method === "GET") return oauth(request, url, other[1], other[2]);
@@ -494,6 +507,17 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
           return json({ error: String((error as Error).message ?? error) }, 401);
         }
         return signIn(request, user);
+      }
+      case "/auth/keys": {
+        const current = await session(request);
+        if (!current) return json({ error: "Not signed in" }, 401);
+        const made = await keys.make(current.user.id, String(body.space ?? ""), String(body.name ?? ""));
+        return "error" in made ? json({ error: made.error }, made.status) : json(made);
+      }
+      case "/auth/keys/revoke": {
+        const current = await session(request);
+        if (!current) return json({ error: "Not signed in" }, 401);
+        return (await keys.revoke(current.user.id, String(body.id ?? ""))) ? json({ ok: true }) : json({ error: "You have no key by that id" }, 404);
       }
       case "/auth/me/email": {
         const current = await session(request);

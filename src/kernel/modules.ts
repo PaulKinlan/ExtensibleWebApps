@@ -28,6 +28,7 @@
 
 import type { Kernel } from "./services/index";
 import type { ServiceProvider } from "./remote";
+import type { RouteRequest, RouteResponse } from "./routes";
 import { RESERVED } from "./manifest";
 import { defineHook, type HookSpec } from "./hooks";
 import { record } from "./trace";
@@ -41,6 +42,11 @@ export interface ModuleKernel extends Kernel {
   provide(name: string, provider: ServiceProvider): void;
   /** Adds a command the page can run (window.__host.command(name, arg)), for tests and developer tools. */
   command(name: string, run: (arg: unknown) => unknown): void;
+  /**
+   * Answers a door the server's host lets in (`mcp`: an MCP request from a member's agent, src/server/mcp.ts),
+   * which comes with the member it is for. Only the host can knock: no page or client reaches a door.
+   */
+  door(name: string, answer: (request: RouteRequest) => Promise<RouteResponse | null> | RouteResponse | null): void;
   /** Defines a hook plugins can listen to. Taken back when the module stops. */
   hook(name: string, spec: HookSpec): void;
   /** Runs when the module stops: clear its timers, end what waits on it. */
@@ -76,6 +82,8 @@ export function loadModules(
   kernel: Kernel,
   services: Record<string, ServiceProvider>,
   commands: Map<string, (arg: unknown) => unknown>,
+  /** The doors modules answer (ModuleKernel.door), by name. */
+  doors: Map<string, (request: RouteRequest) => Promise<RouteResponse | null> | RouteResponse | null>,
   /** The kernel's own page commands, which a module may not take. */
   coreCommand: (name: string) => boolean,
 ) {
@@ -113,6 +121,13 @@ export function loadModules(
                 commands.set(name, run);
                 return () => void commands.delete(name);
               }, `command ${name}`);
+            },
+            door(name, answer) {
+              if (doors.has(name)) throw new Error(`The ${module.name} module can't answer the door ${name}: another module does`);
+              ctx.effect(() => {
+                doors.set(name, answer);
+                return () => void doors.delete(name);
+              }, `door ${name}`);
             },
             hook(name, spec) {
               ctx.effect(() => defineHook(name, spec), `hook ${name}`);

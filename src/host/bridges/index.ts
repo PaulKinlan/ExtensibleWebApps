@@ -15,6 +15,8 @@ export interface BridgeHost {
   places: ReturnType<typeof places>;
   /** The slots plugins declare in their views: each one's data, for the plugin asking, which then hears when they change. */
   declared: (plugin: string, name: string) => { data: Record<string, string> }[];
+  /** Runs a page command in the kernel, as the workbench does: a bridge that hears from the page (a WebMCP tool's call) answers through it. */
+  command: (name: string, arg?: unknown) => Promise<unknown>;
 }
 
 type Methods = Record<string, (...args: any[]) => unknown>;

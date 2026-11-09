@@ -22,6 +22,7 @@
   1. [Deploying one app on its own](guide/deploying-an-app.md)
   1. [Loading fast, without jumping](guide/loading-fast.md)
   1. [The plugin registry](guide/plugin-registry.md)
+  1. [Outside agents: WebMCP and MCP](guide/outside-agents.md)
 - Reference
   - [API reference](api.md)
   - [Permissions](permissions.md)

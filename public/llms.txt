@@ -33,6 +33,7 @@ Start with AGENTS.md for the rules and conventions, then the developer guide. Th
 - [The layers](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/layers.md): Cordis, the kernel core, kernel services, std plugins and apps, and the trust line between them
 - [Servers and spaces](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/server.md): the kernel on Node and Cloudflare, seams, sign-in, sync, server plugins
 - [API keys and web requests](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/keys-and-requests.md): network:<host>, net.fetch, and secrets a plugin uses without seeing
+- [Outside agents: WebMCP and MCP](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/docs/guide/outside-agents.md): a plugin that calls outside.open lets the browser's agents (WebMCP) and members' MCP clients (/s/<space>/mcp/<plugin>, agent keys) use its tools
 
 ## Examples
 

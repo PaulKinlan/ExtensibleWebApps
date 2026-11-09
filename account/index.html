@@ -70,11 +70,27 @@
           <button type="submit">Make a space</button>
         </form>
         <p id="invite-link" hidden>Send this link to the person you're inviting. It works once, for a week: <input id="invite-url" readonly /></p>
+
+        <h2>Agent keys</h2>
+        <p>A key lets an agent outside the browser, such as Claude Code, use the apps in one of your spaces as you, through the space's MCP server. It can do only what each app lets outside agents do, and you review every change it asks for in the app. Make one per agent, and revoke it when you stop using it.</p>
+        <ul id="keys"></ul>
+        <form id="new-key" hidden>
+          <label for="key-space">Space</label>
+          <select id="key-space" name="space"></select>
+          <label for="key-name" class="visually-hidden">The agent it's for</label>
+          <input id="key-name" name="name" placeholder="Claude Code on my laptop" required maxlength="64" />
+          <button type="submit">Make a key</button>
+        </form>
+        <div id="key-made" hidden>
+          <p>Here is the key. It's shown only now, so copy it into your agent: <input id="key-value" readonly /></p>
+          <p>For the reading list in Claude Code: <input id="key-command" readonly /></p>
+        </div>
       </section>
 
       <p id="unavailable" hidden>Sign-in needs this site's server (<code>npm run serve</code>, or the site on Cloudflare); this page is being served without one.</p>
     </main>
 
+    <script type="module" src="agent-keys.js"></script>
     <script type="module">
       const $ = (id) => document.getElementById(id);
       const say = (text) => ($("status").textContent = text);

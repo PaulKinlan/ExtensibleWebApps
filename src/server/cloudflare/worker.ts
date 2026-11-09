@@ -28,6 +28,7 @@ import isolateSource from "../../../.build/cloudflare/isolate-source.js";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
+import { mcpAddress, mcpRequest, mcpResponse } from "../mcp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, spaceRoute, tooLarge } from "../routes.ts";
 
 const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -238,6 +239,22 @@ export class Accounts extends DurableObject<Env> {
   async member(cookie: string, space: string): Promise<string | null> {
     return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.user.id ?? null;
   }
+
+  /** Which member of a space an agent's key (an Authorization header) is for, if it's one (src/server/mcp.ts). */
+  async agent(authorization: string | null, space: string): Promise<{ user: string; key: string } | null> {
+    return this.auth.agent(authorization, space);
+  }
+}
+
+/** An MCP request from a member's agent (src/server/mcp.ts); undefined when the address isn't one. */
+async function mcp(request: Request, env: Env): Promise<Response | undefined> {
+  const url = new URL(request.url);
+  const at = mcpAddress(url);
+  const accounts = env.ACCOUNTS.getByName("accounts");
+  if (!at || !SPACE.test(at.space) || !(await accounts.exists(at.space))) return undefined;
+  const asked = await mcpRequest(request, at, (authorization, space) => accounts.agent(authorization, space));
+  if (asked instanceof Response) return asked;
+  return mcpResponse(await env.SPACE.getByName(at.space).route(at.space, url.origin, asked));
 }
 
 /** A request to /s/<space>/<path> that one of the space's server plugins answers; undefined when none does. */
@@ -257,7 +274,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     if (new URL(request.url).pathname.startsWith("/auth/")) return env.ACCOUNTS.getByName("accounts").fetch(request);
     const space = /^\/s\/([^/]+)\/kernel$/.exec(new URL(request.url).pathname)?.[1];
-    if (space === undefined) return (await publicRoute(request, env)) ?? env.ASSETS.fetch(request);
+    if (space === undefined) return (await mcp(request, env)) ?? (await publicRoute(request, env)) ?? env.ASSETS.fetch(request);
     if (!SPACE.test(space)) return new Response("Not a space", { status: 404 });
     // A page on another site may open a WebSocket here (they aren't bound by CORS), so a browser's
     // client must come from this site's own pages. A client that isn't a browser sends no Origin.
