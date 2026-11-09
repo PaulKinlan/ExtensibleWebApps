@@ -8,33 +8,38 @@
 
 @layer platform {
 :root {
-  --bg: light-dark(#f6f6f8, #131316);
-  --bg-2: light-dark(#ececf0, #1c1c21);
-  --fg: light-dark(#17171c, #ededf0);
-  --fg-2: light-dark(#5c5c6a, #a3a3b0);
-  --border: light-dark(#dfdfe6, #2e2e36);
-  --accent: light-dark(#4f46e5, #8f8cff);
-  --accent-fg: light-dark(#fff, #0d0c22);
+  --bg: light-dark(#f5f4f1, #101012);
+  --bg-2: light-dark(#ebe9e4, #1a1a1e);
+  --fg: light-dark(#1b1a17, #f0efec);
+  --fg-2: light-dark(#66625a, #a5a39d);
+  --border: light-dark(#e3e0d9, #2b2b31);
+  --accent: light-dark(#3d4fd6, #99a5ff);
+  --accent-fg: light-dark(#fff, #0c0e24);
+  /* The main button of a form or a dialog. Ink, so the accent is left to mean "a link" and "focus". */
+  --action: var(--fg);
+  --action-fg: var(--bg);
   --danger: light-dark(#c0262d, #ff7b7b);
   --ok: light-dark(#18794e, #4cd38a);
   --warn: light-dark(#a35200, #f0b44c);
-  --surface: light-dark(#ffffff, #1b1b20);
-  --radius-sm: 5px;
-  --radius: 8px;
-  --radius-lg: 12px;
+  --surface: light-dark(#ffffff, #18181c);
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  /* The height of every one-line control: buttons, fields and selects line up beside each other. */
+  --control: 38px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
-  --text-sm: 12px;
-  --text-md: 14px;
-  --text-lg: 16px;
-  --text-xl: 20px;
-  --text-2xl: 26px;
-  --shadow-1: 0 1px 2px light-dark(rgb(16 16 32 / 0.06), rgb(0 0 0 / 0.4)), 0 1px 1px light-dark(rgb(16 16 32 / 0.03), rgb(0 0 0 / 0.2));
-  --shadow-2: 0 4px 12px light-dark(rgb(16 16 32 / 0.08), rgb(0 0 0 / 0.45)), 0 1px 3px light-dark(rgb(16 16 32 / 0.06), rgb(0 0 0 / 0.3));
+  --text-sm: 13px;
+  --text-md: 15px;
+  --text-lg: 17px;
+  --text-xl: 21px;
+  --text-2xl: 30px;
+  --shadow-1: 0 1px 2px light-dark(rgb(30 25 10 / 0.05), rgb(0 0 0 / 0.4));
+  --shadow-2: 0 12px 32px light-dark(rgb(30 25 10 / 0.12), rgb(0 0 0 / 0.5)), 0 2px 6px light-dark(rgb(30 25 10 / 0.06), rgb(0 0 0 / 0.3));
   /* The focus ring, the same on every control. */
   --ring: color-mix(in srgb, var(--accent) 70%, transparent);
   --duration: 140ms;
@@ -44,7 +49,7 @@
   color-scheme: light dark;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font); min-height: 100vh; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: var(--text-md)/1.55 var(--font); min-height: 100vh; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
 a { color: var(--accent); text-underline-offset: 3px; text-decoration-thickness: 1px; }
 ::selection { background: color-mix(in srgb, var(--accent) 25%, transparent); }
 /* A <slot name> in the page is where plugins draw; what the page put inside it shows until one does. */
@@ -98,16 +103,16 @@ dialog#review > [data-key] + [data-key] { margin-top: 16px; padding-top: 16px; b
 .stack.row { flex-direction: row; align-items: center; }
 h2 { font-size: 15px; margin: 0; }
 /* Buttons, and links made to look like one (<a class="button">). */
-button, a.button { font: inherit; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: 32px; padding: 0 14px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-1); cursor: pointer; text-decoration: none; white-space: nowrap; transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease); }
+button, a.button { font: inherit; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--control); padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); cursor: pointer; text-decoration: none; white-space: nowrap; transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease); }
 /* States name the element as the base rule does, so they outrank it. */
 button:hover, a.button:hover { background: var(--bg-2); border-color: color-mix(in srgb, var(--fg) 22%, var(--border)); }
-button:active, a.button:active { box-shadow: none; transform: translateY(0.5px); }
+button:active, a.button:active { transform: translateY(0.5px); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
-button.primary, a.button.primary, form > button[type="submit"]:only-of-type { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-button.primary:hover, a.button.primary:hover, form > button[type="submit"]:only-of-type:hover { background: color-mix(in srgb, var(--accent) 88%, black); border-color: color-mix(in srgb, var(--accent) 88%, black); }
+button.primary, a.button.primary, form > button[type="submit"]:only-of-type { background: var(--action); color: var(--action-fg); border-color: var(--action); }
+button.primary:hover, a.button.primary:hover, form > button[type="submit"]:only-of-type:hover { background: color-mix(in srgb, var(--action) 85%, var(--action-fg)); border-color: color-mix(in srgb, var(--action) 85%, var(--action-fg)); }
 :where(button, a.button, input, select, textarea, summary):focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
 /* Fields on a plain page (an HTML view and label.field style their own below). */
-:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select) { font: inherit; min-height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); transition: border-color var(--duration) var(--ease); }
+:where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select) { font: inherit; min-height: var(--control); padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); transition: border-color var(--duration) var(--ease); }
 :where(input, select, textarea):hover { border-color: color-mix(in srgb, var(--fg) 28%, var(--border)); }
 :where(input, textarea)::placeholder { color: color-mix(in srgb, var(--fg-2) 75%, transparent); }
 :where(input[type="checkbox"], input[type="radio"], input[type="range"], progress, meter) { accent-color: var(--accent); }
@@ -115,9 +120,9 @@ ul.list { list-style: none; margin: 0; padding: 0; }
 ul.list li button { width: 100%; justify-content: flex-start; text-align: left; border: 0; background: none; box-shadow: none; }
 ul.list li button[aria-current="true"] { background: color-mix(in srgb, var(--accent) 15%, transparent); }
 textarea { width: 100%; min-height: 240px; font: 15px/1.7 var(--font); padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); resize: vertical; }
-label.field { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+label.field { display: flex; flex-direction: column; gap: 2px; font-size: var(--text-sm); }
 label.field.checkbox { flex-direction: row; align-items: center; gap: 6px; }
-label.field input:not([type="checkbox"]), label.field select { font: inherit; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); }
+label.field input:not([type="checkbox"]), label.field select { font: inherit; height: var(--control); padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); }
 pre.diff { margin: 0; padding: 8px 0; max-height: 320px; overflow: auto; font: 13px/1.5 var(--mono); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); }
 pre.diff span { display: block; padding: 0 10px; white-space: pre-wrap; }
 pre.diff .add { background: color-mix(in srgb, var(--ok) 16%, transparent); }
@@ -161,7 +166,7 @@ body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; o
 .html-view { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
 .html-view :where(h1, h2, h3, h4) { margin: 0; line-height: 1.25; letter-spacing: -0.01em; }
 .html-view h1 { font-size: var(--text-2xl); }
-.html-view h2 { font-size: var(--text-xl); }
+.html-view h2 { font-size: var(--text-xl); letter-spacing: -0.015em; }
 .html-view h3 { font-size: var(--text-lg); }
 .html-view h4 { font-size: var(--text-md); }
 .html-view :where(p, ul, ol, dl, blockquote, figure, pre, table, form, fieldset) { margin: 0; }
@@ -186,21 +191,21 @@ body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; o
 .html-view fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); }
 .html-view label { display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); font-weight: 500; color: var(--fg-2); }
 .html-view label:has(> input[type="checkbox"], > input[type="radio"]) { flex-direction: row; align-items: center; gap: var(--space-2); color: var(--fg); font-size: var(--text-md); }
-.html-view :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea) { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: 36px; padding: 0 10px; transition: border-color var(--duration) var(--ease); }
+.html-view :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"]), select, textarea) { font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: var(--control); padding: 0 12px; transition: border-color var(--duration) var(--ease); }
 /* A one-line field never grows taller than a line, even when a plugin gives it a flex size inside this column (a
    `flex: 1 1 12rem` meant for a row once made each account field 12rem tall). */
 .html-view :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]), select:not([multiple], [size])) { max-block-size: 48px; }
 .html-view a.button { color: var(--fg); text-decoration: none; }
-.html-view a.button.primary { color: var(--accent-fg); }
+.html-view a.button.primary { color: var(--action-fg); }
 .html-view textarea { padding: var(--space-2) 10px; min-height: 96px; resize: vertical; }
 .html-view :where(input, select, textarea):hover { border-color: color-mix(in srgb, var(--fg) 30%, var(--border)); }
 .html-view :where(input, select, textarea, button, a, summary):focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
 .html-view :where(input, select, textarea):focus { border-color: var(--accent); }
 .html-view input:user-invalid { border-color: var(--danger); }
-.html-view button { height: 32px; padding: 0 14px; border-radius: var(--radius); font-weight: 500; }
+.html-view button { height: var(--control); padding: 0 16px; border-radius: var(--radius); font-weight: 500; }
 .html-view button:hover { background: var(--bg-2); }
-.html-view button[type="submit"], .html-view button[data-primary] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-.html-view button[type="submit"]:hover, .html-view button[data-primary]:hover { background: color-mix(in srgb, var(--accent) 88%, black); }
+.html-view button[type="submit"], .html-view button[data-primary] { background: var(--action); color: var(--action-fg); border-color: var(--action); }
+.html-view button[type="submit"]:hover, .html-view button[data-primary]:hover { background: color-mix(in srgb, var(--action) 85%, var(--action-fg)); }
 .html-view button:disabled { opacity: 0.5; cursor: not-allowed; }
 .html-view progress, .html-view meter { width: 100%; accent-color: var(--accent); }
 
