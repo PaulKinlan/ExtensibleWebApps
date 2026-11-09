@@ -15,12 +15,14 @@
 // Plugins can't write here: `user` is one of the platform's own folders
 // (paths.ts), so no plugin can install another by writing files.
 
-import { readManifest } from "./manifest";
+import { FILE_PATH, readManifest } from "./manifest";
 import type { Store } from "./store";
 import { record } from "./trace";
 
 const STATE = "user-plugins.json";
 const FILE_NAME = /^[\w-][\w.-]{0,63}$/;
+/** A plugin is a .js file at the top of the app's folder; a .js file in a folder below it is one of a plugin's files, such as a template. */
+const isPlugin = (name: string) => name.endsWith(".js") && !name.includes("/");
 const MAX_BYTES = 5_000_000;
 
 /** An app's folder, as the page's path names it: `demos/trip` for /demos/trip/app.html. */
@@ -99,6 +101,33 @@ export function userPlugins(store: Store, origin: string, space?: string) {
     record({ kind: "lifecycle", name: value ? "user-plugin:on" : "user-plugin:off", plugin: id, detail: app });
   }
 
+  /**
+   * Turns off the person's plugins for an app that need a service `plugin` provided, now it doesn't, and the
+   * ones that need theirs in turn. A service running from something else (`elsewhere`: a kernel module, the
+   * app's own plugin) or provided by another of theirs that stays on keeps the plugins that need it on.
+   * `gone` holds the ids that are off, or going; returns the ones it turned off.
+   */
+  async function dropDependents(app: string, all: UserPlugin[], gone: Set<string>, plugin: UserPlugin, elsewhere: (service: string, not: string) => boolean): Promise<UserPlugin[]> {
+    const also: UserPlugin[] = [];
+    const off = async (provider: UserPlugin) => {
+      for (const service of provider.provides ?? []) {
+        if (elsewhere(service, provider.id ?? "")) continue;
+        // Another of theirs that stays on and provides it keeps it there.
+        if (all.some((p) => p.on && p.id && !gone.has(p.id) && p.provides?.includes(service))) continue;
+        for (const p of all) {
+          if (!p.id || !p.on || gone.has(p.id) || !p.services?.includes(service)) continue;
+          gone.add(p.id);
+          await setOn(app, p.id, false);
+          p.on = false;
+          also.push(p);
+          await off(p);
+        }
+      }
+    };
+    await off(plugin);
+    return also;
+  }
+
   return {
     list,
     changed,
@@ -130,11 +159,11 @@ export function userPlugins(store: Store, origin: string, space?: string) {
       /** A plugin is kept as <id>.js, whatever its file was called, so each id has one file. */
       const names = new Map<(typeof files)[number], string>();
       for (const f of files) {
-        if (!f || typeof f.name !== "string" || !FILE_NAME.test(f.name)) return { ok: false, error: `${f?.name}: a file name is letters, digits, ., - and _` };
+        if (!f || typeof f.name !== "string" || !FILE_PATH.test(f.name)) return { ok: false, error: `${f?.name}: a file name is letters, digits, ., - and _, in folders beside the plugin at most` };
         if (!(typeof f.data === "string" || f.data instanceof Blob)) return { ok: false, error: `${f.name}: no contents` };
         const size = typeof f.data === "string" ? f.data.length : f.data.size;
         if (size > MAX_BYTES) return { ok: false, error: `${f.name} is over 5 MB` };
-        if (!f.name.endsWith(".js")) continue;
+        if (!isPlugin(f.name)) continue;
         try {
           const id = readManifest(typeof f.data === "string" ? f.data : await f.data.text()).id;
           ids.push(id);
@@ -181,7 +210,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
      * (which it would overwrite). A review shows the plugin's code, so nothing else may ride along with it.
      */
     async problem(app: string, files: { name: string; data: Blob | string }[]): Promise<string | undefined> {
-      const plugins = files.filter((f) => f.name.endsWith(".js"));
+      const plugins = files.filter((f) => isPlugin(f.name));
       if (plugins.length !== 1 || typeof plugins[0].data !== "string") return "Add one plugin (.js) at a time, with the files its manifest lists";
       let manifest;
       try {
@@ -190,7 +219,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
         return `${plugins[0].name}: ${error instanceof Error ? error.message : error}`;
       }
       const listed = new Set(manifest.files ?? []);
-      const badName = files.find((f) => !FILE_NAME.test(f.name));
+      const badName = files.find((f) => (f === plugins[0] ? !FILE_NAME.test(f.name) : !FILE_PATH.test(f.name)));
       if (badName) return `${badName.name}: a file name is letters, digits, ., - and _`;
       const extra = files.find((f) => f !== plugins[0] && !listed.has(f.name));
       if (extra) return `${extra.name} isn't one of the files ${manifest.id} lists`;
@@ -222,10 +251,19 @@ export function userPlugins(store: Store, origin: string, space?: string) {
      * the kernel has already (`has`: a kernel module's, or a running plugin's) needs nothing turned on.
      * Each was reviewed when it was added, as turning one on needs no review. Returns the others it turned on.
      */
-    async onWithNeeds(app: string, id: string, has: (service: string) => boolean): Promise<UserPlugin[]> {
+    async onWithNeeds(app: string, id: string, has: (service: string) => boolean, elsewhere: (service: string, not: string) => boolean = () => false): Promise<UserPlugin[]> {
       const all = await list(checkApp(app));
       const also: UserPlugin[] = [];
       const plugin = all.find((p) => p.id === id);
+      // One provider of a service at a time: another of theirs that provides the same goes off, so the one
+      // turned on last is the one that runs, rather than whichever happens to start first being refused. A
+      // service only the one going off provided, which this one doesn't, takes the plugins that need it off too.
+      for (const other of all) {
+        if (!other.id || other.id === id || !other.on || !other.provides?.some((s) => plugin?.provides?.includes(s))) continue;
+        await setOn(app, other.id, false);
+        other.on = false;
+        await dropDependents(app, all, new Set([other.id, id]), { ...other, provides: other.provides.filter((s) => !plugin?.provides?.includes(s)) }, elsewhere);
+      }
       // What will be there once these are on: a second provider of any of it would be refused as a clash.
       const covered = new Set<string>([...(plugin?.provides ?? []), ...all.filter((p) => p.on).flatMap((p) => p.provides ?? [])]);
       const seen = new Set<string>();
@@ -255,26 +293,9 @@ export function userPlugins(store: Store, origin: string, space?: string) {
      */
     async offWithDependents(app: string, id: string, elsewhere: (service: string, not: string) => boolean = () => false): Promise<UserPlugin[]> {
       const all = await list(checkApp(app));
-      const also: UserPlugin[] = [];
-      const gone = new Set<string>([id]);
-      const off = async (plugin: UserPlugin) => {
-        for (const service of plugin.provides ?? []) {
-          if (elsewhere(service, plugin.id ?? "")) continue;
-          // Another of theirs that stays on and provides it keeps it there.
-          if (all.some((p) => p.on && p.id && !gone.has(p.id) && p.provides?.includes(service))) continue;
-          for (const p of all) {
-            if (!p.id || !p.on || gone.has(p.id) || !p.services?.includes(service)) continue;
-            gone.add(p.id);
-            await setOn(app, p.id, false);
-            also.push(p);
-            await off(p);
-          }
-        }
-      };
       const plugin = all.find((p) => p.id === id);
       await setOn(app, id, false);
-      if (plugin) await off(plugin);
-      return also;
+      return plugin ? dropDependents(app, all, new Set([id]), plugin, elsewhere) : [];
     },
 
     /** Removes a plugin and the files its manifest lists. */
@@ -283,7 +304,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
       if (!plugin) return false;
       const source = (await store.readText(`user/${app}/${plugin.file}`)) ?? "";
       const files = readManifest(source).files ?? [];
-      for (const name of [plugin.file, ...files]) if (FILE_NAME.test(name)) await store.removeFile(`user/${app}/${name}`);
+      for (const name of [plugin.file, ...files]) if (FILE_PATH.test(name)) await store.removeFile(`user/${app}/${name}`);
       await setOn(app, id, false);
       record({ kind: "lifecycle", name: "user-plugin:remove", plugin: id, detail: app });
       if (!quiet) tell({ app, removed: id });

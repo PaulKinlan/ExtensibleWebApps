@@ -98,6 +98,22 @@
       "std": true
     },
     {
+      "id": "plugin-editor",
+      "name": "Plugin editor",
+      "description": "Write a plugin, or change a copy of one on the page, and see what it asks for before it runs.",
+      "version": "1.0.0",
+      "href": "/std/plugin-editor.js",
+      "permissions": [
+        "ui",
+        "plugins:read",
+        "plugins:author",
+        "debug:read"
+      ],
+      "provides": [],
+      "services": [],
+      "std": true
+    },
+    {
       "id": "reset",
       "name": "Reset",
       "description": "Turns every plugin on the page back on.",
