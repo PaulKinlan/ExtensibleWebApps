@@ -61,13 +61,13 @@
   .customize .hint { font-size: var(--text-sm); color: var(--fg); }
   .customize .places { display: grid; gap: var(--space-1); margin-top: var(--space-1); }
   .customize .place { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); font-size: var(--text-sm); }
-  .customize .place button { height: 28px; padding: 0 10px; font-size: var(--text-sm); }
+  .customize .place button { height: var(--control-sm); padding: 0 10px; font-size: var(--text-sm); }
   .customize .note { font-size: var(--text-sm); color: var(--fg-2); }
 
   /* A view's submit buttons look primary by default; here only the one that finishes a step does. */
   .customize button[type="submit"]:not(.primary) { background: var(--surface); color: var(--fg); border-color: var(--border); }
   .customize button[type="submit"]:not(.primary):hover { background: var(--bg-2); }
-  .customize .search input { width: 100%; min-height: 40px; }
+  .customize .search input { width: 100%; }
   .customize .kind + .kind { margin-top: var(--space-2); }
   .customize .kind { display: grid; gap: var(--space-2); padding-left: var(--space-3); border-left: 3px solid color-mix(in srgb, var(--accent) 55%, transparent); }
   .customize .row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }

@@ -27,6 +27,8 @@
   --radius-lg: 14px;
   /* The height of every one-line control: buttons, fields and selects line up beside each other. */
   --control: 38px;
+  /* A compact control inside a row of a table or a list. */
+  --control-sm: 30px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;

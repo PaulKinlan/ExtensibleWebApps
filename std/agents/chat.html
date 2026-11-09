@@ -13,8 +13,8 @@
   .chat ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); max-height: 24rem; overflow: auto; }
   .chat li p { margin: 0; white-space: pre-wrap; }
   .chat form { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--space-1); margin: 0; }
-  .chat input[name="text"] { flex: 1 1 12em; min-width: 0; width: auto; font: inherit; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
-  .chat form button { height: 32px; flex: 0 0 auto; width: auto; }
+  .chat input[name="text"] { flex: 1 1 12em; min-width: 0; width: auto; font: inherit; height: var(--control); padding: 0 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+  .chat form button { height: var(--control); flex: 0 0 auto; width: auto; }
 </style>
 <template id="chat">
   <ui-card class="chat">
