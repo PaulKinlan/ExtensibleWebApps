@@ -53,6 +53,8 @@ export interface User {
   email?: string;
   /** Whether they opened the link mailed to `email`, so it's theirs. */
   emailConfirmed?: boolean;
+  /** The hash of the one link that can confirm `email` now: a new address, or none, retires the last. */
+  emailLink?: string;
   /** How many messages the accounts sent them today (links to confirm, tests), to keep it to a few. */
   mailed?: { day: string; sent: number };
 }
@@ -304,7 +306,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   const sweep = async () => {
     if (Date.now() - swept < SWEEP_MS) return;
     swept = Date.now();
-    for (const path of [...(await files.list("challenges/")), ...(await files.list("sessions/")), ...(await files.list("invites/"))]) {
+    for (const path of [...(await files.list("challenges/")), ...(await files.list("sessions/")), ...(await files.list("invites/")), ...(await files.list("email-links/"))]) {
       const found = await read<{ expires: number }>(path);
       if (!found || found.expires < Date.now()) await files.remove(path);
     }
@@ -552,7 +554,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         if (!current) return json({ error: "Not signed in" }, 401);
         const email = typeof body.email === "string" ? body.email.trim() : null;
         if (email === null || (email && !isAddress(email))) return json({ error: "That isn't an email address" }, 400);
-        const { email: _old, emailConfirmed: _confirmed, ...rest } = current.user;
+        const { email: _old, emailConfirmed: _confirmed, emailLink: _link, ...rest } = current.user;
         if (!email) {
           await write(`users/${rest.id}.json`, rest);
           return json({ user: rest });
@@ -562,10 +564,12 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         if (!hooks.mail) return json({ error: "This server can't send email, so it can't confirm an address" }, 503);
         const count = mailCount(current.user);
         if (count === null) return json({ error: `The accounts send you at most ${MAILS_PER_DAY} messages a day: try again tomorrow` }, 429);
-        const updated: User = { ...rest, email, emailConfirmed: false, mailed: count };
-        await write(`users/${rest.id}.json`, updated);
+        await sweep();
         const token = random(32);
-        await write(`email-links/${await hash(token)}.json`, { user: rest.id, email, expires: Date.now() + CONFIRM_MS });
+        const linkHash = await hash(token);
+        const updated: User = { ...rest, email, emailConfirmed: false, emailLink: linkHash, mailed: count };
+        await write(`users/${rest.id}.json`, updated);
+        await write(`email-links/${linkHash}.json`, { user: rest.id, email, expires: Date.now() + CONFIRM_MS });
         const host = url.host;
         const link = `${url.origin}/account/?confirm=${token}`;
         const sent = await hooks.mail({
@@ -580,14 +584,16 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       case "/auth/me/email/confirm": {
         const token = typeof body.token === "string" ? body.token : "";
         if (!/^[A-Za-z0-9_-]{20,100}$/.test(token)) return json({ error: "That link isn't right" }, 400);
-        const path = `email-links/${await hash(token)}.json`;
+        const linkHash = await hash(token);
+        const path = `email-links/${linkHash}.json`;
         const found = await read<{ user: string; email: string; expires: number }>(path);
         if (!found) return json({ error: "That link has been used, or isn't right" }, 400);
         await files.remove(path);
         const user = await read<User>(`users/${found.user}.json`);
-        // A link for an address they've since changed confirms nothing.
-        if (found.expires < Date.now() || !user || user.email !== found.email) return json({ error: "That link is out of date: save your address again for a new one" }, 400);
-        await write(`users/${user.id}.json`, { ...user, emailConfirmed: true });
+        // Only the last link mailed counts: one from before the address was changed or removed confirms nothing.
+        if (found.expires < Date.now() || !user || user.email !== found.email || user.emailLink !== linkHash) return json({ error: "That link is out of date: save your address again for a new one" }, 400);
+        const { emailLink: _used, ...confirmed } = user;
+        await write(`users/${user.id}.json`, { ...confirmed, emailConfirmed: true });
         return json({ ok: true, email: user.email });
       }
       case "/auth/me/email/test": {

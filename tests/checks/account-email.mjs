@@ -32,6 +32,7 @@ export default async function ({ check, context, errors }) {
     await page.fill("#email-address", "robin@example.com");
     await page.click('#email button[type="submit"]');
     const asked = await status("link to confirm");
+    await page.waitForFunction(() => document.querySelector("#email-state")?.textContent?.startsWith("Not confirmed"), null, { timeout: 5000 }).catch(() => {});
     const waiting = await page.textContent("#email-state");
     const testHidden = await page.isHidden("#email-test");
     const link = /https?:\/\/\S+\/account\/\?confirm=\S+/.exec(mailbox.received.at(-1)?.text ?? "")?.[0];
@@ -48,6 +49,18 @@ export default async function ({ check, context, errors }) {
       asked && /Not confirmed/.test(waiting ?? "") && testHidden && !!link && confirmed && /^Confirmed/.test(state ?? "") && tested && arrived,
       JSON.stringify({ asked, waiting, testHidden, link: !!link, confirmed, state, tested, arrived }),
     );
+
+    // Only the last link counts: one mailed before the address was removed and saved again confirms nothing.
+    const post = (path, body) => page.evaluate(([p, b]) => fetch(p, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(b) }).then((r) => r.status), [path, body]);
+    const tokenTo = (to) => /confirm=([A-Za-z0-9_-]+)/.exec(mailbox.received.filter((m) => m.to.includes(to)).at(-1)?.text ?? "")?.[1];
+    await post("/auth/me/email", { email: "robin2@example.com" });
+    const first = tokenTo("robin2@example.com");
+    await post("/auth/me/email", { email: "" });
+    await post("/auth/me/email", { email: "robin2@example.com" });
+    const second = tokenTo("robin2@example.com");
+    const stale = await post("/auth/me/email/confirm", { token: first });
+    const fresh = await post("/auth/me/email/confirm", { token: second });
+    check("account email: a link mailed before the address was removed and saved again confirms nothing; the newest does", first !== second && stale === 400 && fresh === 200, JSON.stringify({ stale, fresh }));
 
     await page.fill("#email-address", "");
     await page.click('#email button[type="submit"]');

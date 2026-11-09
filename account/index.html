@@ -185,7 +185,7 @@
         $("out").hidden = !!user;
         $("who").textContent = user?.name ?? "";
         $("email-address").value = user?.email ?? "";
-        $("email-state").textContent = !user?.email ? "" : user.emailConfirmed ? "Confirmed: apps in your spaces can email you here." : "Not confirmed yet: open the link we mailed to it. Until then, nothing else is sent to it.";
+        $("email-state").textContent = !user?.email ? "" : user.emailConfirmed ? "Confirmed: apps in your spaces can email you here." : "Not confirmed yet: open the link we mailed to it, or press Save to send a new one. Until then, apps can't email it.";
         $("email-test").hidden = !user?.emailConfirmed;
         // An invite made before signing out isn't for whoever signs in next.
         if (!user) {
