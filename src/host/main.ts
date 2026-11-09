@@ -683,6 +683,7 @@ function spawn(plugin: string, source: string, network: boolean) {
 // ---- Bridges to page-only APIs: a file each in bridges/ ----
 
 const bridge = bridges({
+  tab,
   workers,
   places: pagePlaces,
   running: () => running,

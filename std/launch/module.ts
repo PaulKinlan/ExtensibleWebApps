@@ -8,7 +8,7 @@
 // — so opening a file starts the app at /demos/reading-list/open, a screen
 // like any other (the router service), and the browser hands the page the
 // files (its launch queue: src/host/bridges/launch.ts). This service sees a
-// tab arrive at /open and raises `launch:received`, which carries nothing:
+// tab arrive at /open (or the page say the browser handed it files) and raises `launch:received`, which carries nothing:
 // the files go only to a plugin of that app, through take(), once. Taking them
 // also moves the tab back to the app's own address, so a reload doesn't open
 // them again. A plugin that starts after the tab opened still finds them.
@@ -49,13 +49,20 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     pending.set(tab, app);
     root.emit({}, "launch:received", {});
   });
+  // The page tells the kernel each time the browser hands it files: the first time, and again when an
+  // installed app the browser reuses gets another file, at whatever screen it is on (src/host/bridges/launch.ts).
+  kernel.command("launch:arrived", (arg) => {
+    const tab = (arg as { tab?: string } | undefined)?.tab;
+    if (!tab || !hosts.list.some((h) => h.tab === tab)) return;
+    pending.set(tab, undefined);
+    root.emit({}, "launch:received", {});
+  });
 
-  /** The tabs a plugin instance acts for: its own, or every tab with its app open. */
+  /** The tabs a plugin instance acts for: its own, or the tabs whose app links it. Never another app's tab. */
   const tabsOf = (instance: string): Host[] => {
     const [id, tab] = instance.split("@");
     if (tab) return hosts.list.filter((h) => h.tab === tab);
-    const near = hosts.list.filter((h) => apps.linkedBy(h.tab)?.includes(id));
-    return near.length || apps.alongside(instance) ? near : [...hosts.list];
+    return hosts.list.filter((h) => apps.linkedBy(h.tab)?.includes(id));
   };
 
   return {

@@ -29,10 +29,16 @@ export default async function ({ check, context, URL, errors, measurements }) {
   }
   measurements.gzipKB = sizes;
 
-  // Times: each app opened in a fresh browser profile, then again.
+  // Times: each app opened in a fresh browser profile, then again. On localhost the service worker
+  // goes to the network first (sw.js, for development), so the pages are opened at a name that isn't
+  // local, as a visitor's would be, and the next visit is answered from what the worker kept.
+  const local = new globalThis.URL(URL);
+  // A *.localhost name is a secure context, as https is, and isn't one sw.js counts as local.
+  const SITE = `http://perf.localhost:${local.port}/`;
+  const browser = await context.browser().browserType().launch({ args: [`--host-resolver-rules=MAP perf.localhost ${local.hostname}`] });
   const times = {};
   for (const [app, view] of Object.entries(budget.apps)) {
-    const own = await context.browser().newContext({ viewport: { width: 1280, height: 900 } });
+    const own = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await own.newPage();
     page.on("pageerror", (e) => errors.push(`perf-budget ${app}: ${e.message}`));
     await page.addInitScript(() => {
@@ -41,17 +47,19 @@ export default async function ({ check, context, URL, errors, measurements }) {
         for (const e of l.getEntries()) if (!e.hadRecentInput) window.__shift += e.value;
       }).observe({ type: "layout-shift", buffered: true });
     });
+    page.on("console", (m) => /Content Security Policy|Trusted Type/i.test(m.text()) && errors.push(`perf-budget ${app}: ${m.text()}`));
     const firstView = async () => {
       await page.waitForSelector(view, { timeout: 15000 });
       return page.evaluate(() => Math.round(performance.now()));
     };
     // A first visit: 404.html for a folder starts the service worker, so it is timed at app.html.
-    await page.goto(`${URL}${app}app.html`);
+    await page.goto(`${SITE}${app}app.html`);
     const first = await firstView().catch(() => Infinity);
     await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1500);
-    await page.goto(`${URL}${app}`);
-    const again = await firstView().catch(() => Infinity);
+    await page.goto(`${SITE}${app}`);
+    // Only a time the service worker answered counts as the next visit's.
+    const again = await firstView().then((ms) => page.evaluate(() => !!navigator.serviceWorker.controller).then((sw) => (sw ? ms : Infinity))).catch(() => Infinity);
     await page.waitForTimeout(1000);
     const shift = await page.evaluate(() => Math.round(window.__shift * 1000) / 1000);
     times[app] = { first, again, shift };
@@ -60,5 +68,6 @@ export default async function ({ check, context, URL, errors, measurements }) {
     check(`budget: ${app}'s first view is in the page within ${budget.firstViewMs.again} ms on the next visit`, again <= budget.firstViewMs.again, `${again} ms`);
     check(`budget: ${app} moves less than ${budget.layoutShift} (layout shift) as it fills in on the next visit`, shift <= budget.layoutShift, String(shift));
   }
+  await browser.close();
   measurements.loading = times;
 }

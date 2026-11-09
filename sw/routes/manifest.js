@@ -50,6 +50,13 @@ function meta(html, name) {
   return "";
 }
 
+/** A page's icon address for its manifest: resolved against the app's folder, keeping its query and fragment; an address on another site as it is. @param {string} href @param {string} folder */
+function iconSrc(href, folder) {
+  const base = new URL(folder, "https://app.invalid");
+  const to = new URL(href, base);
+  return to.origin === base.origin ? `${to.pathname}${to.search}${to.hash}` : to.href;
+}
+
 /**
  * The manifest of the app whose page is `html`, at `folder`.
  * @param {string} html @param {string} folder
@@ -70,7 +77,7 @@ export function manifestFor(html, folder) {
     scope: folder,
     display: "standalone",
     ...(/^#[0-9a-f]{3,8}$/i.test(theme) ? { theme_color: theme } : {}),
-    icons: [icon ? { src: new URL(icon, `https://x${folder}`).pathname, sizes: "any", purpose: "any" } : { src: ICON, sizes: "any", type: "image/svg+xml", purpose: "any" }],
+    icons: [icon ? { src: iconSrc(plain(icon), folder), sizes: "any", purpose: "any" } : { src: ICON, sizes: "any", type: "image/svg+xml", purpose: "any" }],
   };
 }
 
@@ -80,13 +87,19 @@ export default {
   async handle(request, url, env) {
     if (request.method !== "GET" || !url.pathname.endsWith("/manifest.webmanifest")) return undefined;
     const folder = url.pathname.slice(0, -"manifest.webmanifest".length);
-    // An app's own manifest wins (but not a made app's folder, which holds no manifest).
-    if (!/^(\/s\/[^/]+)?\/apps\//.test(folder)) {
-      const own = await env.fetch(request).catch(() => undefined);
-      if (own?.ok && !(own.headers.get("Content-Type") ?? "").includes("text/html")) return own;
-    }
     // In a space (/s/<space>/demos/habits/) the app's files are its own, outside the space (sw/routes/spaces.js); it installs and opens in the space.
-    const html = await pageIn(folder.replace(/^\/s\/[a-z0-9][a-z0-9-]{0,62}(?=\/)/, ""), url, env);
+    const outside = folder.replace(/^\/s\/[a-z0-9][a-z0-9-]{0,62}(?=\/)/, "");
+    // An app's own manifest wins (but not a made app's folder, which holds no manifest). It is read from the app's
+    // folder and served at the address asked for, so its relative addresses (start_url, share_target,
+    // file_handlers) stay in the space.
+    if (!/^\/apps\//.test(outside)) {
+      const own = await env.fetch(new Request(new URL(`${outside}manifest.webmanifest`, url))).catch(() => undefined);
+      if (own?.ok && !(own.headers.get("Content-Type") ?? "").includes("text/html")) {
+        if (outside === folder) return own;
+        return new Response(await own.text(), { headers: { "Content-Type": "application/manifest+json", "Cache-Control": "no-store" } });
+      }
+    }
+    const html = await pageIn(outside, url, env);
     if (html === undefined) return undefined;
     return new Response(JSON.stringify(manifestFor(html, folder), null, 2), { headers: { "Content-Type": "application/manifest+json", "Cache-Control": "no-store" } });
   },

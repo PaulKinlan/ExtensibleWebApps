@@ -46,6 +46,9 @@ export default async function ({ check, context, URL, errors }) {
   await open(`${URL}demos/reading-list/`, '[data-key="library:books"] ui-table');
   const reading = await manifest();
   check("an app's own manifest.webmanifest is the one it links", reading.json?.name === "Reading list" && !!reading.json.share_target, JSON.stringify(reading).slice(0, 200));
+  // In a space, the same manifest, served at the space's address so the app installs and opens files there.
+  const spaced = await page.evaluate(() => fetch("/s/family/demos/reading-list/manifest.webmanifest").then((r) => r.json()).catch((e) => ({ error: String(e) })));
+  check("in a space an app's own manifest is still the one served, with its file handlers and share target", spaced.name === "Reading list" && spaced.start_url === "./" && !!spaced.share_target && spaced.file_handlers?.[0]?.action === "open", JSON.stringify(spaced).slice(0, 200));
 
   // An app made in the browser: its files are in the data folder (std/maker/), and it installs and works offline too.
   await page.evaluate(async () => {

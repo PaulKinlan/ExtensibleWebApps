@@ -9,15 +9,25 @@ const MAX_TEXT = 5_000_000;
 const TEXT = /^text\/|^application\/(json|xml|csv|x-ndjson|ld\+json)$|\.(md|markdown|txt|csv|tsv|json|xml|ics|vcf)$/i;
 
 type Queue = { setConsumer(consumer: (params: { files?: { kind: string; getFile(): Promise<File> }[] }) => void): void };
+type Host = { tab: string; command: (name: string, arg?: unknown) => Promise<unknown> };
 
 let handles: { getFile(): Promise<File> }[] | undefined;
 let arrived: () => void = () => {};
 const ready = new Promise<void>((resolve) => (arrived = resolve));
+/** Set once the host has made this bridge: a delivery before then is told to the kernel then. */
+let told: ((tab: string) => void) | undefined;
+let early = false;
 
 const queue = (window as { launchQueue?: Queue }).launchQueue;
 queue?.setConsumer((params) => {
-  handles = [...(handles ?? []), ...(params.files ?? []).filter((f) => f.kind === "file")];
+  const files = (params.files ?? []).filter((f) => f.kind === "file");
+  if (!files.length) return;
+  handles = [...(handles ?? []), ...files];
   arrived();
+  // Every delivery, not only the one that opened the page: an installed app the browser reuses for
+  // another file (launch_handler "focus-existing") gets it here, at whatever screen it is on.
+  if (told) told("");
+  else early = true;
 });
 
 /** The files opened with this page, each read once; then none. */
@@ -34,4 +44,8 @@ async function take() {
   );
 }
 
-export default () => ({ take });
+export default (host: Host) => {
+  told = () => void host.command("launch:arrived", { tab: host.tab }).catch(() => {});
+  if (early) told("");
+  return { take };
+};
