@@ -27,6 +27,7 @@ Each key becomes a hook named `<id>:<key>`, so these are `notes:open` and `notes
 - **`timeoutMs`** is how long each listener has to answer a hook that waits, 1 s if you leave it out, at most 5 s.
 - **`agentTimeoutMs`** lets an [agent](agents.md) check the hook (`- check: notes:publish`), with that long to answer, at most 30 s. Without it, agents can't check the hook, which keeps it fast.
 - **`onFailure`**: `"open"` (the default) skips a listener that fails or runs out of time; `"closed"` treats it as a block.
+- **`quiet`**: `true` for a hook that runs many times a second, such as each move in a game ([Glowfall together](../../demos/glowfall-together/together.js)'s `move`). It isn't traced, so it doesn't push everything else out of the trace; a listener that fails or runs out of time still is.
 
 These limits (20 hooks, 1 s, 5 s, 30 s, and 1 MB of JSON for a value sent with `ctx.hooks`) are the platform's defaults. A site that needs others sets them in its [`kernel.json`](../../kernel.json), beside its modules, and the build refuses a name it doesn't know or a value that isn't a whole number above 0:
 

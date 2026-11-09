@@ -973,12 +973,17 @@
         "ui",
         "audio",
         "commands",
-        "plugins:read"
+        "plugins:read",
+        "audio:kept:sound-timeline",
+        "folder:read",
+        "folder:write",
+        "folder:choose"
       ],
       "provides": [],
       "services": [
         "audio",
-        "commands"
+        "commands",
+        "folder"
       ],
       "places": [],
       "apps": [
@@ -1002,6 +1007,31 @@
       ],
       "places": [],
       "apps": []
+    },
+    {
+      "id": "sound-timeline",
+      "name": "Timeline",
+      "description": "Clips laid side by side as tracks you can still move, re-level, pan and mute; plays the mix, or keeps it as a clip.",
+      "href": "/demos/audio-editor/timeline.js",
+      "source": "audio-editor",
+      "kind": "ui",
+      "permissions": [
+        "ui",
+        "audio",
+        "commands",
+        "data:read:sound-clips",
+        "data:write:sound-clips",
+        "audio:kept:sound-editor"
+      ],
+      "provides": [],
+      "services": [
+        "audio",
+        "commands"
+      ],
+      "places": [],
+      "apps": [
+        "demos/audio-editor"
+      ]
     },
     {
       "id": "effect-tremolo",
@@ -1813,6 +1843,30 @@
         "sync"
       ],
       "places": [],
+      "apps": [
+        "demos/glowfall-together"
+      ]
+    },
+    {
+      "id": "glowfall-referee",
+      "name": "Referee",
+      "description": "One jar for each member, moves no faster than a person's, and scores only for fireflies caught.",
+      "href": "/demos/glowfall-together/referee.js",
+      "source": "glowfall-together",
+      "kind": "background",
+      "permissions": [
+        "hook:intercept:game:update",
+        "hook:intercept:game:rules",
+        "hook:intercept:glowfall-together:join",
+        "hook:intercept:glowfall-together:move",
+        "hook:listen:game:started"
+      ],
+      "provides": [],
+      "services": [
+        "game"
+      ],
+      "places": [],
+      "runs": "server",
       "apps": [
         "demos/glowfall-together"
       ]
@@ -3493,7 +3547,9 @@
         "tools"
       ],
       "places": [],
-      "apps": []
+      "apps": [
+        "home"
+      ]
     },
     {
       "id": "story-view",

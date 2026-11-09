@@ -179,7 +179,9 @@ async function suite(name, make) {
     const back = await restart();
     const heardAfter = [];
     back.schedule.onDue((name) => void heardAfter.push(name));
-    await wait(300);
+    // Both missed jobs run as the host starts again; a slow machine (CI) can take longer than a moment, so wait for
+    // them, but not as long as "hourly"'s next time (a second), which would run it twice.
+    for (let waited = 0; waited < 900 && !(heardAfter.includes("missed") && heardAfter.includes("hourly")); waited += 20) await wait(20);
     const hourly = (await back.schedule.list()).find((j) => j.name === "hourly");
     check("restart: a repeating job missed several times runs once, then waits for its next time", heardAfter.filter((n) => n === "hourly").length === 1 && hourly?.at > Date.now(), JSON.stringify({ heardAfter, hourly }));
     await back.schedule.cancel("hourly");
