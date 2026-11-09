@@ -314,7 +314,7 @@ export function toMarkdown(ref: Reference, { live = false } = {}): string {
   const out: string[] = [
     "# API reference",
     "",
-    "Printed by the kernel from its own registries (`npm run reference` writes this file; the tests fail if it falls behind). Plugins can read the same thing as data with `ctx.call(\"kernel\", \"reference\")`.",
+    "Printed by the kernel from its own registries (`npm run reference` writes this file, and CI rewrites it on main after each merge, so a pull request never changes it). Plugins can read the same thing as data with `ctx.call(\"kernel\", \"reference\")`.",
     "",
     "## The plugin's `ctx`",
     "",

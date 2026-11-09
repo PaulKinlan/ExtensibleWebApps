@@ -2,15 +2,19 @@
 // catalogue and page are current, the page lists every plugin the site ships
 // and filters them, Customize lists the index, and adding a package from there
 // adds the packages that provide the services it needs, so it starts.
-import { readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { expected } from "../../scripts/packages.mjs";
+import { PATHS } from "../../scripts/generated.mjs";
 
 export default async function ({ check, openTab, context, URL }) {
   const want = await expected();
   for (const [name, text] of Object.entries(want)) {
-    const written = readFileSync(new globalThis.URL(`../../packages/${name}`, import.meta.url), "utf8");
-    check(`packages/${name} is what the plugins' manifests say (run npm run packages)`, written === text);
+    const served = await fetch(`${URL}packages/${name}`).then((r) => r.text(), () => "");
+    check(`the build serves /packages/${name} made from the plugins' manifests`, served === text);
   }
+  // Generated files are never committed, so pull requests can't conflict over them (scripts/generated.mjs).
+  const tracked = execFileSync("git", ["ls-files", "--", ...PATHS.filter((p) => p.startsWith("packages/"))], { cwd: new globalThis.URL("../../", import.meta.url), encoding: "utf8" }).trim();
+  check("the registry's generated files aren't committed (git rm them: the build makes them)", tracked === "", tracked);
   const { packages } = JSON.parse(want["index.json"]);
   const catalog = JSON.parse(want["catalog.json"]);
   check("the registry offers the language models, so a plugin that needs llm can get one", ["llm-anthropic", "llm-gemini", "llm-openai", "llm-openai-compatible"].every((id) => packages.some((p) => p.id === id && p.kind === "service")));

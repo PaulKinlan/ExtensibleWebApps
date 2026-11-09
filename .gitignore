@@ -4,3 +4,8 @@ test-results
 .build
 .spaces
 .wrangler
+
+# Made from other files at build time (scripts/generated.mjs), never committed, so they never conflict.
+packages/index.html
+packages/index.json
+packages/catalog.json

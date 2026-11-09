@@ -62,7 +62,7 @@ The full API is in [api.md](api.md), which the kernel prints about itself: every
 - each service lists its methods, and a method that isn't listed can't be called, so nothing is callable that the reference leaves out;
 - the `ctx` API, views, slots and manifest fields are tables typed against their TypeScript types, so adding a member without describing it doesn't compile.
 
-`npm run reference` rewrites api.md, and `npm test` fails when it falls behind. You rarely need to run it: the Regenerate API reference workflow (`.github/workflows/regenerate-reference.yml`) runs it on every PR branch and on main and commits the file when it changes, so a conflict in api.md is settled by taking either side. Plugins get the same thing as data from `ctx.call("kernel", "reference")`, which is what a plugin builder will read. In the app, **API reference** in the trace panel shows it with what is installed and which hooks each running plugin listens to.
+`npm run reference` rewrites api.md, but you never need to commit it: the Regenerate API reference workflow (`.github/workflows/regenerate-reference.yml`) rewrites it on main after each merge, and a pull request that changes it fails a check, so pull requests never conflict over it. Plugins get the same thing as data from `ctx.call("kernel", "reference")`, which is what a plugin builder will read. In the app, **API reference** in the trace panel shows it with what is installed and which hooks each running plugin listens to.
 
 ## Views: plain HTML
 

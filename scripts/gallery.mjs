@@ -10,8 +10,11 @@
 // a section are sorted by name. An app with no gallery meta, or one naming a
 // section the page doesn't have, is an error: it fails, it doesn't go missing.
 //
-//   npm run gallery    rewrites the lists in demos/index.html (the tests check they are current)
-import { readdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+// demos/index.html is committed with its lists empty: the site fills them as it serves and builds the page
+// (scripts/generated.mjs), so two pull requests that each add a demo never conflict over the page.
+//
+//   npm run gallery    checks every demo has its card, and says how many there are (it writes nothing)
+import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 const ROOT = new URL("../demos/", import.meta.url);
@@ -62,6 +65,6 @@ export function render(page = readFileSync(PAGE, "utf8")) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  writeFileSync(PAGE, render());
-  console.log(`Wrote demos/index.html (${cards().length} apps)`);
+  render();
+  console.log(`The demo gallery has ${cards().length} apps. The site fills demos/index.html with them as it serves and builds it.`);
 }
