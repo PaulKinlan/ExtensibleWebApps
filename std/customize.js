@@ -6,6 +6,8 @@
 //     site. Each is kept on this device, never in the app's files.
 //   - turns them on or off, or removes them. A new one starts off, and the
 //     panel shows what it asks for and where it draws before it is turned on.
+//     Turning one on turns on the ones of theirs it needs (World clock brings
+//     Clock), and turning one off turns off the ones that need it.
 //   - in a space, shares one with the space's members, or stops sharing it
 //   - sees every plugin's places and how each went: drawn, waiting for a
 //     review card, declined, locked by the app's author, or matching nothing
@@ -97,8 +99,8 @@ export default function (ctx) {
       app: page.running.filter((p) => p.id && !p.user && p.id !== manifest.id).map((p) => ({ id: p.id, name: p.name ?? p.id, places: placesOf(page, p.id, p.unlocked) })),
       packages: list.map((p) => ({
         ...p,
-        label: p.added ? "Added" : "Add",
-        disabled: p.added || busy,
+        label: p.linked ? "In this app" : p.added ? "Added" : "Add",
+        disabled: p.added || p.linked || busy,
         asks: `Asks for: ${p.permissions.join(", ") || "nothing"}`,
         also: p.adds.length > 1 ? `Adds ${p.adds.filter((a) => a.id !== p.id).map((a) => a.name).join(", ")} too, which it needs.` : "",
       })),
@@ -140,7 +142,16 @@ export default function (ctx) {
     if (action === "turn") {
       const mine = await call("mine");
       const p = Array.isArray(mine) ? mine.find((m) => m.id === value) : undefined;
-      if (p) await run("turn", [p.id, !p.on], p.on ? `Turned ${p.name} off` : `Turned ${p.name} on`);
+      if (!p) return;
+      const result = await call("turn", p.id, !p.on);
+      if (result?.ok === false) message = result.error;
+      else {
+        // Turning one on brings the plugins of yours it needs; turning one off takes the ones that need it.
+        const also = (result?.also ?? []).map((a) => a.name);
+        const why = p.on ? (also.length > 1 ? "which need it" : "which needs it") : "which it needs";
+        message = `Turned ${p.name} ${p.on ? "off" : "on"}${also.length ? `, and ${also.join(" and ")}, ${why}` : ""}`;
+      }
+      await draw();
       return;
     }
     if (action === "remove") return run("remove", [value], "Removed");

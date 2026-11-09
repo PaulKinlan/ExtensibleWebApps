@@ -21,6 +21,9 @@
   .customize .actions, .customize .row { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
   .customize textarea { width: 100%; font-family: var(--font-mono, monospace); }
   .customize .row input { flex: 1; min-width: 12rem; }
+  .customize .entries > li.package { grid-template-columns: 1fr auto; align-items: center; }
+  .customize details { display: grid; gap: var(--space-2); }
+  .customize summary { cursor: pointer; font-size: var(--text-sm); }
 </style>
 <template id="panel">
   <ui-panel label="Customize" toggle="panel">
@@ -33,8 +36,39 @@
           <p><button type="button" data-action="inspect" data-close data-inspect-start>Inspect the page</button> <span class="muted">Point at any part to see which plugin drew it, then hide it or add a note beside it.</span></p>
         </template>
 
+        <h3>Add a plugin</h3>
+        <template if="registry">
+          <p class="muted">From this site's <a href="/packages/" target="_blank">plugin registry</a>. Each is added off, after you see its code; turn it on in Your plugins.</p>
+          <ul class="entries">
+            <template for="p of packages">
+              <li key="{{p.id}}" class="package">
+                <div><strong>{{p.name}}</strong> <span class="muted">{{p.description}}</span><p class="muted">{{p.asks}} {{p.also}}</p></div>
+                <button type="button" data-action="package" data-value="{{p.id}}" data-package="{{p.id}}" disabled="{{p.disabled}}">{{p.label}}</button>
+              </li>
+            </template>
+          </ul>
+        </template>
+        <template if="samples.length">
+          <p>Samples for this app:</p>
+          <div class="actions">
+            <template for="s of samples"><button type="button" data-action="sample" data-value="{{s.href}}" data-sample="{{s.href}}" disabled="{{busy}}">{{s.title}}</button></template>
+          </div>
+        </template>
+        <details>
+          <summary>Add your own: pick files, paste code or a URL</summary>
+        <p class="row"><button type="button" data-action="pick" data-pick>Pick a plugin's files…</button> <span class="muted">Its .js file, and any files it lists.</span></p>
+        <form data-action="paste">
+          <textarea name="code" rows="6" placeholder="export const manifest = { … }" aria-label="Plugin code"></textarea>
+          <p class="row"><button type="submit">Add this code</button> <span class="muted">It is turned on once you accept its review.</span></p>
+        </form>
+        <form data-action="url" class="row">
+          <input name="url" type="text" placeholder="/demos/trip/samples/countdown.js" aria-label="Plugin URL">
+          <button type="submit" disabled="{{busy}}">Add from URL</button>
+        </form>
+        </details>
+
         <h3>Your plugins</h3>
-        <template if="!mine.length"><p class="muted">None yet. Add one below.</p></template>
+        <template if="!mine.length"><p class="muted">None yet. Add one above.</p></template>
         <ul class="entries">
           <template for="p of mine">
             <li key="{{p.id}}" data-plugin-id="{{p.id}}">
@@ -127,35 +161,6 @@
           </template>
         </ul>
 
-        <h3>Add a plugin</h3>
-        <template if="registry">
-          <p>From this site's plugin registry:</p>
-          <ul class="entries">
-            <template for="p of packages">
-              <li key="{{p.id}}">
-                <strong>{{p.name}}</strong>
-                <template if="p.description"><p class="muted">{{p.description}}</p></template>
-                <p class="muted">{{p.asks}} {{p.also}}</p>
-                <div class="actions"><button type="button" data-action="package" data-value="{{p.id}}" data-package="{{p.id}}" disabled="{{p.disabled}}">{{p.label}}</button></div>
-              </li>
-            </template>
-          </ul>
-        </template>
-        <template if="samples.length">
-          <p>Samples for this app:</p>
-          <div class="actions">
-            <template for="s of samples"><button type="button" data-action="sample" data-value="{{s.href}}" data-sample="{{s.href}}" disabled="{{busy}}">{{s.title}}</button></template>
-          </div>
-        </template>
-        <p class="row"><button type="button" data-action="pick" data-pick>Pick a plugin's files…</button> <span class="muted">Its .js file, and any files it lists.</span></p>
-        <form data-action="paste">
-          <textarea name="code" rows="6" placeholder="export const manifest = { … }" aria-label="Plugin code"></textarea>
-          <p class="row"><button type="submit">Add this code</button> <span class="muted">It is turned on once you accept its review.</span></p>
-        </form>
-        <form data-action="url" class="row">
-          <input name="url" type="text" placeholder="/demos/trip/samples/countdown.js" aria-label="Plugin URL">
-          <button type="submit" disabled="{{busy}}">Add from URL</button>
-        </form>
       </div>
     </template>
   </ui-panel>

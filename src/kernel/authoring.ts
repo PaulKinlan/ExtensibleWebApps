@@ -172,7 +172,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         args: "()",
         returns: "[{ id, name, description, permissions, places, on, shared, error? }]",
         needs: "plugins:author",
-        description: "The person's own plugins for the caller's app. In a space, shared says which are the space's plugins.",
+        description: "The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).",
         params: [],
       },
       add: {
@@ -184,9 +184,9 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       turn: {
         args: "(id, on)",
-        returns: "{ ok: true } or { ok: false, error }",
+        returns: "{ ok: true, also: [{ id, name }] } or { ok: false, error }",
         needs: "plugins:manage",
-        description: "Turns one of the person's own plugins for the caller's app on or off. The app's own plugins are switched with plugins.setEnabled.",
+        description: "Turns one of the person's own plugins for the caller's app on or off. Turning one on turns on the person's plugins that provide the services it needs, and turning one off turns off theirs that need a service only it provides: also lists those. The app's own plugins are switched with plugins.setEnabled.",
         params: [
           { name: "id", schema: { type: "string", description: "The id of one of the person's own plugins" } },
           { name: "on", schema: { type: "boolean", description: "true to turn it on, false to turn it off" } },
@@ -201,9 +201,9 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       packages: {
         args: "()",
-        returns: "[{ id, name, description, href, permissions, added, adds: [href] }]",
+        returns: "[{ id, name, description, href, permissions, added, linked, adds: [href] }]",
         needs: "plugins:read",
-        description: "The site's plugin registry (/packages/): each package, whether the person has added it to this app, and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.",
+        description: "The site's plugin registry (/packages/): each package, whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.",
         params: [],
       },
       pick: {
@@ -277,6 +277,16 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
     // Reading code and checking a manifest only look, so a viewer such as std/view-source.js needs no more than plugins:read (plugins:author includes it).
     capability: (method) => (["source", "check", "page", "packages", "inspect"].includes(method) ? "plugins:read" : method === "turn" ? "plugins:manage" : "plugins:author"),
     call: async (instance, method, args, dispatch) => {
+      /** The site's plugin registry (/packages/index.json), or none. */
+      const registry = async (): Promise<Package[]> => {
+        try {
+          const response = await fetch(new URL("/packages/index.json", saving.origin));
+          if (response.ok) return ((await response.json()) as { packages?: Package[] }).packages ?? [];
+        } catch {
+          // No registry on this site.
+        }
+        return [];
+      };
       const tab = tabOf(instance);
       if (method === "source") {
         const [id] = args;
@@ -333,6 +343,17 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         if (!app) return [];
         const list = await saving.userAdded.list(app);
         const marked: (UserPlugin & { shared?: boolean })[] = (await saving.shared()?.mark(app, list)) ?? list;
+        // A service one needs that nothing here has, nor any of their plugins here provides: say where to get it.
+        const running = new Set(saving.services());
+        const lacking = (p: UserPlugin) => (p.services ?? []).filter((s) => !running.has(s) && !list.some((o) => o.provides?.includes(s)));
+        const packages = list.some((p) => lacking(p).length) ? await registry() : [];
+        const needs = (p: UserPlugin) =>
+          lacking(p)
+            .map((s) => {
+              const from = packages.find((pkg) => pkg.provides.includes(s));
+              return `Needs the ${s} service, which nothing here provides${from ? `: add ${from.name} from this site's registry` : ""}.`;
+            })
+            .join(" ");
         return marked.map((p) => ({
           id: p.id ?? p.file,
           name: p.name ?? p.file,
@@ -341,7 +362,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           places: Object.values(p.places ?? {}).map((at) => `${at.put}${at.each ? " each" : ""} ${at.at}`),
           on: p.on,
           shared: !!p.shared,
-          ...(p.error ? { error: p.error } : {}),
+          ...(p.error ? { error: p.error } : needs(p) ? { error: needs(p) } : {}),
         }));
       }
       if (method === "page") {
@@ -350,13 +371,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       if (method === "inspect") return saving.page(tab, "inspect", [], dispatch);
       if (method === "packages") {
         const app = saving.appIn(tab);
-        let packages: Package[] = [];
-        try {
-          const response = await fetch(new URL("/packages/index.json", saving.origin));
-          if (response.ok) packages = ((await response.json()) as { packages?: Package[] }).packages ?? [];
-        } catch {
-          // No registry on this site.
-        }
+        const packages = await registry();
         const have = new Set(app ? (await saving.userAdded.list(app)).map((p) => p.id) : []);
         const running = new Set(saving.services());
         const providerOf = (service: string) => (running.has(service) ? undefined : packages.find((p) => p.provides.includes(service)));
@@ -374,6 +389,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           href: pkg.href,
           permissions: pkg.permissions,
           added: have.has(pkg.id),
+          // A standard plugin the app links already runs here: adding a copy of it would clash.
+          linked: (apps.linkedBy(tab) ?? []).includes(pkg.id),
           adds: withNeeds(pkg).filter((p) => !have.has(p.id)).map((p) => ({ id: p.id, name: p.name, href: p.href })),
         }));
       }
@@ -401,9 +418,12 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const app = appOf(tab);
         if (typeof on !== "boolean") return { ok: false, error: "turn(id, on) takes true or false" };
         if (typeof id !== "string" || !(await saving.userAdded.list(app)).some((p) => p.id === id)) return { ok: false, error: `${String(id)} isn't one of your plugins here` };
-        await (on ? saving.userAdded.on(app, id) : saving.userAdded.off(app, id));
+        // Turning one on turns on the person's plugins that provide the services it needs; turning a provider
+        // off turns off the ones that need it. Neither waits on kernel.json: that is the site's, not theirs.
+        const has = new Set(saving.services());
+        const also = on ? await saving.userAdded.onWithNeeds(app, id, (service) => has.has(service)) : await saving.userAdded.offWithDependents(app, id, (service, not) => has.has(service) && remote.providers.get(service) !== not);
         await saving.reopen(app);
-        return { ok: true };
+        return { ok: true, also: also.map((p) => ({ id: p.id, name: p.name ?? p.id })) };
       }
       if (["save", "remove", "add", "pick", "share", "unshare"].includes(method)) {
         const app = appOf(tab);

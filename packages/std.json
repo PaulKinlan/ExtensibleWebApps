@@ -1,0 +1,14 @@
+{
+  "std": [
+    "ask-the-page",
+    "board",
+    "debug-console",
+    "hook-tracer",
+    "import-export",
+    "reset",
+    "switchboard",
+    "sync",
+    "undo",
+    "view-source"
+  ]
+}
