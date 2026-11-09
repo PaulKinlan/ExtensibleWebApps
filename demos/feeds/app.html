@@ -1,28 +1,33 @@
 <!doctype html>
 <!--
-  Feeds: a feed reader, the second proof app for the space's server
-  (docs/server.md). Two plugins:
+  Feeds: a feed reader. It works straight away, with no sign-in, and it is
+  also the second proof app for a space's server (docs/server.md). Three
+  plugins:
 
-  feeds.js  in the browser: the feeds you follow, and their stories
-  fetch.js  on the space's server only (runs: "server"): reads each feed
-            over https every half hour, and keeps the stories
+  feeds.js      in the browser: the feeds you follow, and their stories
+  read-here.js  in the browser, with no space: reads each feed on this
+                device through the site's feed reader (/feed-reader), while
+                the app is open
+  fetch.js      on a space's server only (runs: "server"): reads each feed
+                over https every half hour, and keeps the stories
 
-  Open it in a space (/s/<space>/demos/feeds/): the server reads the feeds
-  with no one's browser open, and the stories reach every member's device,
-  to read offline too. Outside a space, the list of feeds still works.
+  Open it in a space (/s/<space>/demos/feeds/) and the server reads the
+  feeds with no one's browser open, and the stories reach every member's
+  device, to read offline too; read-here.js then does nothing.
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Feeds</title>
-  <meta name="description" content="Follow RSS and Atom feeds; the space's server reads them and every member gets the stories.">
+  <meta name="description" content="Follow RSS and Atom feeds and read their stories, with no sign-in. In a space, its server reads them for everyone.">
   <meta name="gallery" content="showcase">
-  <meta name="gallery-about" content="Follow RSS and Atom feeds. Open it in a space and the space's server reads them every half hour, over https only, and every member gets the stories, to read offline too.">
+  <meta name="gallery-about" content="Follow RSS and Atom feeds and read their stories, straight away, with no sign-in. Share it in a space and the space's server reads them every half hour, with no one's browser open, and everyone in it gets the stories.">
   <meta name="gallery-shows" content="a server plugin with the network, a schedule, a hook on another plugin's data.">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="feeds.js">
+  <link rel="plugin" href="read-here.js">
   <link rel="plugin" href="fetch.js">
   <!-- A standard plugin: opened in a space, whether this page reaches it. -->
   <link rel="plugin" href="/std/sync.js">

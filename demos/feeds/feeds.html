@@ -1,5 +1,6 @@
 <!--
-  The reader. feeds.js sends { space, only, feeds: [{ id, url, title, error,
+  The reader. With no space it says, in one line, what a space would add.
+  feeds.js sends { space, only, feeds: [{ id, url, title, error,
   state, shown }], stories: [{ id, title, link, summary, feed, when }] }.
   Everything here is text: a story's summary had its HTML taken out on the
   server (fetch.js), and its link is only kept when it is http(s).
@@ -11,21 +12,25 @@
   .feeds { display: grid; gap: var(--space-2); margin: var(--space-3) 0 0; padding: 0; list-style: none; }
   .feed { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px var(--space-2); align-items: center; padding: var(--space-2); border-radius: var(--radius); }
   .feed[data-shown] { background: color-mix(in srgb, var(--accent) 12%, transparent); }
-  .feed .name { font-weight: 600; text-align: start; overflow-wrap: anywhere; background: none; border: none; padding: 0; color: var(--fg); cursor: pointer; }
+  /* A feed's name is a button (it shows only that feed's stories), drawn as text: the page's buttons are one centred line, which cut a long name off at both ends. */
+  .feed .name { display: block; height: auto; min-width: 0; padding: 0; border: none; background: none; box-shadow: none; font-weight: 600; line-height: 1.3; text-align: start; white-space: normal; overflow-wrap: anywhere; color: var(--fg); cursor: pointer; }
+  .feed .name:hover { background: none; text-decoration: underline; }
+  .share { margin: var(--space-3) 0 0; font-size: var(--text-sm); color: var(--fg-2); }
   .feed .state { grid-column: 1; font-size: var(--text-sm); color: var(--fg-2); }
   .feed .error { grid-column: 1; font-size: var(--text-sm); color: var(--danger, #b42318); }
   .feed .remove { grid-row: 1 / span 2; grid-column: 2; }
-  .stories { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+  .stories { display: grid; gap: var(--space-3); margin: var(--space-2) 0 0; padding: 0; list-style: none; }
+  .story { padding-block-end: var(--space-3); border-block-end: 1px solid var(--border); min-width: 0; }
+  .story:last-child { border-block-end: none; }
+  .story h3 a { text-decoration-thickness: 1px; text-underline-offset: 2px; overflow-wrap: anywhere; }
   .story h3 { margin: 0; font-size: var(--text-md); line-height: 1.35; }
   .story h3 a { color: inherit; }
+  .layout > section { min-width: 0; }
   .story .meta { margin: 2px 0 var(--space-1); font-size: var(--text-sm); color: var(--fg-2); }
   .story p { margin: 0; font-size: var(--text-sm); color: var(--fg-2); }
 </style>
 
 <template id="feeds">
-  <template if="!space">
-    <p class="note">Feeds are read by a server. Open this app in a space (from your <a href="/account/?app=/demos/feeds/">account</a>), and the space's server reads each feed every half hour, with no one's browser open.</p>
-  </template>
   <div class="layout">
     <ui-card>
       <h2>Following</h2>
@@ -41,6 +46,9 @@
         </template>
       </ul>
       <template if="!feeds.length"><ui-empty>Follow a feed by its address, at https://.</ui-empty></template>
+      <template if="!space">
+        <p class="share">Read on this device while the app is open. To share your feeds, or have them read with the app closed, <a href="/account/?app=/demos/feeds/">open it in a space</a>.</p>
+      </template>
     </ui-card>
     <section>
       <ui-toolbar>
