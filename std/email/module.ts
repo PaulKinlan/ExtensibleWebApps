@@ -1,5 +1,5 @@
 // The `email` service: mail a server plugin sends, with the `email` permission.
-// Found by name: this file is src/kernel/services/email.ts, so it is `ctx.call("email", …)`.
+// A kernel module (docs/layers.md): a site that lists `email` in kernel.json has it, as `ctx.call("email", …)`.
 //
 //   await ctx.call("email", "send", { to: ["sam@example.com"], subject: "3 new answers", text: "…" });
 //
@@ -17,11 +17,11 @@
 // people, so a plugin with a public route can't be made into a way to send
 // anyone mail without end. The count is kept in server/email.json.
 
-import { isAddress } from "../address";
-import { env } from "../env";
-import type { ServiceProvider } from "../remote";
-import { record } from "../trace";
-import type { Kernel } from "./index";
+import { isAddress } from "../../src/kernel/address";
+import { env } from "../../src/kernel/env";
+import type { ServiceProvider } from "../../src/kernel/remote";
+import { record } from "../../src/kernel/trace";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
 
 const OUTBOX = "server/outbox";
 const COUNTS = "server/email.json";
@@ -62,7 +62,8 @@ export function checkMail(value: unknown): Mail {
   return { to: [...new Set(to.map(normal))], subject: m.subject, text: m.text, ...(m.html !== undefined && { html: m.html }) };
 }
 
-export default ({ store }: Kernel): ServiceProvider => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { store } = kernel;
   /** Sends one at a time, so two at once can't both take the last of a plugin's day. */
   let queue: Promise<unknown> = Promise.resolve();
 
@@ -118,3 +119,5 @@ export default ({ store }: Kernel): ServiceProvider => {
     },
   };
 };
+
+export default service("email", make);

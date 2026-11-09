@@ -1,10 +1,11 @@
 // The `audio` service. Sound for plugins, played by the tab that runs the plugin workers.
-// Found by name: this file is src/kernel/services/audio.ts, so it is `ctx.call("audio", …)`.
+// A kernel module (docs/layers.md): a site that lists `audio` in kernel.json has it, as `ctx.call("audio", …)`.
 
-import type { Kernel } from "./index";
-import type { ServiceProvider } from "../remote";
+import { service, type ModuleKernel } from "../../src/kernel/modules";
+import type { ServiceProvider } from "../../src/kernel/remote";
 
-export default ({ hosts }: Kernel): ServiceProvider => {
+const make = (kernel: ModuleKernel): ServiceProvider => {
+  const { hosts } = kernel;
   return {
     description: "Sound, played by the tab that runs the plugin workers. Audio runs in an AudioWorklet, never through hooks.",
     methods: {
@@ -32,3 +33,5 @@ export default ({ hosts }: Kernel): ServiceProvider => {
     },
   };
 };
+
+export default service("audio", make);

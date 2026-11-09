@@ -18,7 +18,7 @@
 // best is Argon (or Pro), balanced is Flash, fast is Flash-Lite.
 //
 // This file translates between the platform's request and answer
-// (src/kernel/services/llm.ts) and the Gemini API's generateContent.
+// (std/llm/module.ts) and the Gemini API's generateContent.
 
 export const manifest = {
   id: "llm-gemini",

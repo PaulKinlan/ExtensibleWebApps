@@ -22,7 +22,7 @@
 // use openai-compatible.js.
 //
 // This file translates between the platform's request and answer
-// (src/kernel/services/llm.ts) and the Responses API.
+// (std/llm/module.ts) and the Responses API.
 
 export const manifest = {
   id: "llm-openai",

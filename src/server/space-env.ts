@@ -41,7 +41,7 @@ setEnv({
     });
   },
   boot(start) {
-    // serve.ts starts a space with jobs when the server starts (src/kernel/services/schedule.ts): the
+    // serve.ts starts a space with jobs when the server starts (std/schedule/module.ts): the
     // kernel's folder is ready at once on Node, so it starts as soon as it has loaded.
     setImmediate(start);
   },

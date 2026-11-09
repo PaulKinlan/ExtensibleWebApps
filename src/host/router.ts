@@ -1,4 +1,4 @@
-// The app's screens, for the router service (src/kernel/services/router.ts).
+// The app's screens, for the router service (std/router/module.ts).
 // A screen is an address inside the app's folder: /demos/reading-list/book/42
 // is the reading list's screen /book/42. The service worker serves the app's
 // page there, with a <base> naming the folder (sw/routes/apps.js).

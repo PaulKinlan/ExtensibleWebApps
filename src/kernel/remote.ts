@@ -712,7 +712,7 @@ export class Remote {
   }
 
   /**
-   * A command the plugin answers, from ctx.commands.add (services/commands.ts
+   * A command the plugin answers, from ctx.commands.add (std/commands/module.ts
    * keeps its title and keys). The hook is named after this instance, so no
    * other plugin can answer for it, and a tab's own instance answers a run
    * from that tab.
@@ -735,7 +735,7 @@ export class Remote {
     this.listeners.set(listener, { name, off: this.ctx.on(name, this.forwarder(listener, name, spec)) });
   }
 
-  /** A job the plugin set with ctx.schedule (services/schedule.ts): named after the plugin, so no other can answer it. */
+  /** A job the plugin set with ctx.schedule (std/schedule/module.ts): named after the plugin, so no other can answer it. */
   private job(listener: number, id: string): void {
     if (!check(this.instance, this.caps, "schedule")) return void this.post({ t: "event", action: "kernel:denied", value: "schedule" });
     const name = scheduleHook(this.plugin.id, id);
