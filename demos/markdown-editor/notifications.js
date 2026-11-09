@@ -4,6 +4,8 @@
 // this is for when you aren't looking at it.) The toolbar button turns it on,
 // which the first time asks the browser to let the site notify you. It uses
 // the notify service, which shows nothing while you are looking at the app.
+// The service worker shows the notification, so it stays in the notification
+// centre after you close the editor, and a click on it opens the editor again.
 
 export const manifest = {
   id: "notifications",
@@ -39,7 +41,7 @@ export default async function (ctx) {
     if (!on) return;
     const failed = run?.stopReason && run.stopReason !== "completed";
     const who = run?.agent ?? "The assistant";
-    await ctx.call("notify", "show", { title: failed ? `${who} stopped` : `${who} is done`, body: failed ? `It stopped: ${run.stopReason}.` : "Its edits are in the post, for you to keep or undo.", tag: "agent" });
+    await ctx.call("notify", "show", { title: failed ? `${who} stopped` : `${who} is done`, body: failed ? `It stopped: ${run.stopReason}.` : "Its edits are in the post, for you to keep or undo. Click to open the editor.", tag: "agent" });
   });
   button();
 }

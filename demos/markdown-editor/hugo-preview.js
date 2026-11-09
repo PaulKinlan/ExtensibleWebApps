@@ -3,7 +3,8 @@
 // the site folder they opened, `hugo server -D`), and the panel's
 // <ui-site-preview> shows only a server on this device. Hugo reloads the page
 // itself when a saved file changes; the panel also reloads it after each save.
-// The server's address is kept, and can be changed in the panel.
+// The server's address is kept, and can be changed in the panel. If the page
+// in the frame goes anywhere else, the element hides it (and sends "left").
 
 export const manifest = {
   id: "hugo-preview",

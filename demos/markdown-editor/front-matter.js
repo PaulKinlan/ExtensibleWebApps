@@ -6,6 +6,12 @@
 // setFrontMatter, in the front matter's own format (YAML, TOML or JSON), as an
 // edit the person can undo; the post is saved when they save it. A field the
 // form can't show (a map under a key) stays as it is in the text.
+//
+// The description and summary each get a Draft button, as in the original
+// editor: the browser's own on-device summarizer (the <ui-summarizer>
+// element, which runs in the page) reads the post's prose and writes a short
+// draft into the field, which Undo takes out again. Nothing leaves the
+// device, and in a browser without one the button isn't there.
 
 export const manifest = {
   id: "front-matter",
@@ -19,6 +25,8 @@ export const manifest = {
 
 const DATES = new Set(["date", "lastmod", "publishdate", "expirydate"]);
 const LONG = new Set(["description", "summary"]);
+/** The longest prose handed to the summarizer, which halves it again if the model says it is too long. */
+const MAX_PROSE = 20_000;
 /** Shown first, in this order; the rest follow as the file has them. */
 const FIRST = ["title", "slug", "date", "draft", "description", "summary", "tags", "categories"];
 
@@ -38,6 +46,27 @@ export function fieldsOf(frontMatter = {}) {
   });
 }
 
+/** A post's body as a summary should read it: no code, shortcodes, HTML, images or link addresses. */
+export function proseOnly(markdown) {
+  return String(markdown ?? "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/\{\{[<%][\s\S]*?[%>]\}\}/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, "")
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, MAX_PROSE);
+}
+
+/** How the summarizer should write for a field: a teaser for a description, a short summary for the rest. */
+export function draftFor(key, siteName) {
+  return {
+    kind: key.toLowerCase() === "description" ? "teaser" : "tldr",
+    context: `A post from the blog "${siteName || "Site"}", summarised for its ${key} field. Write in the author's voice, not about "the author".`,
+  };
+}
+
 /** What a control sent, as the value to set: a list from comma-separated text, a number for a number field. */
 export function valueFor(field, sent) {
   if (field?.list) return String(sent ?? "").split(",").map((t) => t.trim()).filter(Boolean);
@@ -54,7 +83,11 @@ export default async function (ctx) {
 
   const draw = () => {
     if (!post) return ctx.ui.render("panels", "form", null);
-    ctx.ui.views("front-matter.html").render("panels", "form", { shown, fields: fieldsOf(post.frontMatter), empty: !Object.keys(post.frontMatter ?? {}).length, problem });
+    const fields = fieldsOf(post.frontMatter).map((f) => (LONG.has(f.key) ? { ...f, draft: { label: `Draft ${f.key}`, ...draftFor(f.key, post.siteName) } } : f));
+    const source = proseOnly(post.text.slice(post.bodyStart));
+    // With no description yet, the form offers to draft one.
+    const describe = "description" in (post.frontMatter ?? {}) ? null : { label: "Draft a description", ...draftFor("description", post.siteName) };
+    ctx.ui.views("front-matter.html").render("panels", "form", { shown, fields, empty: !Object.keys(post.frontMatter ?? {}).length, problem, source, describe, path: post.path });
   };
   const follow = (p) => {
     post = p;
@@ -82,6 +115,15 @@ export default async function (ctx) {
     if (!post) return;
     const field = (key) => fieldsOf(post.frontMatter).find((f) => f.key === key);
     if (action.startsWith("set:")) return set(action.slice(4), valueFor(field(action.slice(4)), value));
+    if (action.startsWith("draft:")) {
+      // What <ui-summarizer> wrote ({ text }), or why it couldn't ({ error }).
+      const key = action.slice(6);
+      // A draft of a post that is no longer open (it took a while, and the person moved on) is dropped.
+      if (!LONG.has(key) || value?.subject !== post.path) return;
+      if (typeof value?.text === "string" && value.text.trim()) return set(key, value.text.trim());
+      problem = typeof value?.error === "string" ? value.error : `Couldn't draft the ${key}.`;
+      return draw();
+    }
     if (action.startsWith("now:")) return set(action.slice(4), new Date().toISOString().replace(/\.\d+Z$/, "Z"));
     if (action.startsWith("remove:")) return set(action.slice(7), null);
     if (action === "add") {
