@@ -14,7 +14,8 @@
 // and changes the open post through its `document` service, as the person
 // would: edits go into the editor as edits they can undo, and are saved only
 // when the post is saved. Underlines (annotate) and moving the selection
-// (select) are the service's too.
+// (select) are the service's too, and so is how the editor works
+// (setOption: the browser's spell check, and the words it accepts).
 //
 // A snapshot is { path, url, title, siteName, text, bodyStart, frontMatter,
 // selection, unsaved }: offsets count characters in the whole file, front
@@ -39,7 +40,7 @@ export const manifest = {
       mode: "waterfall",
       timeoutMs: 2000,
       args: "{ from, to, text, html, files, selected }",
-      description: "The person pasted into the post, over from..to (the text `selected`). Return { text } to put in something else, or { block } to paste nothing. files are { name, type, size, text?, dataUrl? }.",
+      description: "The person pasted into the post, over from..to (the text `selected`). Return { text } to put in something else, or { block } to paste nothing. files are { name, type, size, text?, image? }: image is a token for document.saveImage, for a picture of at most 2 MB.",
     },
     drop: {
       mode: "waterfall",
@@ -99,6 +100,27 @@ export const manifest = {
           description: "Sets one top-level front matter field (null removes it): a string, number, boolean or list of strings.",
         },
         save: { args: "()", params: [], returns: "true or false", needs: "document:write", description: "Saves the open post, as the Save button does (before-save listeners run first)." },
+        saveImage: {
+          args: "(image, folder, name)",
+          params: [
+            { name: "image", schema: { type: "string", description: "The image token from a posts:paste or posts:drop file" } },
+            { name: "folder", schema: { type: "string", description: "Where under static/ or assets/ to put it, such as static/images/my-post" } },
+            { name: "name", schema: { type: "string", description: "The file's name, without its extension" } },
+          ],
+          returns: "{ path } or null",
+          needs: "document:write",
+          description: "Saves a picture the person pasted or dropped (while its hook runs) in the site's folder, as <folder>/<name>.<ext>, or <name>-2 and so on if that is taken: never over another file. path is where it went; null if the token is gone.",
+        },
+        setOption: {
+          args: "(name, value)",
+          params: [
+            { name: "name", schema: { type: "string", enum: ["spellcheck", "words"], description: "spellcheck: whether the browser checks the spelling; words: words it should accept" } },
+            { name: "value", schema: { description: "true or false for spellcheck; a list of words for words" } },
+          ],
+          returns: "true or false",
+          needs: "document:write",
+          description: "Changes how the editor works, not the post: whether the browser checks the spelling as you type (spellcheck), and the words it should accept (words, such as the site's tags and product names).",
+        },
       },
     },
   },
@@ -294,6 +316,10 @@ export default async function (ctx) {
   let status = "";
   let problem = "";
   let saving = false;
+  /** Pictures pasted or dropped, by token, while their hook runs; saves one at a time, so two never pick the same name. */
+  const images = { made: 0, waiting: new Map(), saving: Promise.resolve() };
+  /** How the editor works, which plugins change with document.setOption. */
+  const options = { spellcheck: false, words: [] };
 
   const unsaved = () => !!open && draft !== open.saved;
   /**
@@ -336,6 +362,8 @@ export default async function (ctx) {
       revision: `${open?.path ?? ""}#${revision}`,
       select: selectAt,
       annotations: JSON.stringify([...notes.values()].flat().slice(0, 2000)),
+      spellcheck: options.spellcheck ? "true" : "false",
+      words: JSON.stringify(options.words),
     });
   };
 
@@ -459,12 +487,27 @@ export default async function (ctx) {
   const put = async (hook, value, api) => {
     const from = Math.max(0, Math.min(Number(value.from) || 0, draft.length));
     const to = Math.max(from, Math.min(Number(value.to) || 0, draft.length));
-    const files = Array.isArray(value.files) ? value.files : [];
+    // A picture's bytes stay here, out of the hook (whose value is limited to 1 MB of JSON): listeners get a
+    // token, which document.saveImage takes while the hook runs.
+    const tokens = [];
+    const files = (Array.isArray(value.files) ? value.files : []).map((f) => {
+      const { dataUrl, ...rest } = f && typeof f === "object" ? f : {};
+      if (typeof dataUrl !== "string" || !/^data:image\//.test(dataUrl)) return rest;
+      const image = `image-${++images.made}`;
+      images.waiting.set(image, { dataUrl, type: String(rest.type ?? "") });
+      tokens.push(image);
+      return { ...rest, image };
+    });
     const offered = { from, to, text: String(value.text ?? ""), html: String(value.html ?? ""), files, selected: draft.slice(from, to) };
     if (!offered.text) offered.text = files.map((f) => f.text ?? "").filter(Boolean).join("\n");
     const path = open.path;
     const before = draft;
-    const answer = await api.hooks.call(hook, offered);
+    let answer;
+    try {
+      answer = await api.hooks.call(hook, offered);
+    } finally {
+      for (const image of tokens) images.waiting.delete(image);
+    }
     // Another post opened, or the text changed, while the listeners ran: the offsets no longer fit.
     if (open?.path !== path || draft !== before) return draw(api);
     if (!answer || answer.block || typeof answer.text !== "string" || !answer.text) return draw(api);
@@ -588,6 +631,31 @@ export default async function (ctx) {
       return true;
     },
     save: () => save(ctx),
+    saveImage(image, folder, name) {
+      const kept = images.waiting.get(String(image));
+      if (!kept) return null;
+      const dir = String(folder ?? "").replace(/\/+$/, "");
+      if (!/^(static|assets)(\/[\w.-]+)*$/.test(dir) || dir.split("/").some((p) => p === "." || p === "..")) throw new Error("Images go under static/ or assets/");
+      const ext = { "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif", "image/webp": ".webp", "image/avif": ".avif", "image/svg+xml": ".svg" }[kept.type];
+      if (!ext) throw new Error(`Not a picture this saves: ${kept.type}`);
+      const base = String(name ?? "").toLowerCase().replace(/[^\w-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "image";
+      // One save at a time, so two pictures with the same name can't both find it free.
+      const run = images.saving.then(async () => {
+        let path = `${dir}/${base}${ext}`;
+        for (let n = 2; await ctx.call("folder", "exists", path); n++) path = `${dir}/${base}-${n}${ext}`;
+        await ctx.call("folder", "writeData", path, kept.dataUrl);
+        return { path };
+      });
+      images.saving = run.catch(() => {});
+      return run;
+    },
+    setOption(name, value) {
+      if (name === "spellcheck") options.spellcheck = value === true;
+      else if (name === "words" && Array.isArray(value)) options.words = [...new Set(value.filter((w) => typeof w === "string" && w && w.length <= 64 && !/\s/.test(w)))].slice(0, 5000);
+      else return false;
+      draw();
+      return true;
+    },
   });
 
   try {

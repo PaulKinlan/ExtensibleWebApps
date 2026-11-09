@@ -60,7 +60,24 @@ start, is stopped instead, and the check says why.
 
 A made app links only its own files and the standard plugins it chose, never
 the model or the app maker. Switch both off, or close `/new/`, and it keeps
-working.
+working. It may also link a package from the [plugin
+registry](plugin-registry.md), such as `/packages/clock/clock.js`, and call
+the service it provides; the checks count it.
+
+## Taking it to a folder, and back
+
+A made app lives on the device that made it, until the person saves it to a
+folder. **Save to a folder** in Your apps (`maker.saveToFolder(app)`) writes
+a copy of its files into a folder they pick on their disk. **Open from a
+folder** (`maker.openFolder(app?)`) reads `app.html` and the plugins,
+templates, styles and agents beside it from a folder they pick, and saves
+them as a made app, named after the folder, after one review card like any
+save; other files are left out. So an app goes to another device by way of a
+folder (a synced drive, a USB stick, a git repository), and a saved copy is a
+plain app folder that `npm run check` reads in a checkout, as it reads the
+demos. Both need a click first, since the browser opens its folder picker
+only right after one ([`src/host/bridges/maker.ts`](../../src/host/bridges/maker.ts)),
+and a browser with no `showDirectoryPicker` says so.
 
 ## Saving, versions and going back
 
@@ -77,9 +94,13 @@ a "Put this back" button on each.
 
 ## Checks
 
-`maker.check(app)` runs the checks `npm run check` makes on an app in a
-checkout ([`checks.js`](../../std/maker/checks.js), with the kernel's own
-manifest reader, gate, HTML allowlist and API reference): the page's rules,
+`maker.check(app)` runs the same checks `npm run check` makes on an app in a
+checkout: they are one module, [`checks.js`](../../std/maker/checks.js), which
+each runs with the kernel's own manifest reader, gate, HTML allowlist and API
+reference, reading the files from the disk or from the data folder. The
+maker reads the files elsewhere on the site that the app links too, so a
+service a standard plugin or a registry package provides counts, and a link
+to one the site hasn't got is found. They check the page's rules,
 every linked file there, manifests that read, unique ids that no other
 running plugin has, collections no other plugin owns, every `ctx` call
 allowed by the plugin's permissions, templates that exist and use the

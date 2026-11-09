@@ -1,7 +1,8 @@
 <!--
   Your apps. your-apps.js sends two views:
   make: { working, request, steps: [{ n, text, ok }], answer: { text, tone }, targets: [{ name, title, picked }] }
-  apps: { none, apps: [{ name, title, url, picked }], app: { name, title, url, revision }, files: [{ name, count, open, versions: [{ version, when, by, note, current, removed }] }] }
+  apps: { none, apps: [{ name, title, url, picked }], app: { name, title, url, revision }, files: [{ name, count, open, versions: [{ version, when, by, note, current, removed }] }], folder: { text, tone } }
+  "folder" saves the picked app's files to a folder on the person's disk; "open-folder" makes an app from one.
 -->
 <style>
   .make form { display: grid; gap: var(--space-2); margin: 0; }
@@ -41,7 +42,12 @@
 </template>
 <template id="apps">
   <ui-card class="yours">
-    <h2>Your apps</h2>
+    <ui-toolbar>
+      <h2>Your apps</h2>
+      <ui-spacer></ui-spacer>
+      <button data-action="open-folder" title="Pick a folder with an app.html in it">Open from a folder</button>
+    </ui-toolbar>
+    <template if="folder"><ui-card tone="{{folder.tone}}"><p role="status">{{folder.text}}</p></ui-card></template>
     <template if="none"><p>None yet. Describe one above, and it appears here, working, with every version of its files.</p></template>
     <template if="!none">
       <div class="list">
@@ -52,6 +58,7 @@
           <h3>{{app.title}}</h3>
           <ui-spacer></ui-spacer>
           <button data-action="reload">Reload</button>
+          <button data-action="folder" title="Keep a copy of its files on your disk, or take it to another device">Save to a folder</button>
           <a href="{{app.url}}">Open {{app.url}}</a>
         </ui-toolbar>
         <ui-preview app="{{app.name}}" revision="{{app.revision}}" label="{{app.title}}"></ui-preview>

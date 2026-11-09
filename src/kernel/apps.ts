@@ -49,6 +49,22 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
     return undefined;
   }
 
+  /** The ids a list of links will run, and the sources of the ones that run here (a server-only one isn't started here, so it provides nothing here). */
+  function planned(links: Link[]) {
+    const next = new Set<string>();
+    const sources = links.flatMap((link) => {
+      try {
+        const source = asPlugin(link.href, link.source, link.runner);
+        const manifest = readManifest(source);
+        next.add(manifest.id);
+        return manifest.runs === "server" ? [] : [source];
+      } catch {
+        return [];
+      }
+    });
+    return { next, sources };
+  }
+
   async function openOne(host: Host, link: Link): Promise<Opened> {
     const { href } = link;
     let id: string;
@@ -107,22 +123,33 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
      */
     async open(host: Host, links: Link[], describe: (opened: Opened) => Opened = (o) => o): Promise<void> {
       const before = new Set(linked.get(host.tab));
+      const { next, sources } = planned(links);
+      // The ones it no longer links stop first, so a service one of them provided is free for the plugin that
+      // takes its place (a person swapping one provider of a service for another), rather than refused as a clash.
+      for (const id of before) if (!next.has(id)) release(id, host.tab);
       linked.set(host.tab, new Set());
-      // The plugins this open will start: a server-only one isn't started here (openOne), so it provides nothing here.
-      const sources = links.flatMap((link) => {
-        try {
-          const source = asPlugin(link.href, link.source, link.runner);
-          return readManifest(source).runs === "server" ? [] : [source];
-        } catch {
-          return [];
-        }
-      });
       const started = remote.expect(sources);
       const plugins = await Promise.all(links.map((link) => openOne(host, link))).finally(started);
       const now = linked.get(host.tab)!;
-      for (const id of before) if (!now.has(id)) release(id, host.tab);
+      for (const id of before) if (next.has(id) && !now.has(id)) release(id, host.tab);
       record({ kind: "lifecycle", name: "app:open", detail: `${host.tab}: ${plugins.map((p) => p.id ?? `${p.href} (${p.error})`).join(", ")}` });
       if (hosts.list.includes(host)) hosts.send(host, { t: "opened", plugins: plugins.map(describe) });
+    },
+
+    /**
+     * Stops, in one tab, the plugins its app no longer links, before any tab opens the app again with
+     * `links`. With the app open in several tabs, each releases the old plugins first, so a plugin taking
+     * another's place (a provider of the same service) is never refused because another tab still held it.
+     */
+    drop(host: Host, links: Link[]): void {
+      const ids = linked.get(host.tab);
+      if (!ids) return;
+      const { next } = planned(links);
+      for (const id of [...ids]) {
+        if (next.has(id)) continue;
+        ids.delete(id);
+        release(id, host.tab);
+      }
     },
 
     /** The plugins the app open in `tab` links, by id. */

@@ -1,0 +1,15 @@
+<!doctype html>
+<!-- An app that links a package from the plugin registry (/packages/clock/clock.js) and calls the service it provides. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Clock face</title>
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="/packages/clock/clock.js">
+  <link rel="plugin" href="face.js">
+</head>
+<body>
+  <main><slot name="main"></slot></main>
+</body>
+</html>

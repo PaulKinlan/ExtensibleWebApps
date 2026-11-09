@@ -17,14 +17,18 @@
 //   agents     each <link rel="agent"> file's frontmatter reads as the manifest
 //              the kernel makes from it, with an id no plugin uses
 //
-// It reads the source, so it can only follow names written as plain strings:
-// ctx.call("data", "put", "library", …) is checked, ctx.call(service, …) isn't.
+// The checks themselves are std/maker/checks.js, the same module the app
+// maker runs on an app made in the browser: this script reads the files from
+// disk and hands it the kernel's rules. It reads the source, so it can only
+// follow names written as plain strings: ctx.call("data", "put", "library", …)
+// is checked, ctx.call(service, …) isn't.
 // It exits with 1 if there is any error; warnings alone don't fail it.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { checkApp } from "../std/maker/checks.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -75,58 +79,6 @@ function loadReference() {
   return { methods, hooks };
 }
 
-const lineOf = (text, index) => text.slice(0, index).split("\n").length;
-
-/** Every `<tag …>` in the HTML, with its attributes parsed the way a browser reads them: double, single or no quotes. */
-function tags(html, name) {
-  const out = [];
-  for (const m of html.matchAll(new RegExp(`<${name}\\b((?:\\s+[^\\s=>"'/]+(?:\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>"']+))?)*)\\s*/?>`, "gi"))) {
-    const attributes = Object.create(null);
-    for (const a of m[1].matchAll(/([^\s=>"'/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+)))?/g)) attributes[a[1].toLowerCase()] = a[2] ?? a[3] ?? a[4] ?? "";
-    out.push({ attributes, line: lineOf(html, m.index) });
-  }
-  return out;
-}
-
-/**
- * The source with comments blanked out (`code`), and also with the inside of
- * every string blanked (`bare`), keeping line numbers. A call is only real
- * where `bare` still has it, so `"//"` in a string or `fetch()` in a
- * description is not mistaken for code. Regular expressions are rare in
- * plugins and aren't tracked.
- */
-function scan(source) {
-  let code = "";
-  let bare = "";
-  const blank = (text) => text.replace(/[^\n]/g, " ");
-  for (let i = 0; i < source.length; ) {
-    const c = source[i];
-    const two = source.slice(i, i + 2);
-    let end;
-    if (two === "//") end = source.indexOf("\n", i) === -1 ? source.length : source.indexOf("\n", i);
-    else if (two === "/*") end = source.indexOf("*/", i + 2) === -1 ? source.length : source.indexOf("*/", i + 2) + 2;
-    if (end !== undefined) {
-      code += blank(source.slice(i, end));
-      bare += blank(source.slice(i, end));
-      i = end;
-      continue;
-    }
-    if (c === '"' || c === "'" || c === "`") {
-      let j = i + 1;
-      while (j < source.length && source[j] !== c && !(c !== "`" && source[j] === "\n")) j += source[j] === "\\" ? 2 : 1;
-      const text = source.slice(i, Math.min(j + 1, source.length));
-      code += text;
-      bare += c + blank(text.slice(1, -1)) + (text.length > 1 ? text.at(-1) : "");
-      i = j + 1;
-      continue;
-    }
-    code += c;
-    bare += c;
-    i++;
-  }
-  return { code, bare };
-}
-
 /** A path as a link or ctx.ui.views gives it: from the site's root if it starts with /, else next to `from`; no query or fragment. */
 const local = (path, from) => {
   const clean = path.replace(/[?#].*$/, "");
@@ -142,7 +94,7 @@ export async function checkApps(targets) {
   const rules = await loadKernelRules();
   const reference = loadReference();
   const apps = targets.length ? targets.map(appFile) : demoApps();
-  return apps.map((file) => checkApp(file, rules, reference));
+  return apps.map((file) => checkAppFile(file, rules, reference));
 }
 
 function demoApps() {
@@ -158,229 +110,21 @@ function appFile(target) {
   return existsSync(path) && statSync(path).isDirectory() ? join(path, "app.html") : path;
 }
 
-function checkApp(file, rules, reference) {
-  const problems = [];
-  const report = (level, where, line, message) => problems.push({ level, file: rel(where), ...(line && { line }), message });
-  const app = { app: rel(dirname(file)), plugins: [], problems };
-  if (!existsSync(file)) {
-    report("error", file, 0, "There is no app.html here");
-    return app;
-  }
-  // Comments are blanked out (keeping line numbers), so a <link> in one isn't read as a plugin.
-  const html = readFileSync(file, "utf8").replace(/<!--[^]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
-  const host = tags(html, "script").find((t) => t.attributes.src === "/platform/host.js");
-  if (!host) report("error", file, 0, 'app.html doesn\'t load the platform: add <script type="module" src="/platform/host.js"></script> to the head');
-  else if (host.attributes.type !== "module") report("error", file, host.line, 'The platform\'s script is a module: write <script type="module" src="/platform/host.js">');
-  const links = tags(html, "link");
-  const rels = (t) => (t.attributes.rel ?? "").toLowerCase().split(/\s+/);
-  if (!links.some((t) => rels(t).includes("stylesheet") && t.attributes.href === "/platform/host.css")) report("warning", file, 0, 'app.html doesn\'t link the platform\'s styles: add <link rel="stylesheet" href="/platform/host.css">');
-  const slots = new Set(tags(html, "slot").map((t) => t.attributes.name).filter(Boolean));
-  const plugins = links.filter((t) => rels(t).includes("plugin"));
-  // No plugins is fine: an app can be plain HTML that people extend with their own (see demos/trip).
-
-  // Services the app's own plugins provide (a manifest's `provides`): a call to one is checked against what
-  // its method needs, as a kernel service's is against docs/api.md.
-  const methods = new Map(reference.methods);
-  for (const link of plugins) {
-    const href = link.attributes.href;
-    if (!href || /^[a-z]+:/i.test(href) || !existsSync(local(href, file))) continue;
-    let manifest;
-    try {
-      manifest = rules.readManifest(readFileSync(local(href, file), "utf8"));
-    } catch {
-      continue; // checkPlugin reports it
-    }
-    for (const [name, service] of Object.entries(manifest.provides ?? {})) {
-      for (const [method, spec] of Object.entries(service.methods ?? {})) methods.set(`${name}.${method}`, [spec.needs ?? name]);
-    }
-  }
-  reference = { ...reference, methods };
-
-  const ids = new Map();
-  for (const link of plugins) {
-    const href = link.attributes.href;
-    if (!href) {
-      report("error", file, link.line, '<link rel="plugin"> has no href');
-      continue;
-    }
-    if (/^[a-z]+:/i.test(href)) {
-      report("warning", file, link.line, `${href} is on another site, so it isn't checked`);
-      continue;
-    }
-    const pluginFile = local(href, file);
-    if (!existsSync(pluginFile)) {
-      report("error", file, link.line, `${href} doesn't exist`);
-      continue;
-    }
-    const plugin = checkPlugin(pluginFile, rules, reference, report);
-    if (!plugin) continue;
-    app.plugins.push(plugin.id);
-    if (ids.has(plugin.id)) report("error", pluginFile, 1, `The id "${plugin.id}" is also used by ${ids.get(plugin.id)}; the second replaces the first`);
-    ids.set(plugin.id, rel(pluginFile));
-    for (const { slot, line } of plugin.slots) {
-      if (!slots.has(slot)) report("warning", pluginFile, line, `Draws into the slot "${slot}", which app.html doesn't have, so it won't show: add <slot name="${slot}"></slot>`);
-    }
-  }
-  // Agents: Markdown files the kernel turns into plugins, read the same way.
-  for (const link of links.filter((t) => rels(t).includes("agent"))) {
-    const href = link.attributes.href;
-    const agentFile = href && !/^[a-z]+:/i.test(href) ? local(href, file) : undefined;
-    if (!agentFile || !existsSync(agentFile)) {
-      report("error", file, link.line, href ? `${href} doesn't exist` : '<link rel="agent"> has no href');
-      continue;
-    }
-    if (!/\.agent\.md$/i.test(agentFile)) report("error", file, link.line, `${href}: an agent file's name ends in .agent.md, or the kernel reads it as a plugin`);
-    let id;
-    try {
-      const text = readFileSync(agentFile, "utf8");
-      // The agent loop it runs, from the frontmatter's `runner:` (next to the agent file) or the standard one.
-      const named = rules.runnerName(text) ?? rules.DEFAULT_RUNNER;
-      const loopFile = /^[a-z]+:/i.test(named) ? undefined : local(named, agentFile);
-      if (!loopFile) report("warning", agentFile, 1, `Its agent loop ${named} is on another site, so it isn't checked here`);
-      else if (!existsSync(loopFile)) throw new Error(`Its agent loop ${named} doesn't exist`);
-      id = rules.readManifest(rules.fromAgentFile(text, loopFile ? readFileSync(loopFile, "utf8") : "// elsewhere")).id;
-    } catch (error) {
-      report("error", agentFile, Number(/Line (\d+)/.exec(error.message)?.[1]) || 1, error.message);
-      continue;
-    }
-    app.plugins.push(id);
-    if (ids.has(id)) report("error", agentFile, 1, `The id "${id}" is also used by ${ids.get(id)}; the second replaces the first`);
-    ids.set(id, rel(agentFile));
-  }
-  problems.sort((x, y) => x.file.localeCompare(y.file) || (x.line ?? 0) - (y.line ?? 0));
-  return app;
-}
-
-// The calls a plugin's source makes, as written. Each pattern finds one kind
-// of call; `needs` says what the call requires, given its match.
-const USES = [
-  { pattern: /\bctx\.routes\.add\(/g, needs: () => ["routes"], what: () => "ctx.routes.add" },
-  { pattern: /\b(?:fetch\(|new WebSocket\(|new EventSource\()/g, needs: () => ["network"], what: (m) => m[0].replace("(", "") },
-  { pattern: /\bctx\.ui\.(?:render|html|live)\(/g, needs: () => ["ui"], what: (m) => m[0].slice(0, -1) },
-];
-
-function checkPlugin(file, rules, reference, report) {
-  const source = readFileSync(file, "utf8");
-  let manifest;
-  try {
-    manifest = rules.readManifest(source);
-  } catch (error) {
-    const line = Number(/on line (\d+)/.exec(error.message)?.[1]) || 1;
-    report("error", file, line, error.message);
-    return undefined;
-  }
-  // Comments blanked, so an example in one isn't read as a call; a match only counts where it isn't inside a string.
-  const { code, bare } = scan(source);
-  const matches = (pattern) => [...code.matchAll(pattern)].filter((m) => bare.slice(m.index, m.index + 4) === code.slice(m.index, m.index + 4));
-  const caps = rules.capabilities(manifest);
-  for (const name of Object.keys(manifest.collections ?? {})) {
-    caps.add(`data:read:${name}`);
-    caps.add(`data:write:${name}`);
-    caps.add(`hook:listen:data:changed:${name}`);
-  }
-  const missing = (needs, line, what) => {
-    const lacking = needs.filter((need) => !need.includes("<") && !rules.grants(caps, need));
-    if (lacking.length) report("error", file, line, `${what} needs ${lacking.map((n) => `"${n}"`).join(" and ")} in the manifest's permissions`);
-  };
-
-  for (const use of USES) for (const m of matches(use.pattern)) missing(use.needs(m), lineOf(code, m.index), use.what(m));
-
-  // ctx.call("service", "method", "collection"?): the reference says what each method needs.
-  for (const m of matches(/\bctx\.call\(\s*(["'])(\w+)\1\s*,\s*(["'])(\w+)\3(?:\s*,\s*(["'])([\w-]+)\5)?/g)) {
-    const [, , service, , method, , arg] = m;
-    const line = lineOf(code, m.index);
-    const needs = reference.methods.get(`${service}.${method}`);
-    if (!needs) {
-      report("error", file, line, `There is no ${service}.${method}; see docs/api.md for the services`);
-      continue;
-    }
-    missing(needs.map((n) => (arg ? n.replace(/<[^>]+>/, arg) : n)), line, `ctx.call("${service}", "${method}"${arg ? `, "${arg}"` : ""})`);
-  }
-
-  // ctx.on("hook"): a documented hook needs what the reference says; a collection's change needs reading it.
-  for (const m of matches(/\bctx\.on\(\s*(["'])([^"']+)\1/g)) {
-    const name = m[2];
-    const line = lineOf(code, m.index);
-    if (/^route:/.test(name)) continue; // routes are checked as ctx.routes.add
-    const collection = /^data:changed:(.+)$/.exec(name)?.[1];
-    if (collection) missing([`hook:listen:data:changed:${collection}`], line, `ctx.on("${name}")`);
-    else if (reference.hooks.has(name)) missing([reference.hooks.get(name)], line, `ctx.on("${name}")`);
-  }
-
-  // Views: the template files, the templates the code draws, and the slots it draws into.
-  // `const views = ctx.ui.views("x.html")` binds a name to one file; views.render draws only from that file.
-  const files = new Map(); // view file path as written → its template ids, or null if it's missing
-  const bound = new Map(); // variable name → view file path as written
-  for (const m of matches(/\bctx\.ui\.views\(\s*(["'])([^"']+)\1/g)) {
-    const path = m[2];
-    const name = /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*$/.exec(code.slice(Math.max(0, m.index - 80), m.index))?.[1];
-    if (name) bound.set(name, path);
-    if (files.has(path)) continue;
-    const viewFile = local(path, file);
-    if (!existsSync(viewFile)) {
-      report("error", file, lineOf(code, m.index), `ctx.ui.views("${path}"): there is no ${rel(viewFile)}`);
-      files.set(path, null);
-      continue;
-    }
-    files.set(path, new Set(checkTemplates(viewFile, rules, report)));
-  }
-  const slots = [];
-  for (const m of matches(/(?:\b([A-Za-z_$][\w$]*)|\))\.(render|live|html)\(\s*(["'])([\w-]+)\3(?:\s*,\s*(["'])([\w-]+)\5)?/g)) {
-    const [, receiver, how, , slot, , id] = m;
-    const line = lineOf(code, m.index);
-    slots.push({ slot, line });
-    if (receiver === "ui" || how === "html") continue; // ctx.ui.render and ctx.ui.live take a view, not a template
-    // The file this receiver draws from, or every file if the code doesn't say which.
-    const from = bound.has(receiver) ? [bound.get(receiver)] : [...files.keys()];
-    const known = from.map((path) => files.get(path)).filter(Boolean);
-    if (id && known.length === from.length && from.length && !known.some((ids) => ids.has(id))) report("error", file, line, `There is no <template id="${id}"> in ${from.join(" or ")}`);
-    missing(["ui"], line, `views.${how}`);
-  }
-  return { id: manifest.id, slots };
-}
-
-// A template file: <style> for the plugin's own CSS, and <template id> views
-// holding plain HTML from the allowlist. Returns the template ids.
-function checkTemplates(file, rules, report) {
-  const raw = readFileSync(file, "utf8");
-  // Blank out comments and <style> blocks, keeping offsets, so line numbers stay true.
-  const html = raw.replace(/<!--[^]*?-->|<style\b[^]*?<\/style>/g, (m) => m.replace(/[^\n]/g, " "));
-  const ids = [];
-  for (const m of html.matchAll(/<([a-zA-Z][\w-]*)((?:\s+[^\s=>"']+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>"']+))?)*)\s*\/?>/g)) {
-    const tag = m[1].toLowerCase();
-    const line = lineOf(html, m.index);
-    const attributes = [...m[2].matchAll(/([^\s=>"']+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>"']+)))?/g)].map((a) => ({ name: a[1].toLowerCase(), value: a[2] ?? a[3] ?? a[4] ?? "" }));
-    if (tag === "template") {
-      const id = attributes.find((a) => a.name === "id")?.value;
-      if (id) ids.push(id);
-      continue;
-    }
-    const component = tag in rules.COMPONENTS;
-    if (rules.DROPPED_WITH_CONTENT.has(tag)) {
-      report("error", file, line, `<${tag}> isn't allowed in a view; it is dropped with everything inside it`);
-      continue;
-    }
-    if (!(tag in rules.ELEMENTS) && !component) {
-      report("warning", file, line, `<${tag}> isn't on the HTML allowlist, so only its text is kept (see "HTML views" in docs/api.md)`);
-      continue;
-    }
-    for (const { name, value } of attributes) {
-      const hole = value.includes("{{");
-      if (name === "style") {
-        // Only custom properties set to numbers are kept (src/host/sanitize.ts); a {{hole}} must fill in a number.
-        // The same rules as the sanitizer's: name, number, unit, and at most eight declarations.
-        const declarations = value.split(";").filter((d) => d.trim());
-        const bad = declarations.filter((d) => !/^\s*--[a-z][a-z0-9-]{0,31}\s*:\s*(\{\{[^}]+\}\}|-?(\d{1,6}(\.\d{1,4})?|\.\d{1,4}))(px|rem|em|ch|%|vh|vw|deg|turn|s|ms|fr)?\s*$/i.test(d));
-        if (bad.length) report("error", file, line, `style= keeps only custom properties set to numbers, such as style="--pct: {{pct}}"; use class with the file's <style> for looks (dropped: ${bad.map((d) => d.trim()).join("; ")})`);
-        else if (declarations.length > 8) report("error", file, line, `style= keeps at most 8 custom properties, so the rest are dropped`);
-      } else if (name.startsWith("on")) report("error", file, line, `${name}= isn't allowed in a view: use data-action for events, and class with the file's <style> for looks`);
-      else if (name === "slot" || name === "is" || name === "data-plugin") report("warning", file, line, `${name}= is dropped from views`);
-      else if (!component && !name.startsWith("aria-") && !name.startsWith("data-") && !rules.GLOBAL_ATTRIBUTES.includes(name) && !(rules.ELEMENT_ATTRIBUTES[tag] ?? []).includes(name)) report("warning", file, line, `${name}= isn't allowed on <${tag}>, so it is dropped`);
-      else if (name === "href" && !hole && /^([a-z][\w+.-]*:|\/\/|\\)/i.test(value.trim()) && !/^(https?:|mailto:)/i.test(value.trim())) report("warning", file, line, `href="${value}" is dropped: a link in a view must start with https:, http:, mailto: or #, or be relative`);
-      else if (tag === "input" && name === "type" && !hole && !rules.INPUT_TYPES.includes(value.toLowerCase())) report("warning", file, line, `<input type="${value}"> isn't allowed, so it becomes a text box`);
-    }
-  }
-  return ids;
+/** One app on disk, read by the checks every app gets (std/maker/checks.js), with the kernel's rules and the reference. */
+function checkAppFile(file, rules, reference) {
+  // Every service a call may name: the kernel's files and modules, and each one the reference documents.
+  const services = new Set([...serviceFiles(), ...[...reference.methods.keys()].map((k) => k.split(".")[0])]);
+  const { problems, plugins } = checkApp(
+    {
+      page: file,
+      read: (key) => (existsSync(key) && statSync(key).isFile() ? readFileSync(key, "utf8") : undefined),
+      resolve: (href, from) => (/^[a-z][\w+.-]*:/i.test(href) ? undefined : local(href, from)),
+      label: rel,
+      own: () => true,
+    },
+    { ...rules, ...reference, services },
+  );
+  return { app: rel(dirname(file)), plugins: plugins.map((p) => p.id), problems };
 }
 
 function print(apps) {
