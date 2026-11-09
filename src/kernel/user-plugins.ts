@@ -171,6 +171,39 @@ export function userPlugins(store: Store, origin: string, space?: string) {
       }
     },
 
+    /**
+     * Why one plugin's files can't go in an app's folder, if they can't: they are one plugin (.js), every
+     * other file is one its manifest lists, and none belongs to another of the person's plugins there
+     * (which it would overwrite). A review shows the plugin's code, so nothing else may ride along with it.
+     */
+    async problem(app: string, files: { name: string; data: Blob | string }[]): Promise<string | undefined> {
+      const plugins = files.filter((f) => f.name.endsWith(".js"));
+      if (plugins.length !== 1 || typeof plugins[0].data !== "string") return "Add one plugin (.js) at a time, with the files its manifest lists";
+      let manifest;
+      try {
+        manifest = readManifest(plugins[0].data);
+      } catch (error) {
+        return `${plugins[0].name}: ${error instanceof Error ? error.message : error}`;
+      }
+      const listed = new Set(manifest.files ?? []);
+      const badName = files.find((f) => !FILE_NAME.test(f.name));
+      if (badName) return `${badName.name}: a file name is letters, digits, ., - and _`;
+      const extra = files.find((f) => f !== plugins[0] && !listed.has(f.name));
+      if (extra) return `${extra.name} isn't one of the files ${manifest.id} lists`;
+      const ours = new Set([`${manifest.id}.js`, ...listed]);
+      for (const other of await list(app)) {
+        if (!other.id || other.id === manifest.id) continue;
+        const source = (await store.readText(`user/${app}/${other.file}`)) ?? "";
+        let theirs: string[] = [];
+        try {
+          theirs = readManifest(source).files ?? [];
+        } catch {}
+        const clash = [other.file, ...theirs].find((name) => ours.has(name));
+        if (clash) return `${clash} belongs to ${other.name ?? other.id}, another plugin for this app`;
+      }
+      return undefined;
+    },
+
     async addFromUrl(app: string, url: string) {
       const fetched = await this.fetch(url);
       return fetched.ok ? this.add(app, fetched.files) : fetched;

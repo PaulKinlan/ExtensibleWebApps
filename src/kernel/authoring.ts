@@ -433,6 +433,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (typeof url !== "string") return { ok: false, error: "add(url) takes the plugin's .js file on this site" };
           const fetched = await saving.userAdded.fetch(url);
           if (!fetched.ok) return fetched;
+          const wrongAdd = await saving.userAdded.problem(app, fetched.files);
+          if (wrongAdd) return { ok: false, error: wrongAdd };
           let m;
           try {
             m = readManifest(fetched.source);
@@ -461,6 +463,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (!files?.length) return { ok: false, error: "No file chosen" };
           const main = files.filter((f) => f.name.endsWith(".js") && typeof f.data === "string");
           if (main.length !== 1) return { ok: false, error: "Pick one plugin's .js file, and any files it lists" };
+          const wrongPick = await saving.userAdded.problem(app, files);
+          if (wrongPick) return { ok: false, error: wrongPick };
           const source = main[0].data as string;
           let m;
           try {

@@ -78,6 +78,20 @@
                 <template if="p.error"><p class="error">{{p.error}}</p></template>
                 <template if="p.asks"><p class="muted">{{p.asks}}</p></template>
                 <template if="p.draws"><p class="muted">{{p.draws}}</p></template>
+                <template if="p.places.length">
+                  <ul class="places">
+                    <template for="pl of p.places">
+                      <li key="{{pl.key}}" data-place="{{pl.key}}" data-state="{{pl.state}}">
+                        <code>{{pl.where}}</code>
+                        <template if="pl.ok"><span class="ok">{{pl.label}}</span></template>
+                        <template if="!pl.ok"><span class="muted">{{pl.label}}</span></template>
+                        <template if="pl.fragile"><span class="muted">· this selector leans on the page's layout, so an update to the app may break it</span></template>
+                        <template if="pl.locked"><button type="button" data-action="unlock" data-value="{{pl.key}}" data-unlock="{{pl.key}}">Unlock for this plugin</button></template>
+                        <template if="pl.unlocked"><button type="button" data-action="lock" data-value="{{pl.key}}">Lock again</button></template>
+                      </li>
+                    </template>
+                  </ul>
+                </template>
                 <div class="actions">
                   <template if="p.on"><button type="button" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn off</button></template>
                   <template if="p.off"><button type="button" class="primary" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn on</button></template>

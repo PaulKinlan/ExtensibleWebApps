@@ -12,6 +12,7 @@ export default async (ctx) => {
   say('on', await call('turn', 'clock', true));
   say('mine-on', (await call('mine')).find((p) => p.id === 'clock'));
   say('elsewhere', await call('add', 'https://example.com/plugin.js'));
+  say('clash', await call('add', '/demos/trip/samples/countdown.js'));
   say('not-mine', await call('turn', 'contacts', false));
   say('share', await call('share', 'clock'));
   say('remove', await call('remove', 'clock'));
@@ -34,6 +35,9 @@ export default async function ({ check, openTab, URL }) {
   };
   try {
     await page.evaluate(([app, data]) => window.__host.command("user:add", { app, files: [{ name: "customize-probe.js", data }] }), [app, PROBE]);
+    // One of the person's plugins already lists countdown.html, which Countdown would overwrite.
+    const CLASH = `export const manifest = { id: 'clash', name: 'Clash', permissions: [], files: ['countdown.html'] };\nexport default () => {};`;
+    await page.evaluate(([app, data]) => window.__host.command("user:add", { app, files: [{ name: "clash.js", data }, { name: "countdown.html", data: "<template id=x></template>" }] }), [app, CLASH]);
     await page.evaluate((app) => window.__host.command("user:on", { app, id: "customize-probe" }), app);
 
     const reviewed = await accept("adds Clock");
@@ -46,6 +50,8 @@ export default async function ({ check, openTab, URL }) {
     check("turning one of the person's own plugins on needs no review", on?.ok === true && nowOn?.on === true, JSON.stringify({ on, nowOn }));
     const elsewhere = await said("elsewhere");
     check("a plugin from another site isn't added", elsewhere?.ok === false && /this site/.test(elsewhere.error), JSON.stringify(elsewhere));
+    const clash = await said("clash");
+    check("a plugin whose files belong to another of the person's plugins isn't added, before any review", clash?.ok === false && /belongs to Clash/.test(clash.error), JSON.stringify(clash));
     const notMine = await said("not-mine");
     check("turn() switches only the person's own plugins, not the app's", notMine?.ok === false && /isn't one of your plugins/.test(notMine.error), JSON.stringify(notMine));
     const share = await said("share");
@@ -55,7 +61,7 @@ export default async function ({ check, openTab, URL }) {
     const left = (await page.evaluate((app) => window.__host.command("user:list", { app }), app)).map((p) => p.id);
     check("removing one, after a review, takes it off", removing && removed?.ok === true && !left.includes("clock"), JSON.stringify({ removed, left }));
   } finally {
-    for (const id of ["clock", "customize-probe"]) await page.evaluate(([app, id]) => window.__host.command("user:remove", { app, id }), [app, id]).catch(() => {});
+    for (const id of ["clock", "clash", "customize-probe"]) await page.evaluate(([app, id]) => window.__host.command("user:remove", { app, id }), [app, id]).catch(() => {});
     await page.close({ runBeforeUnload: true });
   }
 }

@@ -46,7 +46,9 @@ export default class UiPanel extends HTMLElement {
       launch.setAttribute("aria-expanded", String(open));
       const action = this.getAttribute("toggle");
       if (action) this.dispatchEvent(new CustomEvent("ui-action", { bubbles: true, detail: { action, value: open } }));
-      if (!open) launch.focus();
+      // Focus goes into the panel as it opens, so Escape closes it, and back to the button as it closes.
+      if (open) /** @type {HTMLElement} */ (root.querySelector(".close")).focus();
+      else launch.focus();
     });
     // A button inside with data-close closes the panel as it does its action (one that starts something on the page).
     this.addEventListener("click", (e) => {
