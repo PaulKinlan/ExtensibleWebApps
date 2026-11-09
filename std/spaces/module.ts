@@ -113,13 +113,20 @@ export default {
     const using = new Set<string>();
     const begin = () => {
       if (!where.space || loading) return;
-      loading = import("./on-device")
-        .then(({ startDevice }) => {
-          if (stopped) return;
-          on = startDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts, userAdded, reviews, reopen);
-          for (const app of using) on.device.use(app);
-        })
-        .catch((error) => trace({ kind: "error", name: "sync:load", detail: error instanceof Error ? error.message : String(error) }));
+      // Tried again until it loads (it is a file of this site, cached once fetched): the space opens only once it has.
+      const attempt = (tries: number): Promise<void> =>
+        import("./on-device").then(
+          ({ startDevice }) => {
+            if (stopped) return;
+            on = startDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts, userAdded, reviews, reopen);
+            for (const app of using) on.device.use(app);
+          },
+          (error) => {
+            trace({ kind: "error", name: "sync:load", detail: error instanceof Error ? error.message : String(error) });
+            return stopped ? undefined : new Promise<void>((r) => setTimeout(r, Math.min(1000 * 2 ** tries, 30_000))).then(() => (stopped ? undefined : attempt(tries + 1)));
+          },
+        );
+      loading = attempt(0);
     };
     if (kernel.started()) begin();
     else root.on("internal/started", begin);

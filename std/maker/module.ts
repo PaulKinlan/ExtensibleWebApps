@@ -455,9 +455,12 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   async function copyIn(instance: string, name: string, dispatch: { trace?: string }) {
     if (!space) return notInSpace;
     const got = ((await hosts.bridge("maker", "own", [name, MAX_FILE], dispatch, tabOf(instance))) ?? []) as { name: string; text?: string }[];
-    const files = got.filter((f): f is { name: string; text: string } => FILE_NAME.test(f.name) && typeof f.text === "string").slice(0, MAX_FILES);
+    const files = got.filter((f): f is { name: string; text: string } => FILE_NAME.test(f.name) && typeof f.text === "string");
     if (!files.some((f) => f.name === "app.html")) return { ok: false, error: `You have no app called ${name} outside this space` };
-    return save(instance, name, files, "Copied from your own apps on this device", dispatch);
+    // All of it or nothing: save refuses more files than one save takes, or one too long, rather than copy part of the app.
+    if (files.length > MAX_FILES) return { ok: false, error: `${name} has ${files.length} files: one copy takes at most ${MAX_FILES}, so nothing was copied` };
+    const skipped = got.filter((f) => !FILE_NAME.test(f.name)).map((f) => f.name);
+    return { ...(await save(instance, name, files, "Copied from your own apps on this device", dispatch)), ...(skipped.length ? { skipped } : {}) };
   }
 
   /** Stops sharing an app with the space, once the person accepts. Members who accepted it keep their copy. */

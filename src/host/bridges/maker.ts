@@ -39,7 +39,8 @@ export default () => ({
         if (entry.kind !== "directory" || (name !== undefined && app !== name)) continue;
         for await (const [file, f] of (entry as Folder).entries()) {
           const got = f.getFile && (await f.getFile());
-          if (!got || got.size > Number(max)) continue;
+          // Bytes, at most four to a character: the kernel checks the length in characters.
+          if (!got || got.size > 4 * Number(max)) continue;
           if (name !== undefined) out.push({ name: file, text: await got.text() });
           else if (file === "app.html") out.push({ name: app, page: await got.text() });
         }
