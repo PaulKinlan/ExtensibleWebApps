@@ -49,7 +49,9 @@ defineHook("debug:trace", { mode: "emit", needs: "debug:read", args: "[{ seq, at
 
 const hosts = new Hosts(where.kind);
 setSink((events) => {
-  hosts.broadcast({ t: "trace", events });
+  // A page's tabs see its kernel's trace. A space's server keeps its own to itself: a member's debugger asks to hear
+  // it (std/spaces/trace.ts), and other members' devices don't get it.
+  if (hosts.mode !== "server") hosts.broadcast({ t: "trace", events });
   root.emit("debug:trace", events);
 });
 
