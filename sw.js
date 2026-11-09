@@ -58,6 +58,10 @@ async function answer(event, url) {
   return event.request.method === "GET" ? cached(event.request, event) : fetch(event.request);
 }
 
+// A kept file answers whatever headers the request has. A server that says `Vary: Origin` (Vite's does) would
+// otherwise keep a file the worker fetched for itself from answering the page's own request for it, offline.
+const KEPT = { ignoreVary: true };
+
 /**
  * A file this worker has kept is answered from what it kept, at once, and
  * fetched again behind it, so the next visit has the newer copy: a repeat
@@ -79,7 +83,7 @@ async function cached(request, event) {
     return response;
   });
   if (cacheFirst(request)) {
-    const kept = await cache.match(request);
+    const kept = await cache.match(request, KEPT);
     // A navigation can't be answered with a redirected response.
     if (kept && !(request.mode === "navigate" && kept.redirected)) {
       event.waitUntil(fresh.catch(() => {}));
@@ -89,7 +93,7 @@ async function cached(request, event) {
   try {
     return await fresh;
   } catch (error) {
-    const kept = await cache.match(request);
+    const kept = await cache.match(request, KEPT);
     if (kept) return kept;
     throw error;
   }

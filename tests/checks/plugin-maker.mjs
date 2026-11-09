@@ -7,6 +7,8 @@
 // It runs in a browser context of its own, on the contacts demo, which links
 // no model.
 
+import { watchErrors } from "../page-errors.mjs";
+
 /** A model that looks at the page, then saves a card, then says what it did. */
 const MODEL = `export const manifest = { id: "scripted-maker-model", name: "Scripted model", permissions: ["provide:llm"] };
 export default (ctx) => {
@@ -27,7 +29,7 @@ export default (ctx) => {
 export default async function ({ check, context, URL, errors }) {
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "plugin-maker");
   const app = "demos/contacts";
   await page.goto(`${URL}${app}/app.html`);
   await page.waitForFunction(() => window.__host);

@@ -5,10 +5,12 @@
 //
 // It runs in a browser context of its own, like the homepage's check, so the
 // plugins it saves stay out of the other checks.
+import { watchErrors } from "../page-errors.mjs";
+
 export default async function ({ check, context, URL, errors }) {
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "plugin-editor");
   await page.goto(URL);
   const editor = 'slot[name="editor"]';
   const review = '[data-key^="review:"]';

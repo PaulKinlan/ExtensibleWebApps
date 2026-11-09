@@ -2,6 +2,7 @@
 // the Node host, with Chromium's virtual authenticator standing in for a
 // phone or a laptop's fingerprint reader. tests/server/run.mjs checks the
 // server's side in more detail, on both hosts.
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,7 +23,7 @@ export default async function ({ check, context, errors }) {
   const server = await serve({ port: 0, host: "localhost", spaces, site: "dist", kernel: ".build/server/space.js" });
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "signin");
   let other;
   try {
     await withAuthenticator(own, page);
@@ -49,7 +50,7 @@ export default async function ({ check, context, errors }) {
     // Someone else, on their own device, opens the invite and makes an account.
     other = await context.browser().newContext();
     const theirs = await other.newPage();
-    theirs.on("pageerror", (e) => errors.push(e.message));
+    watchErrors(theirs, errors, "signin");
     await withAuthenticator(other, theirs);
     await theirs.goto(link || `${server.url}/account/`);
     await theirs.fill('form[data-action="register"] input[name="name"]', "Hopper");

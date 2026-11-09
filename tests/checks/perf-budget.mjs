@@ -14,6 +14,7 @@
 //
 // A file over its byte budget is a warning, not a failure (Paul, 2026-11-09): it is
 // printed as WARN, and on GitHub Actions shown on the PR and in the run's summary.
+import { watchErrors } from "../page-errors.mjs";
 import { appendFileSync, readFileSync, readdirSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 
@@ -52,7 +53,7 @@ export default async function ({ check, context, URL, errors, measurements }) {
   for (const [app, view] of Object.entries(budget.apps)) {
     const own = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     const page = await own.newPage();
-    page.on("pageerror", (e) => errors.push(`perf-budget ${app}: ${e.message}`));
+    watchErrors(page, errors, `perf-budget ${app}`);
     await page.addInitScript(() => {
       window.__shift = 0;
       new PerformanceObserver((l) => {

@@ -2,6 +2,7 @@
 // the address their spaces' apps may email them at, gets a link to confirm it,
 // opens it, sends themselves a test message, and can take the address away. The
 // email service mails only confirmed addresses (tests/server/run.mjs checks that).
+import { watchErrors } from "../page-errors.mjs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -17,7 +18,7 @@ export default async function ({ check, context, errors }) {
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 } });
   try {
     const page = await phone.newPage();
-    page.on("pageerror", (e) => errors.push(`account-email: ${e.message}`));
+    watchErrors(page, errors, "account-email");
     const cdp = await phone.newCDPSession(page);
     await cdp.send("WebAuthn.enable");
     await cdp.send("WebAuthn.addVirtualAuthenticator", {

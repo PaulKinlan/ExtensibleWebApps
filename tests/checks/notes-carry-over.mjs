@@ -2,10 +2,12 @@
 // notes.json at its top. The first time the notes plugin reads its
 // collection, those notes come with it (src/kernel/legacy.ts), once.
 
+import { watchErrors } from "../page-errors.mjs";
+
 export default async function ({ check, context, URL, WORKBENCH, errors }) {
   const own = await context.browser().newContext();
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  watchErrors(page, errors, "notes-carry-over");
   // A page on the same origin that starts no kernel, to put the old file in the origin's private folder first.
   await page.goto(`${URL}llms.txt`);
   const old = [

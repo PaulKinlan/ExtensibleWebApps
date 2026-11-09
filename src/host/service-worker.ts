@@ -37,14 +37,16 @@ export function serviceWorker(command: (name: Command, arg?: unknown) => Promise
       if (urls.length) registration.active?.postMessage({ t: "sw:warm", urls });
     };
     void navigator.serviceWorker.ready.then(async (registration) => {
-      warm(registration, [location.href, ...performance.getEntriesByType("resource").map((entry) => entry.name)]);
+      const loaded = () => [location.href, ...performance.getEntriesByType("resource").map((entry) => entry.name)];
+      warm(registration, loaded());
       // And what the kernel fetched in its own worker, which this page's list doesn't have: the kernel modules its
-      // app uses. The kernel answers once this tab has said hello; and it is asked again a little later, for a
-      // module whose file was still on its way (fetched before the service worker was there to keep it).
+      // app uses. The kernel answers once this tab has said hello. Both lists are read again a little later, for a
+      // file that was still on its way (asked for before the service worker was there to keep it, and not
+      // finished when the list was first read): an element a view needed, or a module's file.
       await introduced;
       for (const wait of [0, 3000, 15000]) {
         await new Promise((resolve) => setTimeout(resolve, wait));
-        warm(registration, [...(((await command("fetched").catch(() => [])) as unknown[] | undefined) ?? [])]);
+        warm(registration, [...loaded(), ...(((await command("fetched").catch(() => [])) as unknown[] | undefined) ?? [])]);
       }
     });
   }

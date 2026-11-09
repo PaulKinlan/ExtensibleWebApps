@@ -3,6 +3,8 @@
 // the screen ebooks open at, and a file opened there becomes a book to read,
 // after a review, once. The browser's launch queue only fills for an installed
 // app opened from the person's files, so a stand-in hands the page the files.
+import { watchErrors } from "../page-errors.mjs";
+
 export default async function ({ check, context, URL, errors }) {
   const own = await context.browser().newContext();
   await own.addInitScript(() => {
@@ -19,7 +21,7 @@ export default async function ({ check, context, URL, errors }) {
     });
   });
   const page = await own.newPage();
-  page.on("pageerror", (e) => errors.push(`file-handlers: ${e.message}`));
+  watchErrors(page, errors, "file-handlers");
 
   // The manifest says where files open.
   await page.goto(`${URL}demos/reading-list/manifest.webmanifest`);
