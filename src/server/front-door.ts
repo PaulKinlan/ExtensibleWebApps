@@ -10,10 +10,12 @@
 //   /s/<space>/kernel    → join     a member's WebSocket to the space's kernel, from this site's pages
 //   /s/<space>/<path>    → route    one of the space's server plugins may answer (src/server/routes.ts);
 //                                   if none does, `unrouted` says what then
+//   /feed-reader         → feed     reads one public feed for this site's pages (src/server/feed-reader.ts)
 //   anything else        → asset    the site's files, for GET and HEAD
 //
 // Anything the door doesn't let through is `refuse`, with the status to send.
 
+import { FEED_READER } from "./feed-reader.ts";
 import { spaceRoute } from "./routes.ts";
 
 /** A space's name, as the accounts make them. */
@@ -43,6 +45,7 @@ export type Decision =
   | { door: "auth" }
   | { door: "join"; space: string; member: string }
   | { door: "route"; space: string; path: string }
+  | { door: "feed" }
   | { door: "asset" }
   | { door: "refuse"; status: number; text: string };
 
@@ -63,6 +66,9 @@ export async function frontDoor(knock: Knock, accounts: Accounts): Promise<Decis
   const { pathname } = knock.url;
   // An MCP client finding where to sign in (src/server/auth/mcp-oauth.ts) is the accounts' too.
   if (pathname.startsWith("/auth/") || /^\/\.well-known\/(oauth-protected-resource|oauth-authorization-server)(\/|$)/.test(pathname)) return { door: "auth" };
+
+  // Reading a feed needs no space and no sign-in: it is how Feeds works for anyone (src/server/feed-reader.ts).
+  if (pathname === FEED_READER) return { door: "feed" };
 
   const kernel = /^\/s\/([^/]+)\/kernel$/.exec(pathname);
   if (kernel) {
