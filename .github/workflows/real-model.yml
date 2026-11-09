@@ -1,0 +1,69 @@
+# Tries the model-driven features with a real model, in Chromium: Ask the
+# page and the builder on the homepage, the Plugin maker on a demo that links
+# no model, and the app maker at /new/ (tests/real-model/run.mjs). The
+# scripted models in npm test cover the plumbing; this covers what a real
+# model does with the prompts, the tools and the fix loop.
+#
+# It costs money and uses the repository's GEMINI_API_KEY secret, so it only
+# ever starts by hand (Actions, "Real model checks", Run workflow), never on a
+# pull request or a push: code from a pull request can't reach the key. The
+# key goes to the test as an environment variable for one step. The test never
+# prints it and takes its text out of everything it writes; GitHub masks it
+# in the log as well.
+#
+# Each run uploads its screenshots, the report and the files of the app the
+# model made, and writes the pass/fail summary on the run's page.
+
+name: Real model checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      features:
+        description: "Which to run, comma separated: ask, builder, plugin-maker, app-maker"
+        required: false
+        default: "ask,builder,plugin-maker,app-maker"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-model
+  cancel-in-progress: false
+
+jobs:
+  real-model:
+    # Only a run someone started by hand may use the key.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The same pinned Playwright as platform-checks.yml.
+      - name: Install
+        run: npm ci && npm i --no-save playwright@1.65.0 && npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: Try the features with Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FEATURES: ${{ inputs.features }}
+          OUT: ${{ runner.temp }}/real-model
+        run: node tests/real-model/run.mjs
+
+      - name: Upload screenshots, report and made files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: real-model
+          path: ${{ runner.temp }}/real-model
+          if-no-files-found: ignore
+          retention-days: 14
