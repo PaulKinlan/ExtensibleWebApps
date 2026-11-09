@@ -66,6 +66,15 @@ export type Preset = Omit<OAuthProvider, "id" | "clientId" | "clientSecret">;
 /** A provider module: a preset of plain OAuth 2, or what makes a flow from its AUTH_PROVIDERS entry. */
 export type ProviderModule = { preset: Preset } | { flow: (entry: Record<string, unknown>) => Flow };
 
+const isUrl = (value: unknown) => {
+  if (typeof value !== "string") return false;
+  try {
+    return /^https?:$/.test(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+};
+
 /** A provider with no preset: plain OAuth 2, whose user API answers with `id` (or `sub`) and `name`. */
 const plain = (entry: Record<string, unknown>): Preset => ({
   name: String(entry.name ?? entry.id),
@@ -105,10 +114,14 @@ export function providersFrom(env: Record<string, unknown>, modules: Record<stri
     seen.add(id);
     const module = Object.hasOwn(modules, id) ? modules[id] : undefined;
     if (module && "flow" in module) return void out.push(module.flow(e));
-    const preset = module && "preset" in module ? module.preset : e.authorize && e.token && e.user ? plain(e) : undefined;
+    // A provider with no module gives its own URLs, each an http(s) URL.
+    const urls = ["authorize", "token", "user"] as const;
+    const notUrls = module ? [] : urls.filter((k) => e[k] !== undefined && !isUrl(e[k]));
+    if (notUrls.length) return void wrong.push(`${id}'s ${notUrls.join(", ")} must be http(s) URLs`);
+    const preset = module && "preset" in module ? module.preset : urls.every((k) => isUrl(e[k])) ? plain(e) : undefined;
     const secretName = `${id.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_CLIENT_SECRET`;
     const secret = env[secretName];
-    const missing = [!preset && "a provider module on this host, or authorize, token and user URLs", !e.clientId && "clientId", (typeof secret !== "string" || !secret) && `the secret ${secretName}`].filter(Boolean);
+    const missing = [!preset && "a provider module on this host, or authorize, token and user URLs", (typeof e.clientId !== "string" || !e.clientId) && "clientId", (typeof secret !== "string" || !secret) && `the secret ${secretName}`].filter(Boolean);
     if (missing.length) return void wrong.push(`${id} needs ${missing.join(", ")}`);
     out.push({ ...preset!, ...(e.name ? { name: String(e.name) } : {}), id, clientId: String(e.clientId), clientSecret: secret as string });
   });
