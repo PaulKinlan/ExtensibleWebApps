@@ -78,6 +78,24 @@ export default function (ctx) {
     await say({ type: "started", players: roster() });
   };
 
+  /**
+   * A device asks for a seat. Joins are taken one at a time, so two devices of one member asking at once can't
+   * both pass the join hook before either is seated: the second is asked about with the first in the roster.
+   */
+  let joins = Promise.resolve();
+  const joining = (device, member) =>
+    (joins = joins.then(async () => {
+      if (!players.has(device)) {
+        const verdict = await ctx.hooks.call("join", { device, member: member ?? "", players: roster().map((p) => ({ device: p.device, member: p.member })) }).catch(() => null);
+        if (verdict?.block) return say({ type: "refused", device, reason: String(verdict.block) }, device);
+      }
+      const p = seat(device, member);
+      // The new player hears which jar is theirs, and everyone hears who is in.
+      await say({ type: "welcome", device, colour: p.colour, running, ...(last ? { frame: last } : {}) }, device);
+      await say({ type: "players", players: roster() });
+      if (running) await ctx.call("game", "input", { game: GAME, type: "join", player: device, member: p.member, colour: p.colour }).catch(() => {});
+    }).catch(() => {}));
+
   ctx.on("sync:live", async ({ topic, value, member, device, gone }) => {
     if (topic !== TOPIC || !device) return;
     if (gone) {
@@ -88,18 +106,7 @@ export default function (ctx) {
       return;
     }
     const type = value?.type;
-    if (type === "join") {
-      if (!players.has(device)) {
-        const verdict = await ctx.hooks.call("join", { device, member: member ?? "", players: roster().map((p) => ({ device: p.device, member: p.member })) }).catch(() => null);
-        if (verdict?.block) return say({ type: "refused", device, reason: String(verdict.block) }, device);
-      }
-      const p = seat(device, member);
-      // The new player hears which jar is theirs, and everyone hears who is in.
-      await say({ type: "welcome", device, colour: p.colour, running, ...(last ? { frame: last } : {}) }, device);
-      await say({ type: "players", players: roster() });
-      if (running) await ctx.call("game", "input", { game: GAME, type: "join", player: device, member: p.member, colour: p.colour }).catch(() => {});
-      return;
-    }
+    if (type === "join") return joining(device, member);
     if (!players.has(device)) return;
     if (type === "start" && !running) return start();
     if (MOVES.includes(type) && running) {

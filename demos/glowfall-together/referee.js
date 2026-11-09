@@ -10,10 +10,11 @@
 //                            and a lane must be one of the game's; the rest
 //                            are set aside, not played
 //
-// On the game loop, each tick (game:update), it compares the state with the
-// one it saw a tick before. Whatever every other system did in between is in
+// On the game loop, twice a tick (game:update and game:rules), it compares
+// the state with the one it saw last. Whatever every other system did in between is in
 // that difference, whichever order they ran in, so it doesn't matter where
-// the referee sits among them:
+// the referee sits among them; judging on game:rules too (it is linked after
+// catches.js) checks a game's last tick, which has no update after it:
 //   - a player's score goes up only by fireflies that were near their jar
 //     and are gone now; the team's only by fireflies gone;
 //   - no score goes down, and the lights don't come back on;
@@ -34,6 +35,7 @@ export const manifest = {
   runs: "server",
   permissions: [
     "hook:intercept:game:update",
+    "hook:intercept:game:rules",
     "hook:intercept:glowfall-together:join",
     "hook:intercept:glowfall-together:move",
     "hook:listen:game:started",
@@ -90,17 +92,23 @@ export default function (ctx) {
     return undefined;
   });
 
-  // A new game: nothing before it to compare with.
+  /** Whoever is playing when the referee first sees a game (a new one, or one under way when it was turned on) has a seat. */
+  const seatAll = (state) => {
+    for (const [device, p] of Object.entries(state?.players ?? {})) if (!seated.has(device)) seated.set(device, p?.member ?? "");
+  };
+
+  // A new game: its starting state is what the first tick is judged against.
   ctx.on("game:started", ({ game, state }) => {
     if (game !== "glowfall") return;
-    before = null;
     calls = [];
     aside.clear();
-    for (const device of Object.keys(state?.players ?? {})) if (!seated.has(device)) seated.set(device, state.players[device].member ?? "");
+    seatAll(state);
+    before = state?.players ? state : null;
   });
 
-  ctx.on("game:update", ({ game, tick, input, state }) => {
+  const judge = ({ game, tick, input = [], state }) => {
     if (game !== "glowfall" || !state.players) return;
+    if (!before) seatAll(state);
     // A join on this tick is a seat the host gave: jars.js seats it, so it is no surprise next tick.
     for (const move of input) if (move.type === "join" && typeof move.player === "string" && !seated.has(move.player)) seated.set(move.player, String(move.member ?? ""));
     const lanes = state.lanes ?? 7;
@@ -164,5 +172,7 @@ export default function (ctx) {
     before = next;
     if (!changed && JSON.stringify(state.referee) === JSON.stringify(referee)) return;
     return { state: next };
-  });
+  };
+  ctx.on("game:update", judge);
+  ctx.on("game:rules", judge);
 }

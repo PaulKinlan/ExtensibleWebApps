@@ -2,7 +2,7 @@
   The timeline's views (timeline.js), either side of its canvas. Both get
   { has, name, mixes: [{ id, name, current }], noMixes, clips: [{ id, name }],
   noClips, full, tracks: [{ key, n, name, at, gain, gainShown, pan, panShown,
-  mute, missing, seconds }], empty, length, playing, noTracks, status }.
+  mute, missing, seconds }], empty, length, playing, noTracks, noPlay, status }.
 
   Every control sends its data-action: a track's carry its key
   (track-gain:<key>, nudge:<key>:back…), with the value set. n is the
@@ -73,7 +73,7 @@
         <button type="submit" disabled="{{full}}">Add a track</button>
       </form>
       <div class="row">
-        <button type="button" class="play primary" data-action="play-mix" disabled="{{noTracks}}"><template if="playing">■ Stop</template><template if="!playing">▶ Play the mix</template></button>
+        <button type="button" class="play primary" data-action="play-mix" disabled="{{noPlay}}"><template if="playing">■ Stop</template><template if="!playing">▶ Play the mix</template></button>
         <button type="button" data-action="bounce" disabled="{{noTracks}}">Make it a clip</button>
         <span class="muted">{{length}} s</span>
       </div>

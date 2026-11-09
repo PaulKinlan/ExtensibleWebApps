@@ -53,4 +53,23 @@ export default async function ({ check }) {
   // A player who joins as the game goes on (the host's join input) is no stranger.
   state = tick(6, { ...state, players: { ...state.players, c1: { member: "cat", jar: 3, score: 0 } } }, [{ type: "join", player: "c1", member: "cat" }]);
   check("referee: a player who joins during the game keeps their jar", !!state.players.c1);
+  await more({ check });
+}
+
+// Copilot's cases on #155: points on the very first tick, a referee turned on mid-game, and the last tick's rules.
+export async function more({ check }) {
+  const heard = new Map();
+  referee({ on: (hook, handler) => heard.set(hook, handler) });
+  const players = { a1: { member: "ann", jar: 3, score: 0 } };
+  heard.get("game:started")({ game: "glowfall", state: { lanes: 7, team: 0, lives: 5, things: [], players } });
+  const first = heard.get("game:update")({ game: "glowfall", tick: 1, input: [], state: { lanes: 7, team: 5, lives: 5, things: [], players: { a1: { ...players.a1, score: 5 } } } })?.state;
+  check("referee: points handed out before the first tick it sees are taken back too", first?.players.a1.score === 0 && first.team === 0, JSON.stringify(first?.players));
+  const last = heard.get("game:rules")({ game: "glowfall", tick: 2, input: [], state: { ...first, players: { a1: { ...first.players.a1, score: 9 } } } })?.state;
+  check("referee: it judges on game:rules too, so a game's last tick is checked", last?.players.a1.score === 0);
+
+  const late = new Map();
+  referee({ on: (hook, handler) => late.set(hook, handler) });
+  const running = late.get("game:update")({ game: "glowfall", tick: 40, input: [], state: { lanes: 7, team: 3, lives: 4, things: [], players: { a1: { member: "ann", jar: 2, score: 3 }, b1: { member: "ben", jar: 5, score: 0 } } } });
+  const kept = running?.state?.players ?? {};
+  check("referee: turned on during a game, it keeps the players already playing", !!kept.a1 && !!kept.b1, JSON.stringify(Object.keys(kept)));
 }

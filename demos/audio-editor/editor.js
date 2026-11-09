@@ -645,6 +645,8 @@ export default async function (ctx) {
     for (const ms of [300, 1500]) setTimeout(() => collect().then(draw), ms);
   };
   ctx.on("plugins:changed", recollect);
+  // A clip added or changed elsewhere (the timeline keeping a mix, another tab) is in the clip list at once.
+  ctx.on("data:changed:sound-clips", () => serial(() => draw()));
   recollect();
 
   ctx.commands.add({ id: "save-to-folder", title: "Save the clip to the folder", group: "Sound" }, () => serial(saveToFolder));

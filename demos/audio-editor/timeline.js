@@ -86,6 +86,8 @@ export default async function (ctx) {
   let theme = null;
   /** A track being dragged: its key, where the finger went down, and where the track started. */
   let drag = null;
+  /** The animation frame asked for while something plays, if one is waiting. */
+  let frame = 0;
   /** Seconds across the canvas: fixed while a track is dragged, so it doesn't run away from the finger. */
   let span = 10;
 
@@ -155,6 +157,8 @@ export default async function (ctx) {
       length: end().toFixed(2),
       playing: !!playing,
       noTracks: !list.some((t) => !t.mute && sounds.has(t.clip)),
+      // Stop stays pressable while something plays, though every track was muted meanwhile.
+      noPlay: !playing && !list.some((t) => !t.mute && sounds.has(t.clip)),
       status,
     };
     // Above the canvas, the mix to work on and what to add; below it, each track's controls.
@@ -223,7 +227,8 @@ export default async function (ctx) {
         g.fillStyle = colors.accent ?? "#7c3aed";
         g.fillRect(Math.round(t * px), RULER - 6, 2, H - RULER + 6);
       }
-      requestAnimationFrame(paint);
+      // One frame at a time, however many paints were asked for meanwhile.
+      if (!frame) frame = requestAnimationFrame(() => ((frame = 0), paint()));
     }
   }
 
@@ -300,6 +305,8 @@ export default async function (ctx) {
     status = `Asking to keep ${mix.name} as a clip…`;
     draw();
     const result = await ctx.call("data", "put", "sound-clips", record, `Keep the mix "${mix.name}" as a clip, to edit in the sound editor`).catch((error) => ({ ok: false, errors: [String(error.message ?? error)] }));
+    // A long mix kept for a record that wasn't written goes, or it would take one of the 50 places for nothing.
+    if (!result?.ok && record.kept) await ctx.call("audio", "forget", { name: record.kept }).catch(() => {});
     status = result?.ok ? `Kept ${mix.name} as a clip (${seconds.toFixed(1)} s)` : `Not kept: ${result?.errors?.join?.(", ") ?? "the write was declined"}`;
     await refresh();
     draw();
@@ -442,6 +449,15 @@ export default async function (ctx) {
     if (change?.id) sounds.delete(change.id);
     rendered = null;
     await refresh();
+    draw();
+  }));
+
+  // A mix changed in another tab: this one shows it as it is now, so its next edit doesn't write an old copy back.
+  ctx.on("data:changed:sound-mixes", () => serial(async () => {
+    if (drag) return;
+    await refresh();
+    for (const t of tracks()) await sound(t.clip);
+    rendered = null;
     draw();
   }));
 
