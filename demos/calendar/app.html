@@ -17,6 +17,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Calendar</title>
   <meta name="description" content="A month of events, and the two weeks ahead.">
+  <meta name="gallery" content="slots">
+  <meta name="gallery-about" content="A month grid, and an agenda that includes birthdays from the contacts app.">
+  <meta name="gallery-shows" content="nested templates, reading another app's data.">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="month.js">
@@ -41,6 +44,6 @@
   <aside>
     <slot name="side"></slot>
   </aside>
-  <slot name="debug"></slot>
+  <slot name="debug" float></slot>
 </body>
 </html>

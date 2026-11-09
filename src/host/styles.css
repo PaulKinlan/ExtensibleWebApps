@@ -141,9 +141,8 @@ body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
 [hidden] { display: none !important; }
 .place-pending { outline: 2px dashed var(--accent); outline-offset: 4px; }
 /* The Customize button and panel, on every app page. */
-.customize-button { position: fixed; left: 16px; bottom: 16px; z-index: 10; box-shadow: var(--shadow-2); background: var(--surface); border-radius: 999px; }
-/* The debug console's bug sits in the same corner by default, and grows with its count: the button goes above it. */
-body:has(slot[name="debug"] ui-debug:not([corner]), slot[name="debug"] ui-debug[corner="bottom-left"]) .customize-button { bottom: 68px; }
+/* It sits above any floating chrome in the same corner: --chrome-bottom-left is how much room that takes (see "Floating slots" below). */
+.customize-button { position: fixed; left: 16px; bottom: calc(16px + var(--chrome-bottom-left, 0px)); z-index: 10; box-shadow: var(--shadow-2); background: var(--surface); border-radius: 999px; }
 dialog.customize { width: min(640px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); font: var(--text-md)/1.5 var(--font); box-shadow: var(--shadow-2); }
 dialog.customize::backdrop { background: rgb(10 10 20 / 0.4); backdrop-filter: blur(2px); }
 dialog.customize h2 { font-size: var(--text-lg); }
@@ -225,12 +224,17 @@ body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; o
    !important here, in the first layer, beats any other declaration, so no plugin and no page can take it off. */
 [data-plugin] { contain: layout paint !important; overflow-clip-margin: 4px; }
 
-/* The "debug" slot floats: what is drawn there (std/debug-console.js's bug) stays in a corner of the screen, where <ui-debug corner> says. */
-slot[name="debug"] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); }
-slot[name="debug"] > [data-plugin]:has(ui-debug[corner="bottom-right"]) { inset: auto var(--space-4) var(--space-4) auto; }
-slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-left"]) { inset: var(--space-4) auto auto var(--space-4); }
-slot[name="debug"] > [data-plugin]:has(ui-debug[corner="top-right"]) { inset: var(--space-4) var(--space-4) auto auto; }
-slot[name="debug"] > [data-plugin]:has(ui-debug[corner="inline"]) { position: static; }
+/* Floating slots: a slot the app marks float (<slot name="debug" float>) keeps what is drawn there in a corner of
+   the screen. The view's element says which with corner="bottom-left|bottom-right|top-left|top-right" (bottom-left
+   if it doesn't say); corner="inline" leaves it in the page's flow. The app decides which slots may float, so a
+   plugin can't lift itself over the page. Nothing here names a plugin, slot or element. */
+slot[float] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); }
+slot[float] > [data-plugin]:has([corner="bottom-right"]) { inset: auto var(--space-4) var(--space-4) auto; }
+slot[float] > [data-plugin]:has([corner="top-left"]) { inset: var(--space-4) auto auto var(--space-4); }
+slot[float] > [data-plugin]:has([corner="top-right"]) { inset: var(--space-4) var(--space-4) auto auto; }
+slot[float] > [data-plugin]:has([corner="inline"]) { position: static; }
+/* Floating chrome in the bottom-left corner takes room there, and says so for other chrome (the Customize button). */
+body:has(slot[float] > [data-plugin]:not(:has([corner="bottom-right"], [corner="top-left"], [corner="top-right"], [corner="inline"]))) { --chrome-bottom-left: 52px; }
 }
 
 /* The site's own links in an app's header (Home, All demos, Docs, Workbench), pushed to the end. */

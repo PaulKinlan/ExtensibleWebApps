@@ -23,18 +23,21 @@ export default async function ({ check, context, errors }) {
     await cdp.send("WebAuthn.addVirtualAuthenticator", {
       options: { protocol: "ctap2", transport: "internal", hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true },
     });
-    await page.goto(`${server.url}/account/`);
+    // Surveys links the account page as /account/?app=/demos/survey/, so it offers that app in each space.
+    await page.goto(`${server.url}/account/?app=/demos/survey/`);
     await page.fill("#name", "Sam");
     await page.click('#register button[type="submit"]');
     await page.waitForSelector("#in:not([hidden])", { timeout: 8000 });
     await page.fill("#space-name", "polls");
     await page.click('#new-space button[type="submit"]');
 
-    // The account page links Surveys in each space.
-    const open = page.locator('#spaces a:has-text("Open surveys in it")');
+    // The account page links Surveys in each space, and the site's front page, and names no other app.
+    const open = page.locator('#spaces a:has-text("Open Surveys in it")');
     await open.waitFor({ timeout: 8000 });
     const href = await open.getAttribute("href");
     check("survey share: the account page opens Surveys in each of your spaces", href === "/s/polls/demos/survey/", String(href));
+    const links = await page.locator("#spaces a").evaluateAll((as) => as.map((a) => a.getAttribute("href")));
+    check("account: a space links only the app you came from and the site, never a hardcoded demo", JSON.stringify(links) === JSON.stringify(["/s/polls/demos/survey/", "/s/polls/"]), JSON.stringify(links));
     await open.click();
     const button = `${VIEW} .survey[key="sample-launch"] button[data-action="share"]`;
     const shown = await page.waitForSelector(button, { timeout: 15000 }).then(() => true, () => false);

@@ -89,6 +89,37 @@
       // An invite in the address, kept for signing in with another site, which comes back to /account/.
       const pendingInvite = new URLSearchParams(location.search).get("invite");
 
+      // The app this page was opened from, to open in a space: /account/?app=/demos/<app>/, or else the
+      // app page that linked here. Kept for this tab, since signing in elsewhere comes back without it.
+      const APP = /^\/(?:[a-z0-9][a-z0-9-]*\/)+$/;
+      const appAsked = (() => {
+        const asked = new URLSearchParams(location.search).get("app");
+        if (asked !== null) return asked;
+        try {
+          const from = new URL(document.referrer);
+          if (from.origin === location.origin) {
+            const path = from.pathname.replace(/^\/s\/[a-z0-9][a-z0-9-]*\//, "/").replace(/[^/]*$/, "");
+            if (APP.test(path) && !path.startsWith("/account/")) return path;
+          }
+        } catch {}
+        try { return sessionStorage.getItem("account:app"); } catch { return null; }
+      })();
+
+      /** The asked-for app's address and title, or undefined if none was asked for. One that isn't an app here says so. */
+      async function appFrom(path) {
+        if (path === null || path === "") return undefined;
+        const page = APP.test(path) ? await fetch(`${path}app.html`).catch(() => undefined) : undefined;
+        if (!page?.ok || !(page.headers.get("content-type") ?? "").includes("html")) {
+          try { sessionStorage.removeItem("account:app"); } catch {}
+          say(`There's no app at ${path} to open in a space.`);
+          return undefined;
+        }
+        try { sessionStorage.setItem("account:app", path); } catch {}
+        const title = new DOMParser().parseFromString(await page.text(), "text/html").title.trim();
+        return { path, title: title || path };
+      }
+      const appReady = appFrom(appAsked);
+
       /** Other sites this server lets people sign in with: a link each, which signs in (or, signed in, links that account to yours). */
       async function providers() {
         const { providers = [] } = await fetch("/auth/providers").then((r) => (r.ok ? r.json() : {}), () => ({}));
@@ -131,13 +162,15 @@
           say(joined.space ? `You've joined ${joined.space.name}.` : joined.error);
         }
         const { spaces = [] } = await call("/auth/spaces");
+        const app = await appReady;
         $("spaces").replaceChildren(
           ...spaces.map(({ name, role }) => {
             const li = document.createElement("li");
             li.append(Object.assign(document.createElement("strong"), { textContent: name }), ` (${role === "owner" ? "yours" : "member"}) `);
             // Any app opens in a space: its data is then the space's, shared with everyone in it.
-            li.append(Object.assign(document.createElement("a"), { href: `/s/${name}/demos/reading-list/`, textContent: "Open the reading list in it" }), " ");
-            li.append(Object.assign(document.createElement("a"), { href: `/s/${name}/demos/survey/`, textContent: "Open surveys in it" }), " ");
+            // The app you came from, if any, and the site's own front page: no app is named here.
+            if (app) li.append(Object.assign(document.createElement("a"), { href: `/s/${name}${app.path}`, textContent: `Open ${app.title} in it` }), " ");
+            li.append(Object.assign(document.createElement("a"), { href: `/s/${name}/`, textContent: "Open the site in it" }), " ");
             if (role === "owner") {
               const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Invite someone" });
               button.addEventListener("click", run(async () => {
