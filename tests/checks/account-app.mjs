@@ -3,12 +3,22 @@
 // account app's own plugins may use. A person's plugin that asks for it is
 // refused, in the account app as in any other. And a new agent key shows the
 // MCP address of the app the person names, not always the reading list's.
+import { execFileSync } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "../../src/server/serve.ts";
 
 export default async function ({ check, context, errors }) {
+  // npm run check looks at demos/ by default; the account app is checked here, the same way.
+  let checked = "";
+  try {
+    checked = execFileSync(process.execPath, ["scripts/check.mjs", "account"], { cwd: new URL("../../", import.meta.url), encoding: "utf8" });
+  } catch (error) {
+    checked = `${error.stdout ?? ""}${error.message}`;
+  }
+  check("npm run check finds nothing wrong with the account app", /0 errors/.test(checked), checked.trim().split("\n").slice(-4).join(" | "));
+
   const spaces = await mkdtemp(join(tmpdir(), "account-app-"));
   const server = await serve({ port: 0, host: "localhost", spaces, site: "dist", kernel: ".build/server/space.js" });
   const own = await context.browser().newContext();

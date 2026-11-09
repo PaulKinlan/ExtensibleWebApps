@@ -11,8 +11,8 @@ export const manifest = {
   description: "Make spaces, invite people to them, and open apps in them.",
   version: "1.0.0",
   scope: "tab",
-  permissions: ["ui", "account", "hook:listen:account:changed", "hook:listen:router:changed"],
-  services: ["account"],
+  permissions: ["ui", "account", "hook:listen:account:changed", "hook:listen:router:changed", "router"],
+  services: ["account", "router"],
 };
 
 export default async function (ctx) {
