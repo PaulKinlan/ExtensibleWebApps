@@ -410,6 +410,9 @@ export default function (ctx) {
     // Off first, then on: turning one on brings what it needs, so the ones that were on end up on.
     for (const m of changed.filter((m) => !before.get(m.id))) await call("turn", m.id, false);
     for (const m of changed.filter((m) => before.get(m.id))) await call("turn", m.id, true);
+    // Turning one off may have stopped others that need it (a provider that replaced another): bring back any that were on.
+    const now = await call("mine");
+    if (Array.isArray(now)) for (const m of now.filter((m) => before.get(m.id) && !m.on)) await call("turn", m.id, true);
     const said = (list, how) => (list.length ? `Turned ${list.map((m) => m.name).join(" and ")} ${how}.` : "");
     message = changed.length ? [said(changed.filter((m) => m.on), "off"), said(changed.filter((m) => !m.on), "back on")].filter(Boolean).join(" ") : "Nothing to put back.";
     await draw();
@@ -495,7 +498,7 @@ export default function (ctx) {
       return;
     }
     if (action === "pick") {
-      const before = await call("mine");
+      // The file chooser opens only while the click still counts, so ask for it before anything else.
       const result = await call("pick");
       if (result?.ok === false) {
         message = result.error;
@@ -505,7 +508,7 @@ export default function (ctx) {
       const mine = await call("mine");
       const ids = result?.ids ?? [];
       const names = ids.map((id) => (Array.isArray(mine) ? mine.find((m) => m.id === id)?.name : undefined) ?? id);
-      if (Array.isArray(before) && ids.length) await turnOn(ids, names);
+      if (ids.length) await turnOn(ids, names);
       return draw();
     }
     if (action === "paste") {
