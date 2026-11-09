@@ -16,6 +16,8 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serve } from "../../src/server/serve.ts";
 import { providersFrom } from "../../src/server/auth/providers.ts";
+import { smtpMailer } from "../../src/server/smtp.ts";
+import { fakeSmtp } from "./fake-smtp.mjs";
 import { authenticator } from "./authenticator.mjs";
 import { blueskyChecks } from "./bluesky.mjs";
 import { fakeAtproto } from "./fake-atproto.mjs";
@@ -27,6 +29,9 @@ const fake = await fakeProvider();
 // And Bluesky, on a small AT Protocol network of its own (tests/server/bluesky.mjs).
 const atproto = await fakeAtproto();
 fake.env.AUTH_PROVIDERS = JSON.stringify([...JSON.parse(fake.env.AUTH_PROVIDERS), atproto.entry]);
+// A mail server the Node host sends server plugins' email to (src/server/smtp.ts). Cloudflare's, under wrangler dev, only logs it.
+const mailbox = await fakeSmtp();
+const FROM = "Spaces <spaces@example.com>";
 
 /** A free port on this machine. */
 const freePort = () =>
@@ -57,20 +62,26 @@ const hosts = {
     async start() {
       site ??= await siteWithFixtures();
       // 127.0.0.1, as written, is the one private host server plugins may reach here (the network guard's checks use it).
-      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env), allowPrivate: ["127.0.0.1"] });
+      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env), allowPrivate: ["127.0.0.1"], email: smtpMailer({ url: `smtp://127.0.0.1:${mailbox.port}`, from: FROM }) });
     },
+    /** Whether a message with this subject went out to `to`, with these words. */
+    mailed: (subject, to, text) => mailbox.received.some((m) => m.subject === subject && m.to.some((t) => t.toLowerCase() === to) && m.text === text && m.from === "spaces@example.com"),
     wrote: (space) => existsSync(join(spaces, space, "files", "user", "demos", "contacts", "hello-space.js")),
   }),
-  cloudflare: (spaces) => ({
+  cloudflare: (spaces) => {
+    /** Everything each wrangler dev printed, across restarts. */
+    let printed = "";
+    return {
     async start() {
       cpSync("tests/fixtures/server-app", "dist/server-app", { recursive: true });
       const port = await freePort();
-      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries(fake.env).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
+      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries({ ...fake.env, EMAIL_FROM: FROM }).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
       let log = "";
       await new Promise((ready, fail) => {
         const timer = setTimeout(() => fail(new Error(`wrangler dev didn't start: ${log.slice(-500)}`)), 60_000);
         const hear = (chunk) => {
           log += chunk;
+          printed += chunk;
           if (log.includes("Ready on")) {
             clearTimeout(timer);
             ready();
@@ -82,6 +93,8 @@ const hosts = {
       });
       return {
         url: `http://127.0.0.1:${port}`,
+        /** What wrangler dev has printed, since the first start: its stand-in for Cloudflare Email Service logs each message. */
+        log: () => printed,
         async stop() {
           // Wait for it to go, so the next one doesn't open the spaces' databases while this one still has them.
           const gone = new Promise((r) => (dev.exitCode !== null ? r() : dev.once("exit", r)));
@@ -96,7 +109,9 @@ const hosts = {
     },
     // A Durable Object's database is the space's folder, so what was written shows in the space, after a restart.
     wrote: () => true,
-  }),
+    mailed: (subject, to) => new RegExp(`send_email binding called[^]*?To: ${to}[^]*?Subject: ${subject}`, "i").test(printed),
+    };
+  },
 };
 
 /** A client of a space's kernel: hello as a tab would, then commands that answer. */
@@ -410,8 +425,8 @@ async function serverPluginChecks(base, check, owner, restart) {
   const badSubject = await notify({ to: ["sam@example.com"], subject: "Two\nlines", text: "x" });
   const tooMany = await notify({ to: Array.from({ length: 11 }, (_, i) => `p${i}@example.com`), subject: "x", text: "x" });
   check(
-    "server plugins: a plugin with `email` sends a message; a bad address, a subject of two lines or more than 10 people is refused",
-    mailed?.ok === true && typeof mailed.id === "string" && /address/.test(badTo?.error) && /address/.test(badDomain?.error) && /address/.test(badControl?.error) && /one line/.test(badSubject?.error) && /at most 10/.test(tooMany?.error),
+    "server plugins: a plugin with `email` sends a message, and hears it was delivered; a bad address, a subject of two lines or more than 10 people is refused",
+    mailed?.ok === true && typeof mailed.id === "string" && mailed.delivered === true && /address/.test(badTo?.error) && /address/.test(badDomain?.error) && /address/.test(badControl?.error) && /one line/.test(badSubject?.error) && /at most 10/.test(tooMany?.error),
     JSON.stringify({ mailed, badTo, badDomain, badControl, badSubject, tooMany }),
   );
   let day = 1;
@@ -950,6 +965,11 @@ async function suite(name, make) {
       owner.base = server.url;
       return server.url;
     });
+    check(
+      "email: a server plugin's message to a member is delivered: over SMTP on Node, through Cloudflare Email Service on Cloudflare",
+      host.mailed("3 new answers", "sam@example.com", "See them in the space."),
+      name === "node" ? JSON.stringify(mailbox.received.slice(0, 2).map(({ raw, ...m }) => m)) : (server.log?.() ?? "").split("\n").filter((l) => /mail|eml|send/i.test(l)).slice(-8).join(" | "),
+    );
     await surveyChecks(server.url, check, owner);
 
     // Workers can't reach a private network in production; wrangler's local runtime isn't a guide to that.
@@ -1118,10 +1138,42 @@ async function moveChecks() {
   }
 }
 
+/** The SMTP client (src/server/smtp.ts) against a mail server that wants STARTTLS and a password, as a real one does. */
+async function smtpChecks() {
+  const check = (what, ok, detail = "") => results.push({ what: `smtp: ${what}`, ok: !!ok, detail });
+  const tls = await mkdtemp(join(tmpdir(), "smtp-tls-"));
+  try {
+    try {
+      execFileSync("openssl", ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", join(tls, "key.pem"), "-out", join(tls, "cert.pem"), "-days", "1", "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost"], { stdio: "ignore" });
+    } catch {
+      return check("openssl makes a certificate for the mail server (skipped: no openssl)", true);
+    }
+    const key = readFileSync(join(tls, "key.pem"));
+    const cert = readFileSync(join(tls, "cert.pem"));
+    const server = await fakeSmtp({ tls: { key, cert }, login: { user: "apps@example.com", pass: "p@ss:word" } });
+    const url = (user, pass) => `smtp://${encodeURIComponent(user)}:${encodeURIComponent(pass)}@localhost:${server.port}`;
+    const good = smtpMailer({ url: url("apps@example.com", "p@ss:word"), from: "Apps <apps@example.com>", ca: String(cert) });
+    const sent = await good.send({ to: ["ann@example.com", "ben@example.com"], subject: "Café ☕ at 3", text: "Line one\n.\nLine three", html: "<p>Hello</p>" });
+    const got = server.received[0];
+    check(
+      "it upgrades to TLS, signs in, and sends a message with a subject that isn't ASCII, its text and its HTML, to each recipient",
+      sent.ok && got?.subject === "Café ☕ at 3" && got.text === "Line one\n.\nLine three" && got.html === "<p>Hello</p>" && got.to.join() === "ann@example.com,ben@example.com" && got.from === "apps@example.com",
+      JSON.stringify({ sent, got: got && { ...got, raw: undefined } }),
+    );
+    const wrong = await smtpMailer({ url: url("apps@example.com", "nope"), from: "apps@example.com", ca: String(cert) }).send({ to: ["ann@example.com"], subject: "x", text: "x" });
+    const untrusted = await smtpMailer({ url: url("apps@example.com", "p@ss:word"), from: "apps@example.com" }).send({ to: ["ann@example.com"], subject: "x", text: "x" });
+    check("a wrong password, or a mail server whose certificate isn't trusted, is a failure that says so, and nothing is sent", !wrong.ok && /refused/.test(wrong.error) && !untrusted.ok && server.received.length === 1, JSON.stringify({ wrong, untrusted }));
+    server.close();
+  } finally {
+    await rm(tls, { recursive: true, force: true });
+  }
+}
+
 const only = process.argv[2];
-process.on("exit", () => (fake.close(), atproto.close()));
+process.on("exit", () => (fake.close(), atproto.close(), mailbox.close()));
 for (const [name, make] of Object.entries(hosts)) if (!only || only === name) await suite(name, make);
 if (!only || only === "move") await moveChecks();
+if (!only || only === "smtp") await smtpChecks();
 
 for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.what}${r.detail && !r.ok ? `  (${r.detail})` : ""}`);
 const failed = results.filter((r) => !r.ok).length;

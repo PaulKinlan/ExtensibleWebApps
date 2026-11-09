@@ -510,15 +510,15 @@ The last 500 trace events, oldest first; `seq` counts up with each event, and `a
 
 ### email
 
-Email: messages a plugin on a space's server sends to the space's members. Until the deployment delivers mail, each is written down in the space's outbox.
+Email: messages a plugin on a space's server sends to the space's members. Each is written down in the space's outbox, then delivered if the deployment can send mail.
 
 #### email.send
 
-`email.send({ to, subject, text, html? })` → { ok, id }
+`email.send({ to, subject, text, html? })` → { ok, id, delivered, error? }
 
 Needs: `email`.
 
-Sends a message to `to` (a member's address or a list of them, at most 10: only addresses the space's members gave on their accounts), with a one-line `subject`, plain `text` and, if given, `html`. Only on a space's server; at most 50 a day for each plugin.
+Sends a message to `to` (a member's address or a list of them, at most 10: only addresses the space's members gave on their accounts), with a one-line `subject`, plain `text` and, if given, `html`. Only on a space's server; at most 50 a day for each plugin. `delivered` says whether it went: false where the deployment can't send mail (it stays in the outbox) or delivery failed (`error` says why).
 
 ### files
 

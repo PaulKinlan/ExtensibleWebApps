@@ -4,9 +4,12 @@
 //   await ctx.call("email", "send", { to: ["sam@example.com"], subject: "3 new answers", text: "…" });
 //
 // Only a space's server sends mail: a plugin in a browser would be sending as
-// whoever has the tab open. Until the deployment sets up a way to deliver it
-// (Cloudflare Email, SMTP), each message is written down in the space's folder
-// as server/outbox/<time>-<id>.json, which no plugin can read.
+// whoever has the tab open. Each message is written down in the space's
+// folder as server/outbox/<time>-<id>.json, which no plugin can read, and
+// then handed to the host to deliver (env().deliver): Cloudflare Email
+// Service on Cloudflare, SMTP on Node (src/server/email.ts says how a
+// deployment sets them up). The outbox file then says whether it went. A host
+// with no way to deliver mail leaves it in the outbox.
 //
 // Mail goes only to the space's members: to the address each gave on their
 // account page (/account/), which the host reads from the accounts
@@ -79,9 +82,21 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     await store.writeJson(COUNTS, { day: today(), sent: counts });
     const at = Date.now();
     const id = `${at}-${Math.random().toString(36).slice(2, 10)}`;
-    await store.writeJson(`${OUTBOX}/${id}.json`, { id, from: plugin, at, ...mail });
+    const written = { id, from: plugin, at, ...mail };
+    await store.writeJson(`${OUTBOX}/${id}.json`, written);
+    const deliver = env().deliver;
+    const result = deliver ? await deliver(mail).catch((error: unknown) => ({ ok: false as const, error: error instanceof Error ? error.message : String(error) })) : null;
+    if (!result) {
+      record({ kind: "lifecycle", name: "email:outbox", plugin, trace, detail: `${mail.to.length} recipient${mail.to.length === 1 ? "" : "s"}: ${mail.subject}` });
+      return { ok: true, id, delivered: false };
+    }
+    await store.writeJson(`${OUTBOX}/${id}.json`, { ...written, ...(result.ok ? { delivered: { at: Date.now(), id: result.id } } : { failed: { at: Date.now(), error: result.error } }) });
+    if (!result.ok) {
+      record({ kind: "error", name: "email:failed", plugin, trace, detail: result.error });
+      return { ok: true, id, delivered: false, error: result.error };
+    }
     record({ kind: "lifecycle", name: "email:sent", plugin, trace, detail: `${mail.to.length} recipient${mail.to.length === 1 ? "" : "s"}: ${mail.subject}` });
-    return { ok: true, id };
+    return { ok: true, id, delivered: true };
   }
 
   /** Throws unless every recipient is one of the space's members' addresses: compared without case, the same person whatever case they or a plugin typed it in. */
@@ -94,13 +109,13 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   }
 
   return {
-    description: "Email: messages a plugin on a space's server sends to the space's members. Until the deployment delivers mail, each is written down in the space's outbox.",
+    description: "Email: messages a plugin on a space's server sends to the space's members. Each is written down in the space's outbox, then delivered if the deployment can send mail.",
     methods: {
       send: {
         args: "({ to, subject, text, html? })",
-        returns: "{ ok, id }",
+        returns: "{ ok, id, delivered, error? }",
         needs: "email",
-        description: `Sends a message to \`to\` (a member's address or a list of them, at most ${MAX_TO}: only addresses the space's members gave on their accounts), with a one-line \`subject\`, plain \`text\` and, if given, \`html\`. Only on a space's server; at most ${MAX_PER_DAY} a day for each plugin.`,
+        description: `Sends a message to \`to\` (a member's address or a list of them, at most ${MAX_TO}: only addresses the space's members gave on their accounts), with a one-line \`subject\`, plain \`text\` and, if given, \`html\`. Only on a space's server; at most ${MAX_PER_DAY} a day for each plugin. \`delivered\` says whether it went: false where the deployment can't send mail (it stays in the outbox) or delivery failed (\`error\` says why).`,
       },
     },
     capability: () => "email",
