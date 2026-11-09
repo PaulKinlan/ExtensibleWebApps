@@ -27,7 +27,7 @@
 export const manifest = {
   id: "llm-openai",
   name: "OpenAI",
-  description: "Answers the app's llm requests with OpenAI's models, using the person's OpenAI API key.",
+  description: "A language model for this app: OpenAI's models. Uses your own OpenAI API key, which goes only to OpenAI.",
   version: "1.1.0",
   permissions: ["provide:llm", "network:api.openai.com", "secret:openai"],
   services: ["llm"],

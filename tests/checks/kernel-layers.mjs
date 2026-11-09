@@ -23,6 +23,7 @@ const CORE = [
   "isolate-host.ts",
   "kernel-modules.d.ts",
   "kernel.ts",
+  "legacy.ts",
   "manifest.ts",
   "modules.ts",
   "moves.ts",

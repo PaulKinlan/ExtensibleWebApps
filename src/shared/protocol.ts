@@ -243,6 +243,8 @@ export interface PluginHook {
   agentTimeoutMs?: number;
   /** "open" (the default): a listener that fails or runs out of time is skipped. "closed": it counts as a block. */
   onFailure?: "open" | "closed";
+  /** Run many times a second (a game's moves): it isn't traced, unless a listener fails. */
+  quiet?: boolean;
 }
 
 /** Carried as Cordis's `thisArg` on every kernel dispatch, so listeners in any worker know which action they serve. */

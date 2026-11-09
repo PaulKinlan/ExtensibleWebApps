@@ -45,7 +45,8 @@ const proof = {};
 
 async function openTab(url = WORKBENCH) {
   const page = await context.newPage();
-  page.on("pageerror", (e) => errors.push(e.message));
+  // Which page, so an error that comes now and then can be traced to its app.
+  page.on("pageerror", (e) => errors.push(`${e.message} (at ${new globalThis.URL(page.url()).pathname}${e.stack?.split("\n")[1] ? `, ${e.stack.split("\n")[1].trim()}` : ""})`));
   await page.goto(url);
   await page.waitForFunction(() => window.__host);
   return page;
@@ -342,8 +343,14 @@ export default async (ctx) => {
   check("an app page shows only its own plugins' views", leaks.length === 0, leaks.join(", "));
   // What a demo checks once every demo has run (the calendar reads contacts the contacts demo made).
   for (const test of demoTests.values()) await test.after?.(t);
-  // Each feature's own checks, in file name order.
-  for (const test of featureTests.values()) await test.default(t);
+  // Each feature's own checks, in file name order. A file that throws fails on its own line, and the files after it still run.
+  for (const [name, test] of featureTests) {
+    try {
+      await test.default(t);
+    } catch (error) {
+      check(`${name}: its checks run to the end`, false, String(error?.message ?? error).split("\n").slice(0, 3).join(" "));
+    }
+  }
 
   // Closing an app's last tab stops its plugins.
   await a.waitForFunction((n) => window.__host.workers.size === n, before, { timeout: 8000 }).catch(() => {});
@@ -567,19 +574,21 @@ export default async (ctx) => {
   await b.waitForFunction(() => window.__host.traces.some((e) => e.name === "storage.set" && e.plugin === "notes"), null, { timeout: 5000 }).catch(() => {});
   await b.waitForTimeout(500);
   await a.close({ runBeforeUnload: true });
-  await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 12, null, { timeout: 10000 });
-  check("closing the spawner tab moves the plugin workers to the other tab", true);
+  // The kernel hears the tab went (its port closes, or the page says so as it unloads), then starts every plugin again here: on a
+  // busy machine that can take a while, so it is given time, and a slow handover fails this check, not the whole run.
+  const handedOver = await b.waitForFunction(() => window.__host.spawner && window.__host.workers.size === 12, null, { timeout: 30000 }).then(() => true, () => false);
+  check("closing the spawner tab moves the plugin workers to the other tab", handedOver, handedOver ? "" : await b.evaluate(() => `spawner ${window.__host.spawner}, ${window.__host.workers.size} workers: ${[...window.__host.workers.keys()].join(" ")}`));
   const draftKept = await b.waitForFunction((t) => document.querySelector("textarea")?.value === t, unsaved, { timeout: 5000 }).then(() => true, () => false);
   check("an unsaved edit survives the notes plugin starting again in another tab", draftKept, await b.inputValue("textarea").catch(() => "no editor"));
   // A worker is there before its plugin has run, and "ready" comes before the plugin's own code: wait until
   // word-count is ready in this tab and the kernel lists its notes:open listener, or the click below can open the
   // note before it listens, and the status bar never fills.
   const bTab = await b.evaluate(() => window.__host.tab);
-  await b.waitForFunction((t) => window.__host.traces.some((e) => e.name === "plugin:ready" && e.plugin === "word-count" && e.detail === `in tab ${t}`), bTab, { timeout: 10000 });
-  await b.waitForFunction(async () => (await window.__host.command("reference")).data.plugins.find((p) => p.id === "word-count")?.hooks.includes("notes:open"), null, { timeout: 10000, polling: 100 });
-  await b.click("nav >> text=Hello there");
-  await b.waitForFunction(() => /\d+ words/.test(document.querySelector("footer").textContent), null, { timeout: 5000 });
-  check("plugins work again after the handover", true, await status(b));
+  const wordCountBack = await b.waitForFunction((t) => window.__host.traces.some((e) => e.name === "plugin:ready" && e.plugin === "word-count" && e.detail === `in tab ${t}`), bTab, { timeout: 20000 }).then(() => true, () => false);
+  const listening = wordCountBack && (await b.waitForFunction(async () => (await window.__host.command("reference")).data.plugins.find((p) => p.id === "word-count")?.hooks.includes("notes:open"), null, { timeout: 20000, polling: 100 }).then(() => true, () => false));
+  await b.click("nav >> text=Hello there", { timeout: 10000 }).catch(() => {});
+  const counted = listening && (await b.waitForFunction(() => /\d+ words/.test(document.querySelector("footer").textContent), null, { timeout: 10000 }).then(() => true, () => false));
+  check("plugins work again after the handover", counted, counted ? await status(b) : `word-count ready ${wordCountBack}, listening ${listening}; footer: ${await status(b)}`);
 
   // A second kernel on the same data folder loads what the first one kept there.
   const d = await openTab(`${WORKBENCH}?kernel=dedicated`);

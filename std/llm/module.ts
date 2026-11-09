@@ -44,7 +44,7 @@
 //
 // Streaming answers come next, with the chat plugin that needs them.
 
-import type { ServiceProvider } from "../../src/kernel/remote";
+import { callService, type ServiceProvider } from "../../src/kernel/remote";
 import { record } from "../../src/kernel/trace";
 import { checkSchema, validate, type Schema } from "../../src/kernel/schema";
 import { service, type ModuleKernel } from "../../src/kernel/modules";
@@ -134,7 +134,7 @@ function cleanAnswer(value: Record<string, unknown>, provider: string) {
 }
 
 const make = (kernel: ModuleKernel): ServiceProvider => {
-  const { root, apps } = kernel;
+  const { root, apps, remote } = kernel;
   kernel.hook("llm:providers", {
     mode: "waterfall",
     timeoutMs: 2000,
@@ -181,6 +181,31 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return out;
   }
 
+  /**
+   * The site's language models a person can add to the caller's app: the registry's packages
+   * (/packages/index.json) that ask for provide:llm. Adding one goes through the authoring service as the
+   * caller, with only the rights this needs, so the person still accepts a review of the model plugin's code,
+   * and the plugin is theirs: on this device, for this app, never in the app's files.
+   */
+  async function offered(plugin: string, dispatch: unknown, method: "choices" | "add", id?: unknown) {
+    const as = (right: string, name: string, args: unknown[]) => callService(remote.services, plugin, new Set([right]), "authoring", name, args, dispatch as { trace?: string }) as Promise<any>;
+    const models = ((await as("plugins:read", "packages", [])) as { id: string; name: string; description: string; href: string; permissions: string[]; added: boolean; linked: boolean }[]).filter((p) => p.permissions.includes("provide:llm"));
+    if (method === "choices") return models.map(({ id, name, description, added, linked }) => ({ id, name, description, added, linked }));
+    const model = models.find((p) => p.id === id);
+    if (!model) return { ok: false, error: `${String(id)} isn't a language model this site offers` };
+    // The app links it, but it's switched off: switch it on, as the switchboard would.
+    if (model.linked) {
+      await callService(remote.services, plugin, new Set(["plugins:manage"]), "plugins", "setEnabled", [model.id, true], dispatch as { trace?: string });
+      return { ok: true, id: model.id };
+    }
+    if (!model.added) {
+      const added = await as("plugins:author", "add", [model.href]);
+      if (!added?.ok) return added;
+    }
+    const on = await as("plugins:manage", "turn", [model.id, true]);
+    return on?.ok === false ? on : { ok: true, id: model.id };
+  }
+
   const service: ServiceProvider = {
     description: "Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js). The caller never holds a key.",
     methods: {
@@ -190,6 +215,18 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         returns: "{ models: [{ id, name? }], tiers: { best, balanced, fast }, provider }",
         needs: "llm",
         description: "The models a provider's vendor serves now (the first ready provider's, without one), and the model each tier stands for.",
+      },
+      choices: {
+        args: "()",
+        returns: "[{ id, name, description, added, linked }]",
+        needs: "llm",
+        description: "The language models this site offers (its plugin registry's packages that provide:llm), for a plugin to offer the person when providers() is empty. added: the person has it here already; linked: the app links it.",
+      },
+      add: {
+        args: "(id)",
+        returns: "{ ok, id?, error? }",
+        needs: "llm",
+        description: "Adds one of choices() to the person's own plugins for the caller's app, once they accept a review of its code, and turns it on. It asks for its API key the first time it is asked something.",
       },
       complete: {
         args: "({ messages, system?, tools?, schema?, model?, maxTokens?, provider? })",
@@ -202,12 +239,13 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     capability: () => "llm",
     async call(plugin, method, args, dispatch) {
       if (method === "providers") return providers(dispatch, plugin);
+      if (method === "choices" || method === "add") return offered(plugin, dispatch, method, args[0]);
       const named = method === "models" ? args[0] : (args[0] as LlmRequest | undefined)?.provider;
       if (named !== undefined && typeof named !== "string") throw new Error("provider is a provider's id, from llm.providers()");
       const request = method === "complete" ? checkRequest(args[0]) : undefined;
       const list = await providers(dispatch, plugin);
       const chosen = named !== undefined ? list.find((p) => p.id === named) : (list.find((p) => p.ready) ?? list[0]);
-      if (!chosen) throw new Error(named !== undefined ? `No provider ${named} in this app` : "This app has no language model: link one, such as /std/llm/anthropic.js");
+      if (!chosen) throw new Error(named !== undefined ? `No provider ${named} in this app` : "This app has no language model yet. Add one from Customize (Add a plugin), such as Claude (Anthropic), and paste your own API key when it asks");
       if (method === "models") {
         const value = (await root.serial(dispatch, "llm:models", { provider: chosen.id })) as unknown;
         if (!isObject(value)) throw new Error(`${chosen.name} didn't answer`);

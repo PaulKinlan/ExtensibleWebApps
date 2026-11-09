@@ -23,7 +23,7 @@
 export const manifest = {
   id: "llm-gemini",
   name: "Gemini (Google)",
-  description: "Answers the app's llm requests with Gemini, using the person's Gemini API key.",
+  description: "A language model for this app: Gemini, from Google. Uses your own Gemini API key, which goes only to Google.",
   version: "1.1.0",
   permissions: ["provide:llm", "network:generativelanguage.googleapis.com", "secret:gemini"],
   services: ["llm"],

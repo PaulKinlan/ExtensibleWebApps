@@ -9,6 +9,11 @@
 //   <link rel="plugin" href="/std/ask-the-page.js">
 //   <slot name="ask"></slot>
 //
+// or, as a person, from Customize's Add a plugin. On a page with no language
+// model, it offers the ones this site has (llm.choices); the one the person
+// picks becomes their own plugin for the app, once they allow it on a review card
+// (llm.add), and asks for their API key the first time it is asked.
+//
 // It asks through the `llm` service, so it needs the `llm` permission and
 // never sees a key: the provider plugin asks the person for one the first
 // time, and the kernel keeps it. It reads the plugins with `plugins:read`,
@@ -52,6 +57,11 @@ export default function (ctx) {
   let answer = null;
   let error = "";
   let asking = false;
+  /** The site's language models to offer when the page has none; filled in only then. */
+  let choices = [];
+  /** The model being added, and why the last add didn't happen. */
+  let adding = "";
+  let addError = "";
 
   /** Every plugin the app links, described for the model, and whether the question names it. */
   const describe = async (text) => {
@@ -82,7 +92,9 @@ export default function (ctx) {
     // A model switched off or removed can't answer: go back to the first with a key.
     if (provider && !list.some((p) => p.id === provider)) provider = "";
     const providers = list.map((p) => ({ ...p, picked: p.id === provider, label: `${p.name}${p.ready ? "" : " (asks for a key)"}` }));
-    views.render("ask", "ask", { providers, none: !providers.length, question, answer, error, asking, suggested: SUGGESTED.map((text, n) => ({ n, text })) }, { order: 10 });
+    const none = !providers.length;
+    if (none) choices = (await ctx.call("llm", "choices").catch(() => [])).map((c) => ({ ...c, busy: !!adding }));
+    views.render("ask", "ask", { providers, none, choices, offered: choices.length > 0, adding, addError, question, answer, error, asking, suggested: SUGGESTED.map((text, n) => ({ n, text })) }, { order: 10 });
     return providers.length;
   };
 
@@ -138,6 +150,16 @@ export default function (ctx) {
       await draw();
     }
     if (action === "ask") await ask(value?.question);
+    // Adds one of the site's language models as the person's own plugin, after they allow it on a review card.
+    if (action.startsWith("model:") && !adding) {
+      adding = action.slice(6);
+      addError = "";
+      await draw();
+      const result = await ctx.call("llm", "add", adding).catch((e) => ({ ok: false, error: e instanceof Error ? e.message : String(e) }));
+      if (!result?.ok) addError = result?.error ?? "It wasn't added";
+      adding = "";
+      await refresh([0, 500, 1000, 2000]);
+    }
     if (action.startsWith("suggest:")) await ask(SUGGESTED[Number(action.slice(8))]);
   });
 }

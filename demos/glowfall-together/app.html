@@ -9,6 +9,10 @@
                 messages (sync.live), and sends each frame back to them
   jars.js       game:update   moves each player's jar
   catches.js    game:rules    scores each player's catches and the team's
+  referee.js    keeps it fair: one jar for each member, moves at a
+                person's pace, and points only for fireflies caught. It
+                checks moves on together.js's own hooks, and the score
+                on every tick; what it puts right shows in the lobby
   ../glowfall/sky.js           Glowfall's own sky, which runs in browsers
                                and on servers (runs: "both")
 
@@ -35,6 +39,7 @@
   <link rel="plugin" href="together.js">
   <link rel="plugin" href="jars.js">
   <link rel="plugin" href="catches.js">
+  <link rel="plugin" href="referee.js">
   <link rel="plugin" href="../glowfall/sky.js">
   <link rel="plugin" href="field.js">
   <link rel="plugin" href="lobby.js">

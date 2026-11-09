@@ -1,0 +1,74 @@
+<!--
+  Plugin maker. plugin-maker.js sends { providers, none, choices, offered,
+  adding, addError, lines, started, working, busy, suggested, draft }: providers is
+  [{ id, label, picked }], the language models the app links; none is true
+  when there are none, and then choices is [{ id, name, description, busy }],
+  the models this site offers (offered: there are some), each button sending
+  "model:<id>"; lines is [{ n, who, text, tone }], oldest first; working says
+  what it is doing, if anything; draft is the text left in the box. The picker sends "provider", the form "make"
+  with { text }, each suggestion "suggest:<n>", and Start again "clear".
+-->
+<style>
+  .maker { display: grid; gap: var(--space-2); }
+  .maker-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
+  .maker-head h2 { margin: 0; }
+  .maker .about { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
+  .maker ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); max-height: 28rem; overflow: auto; }
+  .maker li p { margin: 0; white-space: pre-wrap; }
+  .maker form { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-1); margin: 0; }
+  .maker input[name="text"] { flex: 1 1 14em; min-width: 0; width: auto; font: inherit; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+  .maker form button { height: 32px; flex: 0 0 auto; width: auto; }
+  .maker > button, .maker .again { justify-self: start; width: auto; }
+  .maker .suggested { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; max-height: none; }
+  .maker .suggested button { height: auto; min-height: 28px; padding: 4px 10px; text-align: left; }
+  .maker .models { display: grid; gap: var(--space-1); }
+  .maker .models li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1); }
+  .maker .models span { color: var(--fg-2); font-size: var(--text-sm); }
+</style>
+<template id="maker">
+  <ui-card class="maker">
+    <div class="maker-head">
+      <h2>Plugin maker</h2>
+      <template if="!none">
+        <label>Model
+          <select data-action="provider" aria-label="Which model writes it" disabled="{{busy}}">
+            <option value="">The first with a key</option>
+            <template for="p of providers"><option key="{{p.id}}" value="{{p.id}}" selected="{{p.picked}}">{{p.label}}</option></template>
+          </select>
+        </label>
+      </template>
+    </div>
+    <p class="about">Say what you'd like this page to do. A language model writes a plugin for it, just for you, and you see its code and what it may do before it runs.</p>
+    <template if="none">
+      <p>It needs a language model to write with. Pick one to add to this app for you. You'll see its code first, and it asks for your own API key the first time it writes. The key stays on this device.</p>
+      <template if="offered">
+        <ol class="models" aria-label="Language models you can add">
+          <template for="c of choices"><li key="{{c.id}}"><button type="button" data-action="model:{{c.id}}" disabled="{{c.busy}}">Add {{c.name}}</button> <span>{{c.description}}</span></li></template>
+        </ol>
+      </template>
+      <template if="!offered"><p>This site offers no language models to add. Its developer can link one, such as <code>/std/llm/anthropic.js</code>.</p></template>
+      <template if="adding"><p role="status">Adding it. Accept the review card to go on.</p></template>
+      <template if="addError"><p class="error" role="alert">{{addError}}</p></template>
+    </template>
+    <template if="!none">
+      <template if="started">
+        <ol class="lines" aria-live="polite">
+          <template for="line of lines">
+            <li key="{{line.n}}"><ui-card tone="{{line.tone}}"><p><strong>{{line.who}}:</strong> {{line.text}}</p></ui-card></li>
+          </template>
+        </ol>
+      </template>
+      <template if="!started">
+        <ol class="suggested" aria-label="Things to ask for">
+          <template for="s of suggested"><li key="{{s.n}}"><button type="button" data-action="suggest:{{s.n}}">{{s.text}}</button></li></template>
+        </ol>
+      </template>
+      <form data-action="make">
+        <input name="text" type="text" value="{{draft}}" placeholder="Describe the plugin you want, or what to change" aria-label="What you want" autocomplete="off" maxlength="4000" required>
+        <button type="submit" class="primary" disabled="{{busy}}">Make it</button>
+      </form>
+      <template if="working"><p role="status">{{working}} If it asks for a key, the card is at the bottom of the screen.</p></template>
+      <template if="started"><button type="button" class="again" data-action="clear" disabled="{{busy}}">Start again</button></template>
+    </template>
+  </ui-card>
+</template>

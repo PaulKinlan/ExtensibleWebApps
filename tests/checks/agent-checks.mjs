@@ -18,8 +18,8 @@ function model(ctx) {
     if (last.role === "tool") return { text: "Done.", stop: "end", usage };
     if (request.system.startsWith("You keep a reading list safe")) {
       if (first.includes("4111")) {
-        // Slow enough for the board to show the save waiting.
-        await new Promise((resolve) => setTimeout(resolve, 1500));
+        // Slow enough for the board to show the save waiting, also on a busy machine (well inside the hook's 15 seconds).
+        await new Promise((resolve) => setTimeout(resolve, 4000));
         return call("block", { reason: "The author field holds what looks like a card number" });
       }
       if (first.includes("5555")) return { text: "I can't tell.", stop: "end", usage };
@@ -53,13 +53,13 @@ export default async function ({ a, check, openTab, URL, plugin, pluginLog }) {
   const formSays = (text, timeout = 10000) => page.waitForFunction(([sel, t]) => document.querySelector(sel)?.shadowRoot?.textContent.includes(t) ?? document.querySelector(sel)?.textContent.includes(t), [form, text], { timeout }).then(() => true, () => false);
   const tableHas = (text, timeout = 8000) => page.waitForSelector(`[data-key="library:books"] ui-table >> text=${text}`, { timeout }).then(() => true, () => false);
   try {
-    await page.waitForSelector(form, { timeout: 8000 });
+    await page.waitForSelector(form, { timeout: 15000 });
     await page.evaluate((data) => window.__host.command("user:add", { app: "demos/security", files: [{ name: "fake-model.js", data }] }), MODEL);
     await page.evaluate(() => window.__host.command("user:on", { app: "demos/security", id: "fake-model" }));
 
     // A card number in a book's author field: the save waits while the security agent checks it, then is refused.
     await add("Card test", "4111 1111 1111 1111");
-    const waiting = await page.waitForSelector('[data-key^="board@"] >> text=Being checked by', { timeout: 8000 }).then(() => true, () => false);
+    const waiting = await page.waitForSelector('[data-key^="board@"] >> text=Being checked by', { timeout: 10000 }).then(() => true, () => false);
     check("while an agent checks a write, the board shows it waiting", waiting);
     check("an agent that checks data:beforeWrite can block a write, and its reason is shown", await formSays("The author field holds what looks like a card number"));
     // The kernel's trace keeps only the latest entries, so calls are found by what they were asked, not by position.
@@ -75,15 +75,16 @@ export default async function ({ a, check, openTab, URL, plugin, pluginLog }) {
     // the kernel ends the run, and what the model asks for afterwards doesn't run.
     await add("Slow test", "6011 0000 0000 0004");
     check("a check past the hook's agentTimeoutMs blocks, with if-unsure: block", await formSays("could not answer data:beforeWrite:library", 20000));
-    await page.waitForFunction(() => document.querySelector('[data-key="agent-activity:activity"]')?.textContent.includes("timeout"), null, { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelector('[data-key="agent-activity:activity"]')?.textContent.includes("timeout"), null, { timeout: 10000 }).catch(() => {});
     check("the kernel ends a check that ran out of time", /timeout\s*security/.test(await activity()), (await activity()).replace(/\s+/g, " ").slice(0, 200));
 
     // No long run of digits: `when` doesn't match, so the security agent isn't asked about the write.
     // The librarian wakes and fills it in; the security agent is asked about that tool call first, and allows it.
     await add("Middlemarch");
-    await page.waitForSelector('[data-key^="review:"] >> text=Librarian', { timeout: 10000 }).catch(() => {});
-    await page.click('[data-key^="review:"] >> text=Accept').catch(() => {});
-    check("a check allows another agent's tool call, which then lands", await tableHas("George Eliot"));
+    // Two agents run in turn here (the librarian, then the security agent on its tool call), so each wait is generous.
+    await page.waitForSelector('[data-key^="review:"] >> text=Librarian', { timeout: 20000 }).catch(() => {});
+    await page.click('[data-key^="review:"] >> text=Accept', { timeout: 5000 }).catch(() => {});
+    check("a check allows another agent's tool call, which then lands", await tableHas("George Eliot", 15000), (await activity()).replace(/\s+/g, " ").slice(0, 300));
     // The trace reaches a tab in batches, up to a tenth of a second after the call it records: wait for the ask.
     await a.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked") && e.detail.includes("Middlemarch") && e.detail.includes("agent:beforeTool")), null, { timeout: 3000 }).catch(() => {});
     const security = (await asked()).filter((c) => c.system.startsWith("You keep a reading list safe") && c.first.includes("Middlemarch"));
@@ -95,7 +96,7 @@ export default async function ({ a, check, openTab, URL, plugin, pluginLog }) {
 
     // The librarian tries to delete a book: the security agent blocks the tool call, and the book stays.
     await add("Burn after reading");
-    await page.waitForFunction(() => document.querySelector('[data-key="agent-activity:activity"]')?.textContent.includes("data_delete_library, which failed"), null, { timeout: 10000 }).catch(() => {});
+    await page.waitForFunction(() => document.querySelector('[data-key="agent-activity:activity"]')?.textContent.includes("data_delete_library, which failed"), null, { timeout: 20000 }).catch(() => {});
     check("an agent that checks agent:beforeTool can block another agent's tool call", /librarian called data_delete_library, which failed/.test(await activity()) && (await tableHas("Burn after reading", 2000)), (await activity()).replace(/\s+/g, " ").slice(0, 300));
     check("agent:done says how a check ended", /block\s*security/.test(await activity()) && /allow\s*security/.test(await activity()));
     check("a check's model can't call tools once its time is up", !/security called data_list_library/.test(await activity()));
