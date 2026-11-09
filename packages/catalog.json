@@ -36,6 +36,11 @@
       "href": "/demos/debugger/app.html"
     },
     {
+      "path": "demos/doodle",
+      "title": "Doodle",
+      "href": "/demos/doodle/app.html"
+    },
+    {
       "path": "demos/feeds",
       "title": "Feeds",
       "href": "/demos/feeds/app.html"
@@ -1508,6 +1513,23 @@
       "places": [],
       "apps": [
         "demos/debugger"
+      ]
+    },
+    {
+      "id": "doodle",
+      "name": "Doodle",
+      "description": "A pad to draw on, and a chart of the strokes by colour.",
+      "href": "/demos/doodle/doodle.js",
+      "source": "doodle",
+      "kind": "ui",
+      "permissions": [
+        "ui"
+      ],
+      "provides": [],
+      "services": [],
+      "places": [],
+      "apps": [
+        "demos/doodle"
       ]
     },
     {

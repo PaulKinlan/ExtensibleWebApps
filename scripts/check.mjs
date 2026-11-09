@@ -42,6 +42,8 @@ async function loadKernelRules() {
     'export { hookLimits } from "./vite.kernel-modules.ts";',
     'export { capabilities, grants } from "./src/kernel/gate.ts";',
     'export * from "./src/shared/html.ts";',
+    'export { SVG_ATTRIBUTES } from "./src/shared/svg.ts";',
+    'export { SVG_ELEMENTS } from "./src/shared/svg-docs.ts";',
     'export { fromAgentFile } from "./src/kernel/agents/file.ts";',
     'export { runnerName, DEFAULT_RUNNER } from "./src/shared/agent-runner.ts";',
   ].join("\n");

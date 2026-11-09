@@ -40,6 +40,8 @@ import { readManifest } from "../../src/kernel/manifest";
 import type { Param, ServiceProvider } from "../../src/kernel/remote";
 import { recent, record } from "../../src/kernel/trace";
 import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENTS, ELEMENT_ATTRIBUTES, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../../src/shared/html";
+import { SVG_ATTRIBUTES } from "../../src/shared/svg";
+import { SVG_ELEMENTS } from "../../src/shared/svg-docs";
 import { fromAgentFile } from "../../src/kernel/agents/file";
 import { DEFAULT_RUNNER, runnerName } from "../../src/shared/agent-runner";
 import { env } from "../../src/kernel/env";
@@ -139,6 +141,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       ELEMENT_ATTRIBUTES,
       DROPPED_WITH_CONTENT,
       INPUT_TYPES,
+      SVG_ELEMENTS,
+      SVG_ATTRIBUTES,
       fromAgentFile,
       runnerName,
       DEFAULT_RUNNER,
@@ -217,6 +221,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const refused: Problem[] = [];
     for (const [fname, text] of wanted) {
       if (fname === "app.html") for (const p of pageProblems(text)) refused.push({ level: "error", file: fname, line: p.line, message: p.message });
+      // A file-handlers or share-target line the manifest can't use (sw/launch-meta.js, loaded only for a page that has one).
+      if (fname === "app.html" && /file-handlers|share-target/i.test(text)) {
+        const { launchProblems } = await import("../../sw/launch-meta.js");
+        for (const p of launchProblems(text)) refused.push({ level: "error", file: fname, line: p.line, message: p.message });
+      }
       if (fname.endsWith(".js")) {
         try {
           readManifest(text);
