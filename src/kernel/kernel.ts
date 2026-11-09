@@ -412,7 +412,7 @@ async function customize(name: string, arg: unknown): Promise<unknown> {
     case "user:on":
     case "user:off":
       // As in Customize (authoring.ts): the person's plugins that provide what it needs come on with it.
-      await (name === "user:on" ? userAdded.onWithNeeds(app, id, (service) => Object.hasOwn(services, service)) : userAdded.offWithDependents(app, id));
+      await (name === "user:on" ? userAdded.onWithNeeds(app, id, (service) => Object.hasOwn(services, service)) : userAdded.offWithDependents(app, id, (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not));
       await reopen(app);
       return true;
     case "user:remove": {

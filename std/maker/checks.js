@@ -126,7 +126,10 @@ function withProvided(rules, sources) {
   for (const source of sources) {
     let provides;
     try {
-      provides = /** @type {{ provides?: Record<string, { methods?: Record<string, { needs?: string }> }> }} */ (rules.readManifest(source)).provides ?? {};
+      const manifest = /** @type {{ runs?: string; provides?: Record<string, { methods?: Record<string, { needs?: string }> }> }} */ (rules.readManifest(source));
+      // A provider that runs only on a space's server isn't there for the app's plugins in the browser.
+      if (manifest.runs === "server") continue;
+      provides = manifest.provides ?? {};
     } catch {
       continue;
     }

@@ -225,22 +225,23 @@ export function userPlugins(store: Store, origin: string, space?: string) {
     async onWithNeeds(app: string, id: string, has: (service: string) => boolean): Promise<UserPlugin[]> {
       const all = await list(checkApp(app));
       const also: UserPlugin[] = [];
+      const plugin = all.find((p) => p.id === id);
+      // What will be there once these are on: a second provider of any of it would be refused as a clash.
+      const covered = new Set<string>([...(plugin?.provides ?? []), ...all.filter((p) => p.on).flatMap((p) => p.provides ?? [])]);
       const seen = new Set<string>();
-      const visit = async (plugin: UserPlugin) => {
-        if (!plugin.id || seen.has(plugin.id)) return;
-        seen.add(plugin.id);
-        for (const service of plugin.services ?? []) {
-          if (has(service)) continue;
-          const provider = all.find((p) => p.id !== plugin.id && p.provides?.includes(service));
+      const visit = async (needer: UserPlugin) => {
+        if (!needer.id || seen.has(needer.id)) return;
+        seen.add(needer.id);
+        for (const service of needer.services ?? []) {
+          if (has(service) || covered.has(service)) continue;
+          const provider = all.find((p) => p.id !== needer.id && !p.on && p.provides?.includes(service));
           if (!provider?.id) continue;
-          if (!provider.on && !also.includes(provider)) {
-            await setOn(app, provider.id, true);
-            also.push(provider);
-          }
+          await setOn(app, provider.id, true);
+          also.push(provider);
+          for (const name of provider.provides ?? []) covered.add(name);
           await visit(provider);
         }
       };
-      const plugin = all.find((p) => p.id === id);
       await setOn(app, id, true);
       if (plugin) await visit(plugin);
       return also;
@@ -248,17 +249,22 @@ export function userPlugins(store: Store, origin: string, space?: string) {
 
     /**
      * Turns one of the person's plugins off, and with it the ones of theirs for the app that need a service
-     * only it provides, so they don't start again without it. Returns the others it turned off.
+     * only it provides, so they don't start again without it. `elsewhere` says whether a service is running
+     * from something other than this plugin (a kernel module, or the app's own plugin), which keeps the ones
+     * that need it on. Returns the others it turned off.
      */
-    async offWithDependents(app: string, id: string): Promise<UserPlugin[]> {
+    async offWithDependents(app: string, id: string, elsewhere: (service: string, not: string) => boolean = () => false): Promise<UserPlugin[]> {
       const all = await list(checkApp(app));
       const also: UserPlugin[] = [];
-      const off = async (gone: UserPlugin) => {
-        for (const service of gone.provides ?? []) {
-          // Another of theirs that is on and provides it too keeps it there.
-          if (all.some((p) => p !== gone && p.on && !also.includes(p) && p.id !== id && p.provides?.includes(service))) continue;
+      const gone = new Set<string>([id]);
+      const off = async (plugin: UserPlugin) => {
+        for (const service of plugin.provides ?? []) {
+          if (elsewhere(service, plugin.id ?? "")) continue;
+          // Another of theirs that stays on and provides it keeps it there.
+          if (all.some((p) => p.on && p.id && !gone.has(p.id) && p.provides?.includes(service))) continue;
           for (const p of all) {
-            if (!p.id || !p.on || p.id === id || also.includes(p) || !p.services?.includes(service)) continue;
+            if (!p.id || !p.on || gone.has(p.id) || !p.services?.includes(service)) continue;
+            gone.add(p.id);
             await setOn(app, p.id, false);
             also.push(p);
             await off(p);

@@ -419,7 +419,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         // Turning one on turns on the person's plugins that provide the services it needs; turning a provider
         // off turns off the ones that need it. Neither waits on kernel.json: that is the site's, not theirs.
         const has = new Set(saving.services());
-        const also = on ? await saving.userAdded.onWithNeeds(app, id, (service) => has.has(service)) : await saving.userAdded.offWithDependents(app, id);
+        const also = on ? await saving.userAdded.onWithNeeds(app, id, (service) => has.has(service)) : await saving.userAdded.offWithDependents(app, id, (service, not) => has.has(service) && remote.providers.get(service) !== not);
         await saving.reopen(app);
         return { ok: true, also: also.map((p) => ({ id: p.id, name: p.name ?? p.id })) };
       }
