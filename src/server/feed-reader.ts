@@ -133,16 +133,18 @@ interface Item {
 }
 
 /**
- * An RSS or Atom feed's title and newest stories, read with patterns (the same reading as
- * demos/feeds/fetch.js, which a server plugin does with no DOMParser). Only text comes out.
+ * An RSS or Atom feed's title and newest stories (the same reading as demos/feeds/fetch.js). Only text
+ * comes out. It runs in the server's own process, so every step is a single pass over the text, with no
+ * pattern that rescans the rest of the feed for each unclosed tag: a feed made to be slow to read (many
+ * `<item>`s or `<title>`s never closed) takes as long as a plain one of its size.
  */
 export function parse(xml: string, url: string): { title: string; items: Item[] } {
   let text = String(xml);
-  const root = /<(?:([\w-]+):)?(rss|feed|RDF)\b([^>]*)>/i.exec(text);
+  const root = /<(?:([\w-]{1,40}):)?(rss|feed|RDF)\b([^<>]{0,2000})>/i.exec(text);
   if (!root) throw new Error("That isn't an RSS or Atom feed");
   if (root[1] && root[2].toLowerCase() === "feed") text = text.replace(new RegExp(`<(/?)${root[1]}:`, "g"), "<$1");
   const feedBase = baseOf(root[3], url);
-  const entries = [...text.matchAll(/<(item|entry)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].map((m) => ({ body: m[3], base: baseOf(m[2], feedBase) }));
+  const entries = entriesOf(text).map((e) => ({ body: e.body, base: baseOf(e.attributes, feedBase) }));
   const first = text.search(/<(item|entry)\b/i);
   const head = first < 0 ? text : text.slice(0, first);
   const items = entries
@@ -151,16 +153,74 @@ export function parse(xml: string, url: string): { title: string; items: Item[] 
       const link = linkOf(entry, base);
       const published = date(tag(entry, "pubDate") || tag(entry, "published") || tag(entry, "updated") || tag(entry, "dc:date"));
       const summary = plain(tag(entry, "description") || tag(entry, "summary") || tag(entry, "content")).slice(0, 400);
-      return { key: (tag(entry, "guid") || tag(entry, "id") || link || title).slice(0, 500), title, link, published, summary };
+      return { key: tag(entry, "guid") || tag(entry, "id") || link || title, title, link, published, summary };
     })
     .sort((a, b) => (b.published || "").localeCompare(a.published || ""))
     .slice(0, KEEP);
   return { title: words(tag(head, "title")).slice(0, 200), items };
 }
 
+/** Each <item> or <entry>: its attributes and what's inside, in one pass. One left open ends the list. */
+function entriesOf(text: string): { attributes: string; body: string }[] {
+  const found: { attributes: string; body: string }[] = [];
+  const marks = /<(\/?)(item|entry)\b([^<>]{0,2000})>/gi;
+  let open: { name: string; attributes: string; from: number } | null = null;
+  for (let m = marks.exec(text); m; m = marks.exec(text)) {
+    const name = m[2].toLowerCase();
+    if (!m[1] && !open) open = { name, attributes: m[3], from: marks.lastIndex };
+    else if (m[1] && open?.name === name) {
+      found.push({ attributes: open.attributes, body: text.slice(open.from, m.index) });
+      open = null;
+    }
+  }
+  return found;
+}
+
+/** What's inside the first <name>…</name>, CDATA unwrapped: found with one forward search for each end. */
 function tag(xml: string, name: string): string {
-  const m = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`, "i").exec(xml);
-  return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim() : "";
+  const start = new RegExp(`<${name}\\b[^<>]{0,2000}>`, "i").exec(xml);
+  if (!start) return "";
+  const from = start.index + start[0].length;
+  const end = new RegExp(`</${name}\\s*>`, "ig");
+  end.lastIndex = from;
+  const close = end.exec(xml);
+  return close ? cdata(xml.slice(from, close.index)).trim() : "";
+}
+
+/** Text with each <![CDATA[…]]> unwrapped; one left open runs to the end. */
+function cdata(text: string): string {
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const open = text.indexOf("<![CDATA[", at);
+    if (open < 0) return out + text.slice(at);
+    out += text.slice(at, open);
+    const close = text.indexOf("]]>", open + 9);
+    if (close < 0) return out + text.slice(open + 9);
+    out += text.slice(open + 9, close);
+    at = close + 3;
+  }
+}
+
+/** HTML's text: tags, comments, scripts and styles taken out, in one pass. Anything left unclosed is dropped. */
+function strip(html: string): string {
+  const lower = html.toLowerCase();
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const lt = html.indexOf("<", at);
+    if (lt < 0) return out + html.slice(at);
+    out += html.slice(at, lt) + " ";
+    let end: number;
+    if (lower.startsWith("<!--", lt)) end = (i => (i < 0 ? -1 : i + 3))(html.indexOf("-->", lt + 4));
+    else if (/^<(script|style)\b/.test(lower.slice(lt, lt + 8))) {
+      const name = lower.startsWith("<script", lt) ? "script" : "style";
+      const close = lower.indexOf(`</${name}`, lt);
+      end = close < 0 ? -1 : html.indexOf(">", close);
+    } else end = html.indexOf(">", lt);
+    if (end < 0) return out;
+    at = end + 1;
+  }
 }
 
 function baseOf(attributes: string, base: string): string {
@@ -173,7 +233,7 @@ function baseOf(attributes: string, base: string): string {
 }
 
 function linkOf(entry: string, base: string): string {
-  const atom = [...entry.matchAll(/<link\b([^>]*)\/?>/gi)]
+  const atom = [...entry.matchAll(/<link\b([^<>]{0,2000})>/gi)]
     .map((m) => ({ href: /\bhref\s*=\s*["']([^"']+)["']/i.exec(m[1])?.[1], rel: /\brel\s*=\s*["']([^"']+)["']/i.exec(m[1])?.[1] }))
     .filter((l) => l.href);
   const written = decode((atom.find((l) => !l.rel || l.rel === "alternate") ?? atom[0])?.href ?? tag(entry, "link")).trim();
@@ -187,18 +247,14 @@ function linkOf(entry: string, base: string): string {
 }
 
 function words(text: string): string {
-  return decode(decode(String(text).replace(/<[^>]*>/g, " ")))
+  return decode(decode(strip(String(text))))
     .replace(/\s+/g, " ")
     .trim();
 }
 
 function plain(html: string): string {
-  return decode(
-    decode(String(html))
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
-      .replace(/<[^>]*>/g, " "),
-  )
+  // A summary is cut to 400 characters, so only its start is read.
+  return decode(strip(decode(String(html).slice(0, 50_000))))
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -212,7 +268,7 @@ const NAMED: Record<string, string> = {
 };
 
 function decode(text: string): string {
-  return String(text).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e: string) => {
+  return String(text).replace(/&(#x[0-9a-f]{1,8}|#\d{1,10}|[a-z]{1,32});/gi, (all, e: string) => {
     if (e[0] === "#") {
       const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : "";

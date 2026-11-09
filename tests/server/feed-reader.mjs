@@ -2,7 +2,7 @@
 // refuses, over HTTP to the running server, and what it answers, with a
 // stand-in for the network (the hosts' own requests are checked by the
 // refusals: http://, the server's own network, another site's pages).
-import { feedReader } from "../../src/server/feed-reader.ts";
+import { feedReader, parse } from "../../src/server/feed-reader.ts";
 
 export async function feedReaderChecks(base, check, host) {
   const ask = (url, headers = {}) => fetch(`${base}/feed-reader?url=${encodeURIComponent(url)}`, { headers }).then(async (r) => ({ status: r.status, type: r.headers.get("content-type"), body: await r.json().catch(() => null) }));
@@ -41,4 +41,22 @@ export async function feedReaderChecks(base, check, host) {
     feed.status === 200 && /sandbox/.test(feed.csp ?? "") && feed.body.url === "https://feeds.example/feed.xml" && feed.body.title === "Local & news" && first?.title === "That’s it" && first.summary === "I’m here …" && first.link === "https://example.com/1" && second?.link === "" && page.status === 502 && /isn't an RSS/.test(page.body.error) && away.status === 502 && /away from https/.test(away.body.error),
     JSON.stringify({ feed, page, away, hops }),
   );
+
+  // Feeds made to be slow to read: each takes one pass, not a pass per unclosed tag.
+  const slow = {
+    items: `<rss>${"<item>".repeat(300_000)}`,
+    titles: `<rss><item>${"<title>x".repeat(200_000)}</item></rss>`,
+    tags: `<rss><item><description>${"&lt;b".repeat(300_000)}</description><title>${"<i".repeat(300_000)}</title></item></rss>`,
+    cdata: `<rss><item><title>${"<![CDATA[".repeat(150_000)}</title></item></rss>`,
+    roots: "<rss".repeat(400_000),
+  };
+  const took = {};
+  for (const [name, xml] of Object.entries(slow)) {
+    const at = performance.now();
+    try {
+      parse(xml, "https://feeds.example/");
+    } catch {}
+    took[name] = Math.round(performance.now() - at);
+  }
+  check("feed reader: a feed made to be slow to read (many tags left open) is read in one pass", Object.values(took).every((ms) => ms < 1500), JSON.stringify(took));
 }
