@@ -22,6 +22,11 @@ export const manifest = {
   services: ["bus"],
   // One per tab, so opening the board in one tab doesn't open it in another.
   scope: "tab",
+  // Where it draws on a page with no <slot name="board">, such as a person adding it to any app from the
+  // registry (packages/std.json); a page with the slot keeps it there.
+  places: { "board": { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["board.html"],
 };
 
 /** How many things the agents did that it keeps. */

@@ -21,6 +21,11 @@ export const manifest = {
   version: "1.0.0",
   permissions: ["ui", "sync"],
   services: ["sync"],
+  // Where it draws on a page with no <slot name="sync">, such as a person adding it to any app from the
+  // registry (packages/std.json); a page with the slot keeps it there.
+  places: { "sync": { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["sync.html"],
 };
 
 const when = (at) => {

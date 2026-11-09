@@ -27,6 +27,9 @@ export const manifest = {
   settings: {
     corner: { type: "string", title: "Where the bug sits", enum: ["bottom-left", "bottom-right", "top-left", "top-right", "inline"], default: "bottom-left" },
   },
+  // Where it draws on a page with no <slot name="debug">, such as a person adding it to any app from the
+  // registry (packages/std.json); a page with the slot keeps it there.
+  places: { "debug": { at: "body", put: "append" } },
 };
 
 /** How many events it keeps; the kernel keeps the last 500 too. */

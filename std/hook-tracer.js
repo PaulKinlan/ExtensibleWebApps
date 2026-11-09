@@ -22,6 +22,11 @@ export const manifest = {
   permissions: ["ui", "plugins:read", "debug:read"],
   // Its tab says which app's plugins to follow.
   scope: "tab",
+  // Where it draws on a page with no <slot name="inspect">, such as a person adding it to any app from the
+  // registry (packages/std.json); a page with the slot keeps it there.
+  places: { "inspect": { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["hook-tracer.html"],
 };
 
 /** How many actions it shows, newest first. */

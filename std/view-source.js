@@ -20,6 +20,11 @@ export const manifest = {
   permissions: ["ui", "plugins:read"],
   // Its tab says which app it is showing.
   scope: "tab",
+  // Where it draws on a page with no <slot name="inspect">, such as a person adding it to any app from the
+  // registry (packages/std.json); a page with the slot keeps it there.
+  places: { "inspect": { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["view-source.html"],
 };
 
 export default function (ctx) {
