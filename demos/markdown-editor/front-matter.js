@@ -87,7 +87,7 @@ export default async function (ctx) {
     const source = proseOnly(post.text.slice(post.bodyStart));
     // With no description yet, the form offers to draft one.
     const describe = "description" in (post.frontMatter ?? {}) ? null : { label: "Draft a description", ...draftFor("description", post.siteName) };
-    ctx.ui.views("front-matter.html").render("panels", "form", { shown, fields, empty: !Object.keys(post.frontMatter ?? {}).length, problem, source, describe });
+    ctx.ui.views("front-matter.html").render("panels", "form", { shown, fields, empty: !Object.keys(post.frontMatter ?? {}).length, problem, source, describe, path: post.path });
   };
   const follow = (p) => {
     post = p;
@@ -118,7 +118,8 @@ export default async function (ctx) {
     if (action.startsWith("draft:")) {
       // What <ui-summarizer> wrote ({ text }), or why it couldn't ({ error }).
       const key = action.slice(6);
-      if (!LONG.has(key)) return;
+      // A draft of a post that is no longer open (it took a while, and the person moved on) is dropped.
+      if (!LONG.has(key) || value?.subject !== post.path) return;
       if (typeof value?.text === "string" && value.text.trim()) return set(key, value.text.trim());
       problem = typeof value?.error === "string" ? value.error : `Couldn't draft the ${key}.`;
       return draw();

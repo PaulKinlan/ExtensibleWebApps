@@ -35,7 +35,8 @@ export default class UiSitePreview extends HTMLElement {
       root.append(document.importNode(template.content, true));
       /** @type {HTMLIFrameElement} */ (root.querySelector("iframe")).addEventListener("load", () => this.#loaded());
       /** @type {HTMLButtonElement} */ (root.querySelector(".back")).onclick = () => {
-        this.#shown = "";
+        // Showing it again is no save: a load just after it gets no grace.
+        this.#shown = this.#pointed = "";
         void this.#show();
       };
     }

@@ -1,6 +1,6 @@
 <!--
   The front matter form: { shown, fields: [{ key, label, value, check | list
-  | date | long | line, number, draft? }], empty, problem, source, describe? }.
+  | date | long | line, number, draft? }], empty, problem, source, describe?, path }.
   A field with `draft` (description, summary) has a <ui-summarizer> under it
   that drafts the field from `source`, the post's prose, and sends
   draft:<key>; `describe` offers the same for a post with no description
@@ -36,13 +36,13 @@
               <template if="f.check"><input id="fm-{{f.key}}" type="checkbox" checked="{{f.value}}" data-action="set:{{f.key}}"></template>
               <template if="f.list"><input id="fm-{{f.key}}" value="{{f.value}}" placeholder="comma, separated" data-action="set:{{f.key}}"></template>
               <template if="f.date"><div class="row"><input id="fm-{{f.key}}" value="{{f.value}}" data-action="set:{{f.key}}"><button type="button" data-action="now:{{f.key}}" title="Set to now">Now</button></div></template>
-              <template if="f.long"><div class="long"><textarea id="fm-{{f.key}}" rows="3" data-action="set:{{f.key}}">{{f.value}}</textarea><template if="f.draft"><ui-summarizer action="draft:{{f.key}}" label="{{f.draft.label}}" kind="{{f.draft.kind}}" context="{{f.draft.context}}">{{source}}</ui-summarizer></template></div></template>
+              <template if="f.long"><div class="long"><textarea id="fm-{{f.key}}" rows="3" data-action="set:{{f.key}}">{{f.value}}</textarea><template if="f.draft"><ui-summarizer action="draft:{{f.key}}" subject="{{path}}" label="{{f.draft.label}}" kind="{{f.draft.kind}}" context="{{f.draft.context}}">{{source}}</ui-summarizer></template></div></template>
               <template if="f.line"><input id="fm-{{f.key}}" value="{{f.value}}" data-action="set:{{f.key}}"></template>
             </div>
             <button type="button" class="remove" key="remove-{{f.key}}" data-action="remove:{{f.key}}" aria-label="Remove {{f.key}}" title="Remove {{f.key}}">×</button>
           </template>
         </div>
-        <template if="describe"><ui-summarizer action="draft:description" label="{{describe.label}}" kind="{{describe.kind}}" context="{{describe.context}}">{{source}}</ui-summarizer></template>
+        <template if="describe"><ui-summarizer action="draft:description" subject="{{path}}" label="{{describe.label}}" kind="{{describe.kind}}" context="{{describe.context}}">{{source}}</ui-summarizer></template>
         <form data-action="add">
           <input name="key" placeholder="New field" aria-label="New field's name" required>
           <input name="value" placeholder="Value" aria-label="New field's value">

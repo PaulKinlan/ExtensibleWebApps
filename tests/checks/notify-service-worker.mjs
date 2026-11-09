@@ -69,10 +69,16 @@ async function run({ check, openTab, URL }) {
 
   // Only an address on this site is ever opened from a notification.
   const addresses = await page.evaluate(async () => {
-    const { addressOf } = await import("/sw/notifications.js");
-    return [addressOf({ data: { url: `${location.origin}/apps/notifier/` } }).pathname, addressOf({ data: { url: "https://elsewhere.example/phish" } }).href, addressOf({}).pathname];
+    const { addressOf, appOf } = await import("/sw/notifications.js");
+    return [
+      addressOf({ data: { url: `${location.origin}/apps/notifier/` } }).pathname,
+      addressOf({ data: { url: "https://elsewhere.example/phish" } }).href,
+      addressOf({}).pathname,
+      appOf({ data: { url: `${location.origin}/apps/notifier`, app: `${location.origin}/apps/notifier/` } }),
+      appOf({ data: { app: "https://elsewhere.example/apps/x/" } }),
+    ];
   });
-  check("a click on a notification opens only an address on this site", addresses[0] === "/apps/notifier/" && addresses[1] === new globalThis.URL("/", URL).href && addresses[2] === "/", JSON.stringify(addresses));
+  check("a click on a notification opens only an address on this site", addresses[0] === "/apps/notifier/" && addresses[1] === new globalThis.URL("/", URL).href && addresses[2] === "/" && addresses[3] === "/apps/notifier/" && addresses[4] === "/", JSON.stringify(addresses));
 
   await page.goto(`${URL}apps/notifier/`);
   const button = '[data-key="notify-sw:go"] button';
@@ -82,10 +88,16 @@ async function run({ check, openTab, URL }) {
   const shown = await page
     .waitForFunction(() => window.__host.traces.find((e) => e.plugin === "notify-sw" && e.detail?.startsWith("shown "))?.detail, null, { timeout: 8000 })
     .then((h) => h.jsonValue(), () => "");
-  const kept = await page.evaluate(async () => (await (await navigator.serviceWorker.ready).getNotifications({ tag: "notify-sw:agent" })).map((n) => ({ title: n.title, url: n.data?.url })));
+  // The page hands it to the service worker, which shows it a moment later.
+  const kept = await page
+    .waitForFunction(async () => {
+      const shown = await (await navigator.serviceWorker.ready).getNotifications({ tag: "notify-sw:agent" });
+      return shown.length ? shown.map((n) => ({ title: n.title, url: n.data?.url, app: n.data?.app })) : false;
+    }, null, { timeout: 5000 })
+    .then((h) => h.jsonValue(), () => []);
   check(
     "a plugin's notification is the service worker's, with the address it came from",
-    shown === "shown true" && kept.length === 1 && kept[0].title === "The writer is done" && /\/apps\/notifier\/$/.test(kept[0].url ?? ""),
+    shown === "shown true" && kept.length === 1 && kept[0].title === "The writer is done" && /\/apps\/notifier\/$/.test(kept[0].url ?? "") && /\/apps\/notifier\/$/.test(kept[0].app ?? ""),
     `${shown} ${JSON.stringify(kept)}`,
   );
 

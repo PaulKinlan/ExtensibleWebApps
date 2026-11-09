@@ -55,6 +55,8 @@ export default class UiSummarizer extends HTMLElement {
 
   /** @param {unknown} value */
   #send(value) {
+    // Taken out of the page while it worked (the post closed): the plugin's view has moved on.
+    if (!this.isConnected) return;
     const action = this.getAttribute("action");
     if (action) this.dispatchEvent(new CustomEvent("ui-action", { bubbles: true, composed: true, detail: { action, value } }));
   }
@@ -64,6 +66,8 @@ export default class UiSummarizer extends HTMLElement {
     const Class = Summarizer();
     if (this.#busy) return;
     if (!Class) return this.#send({ error: "This browser has no on-device summarizer." });
+    // What the text is of, as the plugin named it, sent back with the result so it can tell a late one.
+    const of = this.getAttribute("subject") ?? undefined;
     let text = (this.textContent ?? "").trim();
     if (!text) return this.#send({ error: "There's nothing to summarise yet." });
     const kind = this.getAttribute("kind") ?? "";
@@ -87,7 +91,7 @@ export default class UiSummarizer extends HTMLElement {
       for (;;) {
         try {
           const summary = String(await summarizer.summarize(text)).trim();
-          return this.#send(summary ? { text: summary } : { error: "The summarizer had nothing to say." });
+          return this.#send(summary ? { text: summary, subject: of } : { error: "The summarizer had nothing to say.", subject: of });
         } catch (e) {
           // Too long for the model: summarise the opening, which carries the argument in most writing.
           if (!(e instanceof DOMException && e.name === "QuotaExceededError") || text.length < SHORTEST) throw e;
@@ -95,7 +99,7 @@ export default class UiSummarizer extends HTMLElement {
         }
       }
     } catch (e) {
-      this.#send({ error: describe(e) });
+      this.#send({ error: describe(e), subject: of });
     } finally {
       summarizer?.destroy?.();
       this.#working("");

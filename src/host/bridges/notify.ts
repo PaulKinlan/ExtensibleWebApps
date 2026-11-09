@@ -20,20 +20,17 @@ export default (_host: BridgeHost) => ({
   visible: () => document.visibilityState === "visible" && document.hasFocus(),
   /**
    * Shows a notification; a click on it brings this app forward. False if notifications aren't allowed.
-   * The service worker shows it where there is one (sw/notifications.js), so it stays in the system's
-   * notification centre after every tab closes, and a click then opens the app again at this address.
-   * Without one running yet (the first visit) the page shows it itself.
+   * The service worker shows it (sw/notifications.js, which this page hands it to), so it stays in the
+   * system's notification centre after every tab closes, and a click then opens the app again. A page
+   * the worker doesn't control yet (the first visit) shows it itself, with no click to come back to; that
+   * throws where a page can't (Chrome on Android), which the kernel takes as not shown.
    */
-  async show(note: { title: string; body?: string; tag?: string }) {
+  show(note: { title: string; body?: string; tag?: string }) {
     if (!supported() || Notification.permission !== "granted") return false;
-    const options = { body: note.body, tag: note.tag, icon: (document.querySelector('link[rel="icon"]') as HTMLLinkElement | null)?.href, data: { url: location.href } };
-    const registration = await navigator.serviceWorker?.getRegistration().catch(() => undefined);
-    if (registration?.active) return registration.showNotification(note.title, options).then(() => true, () => false);
-    // Throws where the page can't make one (the kernel takes that as not shown).
-    new Notification(note.title, options).onclick = function () {
-      window.focus();
-      this.close();
-    };
+    const options = { body: note.body, tag: note.tag, icon: (document.querySelector('link[rel="icon"]') as HTMLLinkElement | null)?.href, data: { url: location.href, app: document.baseURI } };
+    const worker = navigator.serviceWorker?.controller;
+    if (worker) worker.postMessage({ t: "sw:notify", title: note.title, options });
+    else new Notification(note.title, options);
     return true;
   },
 });
