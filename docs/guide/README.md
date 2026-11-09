@@ -19,6 +19,7 @@ How to build apps on this platform, from the first page to sharing data between 
 15. [Deploying one app on its own](deploying-an-app.md): one app as a Worker of its own, on its own address, in two commands.
 16. [Loading fast, without jumping](loading-fast.md): what the host does so an app draws early and its page doesn't move while it fills in.
 17. [The plugin registry](plugin-registry.md): plugins the site offers that no app links, which a person adds from Customize, with the plugins that provide the services they need.
+18. [Making an app by describing it](making-apps.md): the app maker writes a whole app, page and plugins, from what a person describes, through review cards; checks it as it runs and fixes it; and keeps every version of every file.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 

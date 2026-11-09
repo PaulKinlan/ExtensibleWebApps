@@ -20,6 +20,8 @@ export const PLATFORM = new Set([
   "server",
   // Plugins' scheduled jobs (services/schedule.ts).
   "schedule",
+  // Apps a person made in the browser, and their files' versions (std/maker/module.ts).
+  "made",
 ]);
 
 export class PathError extends Error {}

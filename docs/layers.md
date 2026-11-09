@@ -98,6 +98,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `agents` | [`std/agents/module.ts`](../std/agents/module.ts) | The `agents` service: counts each agent's runs and tokens, so an agent can't misreport its own use, and tells the app what agents do (`agent:*` hooks). Uses `tools` |
 | `bus` | [`std/bus/module.ts`](../std/bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person, with replies and topics |
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
+| `maker` | [`std/maker/module.ts`](../std/maker/module.ts) | The `maker` service: apps a person makes in the browser (by describing them to the app maker agent), kept on their device and served at /apps/<name>/, saved after a review, with each file's versions and checks |
 | `tools` | [`std/tools/module.ts`](../std/tools/module.ts) | The `tools` service: reads the whole API reference to offer a plugin's service methods to a model as tools |
 
 ### Saying which services a plugin needs

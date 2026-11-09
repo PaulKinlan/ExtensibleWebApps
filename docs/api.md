@@ -644,6 +644,74 @@ Needs: `llm`.
 
 The providers the caller's app links; ready means it has its key.
 
+### maker
+
+Apps a person makes in the browser, kept on their device and served at /apps/<name>/: their files, saved after a review, each file's earlier versions, and checks of an app as written and as it runs.
+
+#### maker.check
+
+`maker.check(app)` → { ok, ran, problems: [{ level, file, line?, message }], plugins }
+
+Needs: `apps:read`.
+
+Checks a made app's files as the kernel will read them, then, if it is open (its preview reloads), what went wrong as it ran. ran is false if it isn't open anywhere. ok is true when there are no errors.
+
+#### maker.history
+
+`maker.history(app, file)` → [{ version, at, by, note, removed? }]
+
+Needs: `apps:read`.
+
+The versions of one file of a made app, oldest first.
+
+#### maker.list
+
+`maker.list()` → [{ name, title, url, files }]
+
+Needs: `apps:read`.
+
+The apps the person has made.
+
+#### maker.read
+
+`maker.read(app, file)` → the file's text
+
+Needs: `apps:read`.
+
+One file of a made app, as it is now.
+
+#### maker.remove
+
+`maker.remove(app, file?)` → { ok } or { ok: false, error }
+
+Needs: `apps:make`, and the person's review.
+
+Removes one file of a made app, or with no file the whole app, once the person accepts. Its history is kept.
+
+#### maker.restore
+
+`maker.restore(app, file, version)` → { ok, versions } or { ok: false, error }
+
+Needs: `apps:make`, and the person's review.
+
+Puts an earlier version of a file back, once the person accepts. It becomes the newest version, so it can be undone the same way.
+
+#### maker.save
+
+`maker.save(app, files, note?)` → { ok, url, saved, versions, problems } or { ok: false, error, problems? }
+
+Needs: `apps:make`, and the person's review.
+
+Writes files of a made app, or makes a new one (its first save must hold app.html), once the person accepts one review that shows every change. Returns the checks of the app as saved.
+
+#### maker.version
+
+`maker.version(app, file, version)` → the file's text at that version
+
+Needs: `apps:read`.
+
+One earlier version of a file.
+
 ### net
 
 Web requests the kernel makes for a plugin, to the hosts its manifest names. A header can hold a secret the plugin never sees.
@@ -1116,6 +1184,22 @@ Mode: `waterfall`, 2000 ms per listener, fails open. Listening needs `provide:ll
 
 Listeners get `{ providers: [{ id, name, model?, ready }] }`.
 
+### `maker:changed`
+
+A made app's files were saved, restored or removed (maker.save, maker.restore, maker.remove).
+
+Mode: `emit`. Listening needs `apps:read`.
+
+Listeners get `{ app, files, removed? }`.
+
+### `maker:check`
+
+maker.check wants the app opened again, to see it run: a preview of it (std/maker/your-apps.js) reloads.
+
+Mode: `emit`. Listening needs `apps:read`.
+
+Listeners get `{ app }`.
+
 ### `plugins:changed`
 
 A plugin was installed, removed, or turned on or off (`change` is install, uninstall, enable or disable, and `id` is the plugin), or a tab opened its app (`change` is open, and `id` is the tab), so plugins.app() may answer differently.
@@ -1181,6 +1265,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `agents:run:<agent>` | Call agents.run. |
+| `apps:make` | Call maker.save, maker.remove, maker.restore. |
+| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.check. |
 | `audio` | Call audio.registerProcessor, audio.play, audio.cancel. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |
@@ -1255,6 +1341,7 @@ Reserved ids, which no plugin can take:
 - `host`
 - `kernel`
 - `llm`
+- `maker`
 - `net`
 - `page`
 - `plugins`
@@ -1271,7 +1358,7 @@ Reserved ids, which no plugin can take:
 - `tools`
 - `transfer`
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`, `made`.
 
 ## Collections
 
@@ -1321,6 +1408,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-diagram>` | label | A Mermaid diagram: its text content is the diagram, in Mermaid's language (flowchart, sequenceDiagram, …). `label` says what it shows, for screen readers. Mermaid loads the first time one is drawn. |
 | `<ui-markdown>` | src, pages="/docs/", repo, sets-title, compact | A Markdown file in the template's folder (or below it), drawn as a page, with ```mermaid blocks as diagrams. Raw HTML in it shows as text. `pages` is a folder whose .md files are this app's screens (links to them drop .md); `repo` is where links to source go; `sets-title` makes its first heading the page's title; `compact` is for a list of contents. |
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
+| `<ui-preview>` | app="<name>", revision, label | A working copy of an app the person made in the browser (std/maker/), from /apps/<name>/, in a frame, with a link to open it in its own tab. Changing `revision` opens it again. |
 
 ### Actions
 
