@@ -827,8 +827,30 @@ async function oauthChecks(base, check) {
     JSON.stringify({ late, notLinked, invited }),
   );
 
-  const parsed = providersFrom({ AUTH_PROVIDERS: JSON.stringify([null, { id: "constructor", clientId: "c", authorize: "https://a.example/a", token: "https://a.example/t", user: "https://a.example/u" }]), CONSTRUCTOR_CLIENT_SECRET: "s" }, providerModules);
-  check("other sites: a configuration entry that isn't an object is skipped, and any id without a preset uses its own URLs", parsed.length === 1 && parsed[0].authorize === "https://a.example/a", JSON.stringify(parsed.map((p) => p.authorize)));
+  const parsed = providersFrom({ AUTH_PROVIDERS: JSON.stringify([{ id: "constructor", clientId: "c", authorize: "https://a.example/a", token: "https://a.example/t", user: "https://a.example/u" }]), CONSTRUCTOR_CLIENT_SECRET: "s" }, providerModules);
+  check("other sites: an id without a preset (even one named like an Object property) uses its own URLs", parsed.length === 1 && parsed[0].authorize === "https://a.example/a", JSON.stringify(parsed.map((p) => p.authorize)));
+  const refusal = (env) => {
+    try {
+      providersFrom(env, providerModules);
+      return "";
+    } catch (error) {
+      return String(error.message);
+    }
+  };
+  const wrong = [
+    refusal({ AUTH_PROVIDERS: "not json" }),
+    refusal({ AUTH_PROVIDERS: JSON.stringify({ id: "github" }) }),
+    refusal({ AUTH_PROVIDERS: JSON.stringify([null]) }),
+    refusal({ AUTH_PROVIDERS: JSON.stringify([{ id: "github", clientId: "c" }]) }),
+    refusal({ AUTH_PROVIDERS: JSON.stringify([{ id: "nowhere", clientId: "c" }]), NOWHERE_CLIENT_SECRET: "s" }),
+    refusal({ AUTH_PROVIDERS: JSON.stringify([{ id: "bluesky" }, { id: "bluesky" }]) }),
+    refusal({ AUTH_PROVIDERS: JSON.stringify([{ id: "odd", clientId: "c", authorize: true, token: "ftp://a.example/t", user: "https://a.example/u" }]), ODD_CLIENT_SECRET: "s" }),
+  ];
+  check(
+    "other sites: sign-in providers set up wrong stop the server starting, naming what is wrong (not JSON, not a list, an entry that isn't an object, a missing secret, an id with no module or URLs, URLs that aren't http(s), one listed twice); none set is no providers",
+    /isn't JSON/.test(wrong[0]) && /JSON list/.test(wrong[1]) && /entry 1 isn't an object/.test(wrong[2]) && /github needs the secret GITHUB_CLIENT_SECRET/.test(wrong[3]) && /nowhere needs a provider module/.test(wrong[4]) && /bluesky is listed twice/.test(wrong[5]) && /odd's authorize, token must be http\(s\) URLs/.test(wrong[6]) && providersFrom({}, providerModules).length === 0,
+    JSON.stringify(wrong),
+  );
 }
 
 /** Spaces with members (src/server/auth/accounts.ts): who may make, join, invite to and leave a space. */
