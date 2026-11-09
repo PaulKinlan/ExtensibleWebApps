@@ -179,6 +179,92 @@ async function device(base, space, cookie, { claim } = {}) {
 }
 
 /** Sync (src/kernel/sync.ts): the space orders changes from its members' devices, refuses stale ones, and lets a device catch up. */
+/** Space plugins (src/kernel/shared-plugins.ts): the space keeps what members share, tells every device, and never runs it. */
+async function sharedPluginChecks(base, check, owner) {
+  const cal = await person(base).account("Cal");
+  await owner.call("/auth/spaces", { name: "club" });
+  await cal.call("/auth/invites/accept", { token: (await owner.call("/auth/spaces/club/invite", {})).body?.token });
+  const ownerId = (await owner.call("/auth/me")).body?.user?.id;
+  const mine = await client(base, "club", owner.cookie);
+  const theirs = await client(base, "club", cal.cookie);
+  let n = 0;
+  const ask = (who, request) => {
+    const id = ++n;
+    who.send({ t: "sync", op: "plugins", id, ...request });
+    return new Promise((done) => {
+      const end = Date.now() + 5000;
+      const look = () => {
+        const reply = who.heard.find((m) => m.op === "plugins:reply" && m.id === id);
+        if (reply || Date.now() > end) return done(reply);
+        setTimeout(look, 50);
+      };
+      look();
+    });
+  };
+  for (const who of [mine, theirs]) who.send({ t: "sync", op: "hello", since: 0 });
+  await new Promise((r) => setTimeout(r, 300));
+
+  // A plugin that would answer a public route if the space ran it.
+  const source = `export const manifest = { id: "club-note", name: "Club note", runs: "both", permissions: ["routes"], files: ["club-note.html"] };
+export default (ctx) => { ctx.routes.add("GET", "club-note", () => ({ text: "ran on the server" })); };`;
+  const shared = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: source }, { name: "club-note.html", text: "<template>hi</template>" }] });
+  await new Promise((r) => setTimeout(r, 300));
+  const told = theirs.heard.some((m) => m.op === "plugins:changed");
+  const listed = await ask(theirs, { action: "list" });
+  const got = await ask(theirs, { action: "get", app: "demos/contacts", plugin: "club-note" });
+  const entry = listed?.list?.find((p) => p.id === "club-note");
+  check(
+    "space plugins: a plugin a member shares is kept by the space, every device hears of it, and another member gets its files, saying who shared it",
+    shared?.ok && typeof shared.hash === "string" && told && entry?.app === "demos/contacts" && entry.by === ownerId && entry.hash === shared.hash && got?.files?.length === 2 && got.files[0].text === source,
+    JSON.stringify({ shared, told, listed, got: got && { ok: got.ok, files: got.files?.map((f) => f.name) } }),
+  );
+
+  mine.send({ t: "sync", op: "app", app: "demos/contacts" });
+  await new Promise((r) => setTimeout(r, 1000));
+  const routes = await Promise.all(["/s/club/demos/contacts/club-note", "/s/club/user/demos/contacts/club-note", "/s/club/club-note"].map((path) => fetch(`${base}${path}`).then((r) => r.text(), () => "")));
+  check("space plugins: the space never runs a plugin a member shared, even one that says it runs on the server", routes.every((text) => !text.includes("ran on the server")));
+
+  const two = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "a.js", text: source }, { name: "b.js", text: source.replace("club-note", "other-note") }] });
+  const big = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: source }, { name: "club-note.html", text: "x".repeat(800_000) }] });
+  const badApp = await ask(mine, { action: "add", app: "../etc", files: [{ name: "club-note.js", text: source }] });
+  const notPlugin = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: "export default 1;" }] });
+  const unlisted = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: source }, { name: "club-note.html", text: "<template></template>" }, { name: "stray.txt", text: "x" }] });
+  const clash = await ask(theirs, {
+    action: "add",
+    app: "demos/contacts",
+    files: [{ name: "other-note.js", text: 'export const manifest = { id: "other-note", name: "Other", permissions: [], files: ["club-note.html"] };\nexport default () => {};' }, { name: "club-note.html", text: "<template>mine now</template>" }],
+  });
+  const kept = await ask(theirs, { action: "get", app: "demos/contacts", plugin: "club-note" });
+  check(
+    "space plugins: the space refuses two plugins at once, one over 700 KB, an app that isn't a folder, a file that isn't a plugin, a file its manifest doesn't list, and a file another plugin has",
+    [two, big, badApp, notPlugin, unlisted, clash].every((r) => r && r.ok === false && r.error) && kept?.files?.find((f) => f.name === "club-note.html")?.text === "<template>hi</template>",
+    JSON.stringify([two, big, badApp, notPlugin, unlisted, clash].map((r) => r?.error)),
+  );
+
+  // A new version that no longer lists its template: the old template goes, and others' lists change.
+  const leaner = source.replace(', files: ["club-note.html"]', "");
+  const changed = await ask(mine, { action: "add", app: "demos/contacts", files: [{ name: "club-note.js", text: leaner }] });
+  const now = await ask(theirs, { action: "get", app: "demos/contacts", plugin: "club-note" });
+  const relisted = await ask(theirs, { action: "list" });
+  check(
+    "space plugins: a new version replaces the old, leaving none of the files it no longer lists, with a new hash",
+    changed?.ok && changed.hash !== shared?.hash && now?.files?.length === 1 && now.files[0].text === leaner && relisted?.list?.find((p) => p.id === "club-note")?.hash === changed.hash,
+    JSON.stringify({ changed, files: now?.files?.map((f) => f.name) }),
+  );
+
+  const before = theirs.heard.filter((m) => m.op === "plugins:changed").length;
+  const removed = await ask(theirs, { action: "remove", app: "demos/contacts", plugin: "club-note" });
+  await new Promise((r) => setTimeout(r, 300));
+  const after = await ask(mine, { action: "list" });
+  check(
+    "space plugins: any member can remove a shared plugin, and every device hears it went",
+    removed?.ok && !after?.list?.some((p) => p.id === "club-note") && mine.heard.some((m) => m.op === "plugins:changed") && theirs.heard.filter((m) => m.op === "plugins:changed").length > before,
+    JSON.stringify({ removed, after }),
+  );
+  mine.close();
+  theirs.close();
+}
+
 async function syncChecks(base, check, owner, restart) {
   const bea = await person(base).account("Bea");
   await owner.call("/auth/spaces", { name: "shared" });
@@ -829,6 +915,7 @@ async function suite(name, make) {
     await memberChecks(server.url, check, owner);
     await oauthChecks(server.url, check);
     await blueskyChecks(server.url, check, atproto);
+    await sharedPluginChecks(server.url, check, owner);
     await syncChecks(server.url, check, owner, async () => {
       await server.stop();
       server = await host.start();

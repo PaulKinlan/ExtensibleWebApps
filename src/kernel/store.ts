@@ -96,6 +96,16 @@ export class Store extends Service {
     }
   }
 
+  /** Reads any file, text or binary, or undefined if there is none. Callers check the path. */
+  async readBytes(path: string): Promise<Uint8Array | undefined> {
+    await this.ready;
+    try {
+      return (await this.files!.read(path)) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** Writes any file, text or binary (an image a plugin brings), in the same queue as writeText. */
   writeFile(path: string, data: Blob | string): Promise<void> {
     return this.queue(async () => this.files!.write(path, typeof data === "string" ? data : new Uint8Array(await data.arrayBuffer())));

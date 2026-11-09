@@ -72,7 +72,7 @@ These are capabilities with trusted code in the kernel: an app may use them, but
 | `commands` | [`services/commands.ts`](../src/kernel/services/commands.ts) | Commands from any plugin, run from a palette or a key |
 | `router`, `share`, `audio`, `page` | [`services/router.ts`](../src/kernel/services/router.ts), [`services/share.ts`](../src/kernel/services/share.ts), [`services/audio.ts`](../src/kernel/services/audio.ts), [`services/page.ts`](../src/kernel/services/page.ts) | Bridges to what only a page can do |
 | `reflect` | [`services/reflect.ts`](../src/kernel/services/reflect.ts) | A read-only view of the whole kernel, for debuggers |
-| spaces | [`sync.ts`](../src/kernel/sync.ts), [`sync-device.ts`](../src/kernel/sync-device.ts), [`server-apps.ts`](../src/kernel/server-apps.ts), [`routes.ts`](../src/kernel/routes.ts), [`services/sync.ts`](../src/kernel/services/sync.ts) | Sync with a space, plugins on its server, public routes |
+| spaces | [`sync.ts`](../src/kernel/sync.ts), [`sync-device.ts`](../src/kernel/sync-device.ts), [`server-apps.ts`](../src/kernel/server-apps.ts), [`shared-plugins.ts`](../src/kernel/shared-plugins.ts), [`routes.ts`](../src/kernel/routes.ts), [`services/sync.ts`](../src/kernel/services/sync.ts) | Sync with a space, space plugins (shared to members' browsers), plugins on its server, public routes |
 
 ### Kernel modules
 

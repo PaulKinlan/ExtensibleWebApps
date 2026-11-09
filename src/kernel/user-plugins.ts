@@ -58,6 +58,14 @@ export function userPlugins(store: Store, origin: string, space?: string) {
     return state;
   };
   const save = () => store.writeJson(STATE, state);
+  /**
+   * Who hears when a plugin is added or removed here by the person, so a device in a space can share it
+   * with the space (shared-plugins.ts). What the space sends is added with `quiet`, and isn't heard.
+   */
+  const changed = new Set<(change: { app: string; added?: string[]; removed?: string }) => void>();
+  const tell = (change: { app: string; added?: string[]; removed?: string }) => {
+    for (const heard of changed) heard(change);
+  };
 
   async function list(app: string): Promise<UserPlugin[]> {
     checkApp(app);
@@ -89,6 +97,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
 
   return {
     list,
+    changed,
 
     /** The plugins to start with the app: the person's, that are on. */
     async links(app: string): Promise<{ href: string; source: string }[]> {
@@ -110,7 +119,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
      * Adds files to an app's folder: plugins (.js) and the files they bring. Each plugin's manifest is
      * read first, and nothing is written if any is refused. A plugin that is added starts off.
      */
-    async add(app: string, files: { name: string; data: Blob | string }[]): Promise<{ ok: true; ids: string[] } | { ok: false; error: string }> {
+    async add(app: string, files: { name: string; data: Blob | string }[], { quiet = false } = {}): Promise<{ ok: true; ids: string[] } | { ok: false; error: string }> {
       checkApp(app);
       if (!Array.isArray(files) || !files.length || files.length > 21) return { ok: false, error: "Add between 1 and 21 files" };
       const ids: string[] = [];
@@ -134,6 +143,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
       for (const f of files) await store.writeFile(`user/${app}/${names.get(f) ?? f.name}`, f.data);
       for (const id of ids) await setOn(app, id, false);
       record({ kind: "lifecycle", name: "user-plugin:add", detail: `${app}: ${files.map((f) => f.name).join(", ")}` });
+      if (!quiet) tell({ app, added: ids });
       return { ok: true, ids };
     },
 
@@ -164,7 +174,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
     off: (app: string, id: string) => setOn(checkApp(app), id, false),
 
     /** Removes a plugin and the files its manifest lists. */
-    async remove(app: string, id: string): Promise<boolean> {
+    async remove(app: string, id: string, { quiet = false } = {}): Promise<boolean> {
       const plugin = (await list(app)).find((p) => p.id === id);
       if (!plugin) return false;
       const source = (await store.readText(`user/${app}/${plugin.file}`)) ?? "";
@@ -172,6 +182,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
       for (const name of [plugin.file, ...files]) if (FILE_NAME.test(name)) await store.removeFile(`user/${app}/${name}`);
       await setOn(app, id, false);
       record({ kind: "lifecycle", name: "user-plugin:remove", plugin: id, detail: app });
+      if (!quiet) tell({ app, removed: id });
       return true;
     },
   };
