@@ -62,12 +62,31 @@ export async function mcpRequest(
 export function mcpResponse(result: RouteResponse | null): Response {
   if (!result) return rpcError(503, "The space didn't answer");
   const status = Number.isInteger(result.status) ? result.status! : 200;
-  if (status === 202 || !("json" in result)) return answer(status === 200 ? 202 : status);
-  return answer(status, result.json);
+  if ("json" in result) return answer(status, result.json);
+  if (status === 200 || status === 202) return answer(202);
+  // The host's own failure (the space didn't answer in time): still a JSON-RPC error, which an MCP client can read.
+  return rpcError(status, typeof result.text === "string" && result.text ? result.text : "The space couldn't answer");
 }
 
+/** The body as text, read only up to MAX_BODY bytes: null, without reading the rest, if it's longer. */
 async function readText(request: Request): Promise<string | null> {
   if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) return null;
-  const buffer = await request.arrayBuffer();
-  return buffer.byteLength > MAX_BODY ? null : new TextDecoder().decode(buffer);
+  if (!request.body) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MAX_BODY) {
+      await reader.cancel().catch(() => {});
+      return null;
+    }
+    chunks.push(value);
+  }
+  const all = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) all.set(chunk, (at += chunk.byteLength) - chunk.byteLength);
+  return new TextDecoder().decode(all);
 }

@@ -57,6 +57,8 @@ export async function mcpChecks(base, check, owner, stranger) {
   const otherKey = (await owner.call("/auth/keys", { space: "elsewhere", name: "Other" })).body?.key;
   const wrongSpace = await rpc("tools/list", undefined, { auth: otherKey });
   check("mcp: only a member's agent key for this space gets in", nobody.status === 401 && forged.status === 401 && wrongSpace.status === 401, JSON.stringify([nobody.status, forged.status, wrongSpace.status]));
+  const huge = await fetch(address, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${key}` }, body: JSON.stringify({ jsonrpc: "2.0", id: 0, method: "ping", params: { pad: "x".repeat(300 * 1024) } }) });
+  check("mcp: a body over the limit is refused with a JSON-RPC error", huge.status === 413 && (await huge.json().catch(() => null))?.error?.message, String(huge.status));
   const fromPage = await rpc("tools/list", undefined, { origin: "https://elsewhere.example" });
   check("mcp: a page on another site can't call it from someone's browser", fromPage.status === 403, String(fromPage.status));
 
