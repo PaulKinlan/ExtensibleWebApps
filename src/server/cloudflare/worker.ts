@@ -31,7 +31,7 @@ import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
 import { providerModules } from "../auth/providers/index.ts";
 import { type Decision, frontDoor, unrouted } from "../front-door.ts";
-import { mcpAddress, mcpRequest, mcpResponse } from "../mcp.ts";
+import { mcpAddress, mcpRequest, mcpResponse, mcpStream } from "../mcp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
 import { transferRoute } from "../transfer.ts";
@@ -326,7 +326,13 @@ async function mcp(request: Request, env: Env): Promise<Response | undefined> {
   const accounts = env.ACCOUNTS.getByName("accounts");
   const asked = await mcpRequest(request, at, (authorization, space, plugin) => accounts.agent(authorization, space, plugin));
   if (asked instanceof Response) return asked;
-  return mcpResponse(await env.SPACE.getByName(at.space).route(at.space, url.origin, asked));
+  const space = env.SPACE.getByName(at.space);
+  // A client's GET stream stays open in the Worker, which asks the space's object now and then; the object isn't held open.
+  if (asked.method === "GET") {
+    const authorization = request.headers.get("authorization");
+    return mcpStream(asked, (knock) => space.route(at.space, url.origin, knock), { allowed: async () => !!(await accounts.agent(authorization, at.space, at.plugin)) });
+  }
+  return mcpResponse(await space.route(at.space, url.origin, asked));
 }
 
 /** A request to /s/<space>/<path> that one of the space's server plugins answers; undefined when none does. */
