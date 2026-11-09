@@ -432,6 +432,14 @@ Needs: `plugins:author`.
 
 Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn().
 
+#### authoring.arrange
+
+`authoring.arrange(plugin?, place?)` → true
+
+Needs: `plugins:read`.
+
+Starts the page's arrange mode, where the person sees every plugin's view that can move and drags or points it somewhere else; with a plugin (and place), that one is picked to move.
+
 #### authoring.check
 
 `authoring.check(code)` → { ok: true, manifest: { id, name, description, scope }, permissions: [{ name, about }] } or { ok: false, error }
@@ -439,6 +447,14 @@ Adds a plugin from this site, such as one in the registry at /packages/, to the 
 Needs: `plugins:read`.
 
 Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do.
+
+#### authoring.choose
+
+`authoring.choose(prompt?)` → { at, put, label } or null
+
+Needs: `plugins:author`.
+
+Asks the person to point at a spot on the page, and says where: a selector and before, after, prepend or append, ready for a place in a new plugin's manifest. null if they cancel.
 
 #### authoring.copy
 
@@ -464,6 +480,14 @@ Needs: `plugins:read`.
 
 Starts the page's inspect mode, where the person points at a part to see which plugin drew it.
 
+#### authoring.layout
+
+`authoring.layout()` → { slots: [{ name, plugins }], parts: [{ selector, name, mark }], elements: [{ tag, attributes, about }] }
+
+Needs: `plugins:read`.
+
+Where plugins can go on the caller's page: the page's slots and which plugins draw in each, the parts its author named (ids, data-part, landmarks) with the mark that governs adding there (open, review or locked), and the ui-* elements a view can use.
+
 #### authoring.lock
 
 `authoring.lock(plugin, place)` → { ok: true }
@@ -479,6 +503,14 @@ Locks a part of the page again, for a plugin that was let into it.
 Needs: `plugins:author`.
 
 The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).
+
+#### authoring.move
+
+`authoring.move(plugin, place, to)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:manage`.
+
+Moves one of a plugin's places in the caller's app to another spot on the page, for this person: to is { at, put, order? } with put before, after, prepend or append, or null to put it back where the plugin said. A place that hides, replaces, draws in every match or changes another plugin's view can't be moved. The author's locks still hold at the new spot.
 
 #### authoring.packages
 
@@ -1918,9 +1950,9 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `network:<host>` | Call net.fetch. |
 | `notify` | Call notify.state, notify.request, notify.show. |
 | `outside` | Call outside.open, outside.close, outside.status. |
-| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
-| `plugins:manage` | Call authoring.turn, plugins.setEnabled. |
-| `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.inspect, authoring.check, plugins.app. |
+| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.choose, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
+| `plugins:manage` | Call authoring.turn, authoring.move, plugins.setEnabled. |
+| `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.arrange, authoring.layout, authoring.inspect, authoring.check, plugins.app. |
 | `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source, sync.reflect, sync.trace. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
@@ -1991,7 +2023,7 @@ Reserved ids, which no plugin can take:
 - `tools`
 - `transfer`
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`, `made`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`, `made`, `moves`.
 
 ## Collections
 
@@ -2042,7 +2074,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-diagram>` | label | A Mermaid diagram: its text content is the diagram, in Mermaid's language (flowchart, sequenceDiagram, …). `label` says what it shows, for screen readers. Mermaid loads the first time one is drawn. |
 | `<ui-markdown>` | src, pages="/docs/", repo, sets-title, compact | A Markdown file in the template's folder (or below it), drawn as a page, with ```mermaid blocks as diagrams. Raw HTML in it shows as text. `pages` is a folder whose .md files are this app's screens (links to them drop .md); `repo` is where links to source go; `sets-title` makes its first heading the page's title; `compact` is for a list of contents. |
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
-| `<ui-panel>` | label, toggle | A button labelled `label` that opens a panel above the page, holding the element's content; where the button sits is up to the slot. `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-close` closes the panel as well as sending its action. |
+| `<ui-panel>` | label, toggle, reopen | A button labelled `label` that opens a panel above the page, holding the element's content; where the button sits is up to the slot. `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-close` closes the panel as well as sending its action; a new value of `reopen` opens it again. |
 | `<ui-preview>` | app="<name>", revision, label | A working copy of an app the person made in the browser (std/maker/), from /apps/<name>/, in a frame, with a link to open it in its own tab. Changing `revision` opens it again. |
 | `<ui-dictation>` | action, label, lang | A button that listens, with the browser's speech recognition, while it is pressed in. `action` is sent with { listening: true } when the microphone is on, { text, final } for what it hears (final: false while a phrase is still changing), and { listening: false, error? } when it stops. Disabled, saying why, in a browser without speech recognition. |
 | `<ui-site-preview>` | address="http://localhost:1313/…", revision, label, action | A page from a web server on the person's own device (localhost, 127.0.0.1), such as a site's `hugo server`, in a frame; any other address isn't shown. It checks the server first, and sends `action` with "up", "down" or "blocked" (the browser won't let the site reach the device). Changing `revision` checks again and reloads it. |
@@ -2173,5 +2205,6 @@ For devtools and tests, from the page: `window.__host.command(name, arg)`.
 | `user:unshare` | ({ app, id }) In a space: stops sharing a space plugin. It goes from the other members' devices and stays here as the person's own. |
 | `place:ask` | ({ app, plugin, place, target, what }) Asks the person, on a review card, to let a plugin change a place the author marked review. |
 | `place:unlock` | ({ app, plugin, place }) Lets a plugin into a place the author locked, because the person said so. |
+| `place:move` | ({ app, plugin, place, to }) Moves a plugin's place to where the person put it in arrange mode: to is { at, put, order? }, or null to put it back (src/kernel/moves.ts). |
 | `place:lock` | ({ app, plugin, place }) Takes that back. |
 | `route` | ({ method, path, query, form }) Answers a request with the plugin route for it, or null. The service worker sends these through a tab. |

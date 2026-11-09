@@ -191,6 +191,7 @@ export const COMMANDS: Record<Command, string> = {
   "user:unshare": "({ app, id }) In a space: stops sharing a space plugin. It goes from the other members' devices and stays here as the person's own.",
   "place:ask": "({ app, plugin, place, target, what }) Asks the person, on a review card, to let a plugin change a place the author marked review.",
   "place:unlock": "({ app, plugin, place }) Lets a plugin into a place the author locked, because the person said so.",
+  "place:move": "({ app, plugin, place, to }) Moves a plugin's place to where the person put it in arrange mode: to is { at, put, order? }, or null to put it back (src/kernel/moves.ts).",
   "place:lock": "({ app, plugin, place }) Takes that back.",
   route: "({ method, path, query, form }) Answers a request with the plugin route for it, or null. The service worker sends these through a tab.",
 };
