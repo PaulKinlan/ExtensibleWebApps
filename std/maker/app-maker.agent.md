@@ -74,6 +74,15 @@ clash with another app's.
 </html>
 ```
 
+Two optional lines make the installed app a place to open files or share
+to. `<meta name="file-handlers" content=".csv .tsv">` opens those files at
+the app (a plugin with `permissions: ["launch"]` and `services: ["launch"]`
+takes them with `await ctx.call("launch", "take")` on `launch:received`);
+`<meta name="share-target" content="title text url">` receives shared pages
+(`permissions: ["share"]`, `services: ["share"]`, `ctx.call("share",
+"take")` on `share:received`). Name a file the platform doesn't know as
+`type/subtype:.ext`. Leave both out unless the app needs them.
+
 ## A plugin that owns data
 
 ```js
@@ -153,9 +162,21 @@ up to date, so prefer them to hand-made forms and tables. Schema types:
 - Elements for views: `ui-card`, `ui-stack`, `ui-grid`, `ui-toolbar`,
   `ui-spacer`, `ui-badge` (`tone="accent|ok|warn|danger"`), `ui-stat`,
   `ui-empty`, `ui-form`, `ui-table`. Plain HTML too, but no scripts, `style=`
-  attributes, iframes, SVG or `on…=` handlers: style with `class` and a
-  `<style>` at the top of the template file, using the design tokens such as
-  `var(--space-2)`, `var(--fg-2)`, `var(--accent)`.
+  attributes (except custom properties set to numbers), iframes or `on…=`
+  handlers: style with `class` and a `<style>` at the top of the template
+  file, using the design tokens such as `var(--space-2)`, `var(--fg-2)`,
+  `var(--accent)`.
+- Charts and icons: an `<svg>` in a template, with shapes from data through
+  `<template for>` inside it (`<rect x="{{b.x}}" height="{{b.h}}">`).
+  `href` and `url()` may only name an `#id` in the same template; no
+  `<script>`, `<foreignObject>`, `<image>` or `<a>` in it.
+- Drawing: `<canvas id="pad" width="640" height="360" pointer>` in a
+  template is handed to the plugin's worker with
+  `ctx.ui.onCanvas("pad", (canvas, theme) => …)`; with `pointer`, taps and
+  drags arrive as `ctx.ui.onEvent` action `canvas:pointer`, `{ canvas, type,
+  x, y }`. A plugin that draws needs `scope: "tab"` in its manifest.
+- Pictures: `<img src="…">` may be any picture on this site
+  (`/app-icon.svg`, `../images/x.png`), with no `?query`.
 
 ## Games and sound
 

@@ -1,0 +1,39 @@
+<!doctype html>
+<!--
+  Doodle: draw with a finger or a mouse, and see a chart of your strokes.
+  One plugin, two files, and both kinds of drawing a template can hold:
+
+  doodle.js    draws on the canvas in its worker, from the taps and drags
+               the page sends it, and counts strokes by colour
+  doodle.html  the template: a <canvas id="pad" pointer> the plugin draws
+               on, an <svg> bar chart filled from data with <template for>,
+               and the site's icon from another folder (/app-icon.svg)
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Doodle</title>
+  <meta name="description" content="Draw with a finger or a mouse, and see a chart of your strokes.">
+  <meta name="gallery" content="showcase">
+  <meta name="gallery-about" content="A pad to draw on, and a chart of your strokes by colour.">
+  <meta name="gallery-shows" content="a canvas and an SVG chart in a template, a picture from another folder.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="doodle.js">
+</head>
+<body>
+  <header>
+    <h1>Doodle</h1>
+    <nav class="site" aria-label="This site">
+      <a href="/">Home</a>
+      <a href="/demos/">All demos</a>
+      <a href="/docs/">Docs</a>
+      <a href="/workbench/">Workbench</a>
+    </nav>
+  </header>
+  <main>
+    <slot name="main"><p>Getting the pad out…</p></slot>
+  </main>
+</body>
+</html>

@@ -138,10 +138,49 @@ Attributes for each are in the [API reference](../api.md#components).
 
 The host keeps only listed elements and attributes ([`src/shared/html.ts`](../../src/shared/html.ts)), and drops the rest:
 
-- No `<script>`, `<style>` (inside a view), `<iframe>`, `<object>`, `<svg>`, or event attributes (`onclick`).
+- No `<script>`, `<style>` (inside a view), `<iframe>`, `<object>`, or event attributes (`onclick`). `<svg>` and `<canvas>` are allowed, with their own rules: see [Drawing](#drawing-svg-and-canvas).
 - A `style` attribute keeps only custom properties set to numbers, such as `style="--pct: {{pct}}"` or `--w: 12.5rem`, up to 8. That's how data sizes things: the plugin's stylesheet uses them (`width: calc(var(--pct) * 1%)`). Anything else in it is dropped. For everything else use `class` with the plugin's stylesheet, or `data-*` and `aria-*` attributes the page's CSS can target.
-- Links open in a new tab and must be `https:`, `http:`, `mailto:` or `#`. Images must be `data:` images, or `https:` for plugins with the `network` permission.
+- Links open in a new tab and must be `https:`, `http:`, `mailto:` or `#`. Images must be `data:` images, `https:` for plugins with the `network` permission, or a picture on this site (`.png`, `.jpg`, `.gif`, `.webp`, `.avif`, `.svg`, `.ico`) with no `?query`: relative to the template file (`tram.svg`, `../images/tram.svg`), or from the site's root (`/app-icon.svg`). A picture on the site is a plain file, not a request to its server, so it needs no permission.
 - Unknown elements are unwrapped, so their text stays.
 - `id` and `for` are prefixed per plugin, so a plugin's `<label for>` can't point at another's input. The page's `id` isn't the one you wrote (`board_<tab>--cover-x`, not `cover-x`), so CSS and tests should find things by class or a `data-*` attribute instead.
+
+## Drawing: SVG and canvas
+
+A template can draw two ways. [`demos/doodle/`](../../demos/doodle/) does both in one template.
+
+**SVG**, for charts and icons. An `<svg>` keeps shapes, text, gradients, clips, masks, markers and simple filters ([the list](../api.md#svg-in-views), in [`src/shared/svg.ts`](../../src/shared/svg.ts)), and `<template for>` and `<template if>` work inside it, so bars can come from data:
+
+```html
+<svg class="chart" viewBox="0 0 210 140" role="img" aria-label="Strokes by colour">
+  <defs>
+    <linearGradient id="sheen" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity="0.45"></stop>
+      <stop offset="1" stop-color="#fff" stop-opacity="0"></stop>
+    </linearGradient>
+  </defs>
+  <template for="b of bars">
+    <rect x="{{b.x}}" y="{{b.y}}" width="36" height="{{b.h}}" fill="{{b.hex}}"><title>{{b.label}}</title></rect>
+    <rect x="{{b.x}}" y="{{b.y}}" width="36" height="{{b.h}}" fill="url(#sheen)"></rect>
+  </template>
+</svg>
+```
+
+Nothing in it can run or load: `<script>`, `<foreignObject>`, `<image>`, `<a>`, `<style>` and animation elements go with everything inside them, and `href` (on `use` and `textPath`) and `url()` (in `fill`, `stroke`, `clip-path`, `mask`, `filter` and markers) may only name an `#id` in the same view. Ids are prefixed per plugin like any other, and `url(#sheen)` and `href="#sheen"` follow them. Write the `<svg>` in the template file; style its shapes from the file's `<style>` with `class`.
+
+**Canvas**, for drawing that changes every frame or follows a finger. `<canvas id="pad" width="640" height="360" pointer>` is handed to the plugin's worker as an OffscreenCanvas:
+
+```js
+export const manifest = { id: "doodle", name: "Doodle", permissions: ["ui"], scope: "tab" };
+
+export default async function (ctx) {
+  ctx.ui.onCanvas("pad", (canvas, theme) => { /* draw with canvas.getContext("2d") */ });
+  ctx.ui.onEvent((action, value) => {
+    if (action === "canvas:pointer") { /* { canvas: "pad", type: "down" | "move" | "up" | "cancel", x, y, id, kind } */ }
+  });
+  ctx.ui.views("doodle.html").render("main", "doodle", {});
+}
+```
+
+The id names it for `onCanvas`, and the same canvas stays through redraws while its id does. `width` and `height` are its pixels (up to 4096; CSS sets the size shown), and with `pointer` taps and drags arrive as `canvas:pointer`, with x and y in those pixels. `class`, `role` and `aria-*` on it are kept, so give a canvas that shows something `role="img"` and an `aria-label`, and say what it shows in text too. A canvas can only go to a worker its own tab started, so a plugin that draws needs `scope: "tab"`; any other plugin's canvas says so instead. A canvas with no id says it needs one.
 
 Next: [Data and permissions](data-and-permissions.md).

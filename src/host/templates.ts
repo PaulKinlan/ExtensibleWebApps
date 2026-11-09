@@ -103,20 +103,30 @@ type Budget = { left: number };
 /** Built in a document with no scripts or custom elements, so nothing runs or upgrades before the sanitiser sees it. */
 const inert = document.implementation.createHTMLDocument("");
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * A <template for> or <template if>. Inside an <svg> the parser makes <template> an SVG element of that
+ * name, with its shapes as plain children, so loops and conditions work there too: bars from data.
+ */
+const isTemplate = (node: Node): node is Element => node instanceof HTMLTemplateElement || (node instanceof Element && node.namespaceURI === SVG_NS && node.localName === "template");
+const contentOf = (node: Element): ParentNode => (node instanceof HTMLTemplateElement ? node.content : node);
+
 function render(from: ParentNode, scope: Scope, budget: Budget): DocumentFragment {
   const fragment = inert.createDocumentFragment();
   for (const node of from.childNodes) {
     if (--budget.left < 0) throw new TooBig();
     if (node.nodeType === Node.TEXT_NODE) {
       fragment.append((node as Text).data.replace(HOLE, (_, path: string) => text(lookup(scope, path))));
-    } else if (node instanceof HTMLTemplateElement && node.hasAttribute("for")) {
+    } else if (isTemplate(node) && node.hasAttribute("for")) {
       const [, name, path] = /^\s*([A-Za-z_$][\w$]*)\s+of\s+(\S+)\s*$/.exec(node.getAttribute("for")!) ?? [];
       const items = name ? lookup(scope, path) : undefined;
-      if (Array.isArray(items)) for (const item of items) fragment.append(render(node.content, { ...scope, [name]: item }, budget));
-    } else if (node instanceof HTMLTemplateElement && node.hasAttribute("if")) {
-      if (lookup(scope, node.getAttribute("if")!.trim())) fragment.append(render(node.content, scope, budget));
+      if (Array.isArray(items)) for (const item of items) fragment.append(render(contentOf(node), { ...scope, [name]: item }, budget));
+    } else if (isTemplate(node) && node.hasAttribute("if")) {
+      if (lookup(scope, node.getAttribute("if")!.trim())) fragment.append(render(contentOf(node), scope, budget));
     } else if (node instanceof Element) {
-      const copy = inert.createElement(node.localName);
+      // In its own namespace, so an <svg>'s shapes stay SVG (and linearGradient keeps its case) when written out.
+      const copy = inert.createElementNS(node.namespaceURI, node.localName);
       for (const attr of node.attributes) {
         // An attribute that is one whole hole comes and goes with its value: false, null or
         // missing leaves it out, true makes it present (checked="{{done}}"). Anything else is text.
