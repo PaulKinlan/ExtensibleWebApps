@@ -71,7 +71,7 @@ What a plugin may use:
 - ctx.ui.render(placeOrSlot, key, ctx.ui.html\`…\`) draws (needs "ui"). Render to the name of one of its own places. A place is { at: "<CSS selector>", put: "before" | "after" | "prepend" | "append" | "replace" | "hide" }. Prefer landmarks and ids: "main", "header", "aside", "footer", "#id", "[data-part=x]". put "prepend" in "main" puts it at the top; "append" at the end.
 - The platform's elements: ui-card (tone="accent"), ui-toolbar, ui-badge, ui-stat, ui-table, ui-empty, ui-stack, ui-grid; ordinary buttons with data-action="name". Handle them with ctx.ui.onEvent((action, value) => …); a <form data-action="x"> sends its fields as value.
 - ctx.call("data", "list" | "get" | "put" | "delete", collection, …) reads and writes the app's collections (needs "data:read:<name>" or "data:write:<name>"; writing another plugin's collection shows the person each write first, with the reason passed as the last argument). ctx.on("data:changed:<name>", fn) hears a change.
-- A plugin can keep its own records by declaring collections: { mine: { fields: { text: { type: "string" } } } } in its manifest.
+- A plugin can keep its own records by declaring collections in its manifest: collections: { notes: { title: "Notes", schema: { type: "object", required: ["text"], properties: { text: { type: "string", title: "Text" } } } } }. The kernel adds id and the times; don't declare them.
 - ctx.commands.add({ id, title, keys? }, handler) adds a command to the palette. ctx.storage keeps small settings. ctx.log(...) writes to the trace.
 
 Work like this:
@@ -105,6 +105,8 @@ export default function (ctx) {
   let next = 0;
   /** The conversation the model sees, so "make it blue" means the plugin it just made. */
   let messages = [];
+  /** The model the conversation is with: its turns carry that vendor's own state. */
+  let used = "";
   let working = "";
   /** What's left in the box: emptied once a request is sent. */
   let draft = "";
@@ -170,7 +172,10 @@ export default function (ctx) {
     await draw();
     try {
       for (let step = 0; step < STEPS; step++) {
-        const answer = await ctx.call("llm", "complete", { system: SYSTEM, messages, tools: TOOLS, maxTokens: 16000, ...(provider ? { provider } : {}) });
+        // Once a model has answered, the conversation stays with it, even on "the first with a key".
+        const by = provider || used;
+        const answer = await ctx.call("llm", "complete", { system: SYSTEM, messages, tools: TOOLS, maxTokens: 16000, ...(by ? { provider: by } : {}) });
+        used = answer.provider;
         messages.push(answer.message);
         if (answer.stop !== "tool") {
           say("Plugin maker", answer.text || (answer.stop === "length" ? "The answer was cut off." : "(No answer.)"), answer.stop === "end" ? "" : "warning");
@@ -191,11 +196,13 @@ export default function (ctx) {
       say("Plugin maker", e instanceof Error ? e.message : String(e), "danger");
       // A conversation that ends on the person's turn or a tool's answer can't go on: start afresh.
       messages = [];
+      used = "";
     } finally {
       // Keep the last turns only, starting from one of the person's, so a long conversation stays small.
       if (messages.length > 60) {
         const from = messages.findIndex((m, i) => i >= messages.length - 60 && m.role === "user" && typeof m.content === "string");
         messages = from > 0 ? messages.slice(from) : [];
+        if (!messages.length) used = "";
       }
       working = "";
       draft = "";
@@ -218,7 +225,14 @@ export default function (ctx) {
 
   ctx.ui.onEvent(async (action, value) => {
     if (action === "provider") {
-      provider = typeof value === "string" ? value : "";
+      const picked = typeof value === "string" ? value : "";
+      // Each vendor keeps its own record of a turn (state), which another can't read: a new model starts afresh.
+      if (picked !== provider && messages.length && !working) {
+        messages = [];
+        used = "";
+        say("Plugin maker", "New model: starting a new conversation. Your plugins stay as they are.");
+      }
+      provider = picked;
       return draw();
     }
     if (action === "make") return make(value?.text);
@@ -226,6 +240,7 @@ export default function (ctx) {
     if (action === "clear" && !working) {
       lines.length = 0;
       messages = [];
+      used = "";
       return draw();
     }
     if (action.startsWith("model:") && !adding) {

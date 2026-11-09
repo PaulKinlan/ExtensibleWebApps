@@ -193,7 +193,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     if (method === "choices") return models.map(({ id, name, description, added, linked }) => ({ id, name, description, added, linked }));
     const model = models.find((p) => p.id === id);
     if (!model) return { ok: false, error: `${String(id)} isn't a language model this site offers` };
-    if (model.linked) return { ok: true, id: model.id };
+    // The app links it, but it's switched off: switch it on, as the switchboard would.
+    if (model.linked) {
+      await callService(remote.services, plugin, new Set(["plugins:manage"]), "plugins", "setEnabled", [model.id, true], dispatch as { trace?: string });
+      return { ok: true, id: model.id };
+    }
     if (!model.added) {
       const added = await as("plugins:author", "add", [model.href]);
       if (!added?.ok) return added;
