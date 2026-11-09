@@ -44,7 +44,8 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           base=$(git merge-base "$BASE" HEAD)
-          changed=$(git diff --name-only "$base" HEAD -- docs/api.md packages/index.html packages/index.json packages/catalog.json)
+          # Removing a registry file is the tidy-up, so deletions are fine.
+          changed=$(git diff --name-only --diff-filter=d "$base" HEAD -- docs/api.md packages/index.html packages/index.json packages/catalog.json)
           if [ -z "$changed" ]; then echo "No generated file changed."; exit 0; fi
           echo "::error::This branch changes generated files: $(echo $changed). They are made on main (docs/api.md) or by the build (the rest), never in a pull request, so pull requests can't conflict over them."
           echo "Put them back with:"
