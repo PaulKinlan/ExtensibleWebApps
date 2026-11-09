@@ -33,7 +33,8 @@ A new token is added to `styles.css` and to the table in [Styling](docs/guide/st
 6. **Lists of things with actions are cards or rows.** Name first, then what you can do with it, on their own lines; not a bullet with buttons trailing after the text.
 7. **Phones first.** Everything works at 390px wide with no sideways scroll. Rows wrap (`flex-wrap: wrap`); fixed widths are `min()` or `max-width`.
 8. **Columns can shrink.** A page or view grid writes its columns as `minmax(0, 1fr)` (or gives the item `min-width: 0`), and anything that shows text a person or a file supplied sets `overflow-wrap: anywhere`. A bare grid column is as wide as its longest word, so one long address pushes the page off the screen.
-9. **Text stays readable.** Body copy no wider than about 40rem. Nothing below `--text-sm`.
+9. **A panel over the page scrolls by itself.** Give the part that holds the content `overflow: auto; min-height: 0; overscroll-behavior: contain`, and give every box between it and the panel's edge `flex: 1; min-height: 0` (or a fixed height), so the content scrolls instead of being cut off and the page behind stays still.
+10. **Text stays readable.** Body copy no wider than about 40rem. Nothing below `--text-sm`.
 
 ## Who styles what
 
@@ -52,6 +53,7 @@ Three levels, lowest first: the platform (`@layer platform`), each plugin's own 
 - the page scrolls sideways, as it is or once a long unbroken word is put in each view;
 - two controls in the same view are drawn over each other;
 - a control is drawn but squeezed to almost nothing.
+- a panel that opens over the page (the homepage's docs, Customize) holds more than fits and can't be scrolled.
 
 A new app in `demos/` is checked without being listed. A page that needs something signed in or filled in before most of it draws should be opened in that state there, as the account page is. If a page must break a rule, add it to `ALLOWED` in that file with the reason.
 
