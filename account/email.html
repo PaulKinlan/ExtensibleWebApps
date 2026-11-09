@@ -1,0 +1,28 @@
+<!--
+  Your email (email.js). It sends { user, state, status, revision }: `user`
+  ({ email, confirmed }) only when someone is signed in, `state` what the
+  address is waiting for, and `revision`, which starts the form again from
+  what the server has after each save.
+-->
+<style>
+  .email form { display: flex; gap: var(--space-2); flex-wrap: wrap; }
+  .email input { flex: 1 1 12rem; }
+  .email .status:empty, .email .state:empty { display: none; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+<template id="email">
+  <template if="user">
+    <section class="email">
+      <h2>Your email</h2>
+      <p>Apps in your spaces can email you here, such as a survey's daily digest, once you open the link we mail to it. They can only email the people in the space.</p>
+      <form data-action="save" key="email-{{revision}}">
+        <label for="email-address" class="visually-hidden">Your email address</label>
+        <input id="email-address" name="email" type="email" autocomplete="email" placeholder="you@example.com" maxlength="254" value="{{user.email}}">
+        <button type="submit">Save</button>
+        <template if="user.confirmed"><button type="button" data-action="test">Send me a test message</button></template>
+      </form>
+      <p class="state">{{state}}</p>
+      <p class="status" role="status">{{status}}</p>
+    </section>
+  </template>
+</template>
