@@ -35,7 +35,8 @@ export default async function ({ check, context, URL, errors }) {
   check("no page holds an inline script (put it in a file next to the page)", !inline.length, inline.join(", "));
 
   // The development server sends it, as Cloudflare and the Node server do.
-  const sent = await Promise.all(["", "demos/habits/app.html", "docs/"].map((p) => fetch(`${URL.replace("localhost", "127.0.0.1")}${p}`).then((r) => [p || "/", r.headers.get("content-security-policy") === csp && r.headers.get("permissions-policy") === permissions])));
+  // Through the browser's own request client, so "localhost" resolves as it does for the pages (IPv4 or IPv6).
+  const sent = await Promise.all(["", "demos/habits/app.html", "docs/"].map((p) => context.request.get(`${URL}${p}`).then((r) => [p || "/", r.headers()["content-security-policy"] === csp && r.headers()["permissions-policy"] === permissions])));
   check("vite preview sends the page policy with each page", sent.every(([, ok]) => ok), JSON.stringify(sent));
 
   // The browser enforces it: a plain string can't become markup, and no other policy can be made.
