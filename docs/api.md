@@ -1032,6 +1032,14 @@ Needs: `apps:read`.
 
 Checks a made app's files as the kernel will read them, then, if it is open (its preview reloads), what went wrong as it ran. ran is false if it isn't open anywhere. ok is true when there are no errors.
 
+#### maker.copyIn
+
+`maker.copyIn(app)` → the same as save
+
+Needs: `apps:make`, and the person's review.
+
+In a space: copies one of the person's own apps (made outside it, on this device) in, as a made app in the space, once they accept one review. It can then be shared with the space's members.
+
 #### maker.history
 
 `maker.history(app, file)` → [{ version, at, by, note, removed? }]
@@ -1055,6 +1063,14 @@ The apps the person has made.
 Needs: `apps:make`, and the person's review.
 
 Reads an app's files from a folder the person picks (call it right after they click): app.html and the plugins, templates, styles and agents beside it. Saves them as the made app named app, or after the folder, once the person accepts one review. Other files are skipped.
+
+#### maker.ownApps
+
+`maker.ownApps()` → [{ name, title, here }]
+
+Needs: `apps:read`.
+
+In a space: the apps the person made outside it on this device (at /new/), to copy one in. here is true when an app of that name is in the space already. Empty outside a space.
 
 #### maker.read
 
@@ -1874,8 +1890,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
 | `account` | Call account.get, account.post, account.register, account.signin, account.start, account.load, account.came. |
 | `agents:run:<agent>` | Call agents.run. |
-| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.unshare. |
-| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.check. |
+| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.unshare. |
+| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.check. |
 | `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.mix, audio.keep, audio.load, audio.forget, audio.kept, audio.playClip, audio.open, audio.save. |
 | `bus:ask` | Call bus.ask. |
 | `bus:board` | Call bus.questions, bus.answer. |
