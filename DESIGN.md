@@ -41,7 +41,7 @@ A new token is added to `styles.css` and to the table in [Styling](docs/guide/st
 Three levels, lowest first: the platform (`@layer platform`), each plugin's own `<style>` (`@layer plugins`, scoped by the host to that plugin's views), then the page's own CSS in no layer.
 
 - **A plugin** styles only its own views, with classes, and can't reach the page or another plugin. The host scopes and cleans its CSS ([Styling](docs/guide/styling.md#a-plugins-own-stylesheet)).
-- **A page** may set tokens and lay out its slots (`main`, `aside`, where each slot goes). It should not restyle what is inside a plugin's view with broad selectors such as `main input` or `main form`: that is how a page breaks a plugin it has never seen. To change one plugin, name it: `[data-plugin="month"] td`.
+- **A page** may set tokens and lay out its slots (`main`, `aside`, where each slot goes). It should not restyle what is inside a plugin's view with broad selectors such as `main input` or `main form`: that is how a page breaks a plugin it has never seen. To change one plugin, name it: `[data-plugin="month"] td`. The layout check fails a page whose rule is all tags, naming no plugin and no class of the view's, and matches something inside a view.
 - **The platform's defaults** are written with `:where()` where a plugin must be able to override them easily, and must never assume which way a plugin's container flows.
 - **A `ui-*` element** keeps its style in its shadow root and reads the tokens; its size comes from its container.
 
@@ -55,6 +55,7 @@ Three levels, lowest first: the platform (`@layer platform`), each plugin's own 
 - a control is drawn but squeezed to almost nothing.
 - the page is scrolled to its end and a floating button (Customize, the debug button) still covers something to read or press;
 - a panel that opens over the page (the homepage's docs, Customize) holds more than fits and can't be scrolled.
+- a rule in the page's own CSS that is all tags (`main li`, `input`, `*`) restyles something inside a plugin's view.
 
 A new app in `demos/` is checked without being listed. A page that needs something signed in or filled in before most of it draws should be opened in that state there, as the account page is. If a page must break a rule, add it to `ALLOWED` in that file with the reason.
 

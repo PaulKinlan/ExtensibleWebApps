@@ -115,6 +115,36 @@ export function stretch() {
   return [`a long word in a view pushes the page to ${doc.scrollWidth}px wide in a ${doc.clientWidth}px window (${wide.slice(0, 4).join(", ") || "outside any view"})`];
 }
 
+// Runs in the page. A page lays out its slots and may set tokens; what is inside a plugin's view is the plugin's. A rule
+// in the page's own CSS (in no layer, so it beats the platform and every plugin) that is all tags, such as `main li`
+// or `input`, restyles views the page's author has never seen: that is how a page's list style once broke Customize.
+// A rule that names the plugin ([data-plugin="month"] td) or a class used inside a view is a choice, and is left alone.
+export function reach() {
+  const found = [];
+  const inView = (el) => el.parentElement?.closest("[data-plugin]");
+  const walk = (rules) => {
+    for (const rule of rules) {
+      if (rule instanceof CSSLayerBlockRule) continue; // the platform's and the plugins' own, each scoped by the host
+      if (rule instanceof CSSMediaRule || rule instanceof CSSSupportsRule || rule instanceof CSSContainerRule) { walk(rule.cssRules); continue; }
+      if (!(rule instanceof CSSStyleRule)) continue;
+      for (const selector of rule.selectorText.split(/,(?![^(]*\))/).map((part) => part.trim())) {
+        if (selector.includes("[data-plugin") || selector.includes("[data-key")) continue;
+        // Broad when nothing in it names something of the view's own: a class or id that is used inside a view is a choice.
+        const named = [...selector.matchAll(/[.#][\w-]+/g)].some(([word]) => { try { return document.querySelector(`[data-plugin] ${word}`); } catch { return false; } });
+        if (named) continue;
+        const subject = selector.split(/[\s>+~]+(?![^(]*\))/).pop().replace(/::?[\w-]+(\([^)]*\))?/g, "");
+        // :hover, :focus and the like match nothing now; ask what the rule would style when they do.
+        const still = selector.replace(/:(hover|focus-visible|focus-within|focus|active|checked|disabled|invalid|placeholder-shown)\b/g, "").replace(/::[\w-]+/g, "");
+        let hits = [];
+        try { hits = [...document.querySelectorAll(still || "*")].filter(inView); } catch { /* a selector this browser doesn't read */ }
+        if (hits.length) found.push(`the page's own CSS rule "${selector}" restyles ${hits.length} element${hits.length === 1 ? "" : "s"} inside plugin views (${[...rule.style].slice(0, 3).join(", ")}): name the plugin, as in [data-plugin="…"] ${subject || "*"}, or leave it to the view`);
+      }
+    }
+  };
+  for (const sheet of document.styleSheets) { try { walk(sheet.cssRules); } catch { /* another origin's sheet */ } }
+  return found.slice(0, 3);
+}
+
 // Runs in the page, scrolled to its end. Floating chrome (the Customize button, the debug button) sits over the page on
 // purpose, but once the page is scrolled to its end nothing a person reads or presses may still be under it.
 export function covered() {
@@ -165,6 +195,7 @@ export default async function ({ check, context, URL, errors }) {
   const look = async (page, label, size) => {
     const findings = await page.evaluate(measure, TALLEST_CONTROL).catch((e) => [`couldn't be measured: ${e.message}`]);
     findings.push(...(await page.evaluate(covered).catch(() => [])));
+    findings.push(...(await page.evaluate(reach).catch(() => [])));
     if (!findings.some((f) => f.includes("scrolls sideways"))) findings.push(...(await page.evaluate(stretch).catch(() => [])));
     for (const finding of findings) {
       const line = `${label} ${size}: ${finding}`;
