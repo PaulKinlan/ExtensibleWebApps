@@ -18,6 +18,7 @@
 // what the server answers.
 
 import type { Host } from "../../src/kernel/hosts";
+import { part } from "../../src/kernel/part";
 import { service, SIGNED_IN, type ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
 
@@ -29,6 +30,10 @@ const APP = "/account/";
 const FOLDER = /^\/(?:[a-z0-9][a-z0-9-]*\/)+$/;
 
 type Answer = { status: number; [key: string]: unknown };
+/** The part that encrypts the person's API keys for their account (std/follow/vault.ts), fetched when they first ask about them. */
+const vault = () => part("the part that keeps your keys encrypted", () => import("../follow/vault"));
+/** Where what follows the person is kept (src/server/auth/follow.ts). */
+const FOLLOW = "/auth/follow";
 
 const make = (kernel: ModuleKernel): ServiceProvider => {
   const { root, hosts, remote } = kernel;
@@ -107,6 +112,103 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     }
   };
 
+  // The person's API keys, following them between their devices (std/follow), encrypted with a vault key the
+  // server never has. Turning that on, unlocking it on a new device and taking the keys out of the account again
+  // are done here, on the account page, since they are the person acting as themselves on the whole site.
+  type Locked = import("../follow/vault").Locked;
+  /** What the account keeps of one kind: who is signed in, and the items. */
+  const kept = async (kind: string): Promise<{ user?: string; items: { key: string; value?: unknown }[] }> => {
+    const res = await fetch(new URL(`${FOLLOW}?since=0&only=${kind}`, self.location.origin), { cache: "no-store" });
+    const data = (await res.json().catch(() => ({}))) as { user?: unknown; items?: unknown; error?: unknown };
+    if (res.status === 401) return { items: [] };
+    if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `Your account couldn't be asked about your keys (the server answered ${res.status}). Try again in a moment.`);
+    return { user: typeof data.user === "string" ? data.user : undefined, items: Array.isArray(data.items) ? data.items.filter((i) => i && typeof i.key === "string" && !i.gone) : [] };
+  };
+  const send = async (changes: unknown[]) => {
+    const res = await fetch(new URL(FOLLOW, self.location.origin), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ changes }) });
+    const data = (await res.json().catch(() => ({}))) as { error?: unknown };
+    if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `Your account couldn't be changed (the server answered ${res.status}). Try again in a moment.`);
+  };
+  /** How the person's keys stand: who they are, the vault key as the account keeps it, and this device's unlocked copy if it has one. */
+  const standing = async () => {
+    const { user, items } = await kept("vault");
+    const vaults = Object.fromEntries(items.map((i) => [i.key, i.value as Locked]));
+    const raw = user && items.length ? await (await vault()).unlocked(user, vaults) : undefined;
+    return { user, vaults, raw };
+  };
+  const describe = (s: Awaited<ReturnType<typeof standing>>) => {
+    const kinds = Object.values(s.vaults).map((v) => v?.kind);
+    return { state: !s.user ? "signed-out" : !kinds.length ? "off" : s.raw ? "on" : "locked", passphrase: kinds.includes("pass"), passkey: kinds.includes("prf") };
+  };
+  /** What a passkey of the person's derives for their keys: asked for in the tab, and never sent anywhere. */
+  const derive = async (host: Host, dispatch: Parameters<ServiceProvider["call"]>[3], creds: string[]) => {
+    const { PRF_SALT } = await vault();
+    return (await hosts.bridge("account", "derive", [PRF_SALT, creds], dispatch, host)) as { cred: string; derived: string };
+  };
+  /** Every kernel on the device that follows the account does so again now (std/follow hears this). */
+  const follow = () => root.emit("internal/account");
+  async function keys(host: Host, method: string, how: unknown, dispatch: Parameters<ServiceProvider["call"]>[3]) {
+    const s = await standing();
+    if (method === "keys") return describe(s);
+    if (!s.user) throw new Error("You're signed out: sign in again, then try once more.");
+    const v = await vault();
+    const passkey = (how as { passkey?: unknown } | undefined)?.passkey === true;
+    // A passphrase is typed into a card the kernel draws in this tab, so no plugin ever holds it.
+    const typed = (twice: boolean) =>
+      kernel.secrets.ask({
+        heading: twice ? "Choose a passphrase for your keys" : "Unlock your keys",
+        text: twice
+          ? `Your API keys are encrypted with it on this device before they go to your account, so this site can never read them. At least ${v.MIN_PASSPHRASE} characters: a few words you'll remember work well. If you lose it, nobody can get your keys back, and you'd type them in again.`
+          : "Type the passphrase you chose for your keys. It unlocks them on this device once, and is never sent to this site.",
+        label: "Passphrase",
+        twice,
+        tab: host.tab,
+      });
+    if (method === "keys:remove") {
+      const all = [...Object.keys(s.vaults), ...(await kept("key")).items.map((i) => i.key)];
+      if (all.length) await send(all.map((key) => ({ key, gone: true })));
+      await v.keep(s.user).catch(() => {});
+    } else if (method === "keys:protect") {
+      // The first secret makes the vault key; another is one more way to unlock the same one.
+      if (Object.keys(s.vaults).length && !s.raw) throw new Error("Unlock your keys on this device first, then add another way to unlock them.");
+      const raw = s.raw ?? v.fresh();
+      let key: string;
+      let locked: Locked;
+      if (passkey) {
+        const { cred, derived } = await derive(host, dispatch, []);
+        [key, locked] = [await v.prfName(cred), await v.lockWithPasskey(s.user, raw, cred, derived)];
+      } else {
+        const passphrase = await typed(true);
+        if (passphrase === undefined) return describe(s);
+        if (passphrase.length < v.MIN_PASSPHRASE) throw new Error(`Choose a passphrase of at least ${v.MIN_PASSPHRASE} characters: a few words you'll remember work well.`);
+        [key, locked] = ["vault:pass", await v.lockWithPassphrase(s.user, raw, passphrase)];
+      }
+      await send([{ key, h: await v.hashOf(locked), value: locked }]);
+      await v.keep(s.user, raw);
+    } else if (method === "keys:unlock") {
+      let raw: Uint8Array | undefined;
+      if (passkey) {
+        const locks = Object.values(s.vaults).filter((l): l is Extract<Locked, { kind: "prf" }> => l?.kind === "prf");
+        if (!locks.length) throw new Error("Your keys aren't protected with a passkey. Use your passphrase instead.");
+        const { cred, derived } = await derive(host, dispatch, locks.map((l) => l.cred));
+        const lock = locks.find((l) => l.cred === cred);
+        raw = lock && (await v.unlock(s.user, lock, derived));
+        if (!raw) throw new Error("That passkey isn't the one that protects your keys. Use the passkey you set them up with, or your passphrase.");
+      } else {
+        const lock = s.vaults["vault:pass"];
+        if (!lock) throw new Error("Your keys aren't protected with a passphrase. Use your passkey instead.");
+        const passphrase = await typed(false);
+        if (passphrase === undefined) return describe(s);
+        raw = await v.unlock(s.user, lock, passphrase);
+        if (!raw) throw new Error("That passphrase didn't unlock your keys. Check it and try again.");
+      }
+      await v.keep(s.user, raw);
+    } else throw new Error(`account.${method} is not a method`);
+    follow();
+    changed();
+    return describe(await standing());
+  }
+
   return {
     description: "The person's account on this site's server, for the account app's own plugins: who is signed in, passkeys, other sites to sign in with, their email address, spaces and agent keys.",
     methods: {
@@ -157,6 +259,34 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         needs: "account",
         params: [{ name: "space", schema: { type: "string", description: "A space the person owns, empty" } }],
         description: "Asks the person for a copy of a space (a .space.json file, from the server's Download a copy), right after they click, and loads it into `space`. null if they pick nothing.",
+      },
+      keys: {
+        args: "()",
+        returns: "{ state, passphrase, passkey }",
+        needs: "account",
+        params: [],
+        description: "Whether the person's API keys follow them between devices: `state` is off, locked (their account keeps them, and this device hasn't been given what unlocks them), on, or signed-out; `passphrase` and `passkey` say what unlocks them. The server keeps them encrypted and can't read one.",
+      },
+      "keys:protect": {
+        args: "({ passkey: true }?)",
+        returns: "{ state, passphrase, passkey }",
+        needs: "account",
+        params: [{ name: "how", schema: { type: "object", description: "`passkey: true` to use a passkey of theirs (the browser asks). Left out, the person chooses a passphrase, in a card the kernel draws: a plugin never sees it" } }],
+        description: "Has the person's API keys follow them, encrypted on this device with a key only that passphrase or passkey unlocks. Called again on a device that has them unlocked, it adds another way to unlock them.",
+      },
+      "keys:unlock": {
+        args: "({ passkey: true }?)",
+        returns: "{ state, passphrase, passkey }",
+        needs: "account",
+        params: [{ name: "how", schema: { type: "object", description: "`passkey: true` to use the passkey that protects them. Left out, the person types their passphrase, in a card the kernel draws" } }],
+        description: "Unlocks the person's API keys on this device, once: from then on they come and go with everything else that follows them. It fails, saying so, if the passphrase or passkey isn't the one.",
+      },
+      "keys:remove": {
+        args: "()",
+        returns: "{ state, passphrase, passkey }",
+        needs: "account",
+        params: [],
+        description: "Takes the person's API keys out of their account. Each device keeps the keys it has, and asks for a key it hasn't.",
       },
       came: {
         args: "()",
@@ -210,6 +340,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         return { ...data, status: res.status };
       }
       if (method === "came") return cameFrom(host, dispatch);
+      if (method === "keys" || method.startsWith("keys:")) return keys(host, method, args[0], dispatch);
       throw new Error(`account.${method} is not a method`);
     },
   };

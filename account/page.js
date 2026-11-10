@@ -26,8 +26,42 @@ async function asked(made) {
   }
 }
 
-/** Makes a passkey from the server's options. */
-export const create = (options) => asked(navigator.credentials.create({ publicKey: passkeys().parseCreationOptionsFromJSON(options) }));
+/** Makes a passkey from the server's options, one that can also unlock the person's API keys (`derive`) where the browser and the passkey can. */
+export const create = (options) => {
+  const publicKey = passkeys().parseCreationOptionsFromJSON(options);
+  return asked(navigator.credentials.create({ publicKey: { ...publicKey, extensions: { ...publicKey.extensions, prf: {} } } }));
+};
+
+const base64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+const fromBase64Url = (text) => Uint8Array.from(atob(text.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
+
+/**
+ * What a passkey of the person's derives from `salt` (the WebAuthn PRF extension): the same every time for the
+ * same passkey, known only to whoever holds it, and so what locks and unlocks the API keys their account keeps
+ * (std/follow/vault.ts). `creds` narrows it to the passkeys that already protect them. Nothing is asked of the
+ * server, and what is derived stays on this device.
+ */
+export async function derive(salt, creds) {
+  if (!window.PublicKeyCredential) throw new Error("This browser can't use passkeys yet. Use a passphrase instead.");
+  let credential;
+  try {
+    credential = await navigator.credentials.get({
+      publicKey: {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
+        rpId: location.hostname,
+        userVerification: "required",
+        allowCredentials: (creds ?? []).map((id) => ({ type: "public-key", id: fromBase64Url(id) })),
+        extensions: { prf: { eval: { first: new TextEncoder().encode(salt) } } },
+      },
+    });
+  } catch (error) {
+    if (error?.name === "NotAllowedError") throw new Error("No passkey was used.");
+    throw error;
+  }
+  const derived = credential?.getClientExtensionResults().prf?.results?.first;
+  if (!derived) throw new Error("This passkey can't protect your keys in this browser. Use a passphrase instead.");
+  return { cred: credential.id, derived: base64(derived) };
+}
 
 /** Uses a passkey the browser has for this site. */
 export const get = (options) => asked(navigator.credentials.get({ publicKey: passkeys().parseRequestOptionsFromJSON(options) }));

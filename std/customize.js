@@ -56,6 +56,12 @@ const STATES = {
 };
 
 /** How a place's `put` reads. */
+/** What the account line says of the person's API keys (follow.status: keys). */
+const KEYS = {
+  off: "API keys stay on each device.",
+  locked: "Your API keys are in your account, encrypted, and this device hasn't unlocked them yet.",
+  on: "Your API keys follow you too, encrypted so this site can't read them.",
+};
 const PUTS = { before: "above", after: "below", prepend: "at the top of", append: "at the bottom of", replace: "instead of", hide: "hides" };
 
 /** The kinds of package, as the /packages/ page groups them too. */
@@ -175,8 +181,8 @@ export default function (ctx) {
       places: p.on ? placesOf(page, p.id, running(p.id)) : [],
       // Off, it neither shows nor runs: say so in the row, with what turning it on does.
       offHint: p.on || p.error ? "" : `Off: it isn't running.${p.places.length ? ` Turn it on and it ${p.places.map(whereOfText).map((w) => w[0].toLowerCase() + w.slice(1)).join("; ")}.` : " Turn it on to use it."}`,
-      // One used in every app is kept once, outside any space: it isn't shared from here.
-      share: page.space && !p.everywhere && !p.agent ? (p.shared ? "Stop sharing" : "Share with the space") : "",
+      // (For one used in every app, a copy for this app is what the space gets.)
+      share: page.space ? (p.shared ? "Stop sharing" : "Share with the space") : "",
       // One of the person's own can follow them to every app they open, or go back to this app alone.
       reach: p.shared ? "" : p.everywhere ? "Only this app" : "Use in every app",
       reachTitle: p.everywhere ? "Keep it for this app alone, and take it out of your other apps" : "Add it to every app you open on this device, with the same on or off",
@@ -238,7 +244,7 @@ export default function (ctx) {
       message,
       follow,
       // Signed in: what the person adds follows them to their other devices (std/follow).
-      account: account?.on ? { name: account.name ?? "you", error: account.error ?? "", skipped: account.skipped?.length ? `Too big to follow you, so only on this device: ${account.skipped.join(", ")}.` : "" } : null,
+      account: account?.on ? { name: account.name ?? "you", keys: KEYS[account.keys] ?? KEYS.off, keysLocked: account.keys === "locked", error: account.error ?? "", skipped: account.skipped?.length ? `Too big to follow you, so only on this device: ${account.skipped.join(", ")}.` : "" } : null,
       space: page.space,
       inspect: page.inspect,
       arrange: page.arrange,

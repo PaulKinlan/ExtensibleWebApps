@@ -5,12 +5,16 @@
 // net.fetch (net.ts), and only to the hosts the secret was given for. So a
 // key can't be copied out, logged, or sent anywhere but its own API.
 //
+// The card itself, and the wait for the person to answer it, is a part of its
+// own (secrets-card.ts), fetched the first time a key is asked for: most pages
+// never ask for one.
+//
 // Secrets are kept with the app's data in `secrets.json`. A key the
 // deployment provides (a server holding the app's key) comes with the
 // servers in phase 2b, behind the same calls.
 
-import type { View } from "../shared/protocol";
 import type { Hosts } from "./hosts";
+import { part } from "./part";
 import type { ServiceProvider } from "./remote";
 import type { Store } from "./store";
 import { record } from "./trace";
@@ -18,7 +22,6 @@ import { record } from "./trace";
 const FILE = "secrets.json";
 const NAME = /^[a-z][a-z0-9-]{0,40}$/;
 const HOST = /^(?:[a-z0-9-]+\.)*[a-z0-9-]+(?::\d{1,5})?$/;
-const TIMEOUT = 10 * 60_000;
 
 export interface Secret {
   value: string;
@@ -27,7 +30,7 @@ export interface Secret {
   label?: string;
 }
 
-type Pending = { name: string; hosts: string[]; label: string; plugin: string; typed: string; resolve: (set: boolean) => void; timer: ReturnType<typeof setTimeout> };
+type Cards = ReturnType<typeof import("./secrets-card").cards>;
 
 export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => string) {
   const kept: Record<string, Secret> = Object.create(null);
@@ -38,44 +41,11 @@ export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => 
     }
   });
   const persist = () => store.writeJson(FILE, kept).catch((error) => record({ kind: "error", name: "secrets:write-failed", detail: String(error) }));
-  const pending = new Map<string, Pending>();
-  let nextId = 0;
-
-  const card = (id: string, p: Pending): View => ({
-    type: "stack",
-    children: [
-      { type: "heading", text: `${nameOf(p.plugin)} asks for ${p.label}` },
-      { type: "text", text: `It is kept with this app's data and only ever sent to ${p.hosts.join(", ")}. No plugin can read it.`, tone: "muted" },
-      { type: "field", kind: "password", name: "secret", label: p.label, value: "", action: `typed:${id}` },
-      {
-        type: "stack",
-        direction: "row",
-        children: [
-          { type: "button", label: "Save", action: `save:${id}`, primary: true },
-          { type: "button", label: "Not now", action: `cancel:${id}` },
-        ],
-      },
-    ],
-  });
-
-  const settle = (id: string, set: boolean) => {
-    const p = pending.get(id);
-    if (!p) return;
-    pending.delete(id);
-    clearTimeout(p.timer);
-    hosts.render("secrets", "main", `secrets:${id}`, null, 0);
-    p.resolve(set);
-  };
-
-  /** Checks a secret name and the hosts it's for. */
-  function checkArgs(name: unknown, options: unknown): { name: string; hosts: string[]; label: string } {
-    if (typeof name !== "string" || !NAME.test(name)) throw new Error("A secret's name is lowercase letters, digits and dashes");
-    const o = (options && typeof options === "object" ? options : {}) as { hosts?: unknown; label?: unknown };
-    const list = Array.isArray(o.hosts) ? o.hosts : [];
-    if (!list.length || list.length > 5 || list.some((h) => typeof h !== "string" || !HOST.test(h))) throw new Error("Say which hosts the secret is for: { hosts: [\"api.example.com\"] }, up to 5");
-    const label = typeof o.label === "string" && o.label.trim() ? o.label.trim().slice(0, 60) : `a key named “${name}”`;
-    return { name, hosts: list as string[], label };
-  }
+  /** The cards, once one has been asked for. */
+  let made: Cards | undefined;
+  let making: Promise<Cards> | undefined;
+  const cards = () =>
+    (making ??= part("the card that asks for a key", () => import("./secrets-card")).then((m) => (made = m.cards(hosts, nameOf, (name, secret) => ((kept[name] = secret), void persist()))), (error) => ((making = undefined), Promise.reject(error))));
 
   const service: ServiceProvider = {
     description: "API keys and tokens. A plugin never reads one: it asks the person for it by name, then uses it in requests it makes with net.fetch, which the kernel sends only to the hosts the secret was given for.",
@@ -107,16 +77,7 @@ export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => 
         return true;
       }
       if (method !== "request") throw new Error(`secrets.${method} is not a method`);
-      const asked = checkArgs(args[0], args[1]);
-      const id = String(++nextId);
-      record({ kind: "note", name: "secret:asked", plugin, detail: `${name} for ${asked.hosts.join(", ")}` });
-      const set = await new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => settle(id, false), TIMEOUT);
-        const p: Pending = { ...asked, plugin, typed: "", resolve, timer };
-        pending.set(id, p);
-        hosts.render("secrets", "main", `secrets:${id}`, card(id, p), 0);
-      });
-      return { set };
+      return { set: await (await cards()).request(plugin, name, args[1]) };
     },
   };
 
@@ -125,23 +86,25 @@ export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => 
     loaded,
     /** The secret, for the kernel's own use in net.fetch. Never sent to a plugin. */
     get: (name: string): Secret | undefined => kept[name],
-    event(action: string, value: unknown) {
-      const [verb, id] = action.split(":");
-      const p = pending.get(id);
-      if (!p) return;
-      if (verb === "typed") p.typed = typeof value === "string" ? value.trim().slice(0, 4000) : "";
-      else if (verb === "cancel") settle(id, false);
-      else if (verb === "save" && p.typed) {
-        kept[p.name] = { value: p.typed, hosts: p.hosts, label: p.label };
-        void persist();
-        record({ kind: "note", name: "secret:saved", plugin: p.plugin, detail: `${p.name} for ${p.hosts.join(", ")}` });
-        settle(id, true);
-      }
+    /** Every secret, for the part of the kernel that carries them, encrypted, between the person's devices (std/follow). Never sent to a plugin. */
+    all: (): Record<string, Secret> => ({ ...kept }),
+    /** Keeps a secret as another of the person's devices has it, or (given none) removes it. */
+    async keep(name: string, secret?: Secret) {
+      if (!NAME.test(name) || (secret && (!secret.value || !secret.hosts.length || secret.hosts.some((h) => !HOST.test(h))))) throw new Error("Not a secret this device can keep");
+      if (secret) kept[name] = { value: secret.value, hosts: [...secret.hosts], label: secret.label };
+      else delete kept[name];
+      await store.writeJson(FILE, kept);
     },
+    /**
+     * Asks the person to type a secret the kernel itself needs (the passphrase that unlocks their keys, std/account),
+     * in a card in one tab, twice if it is a new one. What they typed, or undefined if they said not now. It is
+     * handed to the part of the kernel that asked and kept nowhere: no plugin is ever given it.
+     */
+    ask: async (words: { heading: string; text: string; label: string; twice?: boolean; tab?: string }): Promise<string | undefined> => (await cards()).ask(words),
+    /** What the person did in a card. */
+    event: (action: string, value: unknown) => made?.event(action, value),
     /** Cancels a plugin instance's open requests when its worker goes. */
-    cancelInstance(instance: string) {
-      for (const [id, p] of pending) if (p.plugin === instance) settle(id, false);
-    },
+    cancelInstance: (instance: string) => made?.cancelInstance(instance),
   };
 }
 

@@ -1,0 +1,56 @@
+<!--
+  Your model keys (model-keys.js). It sends which of four things is so: `off`
+  (keys stay on each device), `locked` (the account keeps them and this
+  device hasn't unlocked them), `on`, or nothing shown when signed out; what
+  unlocks them (`passphrase`, `passkey`); whether taking them out is waiting
+  for a second click (`confirming`, with `canRemove` and `removeLabel` for the button that starts it); and `status`, what the last action said (`said`) or why it didn't work (`failed`).
+-->
+<style>
+  .model-keys { display: grid; gap: var(--space-3); }
+  .model-keys p { margin: 0; }
+  .model-keys .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+</style>
+<template id="model-keys">
+  <template if="shown">
+    <section class="model-keys" data-part="model-keys">
+      <h2>Your model keys</h2>
+      <template if="off">
+        <p>The API keys you give for models (Gemini, Claude, OpenAI and others) stay on this device, and each new device asks for them again.</p>
+        <p>They can follow you instead. Each key is encrypted on your device before it goes to your account, with a passkey or passphrase only you hold, so this site can never read one. A new device asks for that once.</p>
+        <div class="actions">
+          <button type="button" data-action="protect-passkey">Protect them with a passkey</button>
+          <button type="button" data-action="protect-passphrase">Protect them with a passphrase</button>
+        </div>
+        <p class="muted">If you lose the passkey or passphrase, nobody can get your keys back: you would start again and type them in once more.</p>
+      </template>
+      <template if="locked">
+        <p>Your account has your model keys, encrypted. Unlock them on this device once, and they are here from now on.</p>
+        <div class="actions">
+          <template if="passkey"><button type="button" data-action="unlock-passkey">Unlock with your passkey</button></template>
+          <template if="passphrase"><button type="button" data-action="unlock-passphrase">Unlock with your passphrase</button></template>
+        </div>
+      </template>
+      <template if="on">
+        <p>Your model keys follow you. They are encrypted on your devices before they reach your account, so this site can't read them.</p>
+        <div class="actions">
+          <template if="addPasskey"><button type="button" data-action="protect-passkey">Also unlock with a passkey</button></template>
+          <template if="addPassphrase"><button type="button" data-action="protect-passphrase">Also unlock with a passphrase</button></template>
+        </div>
+      </template>
+      <template if="canRemove">
+        <div class="actions">
+          <button type="button" data-action="remove">{{removeLabel}}</button>
+        </div>
+      </template>
+      <template if="confirming">
+        <p>Take your keys out of your account? Devices that already have them keep them, and a new device will ask for each key again.</p>
+        <div class="actions">
+          <button type="button" data-action="remove-yes">Yes, take them out</button>
+          <button type="button" data-action="cancel">Cancel</button>
+        </div>
+      </template>
+      <template if="failed"><p class="error" role="alert">{{status}}</p></template>
+      <template if="said"><p class="status" role="status">{{status}}</p></template>
+    </section>
+  </template>
+</template>

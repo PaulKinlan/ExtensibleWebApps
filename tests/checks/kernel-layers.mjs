@@ -40,6 +40,7 @@ const CORE = [
   "review.ts",
   "routes.ts",
   "schema.ts",
+  "secrets-card.ts",
   "secrets.ts",
   "services/files.ts",
   "services/hooks.ts",
@@ -69,6 +70,7 @@ const ON_DEMAND = [
   "manifest-fields.ts",
   "panel-commands.ts",
   "reference.ts",
+  "secrets-card.ts",
   "user-plugin-changes.ts",
 ];
 

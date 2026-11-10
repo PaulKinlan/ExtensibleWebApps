@@ -50,6 +50,6 @@ export default async function (ctx) {
 - `secrets.request(name, { hosts, label? })` shows the card and resolves `{ set }` when they save it or say not now.
 - `secrets.forget(name)` removes it.
 
-The key is kept with the app's data, in a file no plugin can read. The trace shows each request and which secret it used, never the secret. A plugin without `secret:<name>` can't use the key, and a plugin that has it can't send it anywhere else: a request to another host is refused.
+The key is kept with the app's data, in a file no plugin can read. It stays on that device unless the person, signed in, has their keys follow them: then each is encrypted on the device with a passphrase or passkey only they hold before it goes to their account, and a new device asks for that once instead of for each key ([Servers](../server.md#what-follows-a-person-between-devices)). A plugin does nothing for this: `has` answers true once the key has arrived. The trace shows each request and which secret it used, never the secret. A plugin without `secret:<name>` can't use the key, and a plugin that has it can't send it anywhere else: a request to another host is refused.
 
 Keys the deployment provides, so the person needn't bring their own, aren't there yet; they will come behind the same calls. A key is always one the person gave, in their browser, so a [server plugin](spaces-and-servers.md) has none to use.

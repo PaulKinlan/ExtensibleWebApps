@@ -53,4 +53,24 @@ export async function followChecks(base, check, owner, stranger) {
     big.status === 413 && /at most 256 KB/.test(big.body.error ?? "") && /stays on this device/.test(big.body.error ?? "") && odd.status === 400 && /isn't the name of something an account keeps/.test(odd.body.error ?? "") && secret.status === 400 && empty.status === 400 && after.body.version === 5,
     JSON.stringify([big.body, odd.body, secret, empty, after.body.version]),
   );
+
+  // A person's API keys only as ciphertext (std/follow/vault.ts): a readable key, in any shape, is refused.
+  const b64 = (n) => Buffer.alloc(n, 7).toString("base64");
+  const plain = "sk-live-0123456789abcdef";
+  const refused = [];
+  for (const value of [plain, { value: plain, hosts: ["api.example.com"] }, { iv: b64(12), ct: b64(40), value: plain }, { iv: "short", ct: b64(40) }, { iv: b64(12), ct: `${plain}!` }]) refused.push(await post(owner, [{ key: "key:openai", h: "k", value }]));
+  const lockPlain = await post(owner, [{ key: "vault:pass", h: "v", value: { kind: "pass", id: "0123456789abcdef", salt: b64(16), iter: 600000, iv: b64(12), ct: b64(48), passphrase: "hunter2" } }]);
+  const unchanged = await get(owner);
+  const sealed = await post(owner, [
+    { key: "key:openai", h: "k1", value: { iv: b64(12), ct: b64(90) } },
+    { key: "vault:pass", h: "v1", value: { kind: "pass", id: "0123456789abcdef", salt: b64(16), iter: 600000, iv: b64(12), ct: b64(48) } },
+    { key: "vault:prf-0123456789abcdef", h: "v2", value: { kind: "prf", id: "0123456789abcdef", cred: "AbC_-123", iv: b64(12), ct: b64(48) } },
+  ]);
+  const vaults = await fetch(`${base}/auth/follow?since=0&only=vault`, { headers: { cookie: owner.cookie } }).then((r) => r.json());
+  const others = await get(stranger);
+  check(
+    "follow: an API key is kept only as what a device encrypted, a readable one in any shape is refused saying why, and a device can ask for one kind of item",
+    refused.every((r) => r.status === 400 && /never keeps a key it could read/.test(r.body.error ?? "")) && lockPlain.status === 400 && unchanged.body.version === after.body.version && sealed.status === 200 && sealed.body.saved?.length === 3 && vaults.items?.length === 2 && vaults.items.every((i) => i.key.startsWith("vault:")) && !others.body.items?.length,
+    JSON.stringify([refused.map((r) => r.status), lockPlain, sealed.body, vaults.items?.map((i) => i.key)]),
+  );
 }

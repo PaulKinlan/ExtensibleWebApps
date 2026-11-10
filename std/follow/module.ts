@@ -2,9 +2,10 @@
 // and agents they added (to one app or to every app), which of them are on,
 // where they moved views, and the model they picked are sent to their account
 // on the site's server (src/server/auth/follow.ts), and what they did on their
-// other devices is brought here. Never an API key: keys stay in each device's
-// own secrets.json, so a model that came from the account asks for its key
-// once on each device.
+// other devices is brought here. Their API keys follow them only if they ask
+// (on their account page), and then encrypted with a key the server never has
+// (vault.ts): until a device is given the passphrase or passkey that unlocks
+// them, its keys stay its own and it asks for each as before.
 // A kernel module (docs/layers.md): a site that lists `follow` in kernel.json
 // has it. It starts only on a device where someone is signed in
 // (`"starts": "account"`), so signed out nothing here is fetched or run, and
@@ -16,6 +17,7 @@
 //   on:demos/trip/countdown           that plugin is on (user-plugins.json)
 //   move:demos/trip|countdown|main    where a view was moved to (moves/)
 //   llm:prefer                        the model that answers when a request names none (llm.json)
+//   key:gemini                        an API key (secrets.json), encrypted, once this device has unlocked them
 //
 // It reads these from the data folder, hashes each, and keeps the hash it last
 // agreed with the account (`sync/account.json`). An item whose hash differs
@@ -34,6 +36,7 @@
 
 import { env } from "../../src/kernel/env";
 import { SIGNED_IN, type ModuleKernel } from "../../src/kernel/modules";
+import { part } from "../../src/kernel/part";
 import { asMove } from "../../src/kernel/moves";
 import type { ServiceProvider } from "../../src/kernel/remote";
 import { record } from "../../src/kernel/trace";
@@ -42,7 +45,11 @@ import { EVERYWHERE, folderOf } from "../../src/kernel/user-plugins";
 const STATE = "sync/account.json";
 const AT = "/auth/follow";
 /** The same names the account takes (src/server/auth/follow.ts). */
-const KEY = /^(?:(?:file|on|move):[\w.~|/-]{1,300}|llm:prefer)$/;
+const KEY = /^(?:(?:file|on|move):[\w.~|/-]{1,300}|llm:prefer|key:[a-z][a-z0-9-]{0,40})$/;
+/** The person's vault key, locked, as the account keeps it (vault.ts). */
+const VAULT = /^vault:(?:pass|prf-[0-9a-f]{16})$/;
+/** The part that encrypts keys, fetched only on a device whose account keeps some. */
+const vault = () => part("the part that keeps your keys encrypted", () => import("./vault"));
 /** A file in user/: an app's folder (or the one for every app), then the file, which may be in a plugin's own folder. */
 const FILE = /^[\w-]+(\/[\w-][\w.-]*)+$/;
 const TEXT = /\.(js|mjs|html|css|json|svg|txt|md)$/i;
@@ -63,6 +70,10 @@ interface State {
   from: string[];
   /** When it last agreed with the account. */
   at?: number;
+  /** The account's vault key, locked: there only if the person has their keys follow them. */
+  vaults: Record<string, { id?: unknown }>;
+  /** The account's number up to which this device has the keys. Behind `version` while the device hasn't unlocked them. */
+  keysAt?: number;
 }
 
 /** What the person is told (Customize shows it). */
@@ -78,6 +89,8 @@ export interface Following {
   skipped: string[];
   /** The ids of the app's plugins and agents that came from the account. */
   from: string[];
+  /** The person's API keys: not kept in their account, kept there and waiting for this device to unlock them, or following them here. */
+  keys: "off" | "locked" | "on";
 }
 
 type Item = { key: string; v: number; h?: string; value?: unknown; gone?: true };
@@ -110,12 +123,14 @@ export default {
     const where = env();
     if (where.kind === "server") {
       // A space's server has no one signed in: the service is there, and says so.
-      kernel.provide("follow", { description: "", methods: {}, capability: () => "plugins:read", call: () => ({ on: false, skipped: [], from: [] }) });
+      kernel.provide("follow", { description: "", methods: {}, capability: () => "plugins:read", call: () => ({ on: false, skipped: [], from: [], keys: "off" }) });
       return;
     }
     const inSpace = !!where.space;
     /** Whether an item follows the person from this kernel: in a space, only what is theirs everywhere. */
-    const wanted = (key: string) => KEY.test(key) && (!inSpace || /^(file|on):_everywhere\/|^move:|^llm:/.test(key));
+    const wanted = (key: string) => KEY.test(key) && (key.startsWith("key:") ? !!raw : !inSpace || /^(file|on):_everywhere\/|^move:|^llm:/.test(key));
+    /** The vault key, while this device has it unlocked: only then do keys come and go. */
+    let raw: Uint8Array | undefined;
 
     let state: State | undefined;
     const load = async () => {
@@ -128,12 +143,25 @@ export default {
         known: saved?.known && typeof saved.known === "object" ? { ...saved.known } : {},
         from: Array.isArray(saved?.from) ? saved!.from.filter((k) => typeof k === "string") : [],
         at: typeof saved?.at === "number" ? saved.at : undefined,
+        vaults: saved?.vaults && typeof saved.vaults === "object" ? { ...saved.vaults } : {},
+        keysAt: typeof saved?.keysAt === "number" ? saved.keysAt : undefined,
       };
       return state;
     };
     const status = { on: false, error: undefined as string | undefined, skipped: [] as string[] };
 
     type Here = Map<string, { h: string; value: () => unknown }>;
+    /** The person's API keys, each sealed as it is sent. */
+    async function keys(): Promise<Here> {
+      const out: Here = new Map();
+      const s = await load();
+      if (!raw || !s.user) return out;
+      const [key, user] = [raw, s.user];
+      const { markOf, sealSecret } = await vault();
+      await kernel.secrets.loaded;
+      for (const [name, secret] of Object.entries(kernel.secrets.all())) out.set(`key:${name}`, { h: await markOf(key, name, secret), value: () => sealSecret(user, key, name, secret) });
+      return out;
+    }
     /**
      * Everything on this device that follows the person, by key: its hash now, and how to read its value. A folder
      * or file that can't be read throws, so the round stops: a failed read must never look like something removed.
@@ -155,6 +183,7 @@ export default {
         });
       }
       for (const [key, item] of await marks()) out.set(key, item);
+      for (const [key, item] of await keys()) out.set(key, item);
       return out;
     }
     /** The part of it that isn't files: what is on, the moves and the pick of model. */
@@ -174,6 +203,7 @@ export default {
     }
     /** One item's hash as it is on this device this moment, read again just before the account's is written over it. */
     const hashNow = async (key: string): Promise<string | undefined> => {
+      if (key.startsWith("key:")) return (await keys()).get(key)?.h;
       if (!key.startsWith("file:")) return (await marks()).get(key)?.h;
       const bytes = await store.readBytes(`user/${key.slice("file:".length)}`);
       return bytes && (await sha(bytes));
@@ -210,6 +240,15 @@ export default {
           const to = value === undefined ? null : asMove(value);
           if (!app || !plugin || !place || to === undefined || !/^[\w-]+(\/[\w-]+)*$/.test(app)) return "bad";
           await moved.set(app, plugin, place, to);
+          return "ok";
+        }
+        if (kind === "key") {
+          const s = await load();
+          if (!raw || !s.user) return "bad";
+          const secret = value === undefined ? undefined : await (await vault()).openSecret(s.user, raw, name, value);
+          // One this device's vault key doesn't open isn't written over what is here.
+          if (value !== undefined && !secret) return "bad";
+          await kernel.secrets.keep(name, secret);
           return "ok";
         }
         if (key === "llm:prefer") {
@@ -257,7 +296,7 @@ export default {
       if (pulled.status !== 200) throw new Error(typeof pulled.data.error === "string" ? pulled.data.error : `The site's server answered ${pulled.status}`);
       if (s.user && s.user !== pulled.data.user) {
         // Someone else signed in on this device: what is here is compared with their account from the start.
-        state = { version: 0, known: {}, from: [], user: pulled.data.user };
+        state = { version: 0, known: {}, from: [], vaults: {}, user: pulled.data.user };
         await store.writeJson(STATE, state);
         return round();
       }
@@ -265,11 +304,30 @@ export default {
       s.name = pulled.data.name;
       status.on = true;
 
+      let all = (Array.isArray(pulled.data.items) ? (pulled.data.items as Item[]) : []).filter((i) => i && typeof i.key === "string");
+      // Whether the person's keys follow them, and whether this device has unlocked them (on their account page).
+      for (const item of all) {
+        if (!VAULT.test(item.key)) continue;
+        if (item.gone || !item.value || typeof item.value !== "object") delete s.vaults[item.key];
+        else s.vaults[item.key] = item.value as { id?: unknown };
+      }
+      raw = Object.keys(s.vaults).length ? await (await vault()).unlocked(s.user!, s.vaults) : undefined;
+      if (!raw) {
+        // Not unlocked here (or no longer kept in the account): this device's keys are its own, and none is sent or removed.
+        for (const key of Object.keys(s.known)) if (key.startsWith("key:")) delete s.known[key];
+        s.keysAt = undefined;
+      } else if (s.keysAt !== s.version) {
+        // Unlocked since the last round: the keys the account had before then come now.
+        const before = await ask(`${AT}?since=${s.keysAt ?? 0}&only=key`);
+        if (before.status !== 200) throw new Error(typeof before.data.error === "string" ? before.data.error : `The site's server answered ${before.status}`);
+        all = [...all.filter((i) => !i.key.startsWith("key:")), ...(Array.isArray(before.data.items) ? (before.data.items as Item[]) : []).filter((i) => i && typeof i.key === "string")];
+      }
+
       let mine = await here();
       const from = new Set(s.from);
       const arrived: string[] = [];
       // A plugin's files before the mark that turns it on.
-      const items = (Array.isArray(pulled.data.items) ? (pulled.data.items as Item[]) : []).filter((i) => i && typeof i.key === "string" && wanted(i.key)).sort((a, b) => Number(b.key.startsWith("file:")) - Number(a.key.startsWith("file:")));
+      const items = all.filter((i) => wanted(i.key)).sort((a, b) => Number(b.key.startsWith("file:")) - Number(a.key.startsWith("file:")));
       let failed = 0;
       applying = true;
       try {
@@ -310,7 +368,7 @@ export default {
       if (arrived.length) {
         record({ kind: "lifecycle", name: "follow:arrived", plugin: "follow", detail: `${arrived.length} from your account` });
         // Open apps show what arrived whatever happens next: a failed send below must not leave old code running.
-        if (arrived.some((key) => /^(file|on):_everywhere\//.test(key) || key === "llm:prefer")) await kernel.reopen(EVERYWHERE);
+        if (arrived.some((key) => /^(file|on):_everywhere\/|^key:/.test(key) || key === "llm:prefer")) await kernel.reopen(EVERYWHERE);
         else for (const app of new Set(hosts.list.map((host) => kernel.appIn(host.tab)).filter((app): app is string => !!app))) if (arrived.some((key) => touches(key, app))) await kernel.reopen(app);
       }
       // Something couldn't be written here: the device stays where it was with the account, so the next round brings it again.
@@ -325,7 +383,7 @@ export default {
       const skipped: string[] = [];
       for (const [key, item] of mine) {
         if (s.known[key] === item.h) continue;
-        const value = item.value();
+        const value = await item.value();
         const size = bytesOf(value);
         if (size > MAX_ITEM) skipped.push(key.slice(key.indexOf(":") + 1));
         else changes.push({ key, h: item.h, value, size });
@@ -348,6 +406,7 @@ export default {
         record({ kind: "lifecycle", name: "follow:sent", plugin: "follow", detail: `${saved} to your account` });
       }
       s.from = [...from].sort();
+      if (raw) s.keysAt = s.version;
       s.at = Date.now();
       status.error = undefined;
       await store.writeJson(STATE, s);
@@ -383,7 +442,7 @@ export default {
       timer = setTimeout(() => void sync(), SOON);
     };
     const changed = (path: string) => {
-      if (!applying && (path.startsWith("user/") || path.startsWith("moves/") || path === "user-plugins.json" || path === "llm.json")) soon();
+      if (!applying && (path.startsWith("user/") || path.startsWith("moves/") || path === "user-plugins.json" || path === "llm.json" || path === "secrets.json")) soon();
     };
     store.changed.add(changed);
     let last = 0;
@@ -406,21 +465,21 @@ export default {
       const s = await load();
       const from = new Set(s.from);
       const ids = typeof app === "string" && status.on ? (await userAdded.list(app).catch(() => [])).filter((p) => p.id && from.has(`file:${folderOf(app, p)}/${p.file}`)).map((p) => p.id!) : [];
-      return { on: status.on, ...(status.on && { name: s.name, at: s.at ? new Date(s.at).toISOString() : undefined }), ...(status.error && { error: status.error }), skipped: status.skipped, from: ids };
+      return { on: status.on, ...(status.on && { name: s.name, at: s.at ? new Date(s.at).toISOString() : undefined }), ...(status.error && { error: status.error }), skipped: status.skipped, from: ids, keys: !status.on || !Object.keys(s.vaults).length ? "off" : raw ? "on" : "locked" };
     };
     const provider: ServiceProvider = {
-      description: "What the signed-in person added, following them between their devices: their plugins and agents, which are on, where they moved views and the model they picked go to their account on the site's server, and come from it. Never an API key.",
+      description: "What the signed-in person added, following them between their devices: their plugins and agents, which are on, where they moved views and the model they picked go to their account on the site's server, and come from it. Their API keys too if they asked for that on their account page, encrypted so the server can't read one.",
       methods: {
         status: {
           args: "(app?)",
-          returns: "{ on, name?, at?, error?, skipped, from }",
+          returns: "{ on, name?, at?, error?, skipped, from, keys }",
           needs: "plugins:read",
           params: [{ name: "app", schema: { type: "string", description: "An app's folder (demos/trip), to hear which of its plugins came from the account; left out, the app open in the caller's tab" } }],
-          description: "Whether this device follows an account (`on`: someone is signed in and the account answers), whose, when they last agreed (`at`), why the last try failed (`error`, in words for the person), the files too big to follow (`skipped`), and the ids of the app's plugins and agents that came from the account (`from`).",
+          description: "Whether this device follows an account (`on`: someone is signed in and the account answers), whose, when they last agreed (`at`), why the last try failed (`error`, in words for the person), the files too big to follow (`skipped`), the ids of the app's plugins and agents that came from the account (`from`), and whether their API keys follow them (`keys`: off, locked until this device is given what unlocks them, or on).",
         },
         now: {
           args: "(app?)",
-          returns: "{ on, name?, at?, error?, skipped, from }",
+          returns: "{ on, name?, at?, error?, skipped, from, keys }",
           needs: "plugins:manage",
           params: [{ name: "app", schema: { type: "string", description: "As for status" } }],
           description: "Sends what changed here and brings what changed elsewhere now, rather than within the minute, then answers as status does.",
