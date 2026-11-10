@@ -64,7 +64,7 @@ sequenceDiagram
 
 Each job is a file in [`sw/routes/`](../../sw/routes/), listed in [`sw/routes/index.js`](../../sw/routes/index.js). To add one, add a file and one line there.
 
-- [`apps.js`](../../sw/routes/apps.js): an app's folder address (`/demos/habits/`) serves its `app.html`.
+- [`apps.js`](../../sw/routes/apps.js): an app's folder address (`/demos/habits/`) serves its `app.html`. It also tells an app at the site's root which of its links are its own screens, so they are followed without loading the page ([An app of your own](your-own-app.md#what-gets-served)).
 - [`headers.js`](../../sw/routes/headers.js): plugin workers get their security policy (no network without `network`) on any host, not only where the server sends it.
 - [`plugins.js`](../../sw/routes/plugins.js): plugin routes, above.
 - [`spaces.js`](../../sw/routes/spaces.js): an app inside a space (`/s/<space>/demos/habits/`) serves the app's own page, with a `<base>` that keeps its links in the space. A server plugin's public route there goes to the network, to the space's server.

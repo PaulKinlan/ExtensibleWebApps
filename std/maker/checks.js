@@ -264,7 +264,8 @@ const USES = [
   { pattern: /\bctx\.routes\.add\(/g, needs: ["routes"], what: () => "ctx.routes.add" },
   { pattern: /\b(?:fetch\(|new WebSocket\(|new EventSource\()/g, needs: ["network"], what: (/** @type {RegExpMatchArray} */ m) => m[0].replace("(", "") },
   { pattern: /\bctx\.ui\.(?:render|html|live)\(/g, needs: ["ui"], what: (/** @type {RegExpMatchArray} */ m) => m[0].slice(0, -1) },
-  { pattern: /\bctx\.schedule\.(?:every|at)\(/g, needs: ["schedule"], what: (/** @type {RegExpMatchArray} */ m) => m[0].slice(0, -1) },
+  // `service`: the kernel service the shorthand calls, which a site's kernel may not run (kernel.json).
+  { pattern: /\bctx\.schedule\.(?:every|at)\(/g, needs: ["schedule"], service: "schedule", what: (/** @type {RegExpMatchArray} */ m) => m[0].slice(0, -1) },
 ];
 
 /**
@@ -299,7 +300,11 @@ function checkPlugin(app, key, source, slots, rules, report) {
     const lacking = needs.filter((need) => !need.includes("<") && !rules.grants(caps, need));
     if (lacking.length) report("error", key, line, `${what} needs ${lacking.map((n) => `"${n}"`).join(" and ")} in the manifest's permissions`);
   };
-  for (const use of USES) for (const m of matches(use.pattern)) missing(use.needs, lineOf(code, m.index ?? 0), use.what(m));
+  for (const use of USES)
+    for (const m of matches(use.pattern)) {
+      if (use.service && rules.services && !rules.services.has(use.service)) report("error", key, lineOf(code, m.index ?? 0), `${use.what(m)} uses the ${use.service} service, and there is no ${use.service} service on this site (the services are in docs/api.md)`);
+      else missing(use.needs, lineOf(code, m.index ?? 0), use.what(m));
+    }
 
   // ctx.call("service", "method", "collection"?): the reference says what each method needs.
   for (const m of matches(/\bctx\.call\(\s*(["'])([\w-]+)\1\s*,\s*(["'])(\w+)\3(?:\s*,\s*(["'])([\w-]+)\5)?/g)) {

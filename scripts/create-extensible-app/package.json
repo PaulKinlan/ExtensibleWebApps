@@ -6,6 +6,9 @@
   "bin": {
     "create-extensible-app": "index.mjs"
   },
+  "config": {
+    "platform": "github:PaulKinlan/ExtensibleWebApps"
+  },
   "files": [
     "index.mjs",
     "README.md",

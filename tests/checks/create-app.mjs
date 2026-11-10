@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makeProject } from "../../scripts/create-app.mjs";
-import { check as checkProject, dev, layoutProject } from "../../scripts/extensible-app.mjs";
+import { atRoot as frontPage, check as checkProject, dev, layoutProject } from "../../scripts/extensible-app.mjs";
 
 export default async function ({ check, context, URL, errors }) {
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
@@ -25,7 +25,7 @@ export default async function ({ check, context, URL, errors }) {
 
   const wrapper = JSON.parse(readFileSync("scripts/create-extensible-app/package.json", "utf8"));
   const runs = readFileSync("scripts/create-extensible-app/index.mjs", "utf8");
-  check("npm create extensible-app is a package that runs the repo's command from GitHub", wrapper.name === "create-extensible-app" && wrapper.bin?.["create-extensible-app"] === "index.mjs" && wrapper.files?.includes("index.mjs") && runs.startsWith("#!/usr/bin/env node") && runs.includes('"github:PaulKinlan/ExtensibleWebApps"'));
+  check("npm create extensible-app is a package that runs the repo's command from GitHub", wrapper.name === "create-extensible-app" && wrapper.bin?.["create-extensible-app"] === "index.mjs" && wrapper.files?.includes("index.mjs") && runs.startsWith("#!/usr/bin/env node") && wrapper.config?.platform === "github:PaulKinlan/ExtensibleWebApps" && runs.includes("config.platform"));
 
   const scratch = mkdtempSync(join(tmpdir(), "create-app-"));
   let server;
@@ -81,7 +81,7 @@ export default async function ({ check, context, URL, errors }) {
     const deployed = JSON.parse(readFileSync(laid.config, "utf8").replace(/^\/\/.*$/gm, ""));
     check(
       "extensible-app deploy lays out the app at / with the platform around it, and none of this site's own pages",
-      readFileSync(join(laid.site, "index.html"), "utf8") === readFileSync(join(folder, "app.html"), "utf8") && existsSync(join(laid.site, "main.js")) && existsSync(join(laid.site, "platform", "host.js")) && existsSync(join(laid.site, "std")) && !existsSync(join(laid.site, "demos")) && !existsSync(join(laid.site, "docs")) && !existsSync(join(laid.site, "package.json")) && deployed.name === "packing-list" && deployed.assets?.directory === "./site" && deployed.vars?.EXTENSIBLE_APP === "packing-list" && !deployed.vars?.EMAIL_FROM && existsSync(join(laid.site, "plugins", "note.txt")) && !existsSync(join(laid.site, "plugins", ".env")),
+      readFileSync(join(laid.site, "index.html"), "utf8") === frontPage(readFileSync(join(folder, "app.html"), "utf8")) && existsSync(join(laid.site, "main.js")) && existsSync(join(laid.site, "platform", "host.js")) && existsSync(join(laid.site, "std")) && !existsSync(join(laid.site, "demos")) && !existsSync(join(laid.site, "docs")) && !existsSync(join(laid.site, "package.json")) && deployed.name === "packing-list" && deployed.assets?.directory === "./site" && deployed.vars?.EXTENSIBLE_APP === "packing-list" && !deployed.vars?.EMAIL_FROM && existsSync(join(laid.site, "plugins", "note.txt")) && !existsSync(join(laid.site, "plugins", ".env")),
       JSON.stringify(deployed),
     );
 

@@ -24,7 +24,8 @@
 //
 // The folder's name is the app's id, so it must be lowercase letters, digits
 // and dashes. --platform names where the platform comes from, as npm writes a
-// dependency: GitHub's main by default, or a local checkout to try a change.
+// dependency: this copy's own version if it came from npm, GitHub's main if it
+// didn't, or a local checkout to try a change.
 // It only uses Node's own modules, since npx installs no devDependencies.
 
 import { spawnSync } from "node:child_process";
@@ -35,8 +36,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 /** Where this copy of the platform is: the repo, or npx's copy of it. */
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
-/** Where a project gets the platform from, until it's on npm. */
-export const PLATFORM_SPEC = "github:PaulKinlan/ExtensibleWebApps";
+/**
+ * Where a project gets the platform from. A copy of the platform that came from npm (published without
+ * `private`: scripts/release.mjs) gives its own version, so the project installs it built, and `npm update`
+ * brings newer ones. A checkout, or a copy npx fetched from GitHub, gives GitHub's main.
+ */
+const own = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+export const PLATFORM_SPEC = own.private ? "github:PaulKinlan/ExtensibleWebApps" : `^${own.version}`;
 
 /** The same rule as `npm run new-app`: the id names the plugin and its collection. */
 const ID = /^[a-z][a-z0-9-]{0,34}$/;
@@ -157,7 +163,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     console.log(`\nNext:\n  cd ${where}\n  npm install\n  npm run dev`);
     process.exit(0);
   }
-  console.log("Installing the platform (the first time from GitHub, it builds it, which takes a minute)…");
+  console.log((platform ?? PLATFORM_SPEC).startsWith("github:") ? "Installing the platform (the first time from GitHub, it builds it, which takes a minute)…" : "Installing the platform…");
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
   // npm.cmd needs a shell on Windows, so only the fixed `npm install` goes through one.
   if (spawnSync(npm, ["install"], { cwd: made.folder, stdio: "inherit", shell: process.platform === "win32" }).status !== 0) {
