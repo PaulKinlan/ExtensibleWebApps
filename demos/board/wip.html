@@ -3,9 +3,9 @@
   over, full, by }; data-over and data-full are there only when true.
 -->
 <style>
-  .gauge { display: inline-flex; align-items: center; gap: var(--space-1); padding: 1px var(--space-2); border-radius: 999px; font-weight: 600; font-size: 0.7rem; font-family: var(--mono); color: var(--fg-2); background: var(--bg-2); }
-  .gauge[data-full] { color: light-dark(#b45309, #fcd34d); background: color-mix(in srgb, var(--warn) 16%, transparent); }
-  .gauge[data-over] { color: #fff; background: var(--danger); }
+  .gauge { display: inline-flex; align-items: center; gap: var(--space-1); padding: 1px var(--space-2); border-radius: 999px; font-weight: 600; font-size: var(--text-xs); font-family: var(--mono); color: var(--fg-2); background: var(--bg-2); }
+  .gauge[data-full] { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+  .gauge[data-over] { color: var(--bg); background: var(--danger); }
 </style>
 <template id="gauge">
   <span class="gauge" data-over="{{over}}" data-full="{{full}}" title="Work-in-progress limit: {{limit}}">
