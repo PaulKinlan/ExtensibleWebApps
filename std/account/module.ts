@@ -18,7 +18,7 @@
 // what the server answers.
 
 import type { Host } from "../../src/kernel/hosts";
-import { service, type ModuleKernel } from "../../src/kernel/modules";
+import { service, SIGNED_IN, type ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
 
 /** Where the server's accounts answer (src/server/auth/). */
@@ -55,12 +55,27 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return host;
   };
 
+  /**
+   * Leaves a mark on this device while someone is signed in, and takes it away when no one is, so the modules
+   * that need an account (`"starts": "account"`: std/follow, which brings what the person added on their other
+   * devices) start with every app here, and only then.
+   */
+  const mark = async (signedIn: boolean) => {
+    const marked = (await kernel.store.readText(SIGNED_IN)) !== undefined;
+    if (signedIn === marked) return;
+    if (signedIn) await kernel.store.writeText(SIGNED_IN, "{}");
+    else await kernel.store.removeFile(SIGNED_IN);
+    if (signedIn) root.emit("internal/account");
+  };
+
   /** Asks the server, and gives back its answer with its status. A 401 is an answer (signed out), not an error. */
   const ask = async (path: string, body?: unknown): Promise<Answer> => {
     if (typeof path !== "string" || !path.startsWith(AUTH) || path.includes("..")) throw new Error(`account asks only the server's accounts, at ${AUTH}`);
     const res = await fetch(new URL(path, self.location.origin), body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     if (path === "/auth/me" && (res.status === 404 || !res.headers.get("content-type")?.includes("json"))) return { status: 404, unavailable: true };
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    // Only a plain answer says who is signed in: a server that is failing says nothing about it.
+    if (path === "/auth/me" && (res.ok || res.status === 401)) await mark(res.ok).catch(() => {});
     if (!res.ok && res.status !== 401) throw new Error(typeof data.error === "string" ? data.error : `The server answered ${res.status}`);
     return { ...data, status: res.status, site: self.location.origin };
   };

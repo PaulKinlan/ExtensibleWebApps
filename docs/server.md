@@ -118,6 +118,34 @@ The kernel of a space knows which member each client is: the server adds it to t
 
 A space's owner can move it from one host to another, say from Cloudflare to a Node machine of their own ([src/server/transfer.ts](../src/server/transfer.ts)). `/account/` has **Download a copy** and **Load a copy** for each space you own. The copy is the space's folder: its collections and change log, the plugins members shared, the apps opened in it (so its server plugins start again on the new host, at once, with no one connected), scheduled jobs and settings. It isn't the people: members, invites and passkeys are accounts, which belong to a host, so whoever loads the copy owns the new space and invites the others again. A copy only goes into an empty space, and is at most 24 MB. Records stamped with a member's id on the old host keep that id, which names nobody on the new one. The server checks move the feed reader's space from Cloudflare to Node and back (`moveChecks` in tests/server/run.mjs).
 
+### What follows a person between devices
+
+Signed out, everything a person adds to an app stays on the device they added it on. Signed in, it follows them: the plugins and agents they added (to one app or to every app), which of them are on, where they moved views, and the model they picked show on every device they sign in on, and a plugin removed on one goes from the others. In Customize the Plugins tab says so, marks what came **From your account**, and has **Sync now**.
+
+**API keys never follow.** A device sends only the four kinds of thing below, and the account takes nothing else. Keys stay in each device's own `secrets.json`, so a model that came from the account asks for its key once on each device.
+
+The account's side is [`src/server/auth/follow.ts`](../src/server/auth/follow.ts), two routes under `/auth/` on both hosts, for whoever is signed in:
+
+| Route | What it does |
+| --- | --- |
+| `GET /auth/follow?since=<n>` | The items changed after number `n`: `{ user, name, version, items: [{ key, v, h, value }] }`, with `{ key, v, gone: true }` for one that was removed |
+| `POST /auth/follow` `{ changes }` | Keeps each `{ key, h, value }` (or `{ key, gone: true }`), giving each change the next number: `{ version, saved }` |
+
+An item is a key, a JSON value and the hash the device gave it. The account doesn't read the values; when two devices change the same item, the one that reaches the account last is kept.
+
+| Key | What it is |
+| --- | --- |
+| `file:demos/trip/countdown.js` | A file in the person's `user/` folder: a plugin, an agent, or a file a plugin lists |
+| `on:demos/trip/countdown` | That plugin is on |
+| `move:demos/trip\|countdown\|days` | Where they moved one of a plugin's views |
+| `llm:prefer` | The model that answers when a request names none |
+
+One account keeps at most 4 MB in 2000 items, and a file of at most 256 KB; a bigger file stays on its device, and Customize says which. The items are files on the accounts' files seam (`follow/<user>/`), so they live where the accounts do: `<spaces>/_accounts/` on Node, the accounts' Durable Object on Cloudflare.
+
+The device's side is the `follow` kernel module ([`std/follow/module.ts`](../std/follow/module.ts)). It hashes what the device has, keeps the hash it last agreed with the account for each item (`sync/account.json`), sends what differs and writes what the account says is newer, through the same parts of the kernel a person's own change goes through, so open apps show it without a reload. It syncs as an app opens, when the person changes something, and once a minute while a tab is open. It starts only on a device where someone is signed in ([The layers](layers.md#kernel-modules)), so signed out nothing is fetched and the server is never asked.
+
+In a space, what is the person's everywhere follows them (their every-app plugins, moves and model). The plugins they add to an app inside a space stay that space's own copy, shared with its members or not ([Space plugins](#space-plugins)).
+
 ### Signing in with another site
 
 People can also sign in with an account they have elsewhere, over OAuth 2 with PKCE. A provider that speaks plain OAuth 2 is configuration, not code: a few URLs ([`src/server/auth/providers.ts`](../src/server/auth/providers.ts)). One that needs code is a **provider module** in [`src/server/auth/providers/`](../src/server/auth/providers/): [`github.ts`](../src/server/auth/providers/github.ts) fills in GitHub's URLs, and [`bluesky/`](../src/server/auth/providers/bluesky/) has sign-in steps of its own. [`providers/index.ts`](../src/server/auth/providers/index.ts) lists the modules a site's servers build in, and each host passes that list on, so the accounts never name a provider: adding one is a file and a line there, and taking one off the list leaves it out. A host turns providers on from its environment (Node's `process.env`, or a Worker's vars and secrets):

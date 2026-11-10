@@ -24,14 +24,14 @@ import { readManifest, RESERVED } from "./manifest";
 import { collections } from "./records";
 import { RemotePlugins, type ServiceProvider } from "./remote";
 import { loadServices } from "./services";
-import { loadModules, type Seams } from "./modules";
+import { loadModules, SIGNED_IN, type Seams } from "./modules";
 import modules, { hookLimits } from "virtual:kernel-modules";
 import { secrets as makeSecrets } from "./secrets";
 import { Store } from "./store";
 import { switches } from "./switches";
 import { isolateHost } from "./isolate-host";
 import { agentFiles, asPlugin } from "./agents/linked";
-import { asMove, moves as makeMoves } from "./moves";
+import { moves as makeMoves } from "./moves";
 import { record, recent, setSink, startedAt, tap } from "./trace";
 import { checkApp, EVERYWHERE, userPlugins } from "./user-plugins";
 import type { Opened } from "../shared/protocol";
@@ -379,7 +379,7 @@ const whole = () => Promise.all([kernelModules.all(), ...Object.values(services)
 const describe = async () => (await describing()).reference(services, remote);
 
 // The rest of the core's services are a file each in services/, found by name.
-const parts = { root, store, hosts, remote, apps, reviewed, describe, whole, collections: records, reviews, userAdded, reopen, appIn: (tab: string) => openApps.get(tab)?.app, started: () => started };
+const parts = { root, store, hosts, remote, apps, reviewed, describe, whole, collections: records, reviews, userAdded, moved, reopen, appIn: (tab: string) => openApps.get(tab)?.app, started: () => started };
 Object.assign(services, loadServices(parts));
 // Then the kernel modules the site lists in kernel.json (docs/layers.md): each may add services and page commands.
 /** The page commands the kernel answers itself; a module's commands (loadModules) can't take these names. */
@@ -393,6 +393,8 @@ const kernelModules = loadModules(modules, parts, services, commands, doors, (na
   // (modules.ts), so an app's kernel is the core and the modules that app uses.
   eager: where.kind === "server",
   space: where.kind !== "server" && !!where.space,
+  // Signed in: a member of the space this kernel is for, or the account app left its mark on this device (std/account).
+  account: async () => where.kind !== "server" && (!!where.space || (await store.readText(SIGNED_IN)) !== undefined),
   // A module that started after the tabs said where they are hears it now (the router keeps each tab's screen).
   onLate: () => {
     for (const host of hosts.list) {
@@ -405,6 +407,8 @@ const kernelModules = loadModules(modules, parts, services, commands, doors, (na
 if (hosts.mode === "server") void kernelModules.ready.then(() => {
   if (!seams.messages.has("sync")) record({ kind: "error", name: "kernel:no-spaces", detail: "This is a space's server, but kernel.json lists no module that answers sync (std/spaces)" });
 });
+// The person signed in on this device (the account module says so): the modules that wait for that start now.
+root.on("internal/account", () => kernelModules.account());
 // A plugin can't take a service's name as its id, whichever way the service was added.
 for (const name of Object.keys(services)) RESERVED.add(name);
 
@@ -547,79 +551,21 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   return undefined;
 }
 
-/** The apps a change to one of the person's plugins reaches: this one, or all of them for one they use in every app. */
-const keptFor = async (app: string, id: string) => ((await userAdded.list(app)).some((p) => p.id === id && p.everywhere) ? EVERYWHERE : app);
-
-/** The Customize panel's commands: the person's own plugins for an app, and the places they let plugins into. */
-async function customize(name: string, arg: unknown): Promise<unknown> {
-  const a = (arg ?? {}) as Record<string, unknown>;
-  const app = checkApp(a.app);
-  const id = typeof a.id === "string" ? a.id : typeof a.plugin === "string" ? a.plugin : "";
-  switch (name) {
-    case "user:list":
-    {
-      const sharing = space()?.sharing;
-      return sharing ? sharing.mark(app, await userAdded.list(app)) : userAdded.list(app);
-    }
-    case "user:share":
-    case "user:unshare": {
-      const sharing = space()?.sharing;
-      if (!sharing) return { ok: false, error: "Only a plugin in a space can be shared with it" };
-      return { ok: await (name === "user:share" ? sharing.share(app, id) : sharing.unshare(app, id)) };
-    }
-    case "user:add": {
-      const added = typeof a.url === "string" ? await userAdded.addFromUrl(app, a.url) : await userAdded.add(app, a.files as { name: string; data: Blob | string }[]);
-      // Adding a plugin again turns it off: stop the copy that was running.
-      await reopen(app);
-      return added;
-    }
-    case "user:on":
-    case "user:off":
-      // As in Customize (authoring.ts): the person's plugins that provide what it needs come on with it.
-      await (name === "user:on" ? userAdded.onWithNeeds(app, id, (service) => Object.hasOwn(services, service), (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not) : userAdded.offWithDependents(app, id, (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not));
-      await reopen(await keptFor(app, id));
-      return true;
-    case "user:remove": {
-      const where = await keptFor(app, id);
-      const removed = await userAdded.remove(app, id);
-      await reopen(where);
-      return removed;
-    }
-    case "place:ask": {
-      const outcome = await reviews.ask(
-        {
-          plugin: id,
-          instance: id,
-          name: remote.installed.get(id)?.manifest.name ?? id,
-          place: `place:${app}#${String(a.place)}`,
-          target: String(a.target ?? "the page").slice(0, 120),
-          before: "",
-          after: "",
-          reason: String(a.what ?? "").slice(0, 300),
-          kind: "place",
-        },
-        {},
-      );
-      return allowed(outcome);
-    }
-    case "place:move": {
-      // The person moved a view in the page's arrange mode (src/host/arrange.ts), or put it back with `to` null.
-      const to = a.to === null ? null : asMove(a.to);
-      if (to === undefined) return { ok: false, error: "A move is { at, put } with put before, after, prepend or append" };
-      await moved.set(app, id, String(a.place), to);
-      await reopen(app);
-      return { ok: true };
-    }
-    case "place:unlock":
-    case "place:lock": {
-      const place = `unlock:${app}#${String(a.place)}`;
-      if (name === "place:unlock") await reviews.grant(id, place);
-      else await reviews.forget(id, place);
-      await reopen(app);
-      return true;
-    }
-  }
-  return undefined;
-}
+/**
+ * The Customize panel's commands (`user:` the person's own plugins for an app, `place:` the places they let
+ * plugins into): panel-commands.ts, fetched the first time one is run.
+ */
+let panel: Promise<(name: string, arg: unknown) => Promise<unknown>> | undefined;
+const customize = async (name: string, arg: unknown): Promise<unknown> =>
+  (
+    await (panel ??= part("the part that changes your plugins", () => import("./panel-commands")).then(
+      (m) => m.panelCommands({ userAdded, moved, reviews, remote, services, reopen, space }),
+      (error) => {
+        // A file that didn't load is asked for again by the next command.
+        panel = undefined;
+        throw error;
+      },
+    ))
+  )(name, arg);
 
 record({ kind: "lifecycle", name: "kernel:start", detail: { shared: "shared worker", dedicated: "dedicated worker", server: "space kernel" }[where.kind] });

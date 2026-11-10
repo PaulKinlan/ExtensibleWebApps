@@ -27,6 +27,7 @@ import type { Dispatch } from "../shared/protocol";
 import type { RemotePlugins, ServiceProvider } from "./remote";
 import { allowed, type Outcome, type Request } from "./review";
 import type { Store } from "./store";
+import { SIGNED_IN } from "./modules";
 import { EVERYWHERE, folderOf, type UserPlugin, type UserPlugins } from "./user-plugins";
 import { asMove, movable, type Moved } from "./moves";
 
@@ -459,7 +460,9 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         // Only this site's files are read: a sample linked from elsewhere keeps its title alone.
         // The first 40 are read for what they are and ask for; any past that keep their title.
         const samples = await Promise.all((state.samples ?? []).map((s, i) => (i < 40 && new URL(s.href, saving.origin).origin === saving.origin ? sample(s) : s)));
-        return { space: !!saving.shared(), ...state, samples };
+        // Whether someone is signed in on this device (the account app's mark, or a space), so Customize asks the `follow` module only then.
+        const account = !!saving.shared() || (await saving.store.readText(SIGNED_IN)) !== undefined;
+        return { space: !!saving.shared(), account, ...state, samples };
       }
       if (method === "inspect") return saving.page(tab, "inspect", [], dispatch);
       if (method === "layout") return saving.page(tab, "layout", [], dispatch);

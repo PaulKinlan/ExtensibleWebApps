@@ -48,6 +48,8 @@
 
   .customize .section { display: grid; gap: var(--space-3); }
   .customize .section-head { display: grid; gap: var(--space-1); }
+  .customize .account { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+  .customize .account p { flex: 1 1 14rem; margin: 0; }
   .customize .entries { display: grid; gap: var(--space-2); }
   .customize .entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2) var(--space-4); align-items: start; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
   .customize .entry.off { border-style: dashed; background: var(--bg-2); }
@@ -99,7 +101,7 @@
   .customize .asks { display: grid; gap: 2px; padding-left: var(--space-3); font-size: var(--text-sm); }
   .customize .asks span::before { content: "· "; color: var(--fg-2); }
   .customize .tip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--space-3); padding: var(--space-3) var(--space-4); border-radius: var(--radius); background: var(--bg-2); }
-  .customize .tip p { flex: 1 1 16rem; }
+  .customize .tip p { flex: 1 1 14rem; }
 
   /* Layout */
   .customize .layout { display: grid; gap: var(--space-5); }
@@ -150,6 +152,14 @@
             <div class="section-head">
               <h3>On this page</h3>
               <template if="space"><p class="muted">Yours are on this device until you share one. The space's reach every member turned off, and each person turns them on for themselves.</p></template>
+              <template if="account">
+                <div class="account" data-part="account">
+                  <p class="muted">Signed in as {{account.name}}. The plugins and agents you add, which are on, where you move them and the model you pick follow you to every device you sign in on. API keys stay on each device.</p>
+                  <button type="button" data-action="sync-now">Sync now</button>
+                </div>
+                <template if="account.error"><p class="error">{{account.error}}</p></template>
+                <template if="account.skipped"><p class="hint">{{account.skipped}}</p></template>
+              </template>
             </div>
             <template if="none"><p class="muted">Nothing here matches. Clear the search to see everything.</p></template>
             <template if="empty"><p class="muted">No plugins on this page yet. Add one below, or make your own.</p></template>
@@ -160,6 +170,7 @@
                     <div class="head">
                       <strong>{{p.name}}</strong>
                       <span class="pill">{{p.who}}</span>
+                      <template if="p.fromAccount"><span class="pill" data-from-account="{{p.id}}">From your account</span></template>
                       <template if="p.on"><span class="pill on">On</span></template>
                       <template if="p.off"><span class="pill off">Off</span></template>
                     </div>

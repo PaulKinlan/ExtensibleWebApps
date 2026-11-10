@@ -1,0 +1,9 @@
+{
+  "services": [
+    "follow"
+  ],
+  "commands": [
+    "follow"
+  ],
+  "starts": "account"
+}

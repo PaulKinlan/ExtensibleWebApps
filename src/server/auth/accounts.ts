@@ -29,6 +29,9 @@
 //   POST /auth/invites/accept    { token }  joins the space an invite is for
 //   POST /auth/spaces/<name>/leave { user? } leaves it, or (its owner) removes someone
 //
+// And what a person added to their apps, which follows them to each device they sign in on (follow.ts):
+//   GET  /auth/follow?since=<n>, POST /auth/follow { changes }
+//
 // And the keys members give agents outside the browser, to reach a space's MCP server (agent-keys.ts):
 //   GET  /auth/keys, POST /auth/keys { space, name }, POST /auth/keys/revoke { id }
 // or that an MCP client gets by signing in with OAuth (mcp-oauth.ts): /auth/mcp/* and /.well-known/oauth-*.
@@ -41,6 +44,7 @@
 import { isAddress } from "../../kernel/address.ts";
 import type { Email, Files } from "../../seams/index.ts";
 import { agentKeys } from "./agent-keys.ts";
+import { follow } from "./follow.ts";
 import { mcpOAuth } from "./mcp-oauth.ts";
 import { isFlow, type OAuthProvider, type Provider } from "./providers.ts";
 import { ALGORITHMS, b64url, unb64url, type CredentialJSON, type PublicKey, verifyAssertion, verifyRegistration } from "./webauthn.ts";
@@ -341,6 +345,8 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     providers: () => providers.map((p) => ({ id: p.id, name: p.name, ...(isFlow(p) && p.ask ? { ask: p.ask } : {}) })),
   });
 
+  const following = follow(files, async (request) => (await session(request))?.user ?? null, serial);
+
   const join = async (space: Space, user: string, role: Role) => {
     space.members[user] = role;
     await write(`spaces/${space.name}.json`, space);
@@ -459,6 +465,9 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       // An MCP client signing in (mcp-oauth.ts): its own checks, since its forms and clients aren't this site's pages.
       const signingIn = await mcpSignIn.handle(request);
       if (signingIn) return signingIn;
+      // What a person added, following them from device to device (follow.ts).
+      const followed = await following.handle(request, url);
+      if (followed) return followed;
 
       if (route === "GET /auth/me") {
         const current = await session(request);

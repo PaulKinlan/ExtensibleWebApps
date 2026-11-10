@@ -6,7 +6,9 @@
 //     everything they can add, searchable, in three kinds: services (which
 //     give the app something new other plugins use, such as a language
 //     model), plugins that show on the page, and ones that work behind the
-//     scenes. A plugin that has just been added says so where it is listed,
+//     scenes. Signed in, it says what the person adds follows them to their
+//     other devices, and marks what came from their account (std/follow).
+//     A plugin that has just been added says so where it is listed,
 //     with Turn on right there. The app's samples (each says what it adds),
 //     and adding a plugin from files, pasted code or a URL, come last. A link
 //     to the app that ends #add=<id> (the registry page's "Add to an app")
@@ -219,6 +221,8 @@ export default function (ctx) {
     // Closed, only Make stays drawn (hidden), so a draft being typed is still there when the panel opens again.
     if (!open) return views.render("customize", "panel", { open: false, reopen, notMake: true, arrange: lastArrange, make: makeView(lastEditorLinked) });
     const [mine, page] = await Promise.all([call("mine"), call("page")]);
+    // Signed out, the `follow` module isn't asked, so it is never fetched: the page says whether someone is signed in on this device.
+    const account = page?.account ? await ctx.call("follow", "status").catch(() => null) : null;
     if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, reopen, notMake: true, make: makeView(false), message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
     lastArrange = !!page.arrange;
     lastEditorLinked = page.running.some((r) => r.id === "plugin-editor");
@@ -233,6 +237,8 @@ export default function (ctx) {
       notMake: tab !== "make",
       message,
       follow,
+      // Signed in: what the person adds follows them to their other devices (std/follow).
+      account: account?.on ? { name: account.name ?? "you", error: account.error ?? "", skipped: account.skipped?.length ? `Too big to follow you, so only on this device: ${account.skipped.join(", ")}.` : "" } : null,
       space: page.space,
       inspect: page.inspect,
       arrange: page.arrange,
@@ -260,7 +266,8 @@ export default function (ctx) {
         };
       });
       const groups = KINDS.map((k) => ({ ...k, packages: rows.filter((p) => kindOf(p) === k.kind) })).filter((g) => g.packages.length);
-      const here = onPage(mine, page, Array.isArray(app) ? app : []);
+      const fromAccount = new Set(account?.on ? account.from : []);
+      const here = onPage(mine, page, Array.isArray(app) ? app : []).map((p) => ({ ...p, fromAccount: !!p.user && fromAccount.has(p.id) }));
       return views.render("customize", "panel", {
         ...base,
         query,
@@ -482,6 +489,12 @@ export default function (ctx) {
       return draw();
     }
     if (action === "add") return addAsked(String(value ?? ""));
+    if (action === "sync-now") {
+      const now = await ctx.call("follow", "now").catch((e) => ({ error: String(e?.message ?? e) }));
+      message = now?.error ? now.error : "Up to date with your account.";
+      follow = null;
+      return draw();
+    }
     if (action === "turn") return turn(String(value));
     if (action === "undo-turn") return undoTurn();
     if (action === "remove") {

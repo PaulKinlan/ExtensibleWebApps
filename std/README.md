@@ -36,6 +36,7 @@ Some folders here also hold a `module.ts`: a **kernel module**, trusted code tha
 | [`debug/module.ts`](debug/module.ts) | The `debug` service, which the debug console and other developer tools read the trace from, and the `bench` and `reload-test` commands the tests run |
 | [`email/module.ts`](email/module.ts) | The `email` service: mail a space's server plugins send, only to the space's members, with daily limits |
 | [`game/module.ts`](game/module.ts) | The `game` service: a game loop whose rules are plugins, a hook for each step of every tick |
+| [`follow/module.ts`](follow/module.ts) | What a signed-in person added (plugins, agents, which are on, moves, their pick of model) follows them between their devices; never a key. Starts only where someone is signed in |
 | [`history/module.ts`](history/module.ts) | The `history` service behind [`undo.js`](undo.js): undo and redo across every plugin's writes |
 | [`llm/module.ts`](llm/module.ts) | The `llm` service: one way for any plugin to ask a model; the vendor plugins in [`llm/`](llm/) answer behind it |
 | [`maker/module.ts`](maker/module.ts) | The `maker` service: apps a person makes in the browser, kept in their data folder and served at `/apps/<name>/` by the service worker ([`sw/routes/made.js`](../sw/routes/made.js)); saves after one review of every file, each file's versions, and checks as written and as it runs |
