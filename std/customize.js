@@ -164,7 +164,7 @@ export default function (ctx) {
       id: p.id,
       name: p.name,
       description: p.description,
-      who: p.shared ? "The space's" : p.everywhere ? "Yours, in every app" : "Yours",
+      who: p.shared ? "The space's" : `${p.agent ? "Your agent" : "Yours"}${p.everywhere ? ", in every app" : ""}`,
       user: true,
       on: p.on,
       off: !p.on,
@@ -174,7 +174,7 @@ export default function (ctx) {
       // Off, it neither shows nor runs: say so in the row, with what turning it on does.
       offHint: p.on || p.error ? "" : `Off: it isn't running.${p.places.length ? ` Turn it on and it ${p.places.map(whereOfText).map((w) => w[0].toLowerCase() + w.slice(1)).join("; ")}.` : " Turn it on to use it."}`,
       // One used in every app is kept once, outside any space: it isn't shared from here.
-      share: page.space && !p.everywhere ? (p.shared ? "Stop sharing" : "Share with the space") : "",
+      share: page.space && !p.everywhere && !p.agent ? (p.shared ? "Stop sharing" : "Share with the space") : "",
       // One of the person's own can follow them to every app they open, or go back to this app alone.
       reach: p.shared ? "" : p.everywhere ? "Only this app" : "Use in every app",
       reachTitle: p.everywhere ? "Keep it for this app alone, and take it out of your other apps" : "Add it to every app you open on this device, with the same on or off",

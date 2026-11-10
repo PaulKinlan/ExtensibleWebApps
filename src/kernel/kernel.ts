@@ -296,7 +296,7 @@ async function reopen(app: string) {
   for (const tab of reopening) {
     for (const link of await userAdded.links(openApps.get(tab)!.app!).catch(() => [])) {
       try {
-        const source = asPlugin(link.href, link.source);
+        const source = asPlugin(link.href, link.source, link.runner);
         const id = readManifest(source).id;
         const running = remote.installed.get(id);
         if (running?.origin === "app" && (running.source !== source || running.href !== link.href) && apps.tabsWith(id).every((t) => reopening.has(t))) remote.uninstall(id);

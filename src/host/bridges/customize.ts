@@ -16,8 +16,8 @@ function fragile(selector: string): boolean {
   return /:nth-|:first-|:last-|:only-/.test(selector) || (selector.match(/>/g) ?? []).length > 2;
 }
 
-/** Files a person picks to add as a plugin: the plugin's .js and the files it lists. */
-const ACCEPT = ".js,.html,.css,.json,.svg,.png,.jpg,.jpeg,.webp,.gif";
+/** Files a person picks to add as a plugin: the plugin's .js and the files it lists, or an agent's .agent.md. */
+const ACCEPT = ".js,.md,.html,.css,.json,.svg,.png,.jpg,.jpeg,.webp,.gif";
 /** The most a pick reads, all files together. */
 const MAX = 5_000_000;
 
@@ -85,7 +85,7 @@ export default ({ places, running, inspect, arrange }: BridgeHost) => ({
         input.remove();
         if (!files.length) return resolve(null);
         if (files.reduce((n, f) => n + f.size, 0) > MAX) return reject(new Error(`Pick at most ${MAX / 1_000_000} MB of files`));
-        Promise.all(files.map(async (f) => ({ name: f.name, data: /\.(js|html|css|json|svg)$/.test(f.name) ? await f.text() : (f as Blob) }))).then(resolve, reject);
+        Promise.all(files.map(async (f) => ({ name: f.name, data: /\.(js|md|html|css|json|svg)$/.test(f.name) ? await f.text() : (f as Blob) }))).then(resolve, reject);
       });
       document.body.append(input);
       input.click();
