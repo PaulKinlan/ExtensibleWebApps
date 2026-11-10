@@ -3,30 +3,28 @@
   plugin the app links, each { id, name, description, enabled, picked };
   shown is null or the picked plugin's { id, name, description, enabled,
   code, rev, permissions: [{ name, about }] }; rev changes each time it is
-  read, so the code shown is always the latest. Each plugin's button sends
-  "show:<id>"; Close sends "hide".
+  read, so the code shown is always the latest. The picker sends "show" with
+  the plugin's id (an app can link dozens of plugins: a picker stays one row,
+  where a button each filled a phone's screen twice over); Close sends "hide".
 -->
 <style>
-  .sources { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0 0 var(--space-3); padding: 0; list-style: none; }
+  .sources { display: grid; gap: 2px; max-width: 28rem; margin: 0 0 var(--space-3); font-size: var(--text-sm); color: var(--fg-2); }
   .shown h3 { margin: 0 0 var(--space-1); }
   .shown .about { margin: 0 0 var(--space-2); color: var(--fg-2); }
   .may { list-style: none; margin: 0 0 var(--space-3); padding: 0; display: grid; gap: 2px; }
   .may code { font-size: var(--text-sm); color: var(--fg-2); }
-  .sources button[aria-pressed="true"] { font-weight: 600; border-color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); }
   .shown-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
 </style>
 <template id="source">
   <ui-card>
     <h2>View source</h2>
     <p>Every part of this page is a plugin: one file you can read. Pick one to see what it may do and its code.</p>
-    <ul class="sources">
-      <template for="p of plugins">
-        <li key="{{p.id}}">
-          <template if="p.picked"><button type="button" aria-pressed="true" data-action="show:{{p.id}}" title="{{p.description}}">{{p.name}}</button></template>
-          <template if="!p.picked"><button type="button" aria-pressed="false" data-action="show:{{p.id}}" title="{{p.description}}">{{p.name}}</button></template>
-        </li>
-      </template>
-    </ul>
+    <label class="sources">Plugin
+      <select data-action="show" aria-label="Plugin to read">
+        <option value="">Pick a plugin</option>
+        <template for="p of plugins"><option key="{{p.id}}" value="{{p.id}}" selected="{{p.picked}}">{{p.name}}</option></template>
+      </select>
+    </label>
     <template if="shown">
       <div class="shown">
         <div class="shown-head">

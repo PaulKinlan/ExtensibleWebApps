@@ -68,13 +68,15 @@ export default function (ctx) {
     if (id === picked && change !== "uninstall") await show(picked).catch(() => {});
     else await draw();
   });
-  ctx.ui.onEvent(async (action) => {
-    if (action.startsWith("show:")) await show(action.slice(5));
-    if (action === "hide") {
-      picked = "";
-      shown = null;
-      generation++;
-      await draw();
-    }
+  const hide = async () => {
+    picked = "";
+    shown = null;
+    generation++;
+    await draw();
+  };
+  ctx.ui.onEvent(async (action, value) => {
+    // The picker: a plugin's id, or "" for its first line ("Pick a plugin"), which closes what was shown.
+    if (action === "show") await (typeof value === "string" && value ? show(value) : hide());
+    if (action === "hide") await hide();
   });
 }

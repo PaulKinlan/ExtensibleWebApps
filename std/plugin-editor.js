@@ -49,7 +49,7 @@ export default async function (ctx) {
   let rev = 0;
   let code = "";
   let from = "Pick a starting point";
-  let check = { ok: false, error: "Pick a starting point, or write a plugin here." };
+  let check = { ok: false, empty: true, error: "Pick a starting point, or write a plugin here." };
   /** The draft's own trace lines, oldest first. */
   let trace = [];
   /** What the last save or removal said. */
@@ -80,7 +80,8 @@ export default async function (ctx) {
   };
 
   const recheck = async () => {
-    check = await ctx.call("authoring", "check", code);
+    const said = await ctx.call("authoring", "check", code);
+    check = { ...said, broken: !said.ok };
     trace = [];
   };
 

@@ -48,7 +48,7 @@ export default async function (ctx) {
         workers: workers
           .filter((w) => w.runsIn === t.tab)
           .sort((a, b) => a.instance.localeCompare(b.instance))
-          .map((w) => ({ instance: w.instance, name: names.get(w.plugin) ?? w.plugin, shared: w.scope !== "tab", hooks: w.hooks })),
+          .map((w) => ({ instance: w.instance, name: names.get(w.plugin) ?? w.plugin, shared: w.scope !== "tab", hooks: w.hooks === 1 ? "1 hook" : `${w.hooks} hooks` })),
       }))
       .filter((t) => t.workers.length || !linked);
     return { tabs, count: workers.length, none: !workers.length };
