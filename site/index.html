@@ -86,6 +86,8 @@
     .home { display: grid; gap: 16px; padding: 16px; grid-template-columns: minmax(0, 1fr) minmax(0, 420px); grid-template-areas: "chapters playground"; align-items: start; }
     .chapters { grid-area: chapters; display: flex; flex-direction: column; gap: 16px; }
     .side { grid-area: playground; display: flex; flex-direction: column; gap: 16px; position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+    /* Room at the end of the playground, so its last card scrolls clear of the Customize button over that corner. */
+    .side::after { content: ""; flex: none; height: 56px; }
     .empty { padding: 16px; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--fg-2); }
     /* The debug console's bug sits bottom left, so the platform's Customize button goes bottom right. */
     body slot[name="customize"] > [data-plugin] { left: auto; right: 16px; }
@@ -96,6 +98,13 @@
     /* The docs panel (/docs/panel.js), docked to the right while it's open; the whole width on a phone. */
     .docs-dock:has(> slot[name="docs"] > [data-plugin]) { position: fixed; inset: 0 0 0 auto; z-index: 20; width: min(46rem, 100vw); padding: 16px; overflow: hidden; display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--border); box-shadow: -12px 0 40px rgb(0 0 0 / 0.25); }
     .docs-dock > slot[name="docs"] > [data-plugin] { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    /* The view inside takes the dock's height and no more, so the page of docs in it is what scrolls (it grew to its
+       whole length before, was cut off, and the wheel scrolled the page behind). The wheel stays in the panel. */
+    .docs-dock > slot[name="docs"] > [data-plugin] > .html-view { flex: 1; min-height: 0; }
+    .docs-dock { overscroll-behavior: contain; }
+    .docs-dock .page { overscroll-behavior: contain; }
+    /* On a phone the panel covers the page, so the page behind doesn't scroll while it's open. */
+    @media (max-width: 46rem) { html:has(.docs-dock > slot[name="docs"] > [data-plugin]) { overflow: hidden; } }
 
     /*
       X-ray (home/x-ray.js). While its switch is pressed, every part a plugin drew is outlined and

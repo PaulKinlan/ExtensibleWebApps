@@ -10,7 +10,16 @@
 <template>
   <style>
     /* The table sits on a surface of its own, like a card, and scrolls sideways inside it on a phone. */
-    :host { display: block; min-width: 0; overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
+    :host { display: block; min-width: 0; overflow-x: auto; overscroll-behavior-x: contain;
+      /* When there are more columns than fit, a soft shadow at the edge says there is more to scroll to. The first two
+         layers travel with the table and cover the shadow once that edge is reached. */
+      background:
+        linear-gradient(to right, var(--surface) 40%, transparent) left / 36px 100% no-repeat local,
+        linear-gradient(to left, var(--surface) 40%, transparent) right / 36px 100% no-repeat local,
+        linear-gradient(to right, color-mix(in srgb, var(--fg) 14%, transparent), transparent) left / 12px 100% no-repeat scroll,
+        linear-gradient(to left, color-mix(in srgb, var(--fg) 14%, transparent), transparent) right / 12px 100% no-repeat scroll,
+        var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
     /* Unseen until the view's other bound elements have drawn too (bound-element.js), so none jumps as another fills in. */
     :host(:state(waiting)) { visibility: hidden; }
     table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
@@ -27,7 +36,7 @@
     button.link { all: unset; cursor: pointer; color: var(--accent); font-weight: 500; }
     button.link:hover { text-decoration: underline; text-underline-offset: 3px; }
     /* Delete stays quiet until it's pointed at. */
-    button.remove { font: inherit; font-size: var(--text-sm); font-weight: 500; height: 28px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--fg-2); cursor: pointer; transition: color var(--duration, 140ms), background var(--duration, 140ms), border-color var(--duration, 140ms); }
+    button.remove { font: inherit; font-size: var(--text-sm); font-weight: 500; height: var(--control-sm, 30px); padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--fg-2); cursor: pointer; transition: color var(--duration, 140ms), background var(--duration, 140ms), border-color var(--duration, 140ms); }
     button.remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
     td:has(> button.remove) { text-align: right; width: 1%; }
     /* After the resets above, so `all: unset` doesn't remove the focus ring. */

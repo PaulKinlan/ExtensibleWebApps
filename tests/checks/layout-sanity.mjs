@@ -5,6 +5,8 @@
 //   - the page scrolls sideways;
 //   - two controls in the same view are drawn over each other;
 //   - a control is drawn but squeezed to nothing;
+//   - a panel over the page (the docs, Customize) holds more than fits and can't scroll;
+//   - the page is scrolled to its end and a floating button still covers something;
 //   - a long word in a view (an address, a file path) pushes the page wider than
 //     the window (the Markdown editor's side panels once ran off the screen).
 // The rules are DESIGN.md's, measured: see "What the layout check holds every page to".
@@ -21,6 +23,12 @@ export const TALLEST_CONTROL = 64;
 // [what the line "<page> <size>: <finding>" matches, why it is allowed]. Keep it short; fix the page instead where you can.
 const ALLOWED = [
   [/^\/demos\/glowfall\/app\.html \w+: button "Jar /, "the game's steering pads are big on purpose, for thumbs"],
+];
+
+// [page, what to click, what it opens]: panels over the page, measured open as well.
+const PANELS = [
+  ["", 'button[data-action="docs"]', "the docs panel"],
+  ["demos/reading-list/app.html", "ui-panel .launch", "Customize"],
 ];
 
 // Runs in the page. Returns what looks broken, as short sentences.
@@ -76,6 +84,20 @@ export function measure(tallest) {
     if (w > 3 && h > 3) over.push(`${name(a.el)} and ${name(b.el)} are drawn over each other`);
   }
   found.push(...over.slice(0, 3));
+
+  // A panel over the page (a docked panel, a dialog) with more in it than fits must scroll: nothing inside it may be
+  // cut off by a box that hides what overflows (the homepage's docs panel once cut its page off, and the wheel
+  // scrolled the page behind instead).
+  // Up the tree as it is drawn: what an element puts in a <slot> sits inside the box around that slot (Customize's panel is one).
+  const within = (el, test) => { for (let p = el; p && p.nodeType === 1; p = p.assignedSlot ?? p.parentElement ?? p.getRootNode().host) if (test(p)) return p; return null; };
+  const over2 = (el) => { const s = getComputedStyle(el); return s.position === "fixed" && el.getBoundingClientRect().height >= innerHeight / 2; };
+  const cut = all.filter((el) => {
+    if (!shown(el) || el.scrollHeight <= el.clientHeight + 16 || el.clientHeight < 80) return false;
+    const s = getComputedStyle(el);
+    const hides = s.overflowY === "hidden" || s.overflowY === "clip" || (s.contain.includes("paint") && s.overflowY === "visible");
+    return hides && within(el, over2);
+  }).filter((el, _, list) => !list.some((other) => other !== el && other.contains(el)));
+  for (const el of cut.slice(0, 2)) found.push(`${name(el)}${el.className && typeof el.className === "string" ? `.${el.className.split(" ")[0]}` : ""} in a panel over the page holds ${el.scrollHeight}px of content in ${el.clientHeight}px and can't scroll`);
   return found;
 }
 
@@ -93,6 +115,48 @@ export function stretch() {
   return [`a long word in a view pushes the page to ${doc.scrollWidth}px wide in a ${doc.clientWidth}px window (${wide.slice(0, 4).join(", ") || "outside any view"})`];
 }
 
+// Runs in the page, scrolled to its end. Floating chrome (the Customize button, the debug button) sits over the page on
+// purpose, but once the page is scrolled to its end nothing a person reads or presses may still be under it.
+export function covered() {
+  scrollTo(0, document.documentElement.scrollHeight);
+  // A column that scrolls by itself (the homepage's playground) is taken to its end too.
+  for (const box of document.querySelectorAll("main, aside, main *")) if (box.scrollHeight > box.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(box).overflowY)) box.scrollTop = box.scrollHeight;
+  const chrome = [...document.querySelectorAll("slot[pinned] > [data-plugin], slot[float] > [data-plugin]")].filter((el) => getComputedStyle(el).position === "fixed" && el.getBoundingClientRect().width > 0);
+  // What a person reads or presses in the page's columns, and inside the elements there (ui-table's cells, ui-form's fields).
+  const READ = "p, li, td, th, h2, h3, label, a, button, input, select, textarea";
+  const deep = (root, out = []) => {
+    for (const el of root.querySelectorAll("*")) {
+      if (el.matches(READ)) out.push(el);
+      if (el.shadowRoot) deep(el.shadowRoot, out);
+    }
+    return out;
+  };
+  const readable = [...document.querySelectorAll("main, aside")].flatMap((column) => deep(column));
+  // Is `inner` inside `outer`, through the shadow roots between them?
+  const holds = (outer, inner) => { for (let p = inner; p; p = p.parentNode ?? p.host) if (p === outer) return true; return false; };
+  // Everything drawn at a point, in the page and in each shadow root there.
+  const at = (x, y) => {
+    const hit = new Set();
+    const from = (root) => { for (const el of root.elementsFromPoint(x, y)) { if (hit.has(el)) continue; hit.add(el); if (el.shadowRoot) from(el.shadowRoot); } };
+    from(document);
+    return hit;
+  };
+  const found = [];
+  for (const el of chrome) {
+    const c = el.getBoundingClientRect();
+    const under = readable.find((other) => {
+      if (!other.checkVisibility() || chrome.some((x) => holds(x, other))) return false;
+      const r = other.getBoundingClientRect();
+      const left = Math.max(r.left, c.left), right = Math.min(r.right, c.right), top = Math.max(r.top, c.top), bottom = Math.min(r.bottom, c.bottom);
+      // Really under it there, not scrolled out of sight inside a box of its own.
+      return right - left > 4 && bottom - top > 4 && at((left + right) / 2, (top + bottom) / 2).has(other);
+    });
+    if (under) found.push(`with the page scrolled to its end, ${el.dataset.plugin.split("@")[0]}'s floating button still covers ${under.tagName.toLowerCase()} "${(under.textContent || under.placeholder || "").trim().slice(0, 30)}"`);
+  }
+  scrollTo(0, 0);
+  return found;
+}
+
 export default async function ({ check, context, URL, errors }) {
   const demos = new globalThis.URL("../../demos/", import.meta.url);
   const apps = readdirSync(demos, { withFileTypes: true }).filter((e) => e.isDirectory() && existsSync(new globalThis.URL(`${e.name}/app.html`, demos))).map((e) => `demos/${e.name}/app.html`);
@@ -100,6 +164,7 @@ export default async function ({ check, context, URL, errors }) {
   const broken = [];
   const look = async (page, label, size) => {
     const findings = await page.evaluate(measure, TALLEST_CONTROL).catch((e) => [`couldn't be measured: ${e.message}`]);
+    findings.push(...(await page.evaluate(covered).catch(() => [])));
     if (!findings.some((f) => f.includes("scrolls sideways"))) findings.push(...(await page.evaluate(stretch).catch(() => [])));
     for (const finding of findings) {
       const line = `${label} ${size}: ${finding}`;
@@ -132,6 +197,15 @@ export default async function ({ check, context, URL, errors }) {
       const unready = await settle(page, path.endsWith("app.html"));
       if (unready) broken.push(`/${path} ${size}: ${unready}`);
       else await look(page, `/${path}`, size);
+      // Panels that open over the page are looked at open: the homepage's docs, and Customize on an app.
+      for (const [where, opener, label] of PANELS) {
+        if (where !== path || unready) continue;
+        if (!(await page.locator(opener).first().click({ timeout: 5000 }).then(() => true, () => false))) { broken.push(`/${path} ${size}: ${label} couldn't be opened`); continue; }
+        await settle(page, true);
+        await page.waitForTimeout(800);
+        const open = (await page.evaluate(measure, TALLEST_CONTROL).catch((e) => [`couldn't be measured: ${e.message}`])).filter((f) => !f.includes("drawn over each other"));
+        for (const finding of open) if (!ALLOWED.some(([allowed]) => allowed.test(`/${path} ${size}: ${finding}`))) broken.push(`/${path} ${size}, ${label} open: ${finding}`);
+      }
     }
     await own.close();
   }

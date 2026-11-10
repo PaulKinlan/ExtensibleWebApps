@@ -27,6 +27,8 @@
   --radius-lg: 14px;
   /* The height of every one-line control: buttons, fields and selects line up beside each other. */
   --control: 38px;
+  /* A compact control inside a row of a table or a list. */
+  --control-sm: 30px;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -148,6 +150,8 @@ body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
 /* The Customize button (std/customize.js, in a <ui-panel>), on every app page: the host marks its slot pinned, and
    pins it to the bottom-left corner, above any floating chrome there (--chrome-bottom-left, see "Floating slots" below). */
 slot[pinned] > [data-plugin] { position: fixed; left: 16px; bottom: calc(16px + var(--chrome-bottom-left, 0px)); z-index: 10; }
+/* The page ends with room for that button, so the last thing on it can be scrolled clear of it. */
+body:has(slot[pinned] > [data-plugin]) { padding-bottom: calc(72px + var(--chrome-bottom-left, 0px)); }
 
 /* Inspect mode (inspect.ts): every plugin's view is outlined, the part under the pointer more so, and a panel says who drew it. */
 body.inspecting [data-plugin][data-key] { outline: 1px dashed color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 2px; }
