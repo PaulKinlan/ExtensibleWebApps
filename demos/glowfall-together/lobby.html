@@ -11,14 +11,14 @@
   .score { display: flex; gap: var(--space-3); }
   .players { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); }
   .players li { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); }
-  .swatch { width: 14px; height: 14px; border-radius: 4px; background: #ffe27a; flex: none; }
-  .c1 { background: #9effc7; }
-  .c2 { background: #ff9ecb; }
-  .c3 { background: #9ec9ff; }
-  .c4 { background: #ffb37a; }
-  .c5 { background: #c99eff; }
-  .c6 { background: #7affef; }
-  .c7 { background: #ffffff; }
+  .swatch { width: 14px; height: 14px; border-radius: var(--radius-sm); background: #ffe27a; flex: none; } /* design-ok: the game's own look, one colour per player */
+  .c1 { background: #9effc7; } /* design-ok: the game's own look, one colour per player */
+  .c2 { background: #ff9ecb; } /* design-ok: the game's own look, one colour per player */
+  .c3 { background: #9ec9ff; } /* design-ok: the game's own look, one colour per player */
+  .c4 { background: #ffb37a; } /* design-ok: the game's own look, one colour per player */
+  .c5 { background: #c99eff; } /* design-ok: the game's own look, one colour per player */
+  .c6 { background: #7affef; } /* design-ok: the game's own look, one colour per player */
+  .c7 { background: #ffffff; } /* design-ok: the game's own look, one colour per player */
   .players .points { margin-left: auto; font-variant-numeric: tabular-nums; }
   .muted { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
   .start { min-height: 44px; }
