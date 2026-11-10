@@ -506,7 +506,7 @@ Locks a part of the page again, for a plugin that was let into it.
 
 #### authoring.mine
 
-`authoring.mine()` → [{ id, name, description, permissions, places, on, shared, everywhere, error? }]
+`authoring.mine()` → [{ id, name, description, permissions, places, on, shared, everywhere, agent, error? }]
 
 Needs: `plugins:author`.
 
@@ -542,7 +542,7 @@ The caller's page as Customize shows it: whether it is in a space, how each plug
 
 Needs: `plugins:author`.
 
-Opens the file chooser, right after the person clicks, and adds the plugin they pick (with any files it lists) to their own for the caller's app, once they accept a review of its code. It is added off.
+Opens the file chooser, right after the person clicks, and adds the plugin they pick (with any files it lists), or the agent (.agent.md), to their own for the caller's app, once they accept a review of its code. It is added off.
 
 #### authoring.remove
 
@@ -558,7 +558,7 @@ Removes one of the person's own plugins for the caller's app, once they accept a
 
 Needs: `plugins:author`.
 
-Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins.
+Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins. Code that opens with `---` frontmatter is saved as an agent of theirs (an .agent.md file), which runs the standard agent loop.
 
 #### authoring.share
 
