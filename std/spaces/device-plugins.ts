@@ -193,6 +193,9 @@ export function devicePlugins(userAdded: UserPlugins, store: Store, hosts: Hosts
         // One the person uses in every app: a copy for this app is what the space gets, on here as theirs was. Theirs stays in every app.
         const files = await filesOf(store, userAdded, EVERYWHERE, id);
         if (!files) return false;
+        // Not over a file another of this app's plugins has: the app is left as it was.
+        const wrong = await problem(userAdded, app, files);
+        if (wrong) throw new Error(`This plugin can't be copied into this app to share it: ${wrong}. Rename that file in one of the two, then share again.`);
         const copied = await userAdded.add(app, decode(files), { quiet: true });
         if (!copied.ok) throw new Error(copied.error);
         if (own.on) await userAdded.mark(app, id, true);
