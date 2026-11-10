@@ -33,7 +33,7 @@
         </select>
       </label>
     </template>
-    <form data-action="make">
+    <form data-action="make" data-reset>
       <label class="row">For
         <select name="app" aria-label="Make a new app, or change one you made" disabled="{{working}}">
           <template for="t of targets"><option key="{{t.name}}" value="{{t.name}}" selected="{{t.picked}}">{{t.title}}</option></template>

@@ -20,6 +20,8 @@ import { spaceRoute } from "./routes.ts";
 
 /** A space's name, as the accounts make them. */
 export const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const LIVE_BRIDGE = /^\/mcp\/live\/([0-9a-f]{32})\/bridge$/;
+const LIVE_MCP = /^\/mcp\/live\/([0-9a-f]{32})(?:\/([A-Za-z0-9_-]{24,64}))?\/?$/;
 
 /** What the door asks of the accounts. */
 export interface Accounts {
@@ -45,6 +47,8 @@ export type Decision =
   | { door: "auth" }
   | { door: "join"; space: string; member: string }
   | { door: "route"; space: string; path: string }
+  | { door: "live-bridge"; channel: string }
+  | { door: "live-mcp"; channel: string; token?: string }
   | { door: "feed" }
   | { door: "asset" }
   | { door: "refuse"; status: number; text: string };
@@ -69,6 +73,21 @@ export async function frontDoor(knock: Knock, accounts: Accounts): Promise<Decis
 
   // Reading a feed needs no space and no sign-in: it is how Feeds works for anyone (src/server/feed-reader.ts).
   if (pathname === FEED_READER) return { door: "feed" };
+
+  // Live MCP pairing: an open browser tab connects its bridge WebSocket from this site, and shares a one-session
+  // MCP URL (/mcp/live/<channel>/<token>) so an MCP client reaches the exact live tab instance on screen.
+  const bridge = LIVE_BRIDGE.exec(pathname);
+  if (bridge) {
+    if (!knock.upgrade) return refuse(426, "Expected a WebSocket");
+    if (!sameOrigin(knock.origin, knock.url)) return refuse(403, "Not from this site");
+    return { door: "live-bridge", channel: bridge[1] };
+  }
+  const live = LIVE_MCP.exec(pathname);
+  if (live) {
+    if (!sameOrigin(knock.origin, knock.url)) return refuse(403, "Not from this site");
+    if (knock.method !== "POST" && knock.method !== "GET" && knock.method !== "DELETE") return refuse(405, "Method not allowed");
+    return { door: "live-mcp", channel: live[1], ...(live[2] ? { token: live[2] } : {}) };
+  }
 
   const kernel = /^\/s\/([^/]+)\/kernel$/.exec(pathname);
   if (kernel) {

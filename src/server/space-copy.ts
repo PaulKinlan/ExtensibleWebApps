@@ -28,6 +28,7 @@ const fromBase64 = (text: string) => Uint8Array.from(atob(text), (c) => c.charCo
 export async function exportSpace(folder: Files, space: string): Promise<SpaceCopy> {
   const files: Record<string, string> = {};
   for (const path of await folder.list("")) {
+    if (path === "secrets.json") continue;
     const data = await folder.read(path);
     if (data) files[path] = toBase64(data);
   }

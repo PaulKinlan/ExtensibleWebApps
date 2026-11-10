@@ -8,6 +8,19 @@ import { COMPONENT_NAMES, DROPPED_WITH_CONTENT, ELEMENT_ATTRIBUTES, ELEMENT_NAME
 
 const ELEMENTS = new Set<string>(ELEMENT_NAMES);
 const COMPONENTS = new Set<string>(COMPONENT_NAMES);
+/** Custom zero-script `ui-*` components added by the person or an agent for this app (elements.ts). */
+const USER_COMPONENTS = new Set<string>();
+const GLOBALS = new Set<string>(GLOBAL_ATTRIBUTES);
+const ELEMENT_ATTRS = new Map<string, Set<string>>(Object.entries(ELEMENT_ATTRIBUTES).map(([k, v]) => [k, new Set(v)]));
+const INPUTS = new Set<string>(INPUT_TYPES);
+
+/** Marks a user/agent-created `ui-*` template component as allowed in views on this page, or removes it. */
+export function setUserComponent(tag: string, allowed: boolean): void {
+  if (COMPONENTS.has(tag)) return;
+  if (allowed) USER_COMPONENTS.add(tag);
+  else USER_COMPONENTS.delete(tag);
+}
+export const isAllowedComponent = (tag: string) => COMPONENTS.has(tag) || USER_COMPONENTS.has(tag);
 import { drawing, type DrawScope } from "./drawing-hooks";
 import { html as trusted } from "./trusted";
 
@@ -59,9 +72,9 @@ export function customProperties(value: string): string | undefined {
 function allowedAttribute(tag: string, name: string): boolean {
   // data-plugin marks which plugin's stylesheet applies to a view, so only the host sets it.
   if (name.startsWith("on") || name === "style" || name === "slot" || name === "is" || name === "data-plugin") return false;
-  if (COMPONENTS.has(tag)) return true;
+  if (isAllowedComponent(tag)) return true;
   if (name.startsWith("aria-") || name.startsWith("data-")) return true;
-  return GLOBAL_ATTRIBUTES.includes(name) || (ELEMENT_ATTRIBUTES[tag] ?? []).includes(name);
+  return GLOBALS.has(name) || (ELEMENT_ATTRS.get(tag)?.has(name) ?? false);
 }
 
 /** Files an <img> may show from this site without the network permission: pictures, by their extension. */
@@ -114,7 +127,7 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       copy(el, into, owner, remote, base);
       continue;
     }
-    if (!ELEMENTS.has(tag) && !COMPONENTS.has(tag)) {
+    if (!ELEMENTS.has(tag) && !isAllowedComponent(tag)) {
       copy(el, into, owner, remote, base); // unwrap: keep the text, lose the element
       continue;
     }
@@ -127,14 +140,19 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
       }
       if (!allowedAttribute(tag, name)) continue;
       if (name === "href" && !SAFE_HREF.test(value.trim()) && !isLocal(value)) continue;
-      // An https image is a request: only plugins allowed on the network may make one. A picture on this site is not.
-      if (name === "src" && !(remote ? SAFE_SRC : DATA_SRC).test(value.trim())) {
-        // A Markdown file a ui-markdown draws is fetched from the template's folder and shown as text.
-        const own = tag === "img" || tag === "ui-markdown" ? siteFile(value, base, tag === "img") : undefined;
+      // A Markdown file a ui-markdown draws is always scoped to the template's own folder, even with `network`.
+      if (tag === "ui-markdown" && name === "src") {
+        const own = siteFile(value, base, false);
         if (own) out.setAttribute("src", own);
         continue;
       }
-      if (tag === "input" && name === "type" && !INPUT_TYPES.includes(value.toLowerCase())) continue;
+      // An https image is a request: only plugins allowed on the network may make one. A picture on this site is not.
+      if (name === "src" && !(remote ? SAFE_SRC : DATA_SRC).test(value.trim())) {
+        const own = tag === "img" ? siteFile(value, base, true) : undefined;
+        if (own) out.setAttribute("src", own);
+        continue;
+      }
+      if (tag === "input" && name === "type" && !INPUTS.has(value.toLowerCase())) continue;
       out.setAttribute(name, scopedValue(owner, name, value));
     }
     if (tag === "a" && !isLocal(el.getAttribute("href") ?? "")) {
@@ -149,11 +167,16 @@ function copy(source: Node, into: Node, owner: string, remote: boolean, base?: s
   }
 }
 
+/** An inert DocumentFragment (such as from fillFragment) rebuilt as allowed DOM without re-parsing HTML. */
+export function sanitizeFragment(source: ParentNode, owner: string, { remote = false, base }: { remote?: boolean; base?: string } = {}): DocumentFragment {
+  const out = document.createDocumentFragment();
+  copy(source, out, owner, remote, base);
+  return out;
+}
+
 /** A plugin's HTML as a fragment of allowed DOM. */
-export function sanitize(html: string, owner: string, { remote = false, base }: { remote?: boolean; base?: string } = {}): DocumentFragment {
+export function sanitize(html: string, owner: string, options: { remote?: boolean; base?: string } = {}): DocumentFragment {
   const template = document.createElement("template");
   template.innerHTML = trusted(html);
-  const out = document.createDocumentFragment();
-  copy(template.content, out, owner, remote, base);
-  return out;
+  return sanitizeFragment(template.content, owner, options);
 }

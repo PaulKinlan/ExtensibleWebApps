@@ -22,6 +22,7 @@
 // the caller gets back as the error, or let it through to the review.
 
 import { isAgentFile } from "../shared/agent-runner";
+import { COMPONENT_NAMES } from "../shared/html-allowed";
 import { readManifest } from "./manifest";
 import type { Dispatch } from "../shared/protocol";
 import type { RemotePlugins, ServiceProvider } from "./remote";
@@ -302,6 +303,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         returns: "{ at, put, label } or null",
         needs: "plugins:author",
         description: "Asks the person to point at a spot on the page, and says where: a selector and before, after, prepend or append, ready for a place in a new plugin's manifest. null if they cancel.",
+        params: [{ name: "prompt", optional: true, schema: { type: "string", description: "Short prompt shown while the person points at a spot on the page" } }],
       },
       inspect: {
         args: "()",
@@ -335,11 +337,39 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         ],
       },
       save: {
-        args: "(code)",
+        args: "(code, files?)",
         returns: "{ ok: true, id } or { ok: false, error }",
         needs: "plugins:author",
-        description: "Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins. Code that opens with `---` frontmatter is saved as an agent of theirs (an .agent.md file), which runs the standard agent loop.",
-        params: [{ name: "code", schema: { type: "string", description: "The plugin's whole source: `export const manifest = { ... }` first, then `export default function (ctx) { ... }`" } }],
+        description: "Saves a plugin (and any companion template/style files listed in its manifest's `files`) as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Code that opens with `---` frontmatter is saved as an agent of theirs (.agent.md).",
+        params: [
+          { name: "code", schema: { type: "string", description: "The plugin's whole source: `export const manifest = { ... }` first, then `export default function (ctx) { ... }`" } },
+          { name: "files", optional: true, schema: { type: "object", description: "Optional companion files listed in manifest.files, e.g. { \"view.html\": \"<template id=...>\" }" } },
+        ],
+      },
+      components: {
+        args: "()",
+        returns: "[{ tag, attributes, about, html, everywhere }]",
+        needs: "plugins:read",
+        description: "The person's own reusable `ui-*` custom components for the caller's app.",
+        params: [],
+      },
+      saveComponent: {
+        args: "(tag, html, { everywhere }?)",
+        returns: "{ ok: true, tag } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Saves a reusable `ui-*` template component (`<template>` with optional `<style>`, `{{attribute}}` holes and `<slot>`, and no `<script>`) for the caller's app (or every app when `everywhere: true`), once the person accepts a review. Plugins in the app can then use `<ui-...>` in their HTML views and templates.",
+        params: [
+          { name: "tag", schema: { type: "string", description: "Custom element tag starting with `ui-`, e.g. `ui-rating-card` (not one of the platform's built-in `ui-*` names)" } },
+          { name: "html", schema: { type: "string", description: "Component HTML containing `<template>` (with optional `<style>`, `{{attr}}` holes, `<slot>`, and `<meta name=\"description\" content=\"...\">`)" } },
+          { name: "options", optional: true, schema: { type: "object", description: "{ everywhere: true } to make the component available in every app" } },
+        ],
+      },
+      removeComponent: {
+        args: "(tag)",
+        returns: "{ ok: true } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Removes one of the person's custom `ui-*` components for the caller's app, once they accept a review.",
+        params: [{ name: "tag", schema: { type: "string", description: "The custom `ui-*` tag to remove" } }],
       },
       remove: {
         args: "(id)",
@@ -363,7 +393,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
     },
     // Reading code and checking a manifest only look, so a viewer such as std/view-source.js needs no more than plugins:read (plugins:author includes it).
-    capability: (method) => (["source", "check", "page", "packages", "inspect", "arrange", "layout"].includes(method) ? "plugins:read" : method === "turn" || method === "move" ? "plugins:manage" : "plugins:author"),
+    capability: (method) => (["source", "check", "page", "packages", "inspect", "arrange", "layout", "components"].includes(method) ? "plugins:read" : method === "turn" || method === "move" ? "plugins:manage" : "plugins:author"),
     call: async (instance, method, args, dispatch) => {
       /** The site's plugin registry (/packages/index.json), or none. */
       const registry = async (): Promise<Package[]> => {
@@ -464,8 +494,25 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const account = !!saving.shared() || (await saving.store.readText(SIGNED_IN)) !== undefined;
         return { space: !!saving.shared(), account, ...state, samples };
       }
+      const describeComponent = (c: { tag: string; html: string; everywhere?: boolean }) => {
+        const holes = [...new Set([...c.html.matchAll(/\{\{\s*([a-z][\w-]*)\s*\}\}/gi)].map((m) => m[1].toLowerCase()))];
+        const about = /<meta\s+name=["']description["']\s+content=["']([^"']*)["']/i.exec(c.html)?.[1] ?? "Custom component made for this app.";
+        return { tag: c.tag, attributes: holes.join(", "), about, html: c.html, everywhere: !!c.everywhere };
+      };
+      if (method === "components") {
+        const app = saving.appIn(tab);
+        return app ? (await saving.userAdded.components(app)).map(describeComponent) : [];
+      }
       if (method === "inspect") return saving.page(tab, "inspect", [], dispatch);
-      if (method === "layout") return saving.page(tab, "layout", [], dispatch);
+      if (method === "layout") {
+        const base = (await saving.page(tab, "layout", [], dispatch)) as { slots: unknown[]; parts: unknown[]; elements: { tag: string; attributes: string; about: string; custom?: boolean }[] };
+        const app = saving.appIn(tab);
+        const custom = app ? (await saving.userAdded.components(app)).map((c) => {
+          const d = describeComponent(c);
+          return { tag: d.tag, attributes: d.attributes, about: d.about, custom: true };
+        }) : [];
+        return { ...base, elements: [...(base.elements ?? []), ...custom] };
+      }
       if (method === "arrange") return saving.page(tab, "arrange", args.slice(0, 2).map((a) => (typeof a === "string" ? a : undefined)), dispatch);
       if (method === "choose") return saving.page(tab, "choose", [typeof args[0] === "string" ? args[0].slice(0, 120) : undefined], dispatch);
       if (method === "move") {
@@ -540,7 +587,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         await saving.reopen([id, ...also.map((p) => p.id)].some((changed) => all.find((p) => p.id === changed)?.everywhere) ? EVERYWHERE : app);
         return { ok: true, also: also.map((p) => ({ id: p.id, name: p.name ?? p.id })) };
       }
-      if (["save", "remove", "add", "pick", "share", "unshare", "everywhere"].includes(method)) {
+      if (["save", "remove", "add", "pick", "share", "unshare", "everywhere", "saveComponent", "removeComponent"].includes(method)) {
         const app = appOf(tab);
         const caller = instance.split("@")[0];
         const mine = await saving.userAdded.list(app);
@@ -717,7 +764,50 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           });
         }
 
-        const [code] = args;
+        if (method === "saveComponent") {
+          const [rawTag, rawHtml, options] = args;
+          const tag = typeof rawTag === "string" ? rawTag.trim().toLowerCase() : "";
+          if (!/^ui-[a-z][a-z0-9-]{1,46}$/.test(tag)) return { ok: false, error: "A component tag starts with `ui-` followed by lowercase letters, digits and dashes (e.g. `ui-rating-card`)" };
+          if ((COMPONENT_NAMES as readonly string[]).includes(tag)) return { ok: false, error: `<${tag}> is one of the platform's built-in components; give yours another ui-* name` };
+          if (typeof rawHtml !== "string" || !rawHtml.trim() || rawHtml.length > MAX) return { ok: false, error: `A component's HTML is at most ${MAX} characters` };
+          if (/<script\b/i.test(rawHtml)) return { ok: false, error: "Custom ui-* components are pure <template> markup and <style> (with {{attribute}} holes and <slot>), with no <script>" };
+          if (!/<template\b[\s\S]*<\/template>/i.test(rawHtml)) return { ok: false, error: "A component file needs a <template>…</template> holding its shadow markup and optional <style>" };
+          const everywhere = !!options && typeof options === "object" && (options as { everywhere?: unknown }).everywhere === true;
+          const existing = (await saving.userAdded.components(app)).find((c) => c.tag === tag);
+          const folder = options && typeof options === "object" && "everywhere" in options ? (everywhere ? EVERYWHERE : app) : existing?.everywhere ? EVERYWHERE : app;
+          const path = `user/${folder}/elements/${tag}.html`;
+          return once(`component:${tag}`, async () => {
+            const stopped = await checked({ id: tag, name: `<${tag}>`, permissions: ["ui"] }, rawHtml, "component");
+            if (stopped) return stopped;
+            const before = await saving.store.readText(path);
+            const target = `your components: ${before === undefined ? "adds" : "changes"} <${tag}>${folder === EVERYWHERE ? ", for every app" : ""}`;
+            const reason = `Plugins in ${folder === EVERYWHERE ? "every app" : "this app"} can draw <${tag}> in their views. Styles stay inside its shadow root and scripts aren't allowed.`;
+            if (!(await ask(target, before ?? "", rawHtml, reason))) return { ok: false, error: "Not saved" };
+            if ((await saving.store.readText(path)) !== before) return { ok: false, error: changed };
+            await saving.store.writeFile(path, rawHtml);
+            await saving.reopen(folder);
+            return { ok: true, tag };
+          });
+        }
+
+        if (method === "removeComponent") {
+          const [rawTag] = args;
+          const tag = typeof rawTag === "string" ? rawTag.trim().toLowerCase() : "";
+          const existing = (await saving.userAdded.components(app)).find((c) => c.tag === tag);
+          if (!existing) return { ok: false, error: `<${String(rawTag)}> isn't one of your components here` };
+          const folder = existing.everywhere ? EVERYWHERE : app;
+          const path = `user/${folder}/elements/${tag}.html`;
+          return once(`component:${tag}`, async () => {
+            const before = (await saving.store.readText(path)) ?? "";
+            if (!(await ask(`your components: removes <${tag}>${existing.everywhere ? ", from every app" : ""}`, before, "", "Plugins can no longer draw this custom component."))) return { ok: false, error: "Not removed" };
+            if (((await saving.store.readText(path)) ?? "") !== before) return { ok: false, error: changed };
+            await saving.store.removeFile(path);
+            await saving.reopen(folder);
+            return { ok: true };
+          });
+        }
+
+        const [code, extraFiles] = args;
         if (typeof code !== "string" || code.length > MAX) return { ok: false, error: `A plugin is code, at most ${MAX} characters` };
         let m;
         // Code that opens with frontmatter is an agent file (agents/file.ts), kept as <id>.agent.md.
@@ -735,21 +825,42 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const sharedSave = await sharedAsOther(m.id, `pasted${ext}`);
         if (sharedSave) return { ok: false, error: sharedSave };
         const manifest = m;
+        const folder = keptIn(manifest.id);
+        const companions: { name: string; data: string }[] = [];
+        if (extraFiles !== undefined && extraFiles !== null) {
+          if (typeof extraFiles !== "object" || Array.isArray(extraFiles)) return { ok: false, error: "files must be an object mapping file names to text, e.g. { \"view.html\": \"...\" }" };
+          for (const [fname, ftext] of Object.entries(extraFiles as Record<string, unknown>)) {
+            if (typeof ftext !== "string" || ftext.length > MAX) return { ok: false, error: `${fname}: each companion file must be text of at most ${MAX} characters` };
+            companions.push({ name: fname, data: ftext });
+          }
+        }
+        const bundle = [{ name: `${manifest.id}${ext}`, data: ext === ".js" ? code : code.trimStart() }, ...companions];
+        if (companions.length) {
+          const wrongSave = await saving.userAdded.problem(folder, bundle);
+          if (wrongSave) return { ok: false, error: wrongSave };
+        }
+        const combinedAfter = companions.length ? bundle.map((f) => `──── ${f.name} ────\n${f.data}`).join("\n\n") : code;
         return once(manifest.id, async () => {
-          const stopped = await checked(manifest, code, "save");
+          const stopped = await checked(manifest, combinedAfter, "save");
           if (stopped) return stopped;
           const before = await current(manifest.id);
-          const review = asked(manifest, before);
-          if (!(await ask(review.target, review.before, code, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not saved" };
+          const beforeCombined = companions.length && before !== undefined
+            ? [`──── ${manifest.id}${ext} ────\n${before}`, ...(await Promise.all(companions.map(async (f) => {
+                const old = await saving.store.readText(`user/${folder}/${f.name}`);
+                return old === undefined ? "" : `──── ${f.name} ────\n${old}`;
+              }))).filter(Boolean)].join("\n\n")
+            : before;
+          const review = asked(manifest, beforeCombined);
+          if (!(await ask(review.target, review.before, combinedAfter, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not saved" };
           // Replace only the version the person saw, or add one that still isn't there.
           if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
           // One the person uses in every app is saved where it is kept.
-          const added = await saving.userAdded.add(keptIn(manifest.id), [{ name: `${manifest.id}${ext}`, data: ext === ".js" ? code : code.trimStart() }]);
+          const added = await saving.userAdded.add(folder, bundle);
           if (!added.ok) return added;
           await saving.userAdded.on(app, manifest.id);
           // Opening the app again stops a running copy with other code (if only this app uses it) and starts the new code under the same id.
           await saving.turnOn([manifest.id]);
-          await saving.reopen(keptIn(manifest.id));
+          await saving.reopen(folder);
           return { ok: true, id: manifest.id };
         });
       }

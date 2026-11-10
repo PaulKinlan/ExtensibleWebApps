@@ -303,3 +303,37 @@ export async function guardNetwork(allow: string[] = []): Promise<void> {
       }
     };
 }
+
+/**
+ * A fetch function for the space kernel's own net.fetch on Node (space-env.ts) that refuses private, loopback,
+ * link-local and metadata addresses after DNS, while leaving the thread's global fetch intact for reading its own site.
+ */
+export function makeGuardedFetch(allow: string[] = []): typeof globalThis.fetch {
+  const allowed = new Set(allow.map(bare));
+  let dispatcher: unknown;
+  const ensure = async () => {
+    if (dispatcher) return dispatcher;
+    await fetch("data:,");
+    const Agent = (globalThis as any)[Symbol.for("undici.globalDispatcher.1")]?.constructor;
+    if (typeof Agent !== "function") throw new Error("Couldn't guard net.fetch: no dispatcher available");
+    const guarded = (host: string, options: LookupOptions, done: (error: Error | null, address?: string | LookupAddress[], family?: number) => void) =>
+      lookup(host, { ...options, all: true }, (error, found) => {
+        if (error) return done(error);
+        const list = found as LookupAddress[];
+        if (!allowed.has(bare(host))) {
+          const inside = list.find((a) => isPrivate(a.address));
+          if (inside) return done(new PrivateAddress(`${host} (${inside.address})`));
+        }
+        if (options.all) return done(null, list);
+        done(null, list[0].address, list[0].family);
+      });
+    dispatcher = new Agent({ connect: { lookup: guarded } });
+    return dispatcher;
+  };
+  return async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    const host = bare(url.hostname);
+    if (!allowed.has(host) && key(host) && isPrivate(host)) throw new PrivateAddress(url.host);
+    return fetch(input, { ...init, dispatcher: await ensure() } as RequestInit);
+  };
+}

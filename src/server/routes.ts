@@ -95,8 +95,8 @@ async function readBody(request: Request): Promise<Uint8Array | null> {
   return all;
 }
 
-// A page a plugin returns may show forms and links, but runs no script and loads nothing from elsewhere (as sw/routes/plugins.js).
-const PAGE_CSP = "sandbox allow-forms allow-same-origin; default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; form-action 'self'";
+// A page a plugin returns may show forms and links, but runs in an opaque sandboxed origin with no script and loads nothing from elsewhere.
+const PAGE_CSP = "sandbox allow-forms; default-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; form-action 'self'";
 
 /**
  * The plugin's answer as an HTTP response, as the service worker gives it. A route's answer as a response, marked with `X-Space-Route`: the service worker, which otherwise answers an

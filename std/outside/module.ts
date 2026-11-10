@@ -45,11 +45,13 @@
 // A kernel module (docs/layers.md): a site that lists `outside` (and `tools`) in kernel.json has it.
 
 import { env } from "../../src/kernel/env";
+import { hooks } from "../../src/kernel/hooks";
 import { callService, type ServiceProvider } from "../../src/kernel/remote";
 import type { ModuleKernel } from "../../src/kernel/modules";
 import type { Host } from "../../src/kernel/hosts";
 import type { Tool } from "../tools/module";
 import { record } from "../../src/kernel/trace";
+import { createLiveTabMcp } from "./live";
 
 /** The MCP version this server speaks; a client asking for another is answered with this one. */
 export const MCP_VERSION = "2025-06-18";
@@ -125,7 +127,8 @@ const random = () => {
 const asText = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value ?? null));
 
 /** Whether a tool only reads: what WebMCP and MCP call readOnlyHint. */
-const readOnly = (tool: Tool) => /^(get|list|collections|hooks|read|search|current|reference)/.test(tool.method);
+const readOnly = (tool: Tool) =>
+  !tool.reviewed && /^(get|list|collections|hooks|read|search|current|reference|page|layout|mine|packages|file|check|components|app|providers|status|liveStatus)$/.test(tool.method);
 
 export default {
   name: "outside",
@@ -178,6 +181,10 @@ export default {
       door.calls = door.calls.filter((at) => now - at < 3_600_000);
       if (door.calls.length >= CALLS_PER_HOUR) throw new Error(`Outside agents may call ${door.name}'s tools ${CALLS_PER_HOUR} times an hour; try again later`);
       door.calls.push(now);
+      if (hooks.has("agent:beforeTool")) {
+        const verdict = await root.serial(dispatch, "agent:beforeTool", { agent: base(door.instance), run: dispatch.trace ?? via, tool: name, args: args ?? {}, chain: [base(door.instance)] });
+        if (verdict && typeof verdict === "object" && "block" in verdict) throw new Error(`Blocked: ${String((verdict as { block: unknown }).block)}`);
+      }
       const caps = remote.installed.get(base(door.instance))?.caps ?? new Set<string>();
       let ok = false;
       try {
@@ -188,6 +195,23 @@ export default {
         root.emit(dispatch, "outside:called", { plugin: base(door.instance), tool: name, via, ...(member ? { member } : {}), ok });
       }
     }
+
+    const live = createLiveTabMcp(kernel, async (tab, dispatch) => {
+      const out = [];
+      for (const door of doors.values()) {
+        if (!tabsOf(door).some((h) => h.tab === tab)) continue;
+        for (const tool of await toolsOf(door, dispatch).catch(() => [] as Tool[])) {
+          out.push({
+            tool,
+            params: [],
+            fixed: {},
+            records: new Set<string>(),
+            doorCall: (args: unknown, callDispatch: { trace?: string }) => call(door, tool.name, args, "mcp", callDispatch),
+          });
+        }
+      }
+      return out;
+    });
 
     // On a space's server, the host keeps MCP clients' streams open and asks this door only when told that
     // something may have changed (src/server/mcp.ts): the tools (plugins came or went, a door opened or
@@ -230,6 +254,7 @@ export default {
     kernel.cleanup(() => {
       clearTimeout(refreshing);
       clearTimeout(telling);
+      live.cleanup();
       for (const door of doors.values()) void withdraw(door);
       doors.clear();
     });
@@ -416,9 +441,30 @@ export default {
           needs: "outside",
           description: "Whether this plugin's door is open, which tools it offers, and how outside agents reach it here.",
         },
+        openLive: {
+          args: "({ rotate? })",
+          returns: "{ ok, open, url, clients: [name] }",
+          needs: "plugins:author",
+          description: "Opens a live MCP link (/mcp/live/<channel>/<token>) for the browser tab this call came from, so an external MCP client can connect directly to the live page on screen. Closing the tab or calling closeLive ends it.",
+        },
+        closeLive: {
+          args: "()",
+          returns: "{ ok }",
+          needs: "plugins:author",
+          description: "Closes this browser tab's live MCP link at once.",
+        },
+        liveStatus: {
+          args: "()",
+          returns: "{ open, url?, clients: [name] }",
+          needs: "plugins:read",
+          description: "Whether this browser tab has an active live MCP link, its URL, and the names of connected MCP clients.",
+        },
       },
-      capability: () => "outside",
+      capability: (method) => (method === "openLive" || method === "closeLive" ? "plugins:author" : method === "liveStatus" ? "plugins:read" : "outside"),
       call: async (instance, method, args, dispatch) => {
+        if (method === "openLive") return live.open(instance, (args[0] ?? {}) as { rotate?: boolean });
+        if (method === "closeLive") return live.close(instance);
+        if (method === "liveStatus") return live.status(instance);
         if (method === "open") {
           const given = (args[0] ?? {}) as { instructions?: unknown };
           const instructions = typeof given.instructions === "string" ? given.instructions.slice(0, MAX_INSTRUCTIONS) : undefined;

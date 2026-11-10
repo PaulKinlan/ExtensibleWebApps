@@ -170,6 +170,25 @@ export function userPlugins(store: Store, origin: string, space?: string) {
       return new Set((await list(app)).flatMap((p) => (p.id ? [p.id] : [])));
     },
 
+    /** The person's custom `ui-*` template components for an app: its own folder's, then any kept for every app. */
+    async components(app: string): Promise<{ tag: string; html: string; everywhere?: boolean }[]> {
+      checkApp(app);
+      const readIn = async (folder: string, everywhere = false) => {
+        const out: { tag: string; html: string; everywhere?: boolean }[] = [];
+        for (const file of await store.listFiles(`user/${folder}/elements`)) {
+          if (!/^ui-[a-z][a-z0-9-]{1,46}\.html$/.test(file)) continue;
+          const html = await store.readText(`user/${folder}/elements/${file}`);
+          if (html) out.push({ tag: file.slice(0, -5), html, ...(everywhere && { everywhere: true }) });
+        }
+        return out;
+      };
+      const own = await readIn(app);
+      if (app === EVERYWHERE) return own;
+      const seen = new Set(own.map((c) => c.tag));
+      const shared = (await readIn(EVERYWHERE, true)).filter((c) => !seen.has(c.tag));
+      return [...own, ...shared];
+    },
+
     /** The code of one of the person's plugins for an app, as it is kept now. */
     async read(app: string, id: string): Promise<string | undefined> {
       const plugin = (await list(app)).find((p) => p.id === id);

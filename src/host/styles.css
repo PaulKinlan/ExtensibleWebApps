@@ -97,8 +97,9 @@ body:not(.workbench) > footer { grid-area: footer; padding: 8px 24px; border-top
   .workbench main > nav, .workbench main > aside { border: 0; border-top: 1px solid var(--border); }
   #mode { display: none; }
 }
-/* Review cards: a dialog that stays in view at the bottom of the screen until each card is answered. */
-dialog#review { position: fixed; inset: auto 16px 16px; z-index: 20; width: auto; max-width: 760px; max-height: min(70vh, 640px); margin: 0 auto; padding: 16px; overflow: auto; border: 2px solid var(--accent); border-radius: var(--radius); background: var(--surface); color: var(--fg); box-shadow: 0 8px 32px light-dark(rgb(0 0 0 / 0.18), rgb(0 0 0 / 0.6)); }
+/* Review cards: a dialog that stays in view at the bottom of the screen until each card is answered.
+   Tokens are pinned on #review itself so a plugin with ui:theme (setting :root) can never make a review unreadable. */
+dialog#review { --bg: light-dark(#f5f4f1, #101012); --bg-2: light-dark(#ebe9e4, #1a1a1e); --fg: light-dark(#1b1a17, #f0efec); --fg-2: light-dark(#66625a, #a5a39d); --border: light-dark(#e3e0d9, #2b2b31); --accent: light-dark(#3d4fd6, #99a5ff); --accent-fg: light-dark(#fff, #0c0e24); --action: var(--fg); --action-fg: var(--bg); --danger: light-dark(#c0262d, #ff7b7b); --ok: light-dark(#18794e, #4cd38a); --warn: light-dark(#a35200, #f0b44c); --surface: light-dark(#ffffff, #18181c); position: fixed; inset: auto 16px 16px; z-index: 20; width: auto; max-width: 760px; max-height: min(70vh, 640px); margin: 0 auto; padding: 16px; overflow: auto; border: 2px solid var(--accent); border-radius: var(--radius); background: var(--surface); color: var(--fg); box-shadow: 0 8px 32px light-dark(rgb(0 0 0 / 0.18), rgb(0 0 0 / 0.6)); }
 dialog#review > [data-key] { border: 0; border-radius: 0; padding: 0; margin: 0; }
 dialog#review > [data-key] + [data-key] { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
 .muted { color: var(--fg-2); }
@@ -237,7 +238,7 @@ ui-toolbar > button[aria-pressed="true"] { border-color: var(--accent); color: v
    the screen. The view's element says which with corner="bottom-left|bottom-right|top-left|top-right" (bottom-left
    if it doesn't say); corner="inline" leaves it in the page's flow. The app decides which slots may float, so a
    plugin can't lift itself over the page. Nothing here names a plugin, slot or element. */
-slot[float] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); }
+slot[float] > [data-plugin] { position: fixed; z-index: 1000; inset: auto auto var(--space-4) var(--space-4); max-width: calc(100vw - 2 * var(--space-4)); max-height: calc(100vh - 2 * var(--space-4)); }
 slot[float] > [data-plugin]:has([corner="bottom-right"]) { inset: auto var(--space-4) var(--space-4) auto; }
 slot[float] > [data-plugin]:has([corner="top-left"]) { inset: var(--space-4) auto auto var(--space-4); }
 slot[float] > [data-plugin]:has([corner="top-right"]) { inset: var(--space-4) var(--space-4) auto auto; }

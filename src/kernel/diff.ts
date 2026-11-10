@@ -6,7 +6,7 @@ export type DiffLine = { op: "same" | "add" | "del"; text: string };
 
 const LIMIT = 4_000_000; // cells in the LCS table
 /** Most lines a review shows; the rest are summed up in one line, so a huge change can't freeze the page. */
-export const SHOWN = 400;
+export const SHOWN = 2000;
 
 export function diffLines(before: string, after: string): DiffLine[] {
   const a = before === "" ? [] : before.split("\n");

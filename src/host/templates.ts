@@ -73,21 +73,43 @@ type Scope = Record<string, unknown>;
 const HOLE = /\{\{\s*(!?[A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*\}\}/g;
 const WHOLE = /^\s*\{\{\s*(!?[A-Za-z_$][\w$]*(?:\.[\w$]+)*)\s*\}\}\s*$/;
 
+const styles = new WeakMap<Document, string>();
 /** The file's own CSS: every <style> outside its templates. The host scopes it to the plugin's views. */
-export const styleOf = (file: Document) => [...file.querySelectorAll("style")].map((style) => style.textContent ?? "").join("\n");
+export const styleOf = (file: Document) => {
+  let cached = styles.get(file);
+  if (cached === undefined) styles.set(file, (cached = [...file.querySelectorAll("style")].map((style) => style.textContent ?? "").join("\n")));
+  return cached;
+};
+
+/** Fills template `id` from `file` with `data`, and returns an inert DocumentFragment directly for the sanitiser. */
+export function fillFragment(file: Document, id: string, data: unknown): DocumentFragment {
+  const template = [...file.querySelectorAll("template")].find((t) => t.id === id);
+  if (!template) {
+    const missing = inert.createDocumentFragment();
+    const p = inert.createElement("p");
+    p.textContent = `No template with id ${id}.`;
+    missing.append(p);
+    return missing;
+  }
+  const scope: Scope = data && typeof data === "object" && !Array.isArray(data) ? (data as Scope) : { value: data };
+  try {
+    return render(template.content, scope, { left: MAX_NODES });
+  } catch (error) {
+    if (error instanceof TooBig) {
+      const fallback = inert.createDocumentFragment();
+      const p = inert.createElement("p");
+      p.textContent = `The template ${id} makes more than ${MAX_NODES} nodes, so it wasn't drawn.`;
+      fallback.append(p);
+      return fallback;
+    }
+    throw error;
+  }
+}
 
 /** Fills template `id` from `file` with `data`, and returns the HTML, for the sanitiser to check. */
 export function fill(file: Document, id: string, data: unknown): string {
-  const template = [...file.querySelectorAll("template")].find((t) => t.id === id);
-  if (!template) return `<p>No template with id ${escapeText(id)}.</p>`;
-  const scope: Scope = data && typeof data === "object" && !Array.isArray(data) ? (data as Scope) : { value: data };
   const out = inert.createElement("div");
-  try {
-    out.append(render(template.content, scope, { left: MAX_NODES }));
-  } catch (error) {
-    if (error instanceof TooBig) return `<p>The template ${escapeText(id)} makes more than ${MAX_NODES} nodes, so it wasn't drawn.</p>`;
-    throw error;
-  }
+  out.append(fillFragment(file, id, data));
   return out.innerHTML;
 }
 
@@ -158,4 +180,3 @@ function lookup(scope: Scope, path: string): unknown {
 }
 
 const text = (value: unknown) => (value === null || value === undefined || value === false ? "" : typeof value === "object" ? JSON.stringify(value) : String(value));
-const escapeText = (value: string) => value.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);

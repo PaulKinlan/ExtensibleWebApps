@@ -129,6 +129,7 @@ function finish(code, name, spot) {
 export default function (ctx) {
   const views = ctx.ui.views("customize.html");
   const call = (method, ...args) => ctx.call("authoring", method, ...args).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
+  const outside = (method, ...args) => ctx.call("outside", method, ...args).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
   /** Whether the panel is open: it reads the page only while someone is looking. */
   let open = false;
   /** Which tab shows. */
@@ -144,6 +145,9 @@ export default function (ctx) {
   let reopen = 0;
   /** The plugin being made in Make: the starter, the spot, the name and the code. */
   const make = { starter: "", spot: null, name: "", code: "", rev: 0, check: null, status: "", saved: false };
+  /** Live MCP pairing for this tab: `outside` is only asked once the person opens a link here. */
+  let liveMcpUsed = false;
+  let liveMcp = { open: false, url: "", clients: [], error: "" };
 
   const matches = (p) => !query || `${p.name} ${p.description ?? ""} ${p.id}`.toLowerCase().includes(query.toLowerCase());
 
@@ -217,6 +221,10 @@ export default function (ctx) {
     permissions: make.check?.ok ? make.check.permissions : [],
     editorLinked,
     makerLinked,
+    liveMcp: {
+      ...liveMcp,
+      clientsText: liveMcp.clients?.length ? `Connected right now: ${liveMcp.clients.join(", ")}` : "",
+    },
   });
   /** What the page said last, for drawing Make while the panel is closed. */
   let lastArrange = false;
@@ -227,6 +235,10 @@ export default function (ctx) {
     // Closed, only Make stays drawn (hidden), so a draft being typed is still there when the panel opens again.
     if (!open) return views.render("customize", "panel", { open: false, reopen, notMake: true, arrange: lastArrange, make: makeView(lastEditorLinked) });
     const [mine, page] = await Promise.all([call("mine"), call("page")]);
+    if (liveMcpUsed) {
+      const live = await outside("liveStatus");
+      if (live && typeof live === "object" && !live.error) liveMcp = { open: !!live.open, url: live.url ?? "", clients: live.clients ?? [], error: "" };
+    }
     // Signed out, the `follow` module isn't asked, so it is never fetched: the page says whether someone is signed in on this device.
     const account = page?.account ? await ctx.call("follow", "status").catch(() => null) : null;
     if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, reopen, notMake: true, make: makeView(false), message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
@@ -632,6 +644,29 @@ export default function (ctx) {
       const editor = Array.isArray(packages) ? packages.find((x) => x.id === "plugin-editor") : undefined;
       if (editor?.adds.length) await addAll(editor.adds);
       else message = "The plugin editor isn't in this site's registry.";
+      return draw();
+    }
+    if (action === "live-mcp-open" || action === "live-mcp-rotate") {
+      liveMcpUsed = true;
+      const result = await outside("openLive", { rotate: action === "live-mcp-rotate" });
+      liveMcp = result?.ok
+        ? { open: true, url: result.url ?? "", clients: result.clients ?? [], error: "" }
+        : { open: false, url: "", clients: [], error: result?.error ?? "Couldn't open a live MCP link" };
+      return draw();
+    }
+    if (action === "live-mcp-close") {
+      if (liveMcpUsed) await outside("closeLive");
+      liveMcp = { open: false, url: "", clients: [], error: "" };
+      return draw();
+    }
+    if (action === "remove-component") {
+      const tag = String(value ?? "");
+      if (!tag) return;
+      message = "Waiting for your answer on the review card…";
+      follow = null;
+      await draw();
+      const result = await call("removeComponent", tag);
+      message = result?.ok === false ? (result.error === "Not removed" ? `<${tag}> is still here.` : result.error) : `Removed <${tag}>.`;
       return draw();
     }
   });

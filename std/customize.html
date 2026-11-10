@@ -314,6 +314,23 @@
           </template>
           <slot name="customize.make"></slot>
         </div>
+        <div class="step live-mcp" data-part="live-mcp">
+          <h3>Connect an external agent (MCP) to this tab</h3>
+          <template if="!make.liveMcp.open">
+            <p class="muted">Share a one-session MCP address with Claude Code, Cursor or another MCP client so it sees and shapes the exact page open in this tab—creating plugins and custom <code>ui-*</code> elements with your review. Closing this tab or disconnecting ends it.</p>
+            <template if="make.liveMcp.error"><p class="error">{{make.liveMcp.error}}</p></template>
+            <div class="row"><button type="button" data-action="live-mcp-open" data-live-mcp-open>Share MCP link for this tab</button></div>
+          </template>
+          <template if="make.liveMcp.open">
+            <label class="field">Live MCP address for this tab <input type="text" readonly value="{{make.liveMcp.url}}" data-live-mcp-url></label>
+            <p class="muted">Run <code>claude mcp add --transport http this-tab {{make.liveMcp.url}}</code>, or paste the address into your MCP client. You confirm the connection and each change on screen.</p>
+            <template if="make.liveMcp.clientsText"><p class="ok">{{make.liveMcp.clientsText}}</p></template>
+            <div class="row">
+              <button type="button" data-action="live-mcp-rotate" data-live-mcp-rotate>New link</button>
+              <button type="button" class="secondary" data-action="live-mcp-close" data-live-mcp-close>Disconnect</button>
+            </div>
+          </template>
+        </div>
         <!-- One form, so choosing a spot sends the name and code as they are now, and they come back as typed. -->
         <form data-action="make-save">
           <div class="step">
@@ -397,9 +414,10 @@
               <div class="elements">
                 <template for="e of layout.elements">
                   <details key="{{e.tag}}">
-                    <summary><code>&lt;{{e.tag}}&gt;</code></summary>
+                    <summary><code>&lt;{{e.tag}}&gt;</code> <template if="e.custom"><span class="pill">Yours</span></template></summary>
                     <p class="muted">{{e.about}}</p>
                     <template if="e.attributes"><p class="muted">Attributes: <code>{{e.attributes}}</code></p></template>
+                    <template if="e.custom"><div class="row"><button type="button" class="secondary" data-action="remove-component" data-value="{{e.tag}}" data-remove-component="{{e.tag}}">Remove</button></div></template>
                   </details>
                 </template>
               </div>

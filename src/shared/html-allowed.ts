@@ -89,6 +89,7 @@ export const COMPONENT_NAMES = [
   "ui-diagram",
   "ui-markdown",
   "ui-debug",
+  "ui-dialog",
   "ui-panel",
   "ui-preview",
   "ui-dictation",

@@ -205,6 +205,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
   let mine: { href: string; source: string; everywhere?: boolean }[] = [];
   let ids = new Set<string>();
   let moves: Awaited<ReturnType<typeof moved.get>> = {};
+  let components: { tag: string; html: string }[] = [];
   try {
     if (app !== undefined) {
       // (The folder for the plugins a person uses in every app is no app's own.)
@@ -214,6 +215,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
       mine = await userAdded.links(app);
       ids = await userAdded.ids(app);
       moves = await moved.get(app);
+      components = (await userAdded.components(app)).map(({ tag, html }) => ({ tag, html }));
     }
   } catch {
     app = undefined;
@@ -278,7 +280,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
     const shifted = Object.keys(moves[o.id] ?? {}).filter((name) => manifest?.places?.[name] && places?.[name] !== manifest.places[name]);
     return { ...o, name: installed?.manifest.name, places, theme: manifest?.theme, unlocked, user: ids.has(o.id), ...(shifted.length && { moved: shifted }) };
   };
-  await apps.open(host, linked, describe);
+  await apps.open(host, linked, describe, components);
 }
 
 /** Opens an app again in every tab that has it open, after its user plugins or places changed. */

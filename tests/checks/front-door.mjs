@@ -28,6 +28,11 @@ export default async function ({ check }) {
   check("front door: an address in a space that doesn't exist is the site's file", (await door("/s/nobody/demos/survey/")) === '{"door":"asset"}');
   check("front door: the site's files answer GET and HEAD, nothing else", (await door("/demos/")) === '{"door":"asset"}' && refused(await door("/demos/", { method: "PUT" })) === 405);
   check("front door: a route nobody answered is a file for GET, and refused for a POST", unrouted("GET").door === "asset" && unrouted("POST").status === 405);
+  const channel = "0123456789abcdef0123456789abcdef";
+  const token = "abcdefghijklmnopqrstuvwx12345678";
+  check("front door: a browser tab on this site can open its live MCP bridge WebSocket", (await door(`/mcp/live/${channel}/bridge`, { upgrade: true, origin: "https://site.example" })) === `{"door":"live-bridge","channel":"${channel}"}`);
+  check("front door: another site's page can't open a live MCP bridge WebSocket", refused(await door(`/mcp/live/${channel}/bridge`, { upgrade: true, origin: "https://evil.example" })) === 403);
+  check("front door: an MCP client reaches a live tab's MCP endpoint with its token", (await door(`/mcp/live/${channel}/${token}`, { method: "POST" })) === `{"door":"live-mcp","channel":"${channel}","token":"${token}"}`);
 
   for (const host of ["src/server/serve.ts", "src/server/cloudflare/worker.ts"]) {
     const source = read(host);

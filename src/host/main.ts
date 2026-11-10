@@ -16,7 +16,6 @@ import "./trusted";
 import { html as trustedHtml } from "./trusted";
 import { folder as appFolder, followLinks, screen } from "./router";
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
-import { inspect } from "./inspect";
 import type { Arranger } from "./arrange";
 import { themeCss } from "../shared/theme";
 import { isAgentFile, runnerHref } from "../shared/agent-runner";
@@ -24,7 +23,7 @@ import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
 import { audioProbe, audioStats } from "./audio-stats";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
-import { defineElementsIn, loadElement, onElementError } from "./elements";
+import { defineElementsIn, loadElement, onElementError, syncUserComponents } from "./elements";
 import { morphChildren } from "./morph";
 import { serviceWorker } from "./service-worker";
 import { cleanCss } from "./plugin-styles";
@@ -200,7 +199,9 @@ function listen(entry: Entry) {
     // The button that sent it may name its own action, so one form can be checked or saved.
     if (!form.hasAttribute("data-action")) return;
     const action = (e as SubmitEvent).submitter?.getAttribute("data-action") ?? form.getAttribute("data-action")!;
-    event(action, formValues(form));
+    const values = formValues(form);
+    if (form.hasAttribute("data-reset")) form.reset();
+    event(action, values);
   });
 }
 
@@ -285,17 +286,23 @@ const sendUrl = () => send({ t: "url", ...screen() });
 
 /** The plugins running for this app, as the kernel last said: the Customize panel lists them. */
 let running: Opened[] = [];
-/** Arrange mode (arrange.ts), where the person moves plugins' views; it comes with Customize, and loads the first time it's used. */
+/** Arrange mode (arrange.ts) and inspect mode (inspect.ts) load the first time they are used. */
 let arranger: Arranger | undefined;
 let arranging: Promise<Arranger> | undefined;
 const loadArranger = () =>
   (arranging ??= import("./arrange").then(({ arrange }) => (arranger = arrange({ app, command, places: pagePlaces, running: () => running }))));
+type Inspector = ReturnType<typeof import("./inspect").inspect>;
+let inspector: Inspector | undefined;
+let inspecting: Promise<Inspector> | undefined;
+const loadInspector = () =>
+  (inspecting ??= import("./inspect").then(({ inspect }) => (inspector = inspect({ app, command, places: () => pagePlaces.status() }))));
 
-function opened(plugins: Opened[]) {
+function opened(plugins: Opened[], components: { tag: string; html: string }[] = []) {
   for (const p of plugins) if (p.error && !running.some((r) => r.href === p.href && r.error === p.error)) notice(`${p.href.split("/").pop()}: ${p.error}`);
   running = plugins;
-  // The person may have added a plugin again with new files: load its templates afresh.
+  // The person may have added a plugin or component again with new files: load templates and custom elements afresh.
   forgetFiles(`${space ? `/s/${space}` : ""}/user/${app}/`);
+  const componentsChanged = syncUserComponents(components);
   const before = shown;
   // The workbench shows every running plugin's views, not only the ones it links.
   if (!isWorkbench) {
@@ -308,6 +315,7 @@ function opened(plugins: Opened[]) {
   pagePlaces.configure(plugins);
   applyThemes(plugins);
   arranger?.refresh();
+  if (componentsChanged) for (const m of [...drawn.values()]) if (showing(m.owner)) render(m.slot, m.key, m.owner, m.order, m.view);
   for (const [id, message] of held) {
     if (!showing(message.owner)) continue;
     held.delete(id);
@@ -510,7 +518,8 @@ function syncReview(dialog: HTMLDialogElement, count: number) {
     if (!dialog.popover && "showPopover" in dialog) dialog.popover = "manual";
     dialog.show();
     if (dialog.popover && !dialog.matches(":popover-open")) dialog.showPopover();
-    dialog.querySelector<HTMLElement>("button")?.focus();
+    // Focus Decline/Cancel rather than Accept, so a key pressed just as a card arrives never accepts by accident.
+    (dialog.querySelector<HTMLElement>("button:not(.primary)") ?? dialog.querySelector<HTMLElement>("button"))?.focus();
   } else if (!count && dialog.open) {
     if (dialog.popover && dialog.matches(":popover-open")) dialog.hidePopover();
     dialog.close();
@@ -719,7 +728,7 @@ const bridge = bridges({
   workers,
   places: pagePlaces,
   running: () => running,
-  inspect: withCustomize ? () => inspector?.start() : undefined,
+  inspect: withCustomize ? () => loadInspector().then((i) => i.start()) : undefined,
   arrange: withCustomize ? loadArranger : undefined,
   declared: (plugin, name) => {
     slotWatchers.set(name, (slotWatchers.get(name) ?? new Set()).add(plugin));
@@ -812,7 +821,7 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
       bench?.mode(`Kernel in a ${message.mode} worker · tab ${tab}${spawner ? " · runs the plugin workers" : ""}`);
       return;
     case "opened":
-      return opened(message.plugins);
+      return opened(message.plugins, message.components);
     case "render":
       return render(message.slot, message.key, message.owner, message.order, message.view);
     case "spawn":
@@ -845,23 +854,22 @@ port.start();
 
 addEventListener("pagehide", () => send({ t: "bye", tab }));
 
-// Hold a lock for this tab's lifetime, so the kernel notices when it closes.
-await new Promise<void>((held) => {
-  void navigator.locks.request(`ewa-tab-${tab}`, () => {
-    held();
-    return new Promise(() => {});
-  });
-});
-// A space's copy is kept in a folder of its own, beside the person's own data.
-const folder = await navigator.storage
-  .getDirectory()
-  .then(async (root) => (space ? (await root.getDirectoryHandle("spaces", { create: true })).getDirectoryHandle(space, { create: true }) : root))
-  .catch(() => undefined);
+// Hold a lock for this tab's lifetime and open the data folder in parallel, so hello waits on only the slower one.
+const [, folder] = await Promise.all([
+  new Promise<void>((held) => {
+    void navigator.locks.request(`ewa-tab-${tab}`, () => {
+      held();
+      return new Promise(() => {});
+    });
+  }),
+  navigator.storage
+    .getDirectory()
+    .then(async (root) => (space ? (await root.getDirectoryHandle("spaces", { create: true })).getDirectoryHandle(space, { create: true }) : root))
+    .catch(() => undefined),
+]);
 send({ t: "hello", tab, folder });
 introduced = true;
 for (const message of unsent.splice(0)) send(message);
-// Inspect mode comes with Customize, which starts it (bridges/customize.ts).
-const inspector = withCustomize ? inspect({ app, command, places: () => pagePlaces.status() }) : undefined;
 // The workbench is an app too: it links the demo plugins in plugins/, which no other page runs.
 await openApp();
 sendUrl();
@@ -896,4 +904,4 @@ function resetLinks() {
 // For tests and poking around in the console.
 // Tests reach the template filler and the CSS cleaner here, to check them without a plugin, and parse a
 // template file as the host does (through its Trusted Types policy: trusted.ts).
-Object.assign(window, { __host: { tab, app, command, traces, audioStats, audioProbe, workers, fill, cleanCss, report, parse: (text: string) => new DOMParser().parseFromString(trustedHtml(text), "text/html"), places: () => pagePlaces.status(), inspect: () => inspector?.start(), get spawner() { return spawner; } } });
+Object.assign(window, { __host: { tab, app, command, traces, audioStats, audioProbe, workers, fill, cleanCss, report, parse: (text: string) => new DOMParser().parseFromString(trustedHtml(text), "text/html"), places: () => pagePlaces.status(), inspect: () => loadInspector().then((i) => i.start()), get spawner() { return spawner; } } });

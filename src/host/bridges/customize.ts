@@ -91,9 +91,9 @@ export default ({ places, running, inspect, arrange }: BridgeHost) => ({
       input.click();
     });
   },
-  inspect: () => {
+  inspect: async () => {
     if (!inspect) throw new Error("This page has no inspect mode");
-    inspect();
+    await inspect();
     return true;
   },
 });

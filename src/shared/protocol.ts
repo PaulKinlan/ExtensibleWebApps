@@ -140,7 +140,7 @@ export type KernelToHost =
    * person turns a user plugin on or off. `places` are the plugin's, `unlocked` the locked places the
    * person let it into, and `user` marks a plugin the person added rather than the app's author.
    */
-  | { t: "opened"; plugins: Opened[] };
+  | { t: "opened"; plugins: Opened[]; components?: { tag: string; html: string }[] };
 
 export interface Opened {
   href: string;

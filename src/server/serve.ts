@@ -29,6 +29,7 @@ import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
 import { accept } from "./websocket.ts";
 import { headerRules } from "./header-rules.ts";
 import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse, mcpStream, type Watch } from "./mcp.ts";
+import { createLiveMcpRelay } from "./live-mcp.ts";
 import { feedReader } from "./feed-reader.ts";
 import { nodeGet } from "./feed-reader-node.ts";
 
@@ -68,6 +69,7 @@ export interface Options {
 export async function serve(options: Options): Promise<{ url: string; stop(): Promise<void> }> {
   const site = resolve(options.site);
   const spaces = new Map<string, Promise<Worker>>();
+  const liveRelay = createLiveMcpRelay();
   const rules = headerRules(join(site, "_headers"));
   // Accounts sit beside the spaces, in a folder no space's name can match.
   /** Each open client's space and member, so someone who leaves a space is let go at once. */
@@ -302,24 +304,8 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     return true;
   };
 
-  /** An MCP request from a member's agent (src/server/mcp.ts): false when the address isn't one. */
-  const mcp = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
-    // The front door has already found the space (src/server/front-door.ts).
-    const url = addressOf(request);
-    const at = mcpAddress(url);
-    if (!at) return false;
-    const headers = new Headers();
-    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
-    const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
-    const asked = await mcpRequest(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), at, auth.agent);
-    // A GET is the client's stream, which ends when its key stops working.
-    const key = () => auth.agent(headers.get("authorization"), at.space, at.plugin);
-    const answer =
-      asked instanceof Response
-        ? asked
-        : asked.method === "GET"
-          ? await mcpStream(asked, (knock) => ask(at.space, knock), watch(at.space), { key })
-          : mcpResponse(await ask(at.space, asked, MCP_TIMEOUT_MS));
+  /** Sends a Web `Response` (JSON or an MCP `text/event-stream`) out on Node's `ServerResponse`. */
+  const sendMcpResponse = async (request: IncomingMessage, response: ServerResponse, answer: Response): Promise<boolean> => {
     // A body refused before it was read (too big, or no key) is still on the connection: close it rather than reuse it.
     if (!request.complete) answer.headers.set("connection", "close");
     response.writeHead(answer.status, Object.fromEntries(answer.headers));
@@ -340,10 +326,39 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     return true;
   };
 
+  /** An MCP request from a member's agent (src/server/mcp.ts): false when the address isn't one. */
+  const mcp = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    // The front door has already found the space (src/server/front-door.ts).
+    const url = addressOf(request);
+    const at = mcpAddress(url);
+    if (!at) return false;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
+    const asked = await mcpRequest(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), at, auth.agent);
+    // A GET is the client's stream, which ends when its key stops working.
+    const key = () => auth.agent(headers.get("authorization"), at.space, at.plugin);
+    const answer =
+      asked instanceof Response
+        ? asked
+        : asked.method === "GET"
+          ? await mcpStream(asked, (knock) => ask(at.space, knock), watch(at.space), { key })
+          : mcpResponse(await ask(at.space, asked, MCP_TIMEOUT_MS));
+    return sendMcpResponse(request, response, answer);
+  };
+
   /** Sends what the door decided for a request that isn't the space's socket. */
   const answer = async (request: IncomingMessage, response: ServerResponse, decision: Decision): Promise<void> => {
     // Moving a space (src/server/transfer.ts) is under /auth/ too; anything else there is the accounts'.
     if (decision.door === "auth") return void ((await transfer(request, response)) || (await signIn(request, response)));
+    if (decision.door === "live-mcp") {
+      const url = addressOf(request);
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+      const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
+      const out = await liveRelay.handle(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), decision.channel, decision.token);
+      return void (await sendMcpResponse(request, response, out));
+    }
     if (decision.door === "route") {
       if (!(await mcp(request, response)) && !(await publicRoute(request, response, decision))) await answer(request, response, unrouted(request.method ?? "GET"));
       return;
@@ -389,6 +404,19 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
       return void raw.end("HTTP/1.1 400 Bad Request\r\n\r\n");
     }
     const decision = await frontDoor(knock(request, where), door).catch(() => ({ door: "refuse", status: 500, text: "" }) as const);
+    if (decision.door === "live-bridge") {
+      const socket = accept(request, raw);
+      if (!socket) return;
+      open.add(raw);
+      const bridge = liveRelay.attach(decision.channel, socket);
+      raw.on("close", () => {
+        open.delete(raw);
+        bridge.close();
+      });
+      socket.onMessage = (text) => bridge.message(text);
+      socket.onClose = () => bridge.close();
+      return;
+    }
     if (decision.door !== "join") {
       const status = decision.door === "refuse" ? decision.status : 404;
       return void raw.end(`HTTP/1.1 ${status} ${STATUS_CODES[status] ?? ""}\r\n\r\n`);

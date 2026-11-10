@@ -12,6 +12,7 @@ import { nodeFiles } from "../seams/node.ts";
 
 type DeliverResult = Awaited<ReturnType<Email["send"]>>;
 import { nodeIsolates } from "../seams/node-isolates.ts";
+import { makeGuardedFetch } from "./network-guard.ts";
 
 const { dir, origin, allowPrivate } = workerData as { dir: string; origin: string; allowPrivate?: string[] };
 
@@ -35,6 +36,8 @@ function askServer<T>(t: string, fallback: T, payload: Record<string, unknown> =
 setEnv({
   kind: "server",
   origin,
+  allowPrivate,
+  fetch: makeGuardedFetch(allowPrivate ?? []),
   folder: nodeFiles(join(dir, "files")),
   // Each of the space's plugins in a process of its own, from the runtime built beside this file.
   isolates: nodeIsolates(fileURLToPath(new URL("./isolate.js", import.meta.url)), { allowPrivate }),

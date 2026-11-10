@@ -228,7 +228,8 @@ export function mcpOAuth(files: Files, accounts: McpOAuthAccounts) {
     const client = clientOf(id);
     if (!client) return { page: problem("The agent didn't say who it is in a way this site understands. Connect it again.") };
     const redirect = params.get("redirect_uri") ?? (client.uris.length === 1 ? client.uris[0] : "");
-    if (!client.uris.includes(redirect)) return { page: problem("The agent asked to send you somewhere it didn't register. Connect it again.") };
+    if (!client.uris.includes(redirect) || (new URL(redirect).origin === origin && new URL(redirect).pathname.startsWith("/s/")))
+      return { page: problem("The agent asked to send you somewhere it isn't allowed to use as a callback. Connect it again.") };
     // From here on, a problem goes back to the agent.
     const state = params.get("state") ?? undefined;
     const fail = (error: string, description: string) => ({ redirect: back(redirect, { error, error_description: description, state, iss: origin }) });

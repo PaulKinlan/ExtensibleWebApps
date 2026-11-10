@@ -31,6 +31,7 @@ import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
 import { providerModules } from "../auth/providers/index.ts";
 import { type Decision, frontDoor, unrouted } from "../front-door.ts";
+import { createLiveMcpRelay } from "../live-mcp.ts";
 import { mcpAddress, mcpRequest, mcpResponse, mcpStream, type Watch } from "../mcp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
@@ -129,7 +130,7 @@ class PluginHost extends RpcTarget {
   }
 
   /** The plugins' way out to the network: this Worker's NetworkGuard, with the hosts the deployment allows. */
-  private guard(): Fetcher {
+  guard(): Fetcher {
     const allow = (this.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean);
     const exports = (this.ctx as unknown as { exports: { NetworkGuard(options: { props: { allow: string[]; resolver: string } }): Fetcher } }).exports;
     return exports.NetworkGuard({ props: { allow, resolver: resolverFrom(this.env.DNS_RESOLVER) } });
@@ -223,6 +224,7 @@ export class Space extends DurableObject<Env> {
   /** The open clients, by the member each one is. */
   private clients = new Map<WebSocket, string>();
   private plugins?: PluginHost;
+  private live = createLiveMcpRelay();
 
   /** Someone left the space, or was removed: their connections close at once. */
   async revoke(user: string): Promise<void> {
@@ -231,11 +233,14 @@ export class Space extends DurableObject<Env> {
 
   /** The space's kernel, a facet running the kernel's class from its own isolate. */
   private kernel(space: string): KernelStub {
+    this.plugins ??= new PluginHost(this.ctx, this.env, space);
+    const guard = this.plugins.guard();
     const worker = this.env.LOADER.get(`space:${space}:${KERNEL_VERSION}`, async () => ({
       compatibilityDate: "2026-11-01",
       mainModule: kernelSource.main,
       modules: kernelSource.modules,
-      // The kernel makes vendor calls for plugins with `network` (net.fetch), so it keeps the network.
+      // The kernel makes vendor calls for plugins with `network:<host>` (net.fetch), guarded like plugin isolates.
+      globalOutbound: guard,
     }));
     return this.ctx.facets.get("kernel", () => ({ class: worker.getDurableObjectClass("SpaceKernel") })) as unknown as KernelStub;
   }
@@ -290,6 +295,19 @@ export class Space extends DurableObject<Env> {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
+    const liveBridge = /^\/mcp\/live\/([0-9a-f]{32})\/bridge$/.exec(url.pathname);
+    if (liveBridge) {
+      if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("Expected a WebSocket", { status: 426 });
+      const { 0: client, 1: server } = new WebSocketPair();
+      server.accept();
+      const bridge = this.live.attach(liveBridge[1], server);
+      server.addEventListener("message", (e) => bridge.message(String(e.data)));
+      server.addEventListener("close", () => bridge.close());
+      server.addEventListener("error", () => bridge.close());
+      return new Response(null, { status: 101, webSocket: client });
+    }
+    const liveHttp = /^\/mcp\/live\/([0-9a-f]{32})(?:\/([A-Za-z0-9_-]{24,64}))?\/?$/.exec(url.pathname);
+    if (liveHttp) return this.live.handle(request, liveHttp[1], liveHttp[2]);
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("Expected a WebSocket", { status: 426 });
     const watched = WATCH.exec(url.pathname)?.[1];
     if (watched) {
@@ -444,6 +462,9 @@ async function answer(request: Request, env: Env, decision: Decision): Promise<R
       forward.headers.set(MEMBER, decision.member);
       return env.SPACE.getByName(decision.space).fetch(forward);
     }
+    case "live-bridge":
+    case "live-mcp":
+      return env.SPACE.getByName(`_live:${decision.channel}`).fetch(request);
     case "route":
       return (await mcp(request, env)) ?? (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
     case "feed":

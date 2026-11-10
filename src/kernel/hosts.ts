@@ -57,8 +57,8 @@ export class Hosts {
         // the kernel gets the lock only once the tab has gone. This catches
         // tabs that close without a chance to say goodbye.
         const leaving = host;
-        // (A server has no Web Locks: its clients say bye, or their socket closes.)
-        void (globalThis.navigator as Navigator | undefined)?.locks?.request(`ewa-tab-${message.tab}`, () => this.disconnect(leaving));
+        // (A server has no Web Locks for tabs: its clients say bye, or their socket closes.)
+        if (this.mode !== "server") void (globalThis.navigator as Navigator | undefined)?.locks?.request(`ewa-tab-${message.tab}`, () => this.disconnect(leaving));
         const spawner = this.spawner === host;
         this.send(host, { t: "welcome", tab: message.tab, spawner, mode: this.mode });
         for (const { tab, ...view } of this.views.values()) if (!tab || tab === host.tab) this.send(host, { t: "render", ...view });

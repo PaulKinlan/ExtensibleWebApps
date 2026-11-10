@@ -11,16 +11,23 @@ export const manifest = {
   version: "1.0.0",
   permissions: ["ui"],
   places: { here: { at: "main", put: "append" } },
+  settings: {
+    title: { type: "string", title: "Heading", default: "Remember" },
+    words: { type: "string", title: "Words", default: "Write anything here, and it shows on the page." },
+  },
 };
 
-/** What the note says. */
+/** Default words when you haven't changed them in Settings yet. */
 const TITLE = "Remember";
 const WORDS = "Write anything here, and it shows on the page.";
 
 export default function (ctx) {
-  ctx.ui.render("here", "note", ctx.ui.html`
-    <ui-card tone="accent">
-      <h3>${TITLE}</h3>
-      <p>${WORDS}</p>
-    </ui-card>`);
+  ctx.ui.live("here", "note", async (ctx) => {
+    const s = await ctx.settings.get();
+    return ctx.ui.html`
+      <ui-card tone="accent">
+        <h3>${s.title || TITLE}</h3>
+        <p>${s.words || WORDS}</p>
+      </ui-card>`;
+  });
 }

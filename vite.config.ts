@@ -1,6 +1,11 @@
 import { createReadStream, existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
+import { type Duplex, Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
+import { frontDoor } from "./src/server/front-door";
+import { createLiveMcpRelay } from "./src/server/live-mcp";
+import { accept } from "./src/server/websocket";
 import { kernelModules } from "./vite.kernel-modules";
 import { siteHeaders } from "./vite.site-headers";
 import { defineConfig, type Plugin } from "vite";
@@ -180,9 +185,78 @@ function notFoundPage(): Plugin {
   };
 }
 
+// Live MCP relay in development and preview, matching Node (src/server/serve.ts) and Cloudflare (worker.ts):
+// an open browser tab connects /mcp/live/<channel>/bridge and shares /mcp/live/<channel>/<token> with an MCP client.
+function liveMcpDev(): Plugin {
+  const noAccounts = { exists: async () => false, member: async () => null };
+  const attach = (server: { middlewares: { use(fn: (req: IncomingMessage, res: ServerResponse, next: () => void) => void): void }; httpServer: { on(event: "upgrade", fn: (req: IncomingMessage, raw: Duplex) => void): void } | null }) => {
+    const relay = createLiveMcpRelay();
+    server.httpServer?.on("upgrade", async (req, raw) => {
+      if (!req.url?.startsWith("/mcp/live/")) return;
+      let where: URL;
+      try {
+        where = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+      } catch {
+        return void raw.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+      }
+      const decision = await frontDoor({ method: req.method ?? "GET", url: where, origin: typeof req.headers.origin === "string" ? req.headers.origin : null, cookie: "", upgrade: true }, noAccounts);
+      if (decision.door !== "live-bridge") {
+        const status = decision.door === "refuse" ? decision.status : 404;
+        return void raw.end(`HTTP/1.1 ${status} Refused\r\n\r\n`);
+      }
+      const socket = accept(req, raw);
+      if (!socket) return;
+      const bridge = relay.attach(decision.channel, socket);
+      raw.on("close", () => bridge.close());
+      socket.onMessage = (text) => bridge.message(text);
+      socket.onClose = () => bridge.close();
+    });
+    server.middlewares.use(async (req, res, next) => {
+      if (!req.url?.startsWith("/mcp/live/")) return next();
+      let url: URL;
+      try {
+        url = new URL(req.url, `http://${req.headers.host ?? "localhost"}`);
+      } catch {
+        res.writeHead(400).end();
+        return;
+      }
+      const decision = await frontDoor({ method: req.method ?? "GET", url, origin: typeof req.headers.origin === "string" ? req.headers.origin : null, cookie: "", upgrade: false }, noAccounts);
+      if (decision.door === "refuse") {
+        res.writeHead(decision.status, { "content-type": "text/plain; charset=utf-8" }).end(decision.text);
+        return;
+      }
+      if (decision.door !== "live-mcp") return next();
+      const headers = new Headers();
+      for (const [name, value] of Object.entries(req.headers)) if (typeof value === "string") headers.set(name, value);
+      const body = req.method === "GET" || req.method === "HEAD" ? undefined : (Readable.toWeb(req) as ReadableStream<Uint8Array>);
+      const out = await relay.handle(new Request(url, { method: req.method, headers, body, duplex: "half" } as RequestInit), decision.channel, decision.token);
+      if (!req.complete) out.headers.set("connection", "close");
+      res.writeHead(out.status, Object.fromEntries(out.headers));
+      if (!out.body || out.headers.get("content-type") !== "text/event-stream") {
+        res.end(Buffer.from(await out.arrayBuffer()));
+        return;
+      }
+      res.flushHeaders();
+      const reader = out.body.getReader();
+      res.on("close", () => void reader.cancel().catch(() => {}));
+      for (;;) {
+        const { done, value } = await reader.read().catch(() => ({ done: true, value: undefined }));
+        if (done) break;
+        res.write(value);
+      }
+      res.end();
+    });
+  };
+  return {
+    name: "live-mcp-dev",
+    configureServer: (server) => attach(server as any),
+    configurePreviewServer: (server) => attach(server as any),
+  };
+}
+
 export default defineConfig({
   // The kernel's modules: in the worker build, and in development, where Vite serves the kernel through this pipeline.
-  plugins: [kernelModules({ split: true }), workerPolicy(), siteHeaders(), asWritten(), notFoundPage()],
+  plugins: [kernelModules({ split: true }), workerPolicy(), siteHeaders(), liveMcpDev(), asWritten(), notFoundPage()],
   // The kernel is a worker: its modules are the ones kernel.json lists, each a file of its own it fetches when first used.
   worker: {
     format: "es",

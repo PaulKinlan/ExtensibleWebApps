@@ -76,20 +76,23 @@ What a plugin may use:
 - ctx.commands.add({ id, title, keys? }, handler) adds a command to the palette. ctx.storage keeps small settings. ctx.log(...) writes to the trace.
 
 Work like this:
-1. Look first. page_plugins lists the plugins on the page, with the collections and hooks they use; plugin_source shows one's code, which tells you its collections, their fields and the slots its views have. Read the ones the request is about before you write.
+1. Look first. page_plugins lists the plugins on the page; page_layout lists the page's slots, named parts (#id, [data-part], landmarks and their open/review/locked marks), and all available ui-* elements (built-in and custom); plugin_source shows a plugin's code. Read what the request is about before you write.
 2. Ask for as few permissions as the plugin needs.
-3. Check your draft with check_plugin, and fix what it reports.
-4. Save it with save_plugin. The person sees the code on a card and accepts or declines; the call waits for them. If they decline, ask them what to change.
-5. To change a plugin you made, save it again with the same id. my_plugins lists the person's own plugins here.
+3. If a reusable custom ui-* element fits (or they asked for a component), create it with save_component (tag starting with ui-, a <template> with optional <style>, {{attr}} holes and <slot>, no <script>).
+4. Check your plugin draft with check_plugin, and fix what it reports.
+5. Save it with save_plugin (passing optional files if manifest.files lists a .html template). The person sees the code on a card and accepts or declines; the call waits for them. If they decline, ask them what to change.
+6. To change a plugin or component you made, save it again with the same id or tag. my_plugins lists the person's own plugins here.
 
 If what they want can't be done by a plugin, or needs a permission no plugin should have, say so instead of writing one. When you finish, say in a sentence or two what you saved and what it does now. Write for someone who may not code. Your answer is shown as plain text, so don't use Markdown in it: no **bold**, no backticks, no # headings.`;
 
 const TOOLS = [
   { name: "page_plugins", description: "The plugins on this page: id, name, description, whether each is on, its permissions and the hooks it listens to.", parameters: { type: "object", properties: {} } },
+  { name: "page_layout", description: "Where plugins can draw on this page (slots, named parts and their open/review/locked marks) and every ui-* component a view may use.", parameters: { type: "object", properties: {} } },
   { name: "plugin_source", description: "The code of one plugin on this page, by id.", parameters: { type: "object", properties: { id: { type: "string" } }, required: ["id"] } },
   { name: "my_plugins", description: "The person's own plugins for this app, and whether each is on.", parameters: { type: "object", properties: {} } },
   { name: "check_plugin", description: "Reads a draft's manifest as the kernel will, and says what each permission lets it do, or what is wrong.", parameters: { type: "object", properties: { code: { type: "string" } }, required: ["code"] } },
-  { name: "save_plugin", description: "Saves the plugin as the person's own for this app and turns it on, once they accept a review of its code. Waits for them.", parameters: { type: "object", properties: { code: { type: "string" } }, required: ["code"] } },
+  { name: "save_plugin", description: "Saves the plugin (and optional companion files listed in manifest.files) as the person's own for this app and turns it on, once they accept a review. Waits for them.", parameters: { type: "object", properties: { code: { type: "string" }, files: { type: "object" } }, required: ["code"] } },
+  { name: "save_component", description: "Saves a reusable custom `ui-*` template component (<template> with optional <style>, {{attr}} holes and <slot>, no <script>) for this app, once the person accepts a review.", parameters: { type: "object", properties: { tag: { type: "string" }, html: { type: "string" } }, required: ["tag", "html"] } },
 ];
 
 export default function (ctx) {
@@ -144,19 +147,30 @@ export default function (ctx) {
   };
 
   /** Runs one of the model's tool calls, and returns what to tell it. */
+  const authoring = (method, ...args) => ctx.call("authoring", method, ...args);
   const run = async (name, args) => {
     if (name === "page_plugins") {
       const [plugins, reference] = await Promise.all([ctx.call("plugins", "app"), ctx.call("kernel", "reference")]);
       const known = new Map(reference.plugins.map((p) => [p.id, p]));
       return plugins.filter((p) => p.id !== manifest.id).map((p) => ({ id: p.id, name: p.name, description: p.description, on: p.enabled, permissions: known.get(p.id)?.permissions ?? [], listens: known.get(p.id)?.hooks ?? [] }));
     }
-    if (name === "plugin_source") return ctx.call("authoring", "source", String(args.id ?? ""));
-    if (name === "my_plugins") return (await ctx.call("authoring", "mine")).map(({ id, name, description, on, error }) => ({ id, name, description, on, ...(error ? { error } : {}) }));
-    if (name === "check_plugin") return ctx.call("authoring", "check", String(args.code ?? ""));
+    if (name === "page_layout") return authoring("layout");
+    if (name === "plugin_source") return authoring("source", String(args.id ?? ""));
+    if (name === "my_plugins") return (await authoring("mine")).map(({ id, name, description, on, error }) => ({ id, name, description, on, ...(error ? { error } : {}) }));
+    if (name === "check_plugin") return authoring("check", String(args.code ?? ""));
+    if (name === "save_component") {
+      working = `Showing you <${args.tag ?? ""}>. Accept the review card to add it.`;
+      await draw();
+      const result = await authoring("saveComponent", String(args.tag ?? ""), String(args.html ?? ""));
+      say("Plugin maker", result?.ok ? `Saved component <${result.tag}>.` : `Component not saved: ${result?.error ?? "unknown"}`, result?.ok ? "success" : "warning");
+      working = "Writing…";
+      await draw();
+      return result;
+    }
     if (name === "save_plugin") {
       working = "Showing you its code. Accept the review card to turn it on.";
       await draw();
-      const result = await ctx.call("authoring", "save", String(args.code ?? ""));
+      const result = await authoring("save", String(args.code ?? ""), args.files);
       say("Plugin maker", result?.ok ? `Saved ${result.id}. It's on now: Customize lists it under your plugins.` : `Not saved: ${result?.error ?? "unknown"}`, result?.ok ? "success" : "warning");
       working = "Writing…";
       await draw();

@@ -20,6 +20,7 @@
 
 import type { ServiceProvider } from "./remote";
 import type { Secrets } from "./secrets";
+import { env } from "./env";
 import { grants } from "./gate";
 import { record } from "./trace";
 
@@ -35,7 +36,7 @@ export function hostOf(url: URL): string {
   return url.port ? `${url.hostname}:${url.port}` : url.hostname;
 }
 
-function parse(input: unknown): URL {
+function parse(input: unknown, onServer = false, allowPrivate: string[] = []): URL {
   let url: URL;
   try {
     url = new URL(String(input));
@@ -43,8 +44,10 @@ function parse(input: unknown): URL {
     throw new Error("net.fetch needs a full URL");
   }
   if (url.username || url.password) throw new Error("A URL with a user name or password isn't allowed; use a secret in a header");
-  if (url.protocol === "https:" || (url.protocol === "http:" && LOCAL.has(url.hostname))) return url;
-  throw new Error("net.fetch only reaches https: addresses, or http: on this computer");
+  const bare = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const allowedLocal = !onServer || allowPrivate.some((h) => h.toLowerCase().replace(/^\[|\]$/g, "") === bare);
+  if (url.protocol === "https:" || (url.protocol === "http:" && LOCAL.has(url.hostname) && allowedLocal)) return url;
+  throw new Error(onServer ? "On a server, net.fetch only reaches public https: addresses" : "net.fetch only reaches https: addresses, or http: on this computer");
 }
 
 /** The body as text, read a chunk at a time and stopped as soon as it passes MAX bytes. */
@@ -101,7 +104,8 @@ export function net(secrets: Secrets, capsOf: (plugin: string) => Set<string>): 
     capability: (_method, args) => {
       const input = args[0] as { url?: unknown } | undefined;
       try {
-        return `network:${hostOf(parse(input?.url))}`;
+        const where = env();
+        return `network:${hostOf(parse(input?.url, where.kind === "server", where.allowPrivate))}`;
       } catch {
         return "network:?";
       }
@@ -109,13 +113,15 @@ export function net(secrets: Secrets, capsOf: (plugin: string) => Set<string>): 
     call: async (plugin, method, args, dispatch) => {
       if (method !== "fetch") throw new Error(`net.${method} is not a method`);
       const input = (args[0] ?? {}) as { url?: unknown; method?: unknown; headers?: unknown; body?: unknown };
-      const url = parse(input.url);
+      const where = env();
+      const url = parse(input.url, where.kind === "server", where.allowPrivate);
       const host = hostOf(url);
       const verb = typeof input.method === "string" ? input.method.toUpperCase() : "GET";
       if (!/^(GET|HEAD|POST|PUT|PATCH|DELETE)$/.test(verb)) throw new Error(`net.fetch doesn't send ${verb}`);
       await secrets.loaded;
       const headers = new Headers();
       const used: string[] = [];
+      const redact: string[] = [];
       for (const [name, value] of Object.entries((input.headers && typeof input.headers === "object" ? input.headers : {}) as Record<string, unknown>)) {
         if (FORBIDDEN.test(name)) throw new Error(`net.fetch can't set the ${name} header`);
         if (typeof value === "string") headers.set(name, value);
@@ -128,17 +134,19 @@ export function net(secrets: Secrets, capsOf: (plugin: string) => Set<string>): 
           if (!secret.hosts.includes(host)) throw new Error(`The secret ${wanted} is only for ${secret.hosts.join(", ")}, not ${host}`);
           headers.set(name, prefix + secret.value);
           used.push(wanted);
+          if (secret.value.length >= 4) redact.push(secret.value);
         } else throw new Error(`The ${name} header must be a string or { secret }`);
       }
       const body = input.body === undefined || input.body === null ? undefined : String(input.body);
       if (body && body.length > MAX) throw new Error("The request body is over 4 MB");
       const started = performance.now();
-      const response = await fetch(url, { method: verb, headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(TIMEOUT) }).catch((error) => {
+      const fetcher = where.fetch ?? fetch;
+      const response = await fetcher(url, { method: verb, headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(TIMEOUT) }).catch((error) => {
         throw new Error(`Couldn't reach ${host}: ${error instanceof Error ? error.message : error}`);
       });
       const text = await readText(response);
       // An API that echoes the request back would hand the plugin its secret: take every secret used out of the answer.
-      const hide = (value: string) => used.reduce((out, name) => out.split(secrets.get(name)!.value).join("[secret]"), value);
+      const hide = (value: string) => redact.reduce((out, secretValue) => out.split(secretValue).join("[secret]"), value);
       record({ kind: "call", name: `net:${verb} ${host}`, plugin, trace: dispatch.trace, ms: Math.round(performance.now() - started), detail: `${response.status}${used.length ? `, with ${used.join(", ")}` : ""}` });
       return { ok: response.ok, status: response.status, headers: Object.fromEntries([...response.headers].map(([k, v]) => [k, hide(v)])), text: hide(text) };
     },

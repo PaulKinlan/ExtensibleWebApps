@@ -30,17 +30,24 @@
 //     because a stylesheet must not make requests a plugin can't;
 //   - no !important, which in a layer would beat the page.
 
-const installed = new Set<string>();
+const installed = new Map<string, { css: string; sheet: CSSStyleSheet }>();
 
-/** Installs the CSS from `src` for `plugin`'s views, once per plugin and file. */
+/** Installs or updates the CSS from `src` for `plugin`'s views, scoped to that plugin. */
 export function installPluginStyle(plugin: string, src: string, css: string): void {
   const key = `${plugin}\n${src}`;
-  if (installed.has(key)) return;
-  installed.add(key);
+  const prior = installed.get(key);
+  if (prior?.css === css) return;
   const rules = cleanCss(css);
-  if (!rules) return;
+  const wrapped = rules ? `@layer plugins { @scope ([data-plugin="${CSS.escape(plugin)}"] > *) to (:scope [data-plugin] > *) {\n${rules}\n} }` : "";
+  if (prior) {
+    prior.css = css;
+    prior.sheet.replaceSync(wrapped);
+    return;
+  }
+  if (!wrapped) return;
   const sheet = new CSSStyleSheet();
-  sheet.replaceSync(`@layer plugins { @scope ([data-plugin="${CSS.escape(plugin)}"] > *) to (:scope [data-plugin] > *) {\n${rules}\n} }`);
+  sheet.replaceSync(wrapped);
+  installed.set(key, { css, sheet });
   document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
 }
 

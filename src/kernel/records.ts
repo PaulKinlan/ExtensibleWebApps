@@ -186,7 +186,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     return collection;
   };
 
-  const sorted = (records: Map<string, StoredRecord>) => [...records.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const sorted = (records: Map<string, StoredRecord>) => [...records.values()].sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));
 
   /**
    * Writes (or, with `fields` null, deletes) a record as `instance`. Reviewed unless the plugin owns the collection,

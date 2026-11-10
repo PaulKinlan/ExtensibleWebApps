@@ -27,6 +27,10 @@ export interface KernelEnv {
   isolates?: Isolates;
   /** On a server, how it reads the site's own files (an app's app.html and plugins), when not with fetch. */
   site?: (url: string) => Promise<Response>;
+  /** On a server, how net.fetch reaches outside addresses without reaching the server's own network. */
+  fetch?: typeof globalThis.fetch;
+  /** On a server, private hosts net.fetch may reach anyway (for local development and server checks). */
+  allowPrivate?: string[];
   /**
    * On a server, the email addresses the space's members gave on their accounts: the only ones its server
    * plugins may email (std/email/module.ts). Without it, no plugin sends email.

@@ -1,0 +1,30 @@
+<!--
+  ui-dialog: a dialog that opens in the top layer above the page, escaping a
+  view's CSS containment without needing a launcher button of its own.
+  Attributes:
+    - open: present (e.g. open="{{editing}}") when the dialog should be shown
+    - label: the dialog's heading and accessible label
+    - close: action sent when the person closes it (× button, Escape or click outside)
+-->
+<template>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    :host { display: contents; }
+    #dialog { position: fixed; margin: auto; inset: 0; width: min(560px, calc(100vw - 2 * var(--space-4))); max-height: min(85vh, 840px); overflow: auto; overscroll-behavior: contain; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-2); }
+    #dialog:not(:popover-open) { display: none; }
+    #dialog::backdrop { background: var(--scrim); }
+    header { display: flex; flex-direction: row; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+    header h2 { flex: 1; margin: 0; font-size: var(--text-lg); }
+    .close { all: unset; cursor: pointer; width: var(--control-sm); height: var(--control-sm); display: grid; place-items: center; border-radius: var(--radius); color: var(--fg-2); font-size: var(--text-xl); }
+    .close:hover { background: var(--bg-2); color: var(--fg); }
+    .close:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); }
+  </style>
+  <section id="dialog" role="dialog" aria-labelledby="title" popover="manual">
+    <header>
+      <h2 id="title"></h2>
+      <button class="close" type="button" aria-label="Close">×</button>
+    </header>
+    <slot></slot>
+  </section>
+</template>
+<script type="module" src="ui-dialog.js"></script>

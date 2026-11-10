@@ -24,6 +24,10 @@ export const PLATFORM = new Set([
   "made",
   // Where the person moved plugins' views in each app (src/kernel/moves.ts).
   "moves",
+  // Agent run/token usage (std/agents/module.ts), bus inboxes/topics (std/bus/module.ts), and model pick (std/llm/module.ts).
+  "agents",
+  "bus",
+  "llm.json",
 ]);
 
 export class PathError extends Error {}

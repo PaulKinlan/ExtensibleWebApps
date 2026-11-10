@@ -17,9 +17,10 @@ const builtins: Record<string, true> = Object.create(null);
 for (const m of builtinModules) builtins[m] = builtins[`node:${m}`] = true;
 const startsWith = Function.prototype.call.bind(String.prototype.startsWith) as (s: string, prefix: string) => boolean;
 const isData = (url: unknown) => typeof url === "string" && startsWith(url, "data:");
+let runtimeLoaded = false;
 registerHooks({
   resolve(specifier, context, next) {
-    if (isData(context.parentURL) && (builtins[specifier] === true || !isData(specifier))) throw new Error(`A plugin can't import ${specifier}`);
+    if ((runtimeLoaded || isData(context.parentURL)) && (builtins[specifier] === true || !isData(specifier))) throw new Error(`A plugin can't import ${specifier}`);
     return next(specifier, context);
   },
 });
@@ -56,6 +57,7 @@ async function handle(message: any) {
     started = true;
     if (!message.network) for (const name of ["fetch", "WebSocket", "EventSource"]) delete self[name];
     else await guardNetwork(Array.isArray(message.allow) ? message.allow : []);
+    runtimeLoaded = true;
     // Gone before the plugin's code runs: process.binding, process.env, process.kill and the rest.
     delete self.process;
     self.onmessage?.({ data: { t: "init", source: String(message.source) }, ports: [port] });

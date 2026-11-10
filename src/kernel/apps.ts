@@ -121,7 +121,7 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
      * app again (after the person turns a user plugin on or off): plugins it no longer links stop, unless
      * another tab still needs them. `describe` adds what the tab needs to know about each plugin.
      */
-    async open(host: Host, links: Link[], describe: (opened: Opened) => Opened = (o) => o): Promise<void> {
+    async open(host: Host, links: Link[], describe: (opened: Opened) => Opened = (o) => o, components?: { tag: string; html: string }[]): Promise<void> {
       const before = new Set(linked.get(host.tab));
       const { next, sources } = planned(links);
       // The ones it no longer links stop first, so a service one of them provided is free for the plugin that
@@ -133,7 +133,7 @@ export function apps(remote: RemotePlugins, hosts: Hosts, isOff: (id: string) =>
       const now = linked.get(host.tab)!;
       for (const id of before) if (next.has(id) && !now.has(id)) release(id, host.tab);
       record({ kind: "lifecycle", name: "app:open", detail: `${host.tab}: ${plugins.map((p) => p.id ?? `${p.href} (${p.error})`).join(", ")}` });
-      if (hosts.list.includes(host)) hosts.send(host, { t: "opened", plugins: plugins.map(describe) });
+      if (hosts.list.includes(host)) hosts.send(host, { t: "opened", plugins: plugins.map(describe), ...(components?.length ? { components } : {}) });
     },
 
     /**
