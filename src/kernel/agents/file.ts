@@ -49,12 +49,33 @@
 //   This is a reading list. ...
 
 import { grants } from "../gate";
-import { isAgentFile } from "../../shared/agent-runner";
+import { DEFAULT_RUNNER, isAgentFile, runnerName } from "../../shared/agent-runner";
 import { made } from "./linked";
 
 export { isAgentFile };
 
 export class AgentFileError extends Error {}
+
+/** The site's standard agent loop, read once: what an agent of the person's runs. */
+let loop: Promise<string> | undefined;
+
+/**
+ * An agent file a person added to an app themselves (user-plugins.ts), as the plugin to run and the loop it
+ * runs. It runs the site's standard loop, and is no door for outside agents: both are an app author's to choose.
+ */
+export async function ownAgent(origin: string, text: string): Promise<{ source: string; runner: string }> {
+  if (runnerName(text)) throw new AgentFileError("An agent you add runs the standard agent loop: take out its `runner:` line");
+  if (split(text).meta.outside !== undefined) throw new AgentFileError("An agent you add can't be a door for outside agents (`outside:`): that is the app's to link");
+  loop ??= fetch(`${origin}${DEFAULT_RUNNER}`).then((response) => {
+    if (!response.ok) throw new Error(`The agent loop ${DEFAULT_RUNNER} answered ${response.status}`);
+    return response.text();
+  });
+  const runner = await loop.catch((error) => {
+    loop = undefined;
+    throw error;
+  });
+  return { source: fromAgentFile(text, runner), runner };
+}
 
 /** What the runner needs to know about its agent, fixed in its source. */
 export interface AgentConfig {

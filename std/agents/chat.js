@@ -23,6 +23,10 @@ export const manifest = {
   services: ["agents", "bus", "llm"],
   // Each tab has its own conversation.
   scope: "tab",
+  // Where it draws on a page with no `chat` slot, when a person adds it to an app.
+  places: { chat: { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["chat.html"],
 };
 
 /** The lines of the conversation it keeps, and how many go with each message. */

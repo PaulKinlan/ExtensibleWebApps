@@ -171,3 +171,16 @@ Two agents in [`std/agents/`](../../std/agents/) work in any app, with [`chat.js
 - **[Chat](../../std/agents/chat.js)** lists the agents in the app that have an inbox and sends what the person writes to the one they pick, with the last few lines of their conversation with it as the message's data, then shows the answer.
 
 Copy either file into an app's folder to change its instructions or its permissions.
+
+## A person adding an agent
+
+A person can add an agent to any app, without its author linking one. In **Customize**, under "Add a plugin or an agent from files, code or an address", they pick an `.agent.md` file, paste one (text that opens with `---`), or give the address of one on the site, such as `/std/agents/assistant.agent.md`. It is reviewed like a plugin: the card shows the file as written and what the agent may do, and nothing is added until they accept. It is then one of their own plugins, marked **Your agent** ([`src/kernel/user-plugins.ts`](../../src/kernel/user-plugins.ts) keeps it as `<id>.agent.md` beside their plugins), turned on and off and removed in the same place, and **Use in every app** takes it to every app they open.
+
+To write to it they add **Chat** from the same panel (it is in the registry, under Agents), and a language model if the app has none.
+
+Two things stay the app author's to choose, so a file that asks for either is refused with the reason:
+
+- **The loop.** A person's agent runs the standard loop (`std/agents/runner.js`). A file with a `runner:` line isn't added.
+- **The door for outside agents.** A file with `outside:` isn't added.
+
+An agent of the person's isn't shared with a space yet.

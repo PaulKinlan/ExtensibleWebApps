@@ -268,14 +268,14 @@
           </template>
 
           <details>
-            <summary>Add one from files, code or an address</summary>
-            <div class="row"><button type="button" data-action="pick" data-pick>Pick a plugin's files…</button> <span class="muted">Its .js file, and any files it lists.</span></div>
+            <summary>Add a plugin or an agent from files, code or an address</summary>
+            <div class="row"><button type="button" data-action="pick" data-pick>Pick files…</button> <span class="muted">A plugin's .js file and any files it lists, or an agent's .agent.md file.</span></div>
             <form data-action="paste" class="stack">
-              <textarea name="code" rows="6" placeholder="export const manifest = { … }" aria-label="Plugin code"></textarea>
+              <textarea name="code" rows="6" placeholder="export const manifest = { … }   or an agent file, starting ---" aria-label="Plugin code, or an agent file"></textarea>
               <div class="row"><button type="submit">Add this code</button> <span class="muted">It's turned on once you accept its review.</span></div>
             </form>
             <form data-action="url" class="row">
-              <input name="url" type="text" placeholder="/demos/trip/samples/countdown.js" aria-label="Plugin address">
+              <input name="url" type="text" placeholder="/demos/trip/samples/countdown.js or /std/agents/assistant.agent.md" aria-label="Address of a plugin or an agent on this site">
               <button type="submit" disabled="{{busy}}">Add from address</button>
             </form>
           </details>
