@@ -6,7 +6,7 @@
 <template>
   <style>
     /* One colour per tone; the fill and the hairline ring are mixed from it. */
-    :host { --tone: var(--fg-2); display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; font-size: var(--text-sm); font-weight: 600; line-height: 1; letter-spacing: 0.01em; color: var(--tone); background: color-mix(in srgb, var(--tone) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 22%, transparent); white-space: nowrap; width: fit-content; }
+    :host { --tone: var(--fg-2); display: inline-flex; align-items: center; gap: var(--space-1); height: 22px; padding: 0 var(--space-2); border-radius: 999px; font-size: var(--text-sm); font-weight: 600; line-height: 1; letter-spacing: 0.01em; color: var(--tone); background: color-mix(in srgb, var(--tone) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tone) 22%, transparent); white-space: nowrap; width: fit-content; }
     :host([tone="accent"]) { --tone: var(--accent); }
     :host([tone="ok"]) { --tone: var(--ok); }
     :host([tone="warn"]) { --tone: var(--warn); }
