@@ -14,8 +14,9 @@
 //   node scripts/keep-assets.mjs            writes dist/platform/kept.json; on a deploy, keeps the old files too
 //
 // It reaches the network only where a deploy is built: on Cloudflare's Workers Builds (WORKERS_CI), from the
-// site named by `homepage` in package.json, or wherever KEEP_ASSETS_FROM names (a site's address). Anywhere
-// else (this machine, the tests) it only writes the list. A site that can't be asked stops the build: a deploy
+// site named by `homepage` in package.json, or wherever KEEP_ASSETS_FROM names (a site's address, or `none`
+// for a build that isn't this site's deploy: an app's own Worker keeps its own files, scripts/deploy-keep.mjs).
+// Anywhere else (this machine, the tests) it only writes the list. A site that can't be asked stops the build: a deploy
 // that quietly dropped the old files is the bug this is here to prevent. A site with no list yet (its first
 // deploy with this) has nothing to keep, and one old file that is already gone is left out and said.
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -114,10 +115,10 @@ export async function keepAssets({ dist = join(ROOT, "dist"), site, today = new 
   return { made: made.length, kept: kept.sort(), gone: gone.sort(), dropped };
 }
 
-/** The site a deploy's old files come from: KEEP_ASSETS_FROM, or on Workers Builds the package's `homepage`. */
+/** The site a deploy's old files come from: KEEP_ASSETS_FROM (`none` for no site), or on Workers Builds the package's `homepage`. */
 export function siteFor(env = process.env, root = ROOT) {
   const named = env.KEEP_ASSETS_FROM;
-  if (named === undefined && !env.WORKERS_CI) return undefined;
+  if (named === "none" || (named === undefined && !env.WORKERS_CI)) return undefined;
   const from = named ?? JSON.parse(readFileSync(join(root, "package.json"), "utf8")).homepage;
   if (typeof from !== "string" || !from) throw new Error("A deploy keeps the last deploy's files, so it needs the site's address: set `homepage` in package.json (or KEEP_ASSETS_FROM)");
   let url;

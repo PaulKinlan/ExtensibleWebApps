@@ -184,7 +184,8 @@ export type KernelToPlugin =
   | { t: "event"; action: string; value?: unknown; trace?: string }
   | { t: "canvas"; id: string; canvas: OffscreenCanvas; theme?: CanvasTheme }
   | { t: "canvas:theme"; theme: CanvasTheme }
-  | { t: "result"; id: number; ok: boolean; value?: unknown; error?: string };
+  // `gone`: the call failed because the plugin that provides the service wasn't running to answer it.
+  | { t: "result"; id: number; ok: boolean; value?: unknown; error?: string; gone?: true };
 
 export type PluginToKernel =
   | { t: "ready"; manifest: Manifest }

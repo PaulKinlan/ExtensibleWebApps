@@ -231,7 +231,9 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       const told = { name: command.name, plugin: command.plugin, id: command.id, by: about.by, ...as };
       if (!isObject(answer) || !("value" in answer)) {
         // The kernel's words for a handler that threw or took too long: keep only what went wrong.
-        const error = !isObject(answer) ? `${command.name} didn't answer` : String(answer.block).replace(/^.* could not answer .*? \((?:Error: )?(.*)\)$/s, "$1");
+        const said = !isObject(answer) ? `${command.name} didn't answer` : String(answer.block).replace(/^.* could not answer .*? \((?:Error: )?(.*)\)$/s, "$1");
+        // Its plugin stopped while it ran (src/kernel/remote.ts, dispose): say which command that was.
+        const error = said === "plugin stopped" ? `${command.name} wasn't answered: its plugin stopped` : said;
         root.emit(dispatch, "commands:ran", { ...told, ok: false, error });
         throw new Error(error);
       }

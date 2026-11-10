@@ -5,6 +5,8 @@
 //   npm run deploy:app -- demos/habits                   builds, then deploys to https://habits.<you>.workers.dev
 //   npm run deploy:app -- demos/habits --name my-habits  the Worker's name, and so its address
 //   npm run deploy:app -- demos/habits --replace         deploys even over a Worker by that name that isn't this app's
+//   npm run deploy:app -- demos/habits --keep-from https://habits.example.com/
+//                                                        where the Worker is served now, if not on workers.dev
 //   npm run deploy:app -- demos/habits --no-deploy       builds and writes the config, deploys nothing
 //   npm run deploy:app -- demos/habits --dev             runs it on this machine with `wrangler dev`
 //
@@ -29,7 +31,10 @@
 // Before deploying it checks the account (scripts/deploy-guard.mjs): a Worker
 // with the same name is replaced only if this script deployed it, for this
 // app. Any other Worker by that name is left alone, and the deploy refused,
-// unless --replace says to replace it.
+// unless --replace says to replace it. Then it asks the Worker as it is now
+// for the built files its last deploy served, and puts the ones this build no
+// longer makes beside the new ones (scripts/deploy-keep.mjs), so a page that
+// is open during the deploy still finds the scripts it names.
 //
 // Every origin is a world of its own: its own service worker, shared-worker
 // kernel and browser storage, its own accounts and passkeys (a passkey is
@@ -40,7 +45,9 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { APP_VAR, checkName } from "./deploy-guard.mjs";
+import { APP_VAR } from "./deploy-guard.mjs";
+import { addressGiven, beforeDeploy } from "./deploy-keep.mjs";
+import { keepAssets } from "./keep-assets.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -161,8 +168,8 @@ export function layoutApp(app, { name, dist = join(ROOT, "dist"), out } = {}) {
   return { target, site, path, worker, warnings };
 }
 
-const run = (command, args) => {
-  const result = spawnSync(command, args, { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" });
+const run = (command, args, env = {}) => {
+  const result = spawnSync(command, args, { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32", env: { ...process.env, ...env } });
   if (result.status !== 0) process.exit(result.status ?? 1);
 };
 
@@ -175,15 +182,26 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     console.error("--name needs the Worker's name after it");
     process.exit(2);
   }
+  const fromAt = args.indexOf("--keep-from");
+  const keepFrom = fromAt >= 0 ? args.splice(fromAt, 2)[1] : undefined;
+  if (fromAt >= 0) {
+    try {
+      addressGiven(keepFrom ?? "");
+    } catch (error) {
+      console.error(error.message);
+      process.exit(2);
+    }
+  }
   const replace = flag("--replace");
   const noBuild = flag("--no-build");
   const noDeploy = flag("--no-deploy");
   const dev = flag("--dev");
   if (args.length !== 1) {
-    console.error("Usage: npm run deploy:app -- <app folder> [--name worker-name] [--replace] [--no-build] [--no-deploy] [--dev]");
+    console.error("Usage: npm run deploy:app -- <app folder> [--name worker-name] [--replace] [--keep-from address] [--no-build] [--no-deploy] [--dev]");
     process.exit(2);
   }
-  if (!noBuild) run("npm", ["run", "build"]);
+  // The build keeps the main site's old files when it is that site's deploy. This isn't: the app's Worker keeps its own, below.
+  if (!noBuild) run("npm", ["run", "build"], { KEEP_ASSETS_FROM: "none" });
   let laid;
   try {
     laid = layoutApp(args[0], { name });
@@ -195,12 +213,21 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const config = relative(ROOT, join(laid.target, "wrangler.jsonc"));
   console.log(`Wrote ${relative(ROOT, laid.target)}/ for the Worker "${laid.worker}", serving /${laid.path}/`);
   if (dev) run("npx", ["wrangler", "dev", "-c", config]);
-  else if (noDeploy) console.log(`Deploy it with: npx wrangler deploy -c ${config}`);
-  else {
-    // Never over a Worker that isn't this app's, unless asked to.
+  else if (noDeploy) {
+    // Something else deploys what this wrote (Cloudflare's own builds: docs/guide/deploying-an-app.md), so the last
+    // deploy's files are kept here, from the address given. Where a deploy is being built, one must be given.
     try {
-      const said = await checkName(laid.worker, laid.path, { replace });
-      console.log(said);
+      if (keepFrom) await keepAssets({ dist: laid.site, site: addressGiven(keepFrom), log: (text) => console.log(text) });
+      else if (process.env.WORKERS_CI) throw new Error("This build is for a deploy, and a deploy keeps the files the last one served: add --keep-from with the address the Worker is served at, such as https://my-app.example.workers.dev/");
+    } catch (error) {
+      console.error(error.message);
+      process.exit(1);
+    }
+    console.log(`Deploy it with: npx wrangler deploy -c ${config}`);
+  } else {
+    // Never over a Worker that isn't this app's, unless asked to; and with the files its last deploy served.
+    try {
+      for (const line of await beforeDeploy(laid.worker, laid.path, laid.site, { replace, keepFrom })) console.log(line);
     } catch (error) {
       console.error(error.message);
       process.exit(1);

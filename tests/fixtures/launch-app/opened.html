@@ -1,0 +1,12 @@
+<!-- The files the app was opened with. opened.js sends { asked, files, none }: each file is { name, type, text }. -->
+<template id="opened">
+  <section class="opened" data-asked="{{asked}}">
+    <button data-action="take">Show the files this was opened with</button>
+    <ul>
+      <template for="file of files">
+        <li key="{{file.name}}"><strong>{{file.name}}</strong> <code>{{file.type}}</code> <span>{{file.text}}</span></li>
+      </template>
+    </ul>
+    <template if="none"><p class="none">No files.</p></template>
+  </section>
+</template>

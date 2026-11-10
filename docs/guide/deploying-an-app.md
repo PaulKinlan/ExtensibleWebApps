@@ -18,9 +18,11 @@ Some demos are deployed this way, for example [Habits](https://habits.kinlan-tes
 
 Before it deploys, it asks the account what already has the name ([`scripts/deploy-guard.mjs`](../../scripts/deploy-guard.mjs)). Each Worker it makes carries the app's path in a variable, `EXTENSIBLE_APP`, so a deploy goes ahead under a name no Worker has, or over the Worker it made for the same app. Any other Worker by that name (one it didn't make, or one serving another app) stops the deploy, naming what is there: pick another `--name`, or add `--replace` if replacing it is what you want. Workers deployed before this check have no mark, so their next deploy needs `--replace` once. The check reads the account with `CLOUDFLARE_API_TOKEN` if it is set, or else the sign-in `wrangler login` keeps; if it can't read the account, nothing is deployed.
 
+A deploy also keeps the built files the Worker's last deploy served ([`scripts/deploy-keep.mjs`](../../scripts/deploy-keep.mjs)). The platform's built scripts have their content's hash in their names, and a page that is open during a deploy still asks for the old ones, so each deploy reads the list the last one wrote (`/platform/kept.json` on the Worker's own address) and puts the files it no longer makes beside the new ones, for 90 days, as the main site's build does ([the layers](../layers.md)). It finds the Worker's `workers.dev` address from the account. A Worker served only on a domain of its own needs `--keep-from https://that-domain/`. If the files can't be fetched, nothing is deployed. A name no Worker has yet has nothing to keep, and neither has a Worker deployed before this: the first deploy after it starts the list.
+
 This page is about the apps in this repo's `demos/`. A project of your own, made with `npm create extensible-app packing-list`, is just the app with the platform as a dependency, and deploys with `npm run deploy` in its folder, at `/` with nothing else: see [An app of your own](your-own-app.md). It uses the same Worker, the same layout and the same check of the account as below.
 
-To try it on this machine first, with no account, add `--dev`: it runs `wrangler dev` on the same files. `--name` picks a different Worker name (and so address), and `--no-deploy` only writes the files.
+To try it on this machine first, with no account, add `--dev`: it runs `wrangler dev` on the same files. `--name` picks a different Worker name (and so address), and `--no-deploy` only writes the files (with `--keep-from`, the last deploy's files among them).
 
 ## What it does
 
@@ -42,7 +44,7 @@ The app's files keep their path, so the packing list's are in `/demos/packing-li
 1. In Cloudflare, make an API token from the **Edit Cloudflare Workers** template (My Profile → API Tokens → Create Token), for the account the Workers go in.
 2. In the repo's Settings → Secrets and variables → Actions, add `CLOUDFLARE_API_TOKEN` (the token) and `CLOUDFLARE_ACCOUNT_ID` (from the Workers overview page in Cloudflare).
 
-Then each deploy is one step: Actions → **Deploy one app** → Run workflow, with the app's folder. Tick **replace** only to deploy over a Worker by that name that isn't this app's. Or from a terminal: `gh workflow run deploy-app.yml -f app=demos/habits`. The run's summary shows the address.
+Then each deploy is one step: Actions → **Deploy one app** → Run workflow, with the app's folder. Tick **replace** only to deploy over a Worker by that name that isn't this app's. Leave **keep_from** empty unless the Worker isn't served on `workers.dev`. Or from a terminal: `gh workflow run deploy-app.yml -f app=demos/habits`. The run's summary shows the address.
 
 ## Deploying on every push instead
 
@@ -50,11 +52,11 @@ The main site deploys through Cloudflare's Git integration. An app's Worker can 
 
 | Setting | Value |
 | --- | --- |
-| Build command | `npm run deploy:app -- demos/packing-list --no-deploy` |
+| Build command | `npm run deploy:app -- demos/packing-list --no-deploy --keep-from https://packing-list.<your subdomain>.workers.dev/` |
 | Deploy command | `npx wrangler deploy -c .build/apps/packing-list/wrangler.jsonc` |
 | Non-production branch deploy command | `npx wrangler preview -c .build/apps/packing-list/wrangler.jsonc` |
 
-The Worker's name in the dashboard must match the name in the config: the app's folder name, or `--name` in the build command.
+The Worker's name in the dashboard must match the name in the config: the app's folder name, or `--name` in the build command. `--keep-from` is the address the Worker is served at: the build has no deploy step of its own to find it from, and without it the build stops rather than drop the files pages already open still ask for.
 
 ## One origin, one world
 

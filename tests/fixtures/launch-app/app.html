@@ -1,0 +1,20 @@
+<!doctype html>
+<!--
+  An app that files open with: its page says which (the file-handlers line,
+  sw/launch-meta.js), and its one plugin asks for them only when the button is
+  pressed. tests/checks/launch-late.mjs puts it in the browser as a made app.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logbook</title>
+  <meta name="file-handlers" content=".csv .md">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="opened.js">
+</head>
+<body>
+  <main><slot name="main"></slot></main>
+</body>
+</html>

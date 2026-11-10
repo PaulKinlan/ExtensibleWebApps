@@ -33,6 +33,16 @@ export const SERVICE_TIMEOUT_MS = 60_000;
 /** Longest a call waits for a provider that is installed but hasn't started listening yet. */
 const WAIT_FOR_PROVIDER_MS = 5_000;
 const MAX_ANSWER = 1_000_000;
+/** What a call waiting on a plugin is answered with when that plugin stops (remote.ts, dispose). */
+export const STOPPED = "plugin stopped";
+
+/**
+ * A call nobody could answer, because the plugin that provides the service isn't running or stopped before it
+ * answered (a person turned it off, or turned on another in its place). It says which call and which plugin.
+ * It isn't the caller's mistake, so one a plugin leaves uncaught is a note in the trace, not its error (the
+ * sandbox runtime); a plugin that catches it can ask again.
+ */
+export class Gone extends Error {}
 
 const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 
@@ -55,12 +65,13 @@ export function providedService(
     async call(caller, method, args, dispatch: Dispatch) {
       const deadline = Date.now() + WAIT_FOR_PROVIDER_MS;
       while (!listening(hook) && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
-      if (!listening(hook)) throw new Error(`${name} is provided by “${manifest.name}”, which isn't running`);
+      const gone = (why: string) => new Gone(`${name}.${method} wasn't answered: “${manifest.name}”, which provides ${name}, ${why}`);
+      if (!listening(hook)) throw gone("isn't running");
       // The runtime sends a handler's result as { value }, so a result that happens to hold `block` is still a result.
       const answer = await root.bail(dispatch, hook, { method, args, caller: caller.split("@")[0] });
       if (!isObject(answer) || !("value" in answer)) {
         const error = !isObject(answer) ? `${name}.${method} didn't answer` : String(answer.block).replace(/^.* could not answer .*? \((?:Error: )?(.*)\)$/s, "$1");
-        throw new Error(error);
+        throw error === STOPPED ? gone("stopped") : new Error(error);
       }
       const json = JSON.stringify(answer.value ?? null);
       if (json.length > MAX_ANSWER) throw new Error(`${name}.${method} answered with more than 1 MB`);

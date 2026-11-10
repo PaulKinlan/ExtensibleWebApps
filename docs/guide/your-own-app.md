@@ -36,7 +36,7 @@ Each runs the platform's `extensible-app` command ([`scripts/extensible-app.mjs`
 | --- | --- |
 | `npm run dev` | Serves the app at http://localhost:5173/, with the spaces server (sign-in, spaces, server plugins). `-- --port 8080` picks another port. Change a file and reload. |
 | `npm run check` | Finds the app's mistakes without a browser: permissions, manifests, templates, slots. The same checks as `npm run check` in this repo. `-- --json` for tools. |
-| `npm run deploy` | Puts the app on a Cloudflare Worker of its own, at `https://<name>.<your subdomain>.workers.dev/`. Run `npx wrangler login` once first. `-- --name other-name` picks the Worker's name (the project's name otherwise), `-- --dev` runs the same Worker on this machine, and `-- --no-deploy` only writes it. |
+| `npm run deploy` | Puts the app on a Cloudflare Worker of its own, at `https://<name>.<your subdomain>.workers.dev/`. Run `npx wrangler login` once first. `-- --name other-name` picks the Worker's name (the project's name otherwise), `-- --dev` runs the same Worker on this machine, and `-- --no-deploy` only writes it. A deploy keeps the built files the last one served, so a page open while it happens still works; `-- --keep-from https://your-domain/` says where the Worker is served if that isn't `workers.dev` ([Deploying one app on its own](deploying-an-app.md)). |
 
 ## What gets served
 

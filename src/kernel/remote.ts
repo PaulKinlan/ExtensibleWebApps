@@ -25,7 +25,7 @@ import { ManifestError, readManifest } from "./manifest";
 import type { Schema } from "./schema";
 import { record } from "./trace";
 import { env } from "./env";
-import { providedService, serviceHook, SERVICE_TIMEOUT_MS } from "./provided";
+import { Gone, providedService, serviceHook, SERVICE_TIMEOUT_MS, STOPPED } from "./provided";
 
 /**
  * One argument of a service method, so a model can call it as a tool
@@ -837,7 +837,7 @@ export class Remote {
   }
 
   private async call(id: number, service: string, method: string, args: unknown[], trace?: string): Promise<void> {
-    const reply = (ok: boolean, value?: unknown, error?: string) => this.post({ t: "result", id, ok, value, error });
+    const reply = (ok: boolean, value?: unknown, error?: string, gone?: true) => this.post({ t: "result", id, ok, value, error, gone });
     // An agent reaches its model and its tools only through the agents service, which counts its runs and
     // tokens and asks agent:beforeTool first. Its loop is a file the app chose (std/agents/runner.js or its
     // own `runner:`), so the kernel holds it to that here, rather than trusting the loop to.
@@ -846,7 +846,8 @@ export class Remote {
     try {
       reply(true, await callService(this.manager.services, this.instance, this.caps, service, method, args, { trace }));
     } catch (error) {
-      reply(false, undefined, String(error instanceof Error ? error.message : error));
+      // `gone`: the service's provider wasn't there to answer (provided.ts), which isn't this plugin's mistake.
+      reply(false, undefined, String(error instanceof Error ? error.message : error), error instanceof Gone || undefined);
     }
   }
 
@@ -856,7 +857,7 @@ export class Remote {
     this.manager.onDispose?.(this.instance);
     for (const { resolve, timer } of this.pending.values()) {
       clearTimeout(timer);
-      resolve({ failed: "plugin stopped" });
+      resolve({ failed: STOPPED });
     }
     this.pending.clear();
     const routed = this.heard.some((name) => name.startsWith("route:"));
