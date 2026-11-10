@@ -6,12 +6,37 @@
 # Run it from the Actions tab ("Publish to npm" → Run workflow), or with
 #   gh workflow run publish-npm.yml -f version=0.1.0
 #
-# It needs one repository secret, set once:
-#   NPM_TOKEN   an npm access token that may publish both packages (on npmjs.com:
-#               Access Tokens → Generate New Token → a granular token with read
-#               and write access to packages, or a classic "Automation" token)
+# It publishes by npm's trusted publishing: npm trusts this workflow in this
+# repository (GitHub tells npm which run is asking), so there is no token to
+# keep, leak or renew. npm is taking direct publishing away from long-lived
+# tokens (expected January 2027), and this is what it replaces them with:
+#   https://docs.npmjs.com/trusted-publishers
 #
-# Nothing else is done by hand. The version is the workflow's input: it is
+# Set once per package, on npmjs.com → the package → Settings → Trusted
+# publishing (or `npm trust github <package> --file publish-npm.yml
+# --repo PaulKinlan/ExtensibleWebApps --allow-publish`). Every field is matched
+# exactly, capitals included, and npm only says so when a publish fails:
+#   Organization or user   PaulKinlan
+#   Repository             ExtensibleWebApps
+#   Workflow filename      publish-npm.yml
+#   Environment            (empty)
+#   Allowed actions        npm publish
+# A new one must publish within two days or npm drops it.
+#
+# npm only lets a package that exists be set up that way, so the very first
+# publish of each package needs a token, once:
+#   NPM_TOKEN   a repository secret: a granular access token with read and write
+#               access to packages, with the shortest expiry npm offers. Delete
+#               the secret and the token once both packages are on npm and
+#               trusted. While the secret exists, the run publishes with it.
+#
+# "Stage" sends each package to npm's staging area instead (`npm stage
+# publish`): nothing is public until a maintainer approves it with two-factor
+# sign-in, on npmjs.com → Staged Packages or with `npm stage approve`. It is
+# always allowed to a trusted publisher, and it is all a token will be able to
+# do after January 2027. https://docs.npmjs.com/staged-publishing
+#
+# The version is the workflow's input: it is
 # written into both packages for this run only (scripts/release.mjs) and never
 # committed, so the repo's package.json stays `private` at 0.0.0 and nobody
 # publishes a checkout by accident. The run:
@@ -27,7 +52,7 @@
 #      same commit
 #
 # "Dry run" does everything except publish and tag: npm lists what it would
-# send. It needs no secret, so it can be run before one exists.
+# send. It needs no secret and no trust, so it can be run before either exists.
 
 name: Publish to npm
 
@@ -42,10 +67,20 @@ on:
         type: boolean
         required: false
         default: false
+      stage:
+        description: "Stage: send to npm's staging area, to be approved there before it is public"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write # to tag the commit it published
-  id-token: write # for npm provenance
+  id-token: write # how npm knows this run: trusted publishing, and provenance
+
+env:
+  # Trusted and staged publishing need a newer npm than Node 22 brings. Only the publish runs with it:
+  # the install and the checks run with the npm a project's own CI is likeliest to have.
+  PUBLISH_NPM: npm@11.21.2
 
 # One publish at a time, and never stopped half way.
 concurrency:
@@ -71,18 +106,27 @@ jobs:
           cache: npm
           registry-url: https://registry.npmjs.org
 
-      # Before anything is built: a publish with no token would fail at the last step, after ten minutes.
-      - name: Check there is a token
+      # Before anything is built: a publish npm would refuse fails at the last step, after ten minutes.
+      - name: Check npm will take it
         if: ${{ !inputs.dry_run }}
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "$NODE_AUTH_TOKEN" ]; then
-            echo "::error::There is no NPM_TOKEN secret. Add one under Settings → Secrets and variables → Actions, then run this again."
-            exit 1
+          set -eu
+          if [ -n "$NPM_TOKEN" ]; then
+            # The token works, and says whose it is, before anything is published with it.
+            NODE_AUTH_TOKEN="$NPM_TOKEN" npm whoami >/dev/null || { echo "::error::npm didn't accept NPM_TOKEN: it may have expired or been revoked. Remove the secret to publish as a trusted publisher."; exit 1; }
+            echo "Publishing with the NPM_TOKEN secret"
+            exit 0
           fi
-          # The token works, and says whose it is, before anything is published with it.
-          npm whoami >/dev/null || { echo "::error::npm didn't accept NPM_TOKEN: it may have expired or been revoked."; exit 1; }
+          # No token: npm must trust this workflow, and it can only be told to for a package that exists.
+          for name in extensible-web-apps create-extensible-app; do
+            if [ -z "$(npm view "$name" name 2>/dev/null || true)" ]; then
+              echo "::error::$name isn't on npm yet, and npm can only be told to trust this workflow for a package that exists. Its first publish needs an NPM_TOKEN secret, once: see the top of .github/workflows/publish-npm.yml."
+              exit 1
+            fi
+          done
+          echo "Publishing as a trusted publisher: no token"
 
       # Builds the platform too (its `prepare` script).
       - run: npm ci
@@ -130,11 +174,14 @@ jobs:
 
       - name: Publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           VERSION: ${{ inputs.version }}
           DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+          PUBLISH: ${{ inputs.stage && 'stage publish' || 'publish' }}
         run: |
           set -eu
+          # With no token, npm asks GitHub who this run is and publishes as the package's trusted publisher.
+          if [ -n "$NPM_TOKEN" ]; then export NODE_AUTH_TOKEN="$NPM_TOKEN"; fi
           # The platform first: the create command runs it from npm.
           for folder in . scripts/create-extensible-app; do
             name=$(node -p "require('./$folder/package.json').name")
@@ -143,6 +190,9 @@ jobs:
               continue
             fi
             # --ignore-scripts: it is built already (npm ci), and the checks ran on that build.
-            (cd "$folder" && npm publish --access public --provenance --ignore-scripts $DRY_RUN)
-            echo "- \`$name@$VERSION\`${DRY_RUN:+ (dry run: not published)}" >> "$GITHUB_STEP_SUMMARY"
+            (cd "$folder" && npx --yes "$PUBLISH_NPM" $PUBLISH --access public --provenance --ignore-scripts $DRY_RUN)
+            if [ -n "$DRY_RUN" ]; then said=" (dry run: not published)"
+            elif [ "$PUBLISH" != publish ]; then said=" staged: approve it on npmjs.com under Staged Packages, or with \`npm stage approve\`"
+            else said=""; fi
+            echo "- \`$name@$VERSION\`$said" >> "$GITHUB_STEP_SUMMARY"
           done
