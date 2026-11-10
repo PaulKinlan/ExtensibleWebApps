@@ -561,12 +561,17 @@ let asked = withCustomize ? /^#add=([a-z0-9-]{1,64})$/.exec(location.hash)?.[1] 
 
 function render(slot: Slot, key: string, owner: string, order: number, view: View | null) {
   const id = `${slot}/${key}`;
-  if (asked && view && owner.split("@")[0] === "customize") {
-    send({ t: "event", owner, action: "add", value: asked, trace: newTrace() });
-    asked = undefined;
-    // Loading the page again doesn't ask again.
-    history.replaceState(history.state, "", location.pathname + location.search);
-  }
+  // Once its panel is on the page and working: the answer opens the panel, which one not yet set up would miss.
+  if (asked && view && owner.split("@")[0] === "customize")
+    void customElements.whenDefined("ui-panel").then(() =>
+      requestAnimationFrame(() => {
+        if (!asked || !document.querySelector('ui-panel[toggle="panel"]')?.shadowRoot) return;
+        send({ t: "event", owner, action: "add", value: asked, trace: newTrace() });
+        asked = undefined;
+        // Loading the page again doesn't ask again.
+        history.replaceState(history.state, "", location.pathname + location.search);
+      }),
+    );
   if (!showing(owner)) {
     if (view) held.set(id, { t: "render", slot, key, owner, order, view });
     else held.delete(id);

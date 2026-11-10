@@ -436,7 +436,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       if (method === "page") {
         const state = (await saving.page(tab, "state", [], dispatch)) as { samples?: { href: string; title: string }[] };
         // Only this site's files are read: a sample linked from elsewhere keeps its title alone.
-        const samples = await Promise.all((state.samples ?? []).slice(0, 40).map((s) => (new URL(s.href, saving.origin).origin === saving.origin ? sample(s) : s)));
+        // The first 40 are read for what they are and ask for; any past that keep their title.
+        const samples = await Promise.all((state.samples ?? []).map((s, i) => (i < 40 && new URL(s.href, saving.origin).origin === saving.origin ? sample(s) : s)));
         return { space: !!saving.shared(), ...state, samples };
       }
       if (method === "inspect") return saving.page(tab, "inspect", [], dispatch);
