@@ -124,7 +124,15 @@ export function userPlugins(store: Store, origin: string, space?: string) {
 
   /** Adding, removing and turning on with what a plugin needs (user-plugin-changes.ts), fetched when first used. */
   let changes: Promise<ReturnType<typeof import("./user-plugin-changes").userPluginChanges>> | undefined;
-  const more = () => (changes ??= import("./user-plugin-changes").then((m) => m.userPluginChanges({ store, origin, list, setOn, tell: (change) => changed.forEach((heard) => heard(change)) })));
+  const more = () =>
+    (changes ??= import("./user-plugin-changes").then(
+      (m) => m.userPluginChanges({ store, origin, list, setOn, tell: (change) => changed.forEach((heard) => heard(change)) }),
+      (error) => {
+        // A file that didn't load is asked for again by the next change.
+        changes = undefined;
+        throw error;
+      },
+    ));
   type More = Awaited<ReturnType<typeof more>>;
   /** One of its functions, by name: the same call, made once the file is here. */
   const later = <K extends keyof More>(name: K) => (async (...args: any[]) => ((await more())[name] as (...a: any[]) => unknown)(...args)) as More[K];

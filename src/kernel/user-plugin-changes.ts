@@ -123,9 +123,12 @@ export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
     return [plugin.file, ...listed.filter((name) => FILE_PATH.test(name))];
   }
 
-  /** Removes a plugin and the files its manifest lists, from the folder it is kept in. */
+  /**
+   * Removes a plugin and the files its manifest lists, from the folder it is kept in. A space's own changes to an
+   * app's plugins (`quiet`) reach only that app's folder: one the person uses in every app is theirs, and stays.
+   */
   async function remove(app: string, id: string, { quiet = false } = {}): Promise<boolean> {
-    const plugin = (await list(app)).find((p) => p.id === id);
+    const plugin = (await list(app)).find((p) => p.id === id && !(quiet && p.everywhere));
     if (!plugin) return false;
     const folder = folderOf(app, plugin);
     for (const name of await filesIn(folder, plugin)) await store.removeFile(`user/${folder}/${name}`);
@@ -242,10 +245,20 @@ export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
       const taken = new Set((await Promise.all((await list(to)).filter((p) => p.id !== id && folderOf(to, p) === to).map((p) => filesIn(to, p)))).flat());
       const clash = names.find((name) => taken.has(name));
       if (clash) return { ok: false, error: `${clash} belongs to another of your plugins ${value ? "for every app" : "for this app"}` };
+      // Every file is read before any is written or removed: one that can't be read leaves the plugin where it is.
+      const files: [string, Blob][] = [];
       for (const name of names) {
         const bytes = await store.readBytes(`user/${from}/${name}`);
-        if (bytes) await store.writeFile(`user/${to}/${name}`, new Blob([bytes as BlobPart]));
+        if (bytes) {
+          files.push([name, new Blob([bytes as BlobPart])]);
+          continue;
+        }
+        // A file its manifest lists that was never added isn't there to move; the plugin itself, or a file that is there, must be read.
+        const at = `user/${from}/${name}`.split("/");
+        const file = at.pop()!;
+        if (name === plugin.file || (await store.listFiles(at.join("/"))).includes(file)) return { ok: false, error: `${name} couldn't be read, so ${plugin.name ?? id} stays where it is` };
       }
+      for (const [name, data] of files) await store.writeFile(`user/${to}/${name}`, data);
       for (const name of names) await store.removeFile(`user/${from}/${name}`);
       await setOn(from, id, false);
       await setOn(to, id, plugin.on);

@@ -57,6 +57,8 @@ type Run = {
   instance: string;
   tools: number;
   usage: { input: number; output: number };
+  /** The provider that answered the run's first request: the rest of the run asks it too, since each answer carries that vendor's own state. */
+  provider?: string;
   /** For a check: the agents whose tool call it checks, and this one; their calls aren't checked by them again. */
   chain: string[];
   /** For a check: when the action stops waiting for it. */
@@ -191,8 +193,9 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         // stop to ask the person for a key (the kernel's card) while what they did waits. The agent's
         // if-unsure decides. So an app can link a checking agent for everyone, and it reads only once a key is set.
         if (isObject(trigger) && trigger.kind === "check") {
-          const providers = (await callService(remote.services, instance, caps, "llm", "providers", [], dispatch).catch(() => [])) as { ready?: boolean }[];
-          if (!Array.isArray(providers) || !providers.some((p) => p?.ready)) return { ok: false, reason: "no-key" };
+          // (The one that would answer: the person's pick, else the first with its key, as llm.complete chooses.)
+          const providers = (await callService(remote.services, instance, caps, "llm", "providers", [], dispatch).catch(() => [])) as { ready?: boolean; preferred?: boolean }[];
+          if (!Array.isArray(providers) || !(providers.find((p) => p?.preferred) ?? providers.find((p) => p?.ready))?.ready) return { ok: false, reason: "no-key" };
         }
         const u = await usage(config.id);
         if (over(config, u, true, dispatch)) return { ok: false, reason: "budget" };
@@ -221,7 +224,10 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         const r = runOf(instance, args[0]);
         const u = await usage(config.id);
         if (over(config, u, false, dispatch)) return { ok: false, reason: "budget" };
-        const answer = (await callService(remote.services, instance, caps, "llm", "complete", [args[1]], dispatch)) as Record<string, any>;
+        // A run stays with one model, whatever the person picks meanwhile.
+        const request = r.provider && isObject(args[1]) && args[1].provider === undefined ? { ...args[1], provider: r.provider } : args[1];
+        const answer = (await callService(remote.services, instance, caps, "llm", "complete", [request], dispatch)) as Record<string, any>;
+        if (typeof answer?.provider === "string") r.provider ??= answer.provider;
         const input = Number(answer?.usage?.input) || 0;
         const output = Number(answer?.usage?.output) || 0;
         r.usage.input += input;

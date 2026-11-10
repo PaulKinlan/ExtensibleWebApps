@@ -84,13 +84,23 @@ export default async function ({ check, context, URL, errors }) {
     check("turning it off in one app turns it off in every app", !!off && !off.on && off.everywhere === true, JSON.stringify(off));
     await command("user:on", { app: "demos/trip", id: "world-clock" });
 
-    // Back to one app.
+    // Back to one app, with another app open in a second tab and running it too.
+    const tab2 = await own.newPage();
+    watchErrors(tab2, errors, "every-app (second tab)");
+    await tab2.goto(`${URL}demos/invoice/app.html`);
+    const clock = () => /\d\d:\d\d/.test(document.querySelector(".world-clock strong")?.textContent ?? "");
+    const both = (await tab2.waitForFunction(clock, null, { timeout: 15000 }).then(() => true, () => false)) && (await page.waitForFunction(clock, null, { timeout: 15000 }).then(() => true, () => false));
     await page.click("ui-panel .launch");
     await page.click('[data-reach="world-clock"]');
     const back = await said(/World clock is now only in this app/);
     const here = (await list("demos/trip")).find((p) => p.id === "world-clock");
     const gone = !(await list("demos/invoice")).some((p) => p.id === "world-clock");
     check("\"Only this app\" keeps it for this app, on as it was, and takes it out of the others", /only in this app/.test(back) && !!here && here.on && !here.everywhere && gone, `${back} ${JSON.stringify(here)} gone:${gone}`);
+    // The move changed where the plugin is kept while both tabs ran it: the app that keeps it still runs it, and the other lets it go.
+    const stays = await page.waitForFunction(clock, null, { timeout: 15000 }).then(() => true, () => false);
+    const leaves = await tab2.waitForSelector(".world-clock", { state: "detached", timeout: 15000 }).then(() => true, () => false);
+    check("with two apps open and running it, the one that keeps it goes on showing it and the other stops", both && stays && leaves, `${both} ${stays} ${leaves}`);
+    await tab2.close();
     for (const app of ["demos/trip", "demos/invoice"]) for (const id of ["world-clock", "clock"]) await command("user:remove", { app, id }).catch(() => {});
 
     // A model added from an app is kept for every app.

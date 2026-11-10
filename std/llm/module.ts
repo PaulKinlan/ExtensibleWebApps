@@ -268,7 +268,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       // turn: a provider the person gives no key ("Not now" on its card) answers { declined }, and the next one asks.
       const picked = named !== undefined ? list.find((p) => p.id === named) : (list.find((p) => p.preferred) ?? list.find((p) => p.ready));
       const rest = named === undefined && !picked ? list.slice(1) : [];
-      let chosen = picked ?? list[0];
+      // (A provider that was named and isn't here is an error, never another vendor.)
+      let chosen = named !== undefined ? picked : (picked ?? list[0]);
       if (!chosen) throw new Error(named !== undefined ? `No provider ${named} in this app` : "This app has no language model yet. Add one from Customize (Add a plugin), such as Claude (Anthropic), and paste your own API key when it asks");
       if (method === "models") {
         const value = (await root.serial(dispatch, "llm:models", { provider: chosen.id })) as unknown;

@@ -289,6 +289,20 @@ async function reopen(app: string) {
     const open = openApps.get(host.tab);
     if (changed(open)) apps.drop(host, [...open.links, ...(await userAdded.links(open.app).catch(() => []))]);
   }
+  // One of the person's plugins that changed (other code, or kept in another folder now) while several apps run it
+  // is stopped before any app opens again, when every tab that runs it is about to: the first to open then starts the
+  // new one, in place of being refused because another app still held the old.
+  const reopening = new Set(hosts.list.filter((host) => changed(openApps.get(host.tab))).map((host) => host.tab));
+  for (const tab of reopening) {
+    for (const link of await userAdded.links(openApps.get(tab)!.app!).catch(() => [])) {
+      try {
+        const source = asPlugin(link.href, link.source);
+        const id = readManifest(source).id;
+        const running = remote.installed.get(id);
+        if (running?.origin === "app" && (running.source !== source || running.href !== link.href) && apps.tabsWith(id).every((t) => reopening.has(t))) remote.uninstall(id);
+      } catch {}
+    }
+  }
   for (const host of hosts.list) {
     const open = openApps.get(host.tab);
     if (changed(open)) {
