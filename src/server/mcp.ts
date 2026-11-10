@@ -16,10 +16,13 @@
 //
 // A client that sits idle hears about a change too: it opens a GET stream with
 // its session, and the host keeps it open (mcpStream). The kernel isn't held
-// for it: the host asks the door every STREAM_POLL_MS whether the tools
-// changed, a short request like any other, and sends the notice when they did.
-// A stream lasts STREAM_MS, then closes with a `retry` hint so the client opens
-// another; a session has one stream at a time, the newest.
+// for it, and isn't asked on a timer either: the kernel says when what the door
+// answers may have changed (KernelEnv.changed, from std/outside/module.ts), the
+// accounts say when a key for the space ended, and only then does the host ask
+// the door, a short request like any other, and send the notice if the tools
+// did change. A stream lasts STREAM_MS (or until its key runs out, if that's
+// sooner), then closes with a `retry` hint so the client opens another; a
+// session has one stream at a time, the newest.
 //
 // An agent without a key can sign in instead: the 401 points it at the
 // OAuth metadata for this address (src/server/auth/mcp-oauth.ts), and the
@@ -32,8 +35,8 @@ export const MCP_TIMEOUT_MS = 120_000;
 const MAX_BODY = 256 * 1024;
 const PLUGIN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const SESSION = /^[0-9a-f]{32}$/;
-/** How often an open GET stream asks the door whether the tools changed. */
-export const STREAM_POLL_MS = 10_000;
+/** How often an open GET stream sends a comment, so the connection is seen to be alive. Nothing is asked for it. */
+export const STREAM_BEAT_MS = 25_000;
 /** How long a GET stream stays open before the client is asked to open another. */
 export const STREAM_MS = 30 * 60_000;
 /** How long a client waits before opening the stream again (SSE's `retry`). */
@@ -125,34 +128,67 @@ export function mcpResponse(result: RouteResponse | null): Response {
 const randomHex = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 /**
- * A client's GET stream, kept open by the host: it asks the kernel (`ask`, the door `mcp`) at once whether
- * the tools changed, then every `poll`, and sends a notice when they did, or a comment so the connection is
- * seen to be alive. It ends after `life`, or when the door says the session or stream is over (the client
- * ended the session, or opened a newer stream). An answer other than 200 to the first ask is the response.
+ * How a host tells a stream to ask again: `watch(wake, lost)` calls `wake` each time the space's kernel says
+ * what its door answers may have changed, or a key for the space ended, and gives back a way to stop. It
+ * calls `lost` if it can no longer tell (the kernel stopped, or the connection it hears over closed): the
+ * stream ends then, and the client opens another, since nothing would wake it again.
+ */
+export type Watch = (wake: () => void, lost: () => void) => (() => void) | Promise<() => void>;
+
+/**
+ * A client's GET stream, kept open by the host. It asks the kernel (`ask`, the door `mcp`) once as it opens,
+ * and after that only when the host's `watch` wakes it: then it checks the key still works (`key`), asks the
+ * door whether the tools changed, and sends a notice when they did. Nothing is asked on a timer; a comment
+ * goes out every `beat` so the connection is seen to be alive. It ends after `life`, when its key runs out or
+ * stops working, when the door says the session or stream is over (the client ended the session, or
+ * opened a newer stream), or when the host can no longer tell it of changes (`watch` says it's lost). An answer other than 200 to the first ask is the response.
  */
 export async function mcpStream(
   asked: RouteRequest,
   ask: (request: RouteRequest) => Promise<RouteResponse | null>,
-  timing: { poll?: number; life?: number; allowed?: () => Promise<boolean> } = {},
+  watch: Watch,
+  options: { beat?: number; life?: number; key?: () => Promise<{ expires?: number } | null> } = {},
 ): Promise<Response> {
-  const { poll = STREAM_POLL_MS, life = STREAM_MS, allowed = async () => true } = timing;
+  const { beat = STREAM_BEAT_MS, life = STREAM_MS, key = async (): Promise<{ expires?: number } | null> => ({}) } = options;
   const knock = (first: boolean) => ask({ ...asked, query: { ...asked.query, ...(first ? { first: "1" } : {}) } }).catch(() => null);
-  const opened = await knock(true);
+  // Watching starts before the first ask, so a change between that ask and the stream opening isn't missed.
+  let woken = false;
+  let wake = () => void (woken = true);
+  let gone = false;
+  let lost: () => void = () => void (gone = true);
+  const stop = await watch(
+    () => wake(),
+    () => lost(),
+  );
+  let opened: RouteResponse | null = null;
+  let held: { expires?: number } | null = null;
+  try {
+    held = await key().catch(() => null);
+    opened = held && (await knock(true));
+  } finally {
+    if (!opened || opened.status !== 200) stop();
+  }
+  if (!held) return rpcError(401, "That key doesn't work any more");
   if (!opened || opened.status !== 200) return mcpResponse(opened);
+  const first = opened;
   const encoder = new TextEncoder();
   const tag = asked.query?.stream?.slice(0, 8) ?? "s";
   let sent = 0;
   const events = (result: RouteResponse) =>
     (((result.json ?? {}) as McpAnswer).notices ?? []).map((message) => `id: ${tag}-${++sent}\nevent: message\ndata: ${JSON.stringify(message)}\n\n`).join("");
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timers: ReturnType<typeof setTimeout>[] = [];
   let over = false;
+  const finish = () => {
+    over = true;
+    for (const timer of timers) clearTimeout(timer);
+    timers = [];
+    stop();
+  };
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
-      const until = Date.now() + life;
       const end = () => {
         if (over) return;
-        over = true;
-        if (timer !== undefined) clearTimeout(timer);
+        finish();
         try {
           controller.close();
         } catch {}
@@ -164,26 +200,52 @@ export async function mcpStream(
           end();
         }
       };
-      const next = () =>
-        (timer = setTimeout(async () => {
-          if (over) return;
-          if (Date.now() >= until) return end();
-          // The key is checked again each time: revoked, renewed, run out, or the member gone, and the stream ends.
-          if (!(await allowed().catch(() => false))) return end();
-          if (over) return;
-          const result = await knock(false);
-          if (over) return;
-          // The session ended, a newer stream took over, or the space didn't answer: the client opens another if it still wants one.
-          if (!result || result.status !== 200) return end();
-          send(events(result) || ": still here\n\n");
-          next();
-        }, Math.min(poll, Math.max(0, until - Date.now()))));
-      send(`retry: ${RETRY_MS}\n\n${events(opened)}`);
-      next();
+      // It ends when its time is up, or its key's is (a key a client signed in for lasts an hour).
+      let ending: ReturnType<typeof setTimeout> | undefined;
+      const endAt = (at: number) => {
+        if (ending !== undefined) clearTimeout(ending);
+        timers = timers.filter((t) => t !== ending);
+        timers.push((ending = setTimeout(end, Math.max(0, at - Date.now()))));
+      };
+      const until = Date.now() + life;
+      endAt(Math.min(until, held?.expires ?? Infinity));
+      const beating = setInterval(() => send(": still here\n\n"), beat);
+      timers.push(beating as unknown as ReturnType<typeof setTimeout>);
+
+      // One look at a time; a wake during a look means one more look after it.
+      let looking = false;
+      let again = false;
+      const look = async () => {
+        if (over) return;
+        if (looking) return void (again = true);
+        looking = true;
+        try {
+          do {
+            again = false;
+            // The key first: revoked, renewed, run out, or the member gone, and the stream ends.
+            const now = await key().catch(() => null);
+            if (over) return;
+            if (!now) return end();
+            endAt(Math.min(until, now.expires ?? Infinity));
+            const result = await knock(false);
+            if (over) return;
+            // The session ended, a newer stream took over, or the space didn't answer: the client opens another if it still wants one.
+            if (!result || result.status !== 200) return end();
+            const said = events(result);
+            if (said) send(said);
+          } while (again && !over);
+        } finally {
+          looking = false;
+        }
+      };
+      wake = () => void look();
+      lost = end;
+      send(`retry: ${RETRY_MS}\n\n${events(first)}`);
+      if (gone) end();
+      else if (woken) void look();
     },
     cancel() {
-      over = true;
-      if (timer !== undefined) clearTimeout(timer);
+      finish();
     },
   });
   return new Response(body, { status: 200, headers: { "content-type": "text/event-stream", "cache-control": "no-store", "x-accel-buffering": "no" } });

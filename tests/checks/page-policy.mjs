@@ -26,6 +26,14 @@ export default async function ({ check, context, URL, errors }) {
     /require-trusted-types-for 'script'/.test(csp) && /trusted-types [^;]*\bplatform\b/.test(csp) && /script-src 'self'/.test(csp) && !/unsafe-inline|unsafe-eval/.test(csp) && /object-src 'none'/.test(csp) && /base-uri 'self'/.test(csp),
     csp,
   );
+  // Frames: this site's own pages, and a server on the person's device by loopback address, never another site.
+  const frames = (s) => /(?:^|;\s*)frame-src ([^;]*)/.exec(s)?.[1].trim().split(/\s+/) ?? [];
+  const loopback = /^https?:\/\/(localhost|\*\.localhost|127\.0\.0\.1):\*$/;
+  check(
+    "the page policy lets a page frame only this site and a server on the person's own device (loopback), and an app made in the browser gets the same",
+    frames(csp).includes("'self'") && frames(csp).length > 1 && frames(csp).every((source) => source === "'self'" || loopback.test(source)) && frames(PAGE_CSP).join(" ") === frames(csp).join(" "),
+    `${frames(csp).join(" ")} | ${frames(PAGE_CSP).join(" ")}`,
+  );
   const policies = (s) => /trusted-types ([^;]*)/.exec(s)?.[1].trim();
   check("an app made in the browser gets the same Trusted Types and Permissions-Policy (sw/made-page.js)", policies(PAGE_CSP) === policies(csp) && /require-trusted-types-for 'script'/.test(PAGE_CSP) && PERMISSIONS_POLICY === permissions, `${policies(PAGE_CSP)} | ${policies(csp)}`);
   check("the Permissions-Policy turns off what no app uses", ["camera=()", "geolocation=()", "usb=()", "payment=()"].every((f) => permissions.includes(f)), permissions);
@@ -50,7 +58,7 @@ export default async function ({ check, context, URL, errors }) {
   // Marked, so the runner doesn't count these refusals against the run (tests/policy-watch.mjs).
   await page.goto(`${URL}demos/habits/app.html#policy-probe`);
   await page.waitForFunction(() => window.__host, null, { timeout: 10000 });
-  const enforced = await page.evaluate(() => {
+  const enforced = await page.evaluate(async () => {
     const tried = {};
     try {
       document.createElement("div").innerHTML = "<img src=x onerror=alert(1)>";
@@ -71,8 +79,20 @@ export default async function ({ check, context, URL, errors }) {
     } catch (error) {
       tried.scriptUrl = error.name;
     }
+    // Frames: another site's page is refused, this site's own and a server on this device aren't.
+    const refused = [];
+    document.addEventListener("securitypolicyviolation", (e) => e.effectiveDirective === "frame-src" && refused.push(e.blockedURI));
+    for (const src of ["https://example.com/", "http://10.0.0.1:1313/", "http://localhost:1313/", "http://127.0.0.1:1313/", "http://blog.localhost:1313/", `${location.origin}/demos/`]) {
+      const frame = document.createElement("iframe");
+      frame.hidden = true;
+      frame.src = src;
+      document.body.append(frame);
+    }
+    await new Promise((done) => setTimeout(done, 1500));
+    tried.frames = refused.map((uri) => new URL(uri).host).sort();
     return tried;
   });
   check("the browser refuses markup from a plain string, an outside script's address, and a policy the page doesn't name", enforced.innerHTML === "TypeError" && enforced.policy === "TypeError" && enforced.scriptUrl === "TypeError", JSON.stringify(enforced));
+  check("the browser refuses a frame of another site or another machine, and not one of this site or of a server on this device", enforced.frames?.join() === "10.0.0.1:1313,example.com", JSON.stringify(enforced.frames));
   await own.close();
 }

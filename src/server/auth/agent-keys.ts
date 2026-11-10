@@ -52,6 +52,8 @@ const hash = async (text: string) => b64url(new Uint8Array(await crypto.subtle.d
 export interface KeyAccounts {
   /** Whether a user is a member of a space. */
   isMember(space: string, user: string): Promise<boolean>;
+  /** A key for a space stopped working (revoked, or renewed with a new secret): a host ends what the old one still has open. */
+  ended?(space: string): void | Promise<void>;
 }
 
 export function agentKeys(files: Files, accounts: KeyAccounts) {
@@ -61,6 +63,8 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
   };
   /** A user's keys, by id: the index the list reads, pointing at each key's hash. */
   const indexOf = async (user: string) => (await read<Record<string, string>>(`agent-keys/users/${user}.json`)) ?? {};
+
+  const ended = (space: string) => Promise.resolve(accounts.ended?.(space)).catch((error) => console.error("Ending a key's connections:", error));
 
   return {
     async list(user: string): Promise<AgentKey[]> {
@@ -93,9 +97,11 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
       const index = await indexOf(user);
       const h = index[id];
       if (!h) return false;
+      const space = (await read<Kept>(`agent-keys/${h}.json`))?.space;
       await files.remove(`agent-keys/${h}.json`);
       delete index[id];
       await files.write(`agent-keys/users/${user}.json`, JSON.stringify(index));
+      if (space) await ended(space);
       return true;
     },
 
@@ -114,6 +120,7 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
       await files.write(`agent-keys/${h}.json`, JSON.stringify(renewed));
       await files.write(`agent-keys/users/${user}.json`, JSON.stringify({ ...index, [id]: h }));
       await files.remove(`agent-keys/${old}.json`);
+      await ended(kept.space);
       const { user: _user, ...made } = renewed;
       return { key, made };
     },
@@ -122,7 +129,7 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
      * The member an `Authorization: Bearer <key>` header is for, if the key is for this space (and, for a key
      * limited to one door, this plugin's) and they're still in it.
      */
-    async member(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string } | null> {
+    async member(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string; expires?: number } | null> {
       const token = /^Bearer\s+(\S+)$/i.exec(authorization ?? "")?.[1];
       if (!token || !KEY.test(token)) return null;
       const h = await hash(token);
@@ -132,7 +139,7 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
       // check that was under way when it changed (the "last used" below), and must not count.
       if ((await indexOf(kept.user))[kept.id] !== h) return null;
       if (!kept.used || Date.now() - kept.used > USED_EVERY_MS) await files.write(`agent-keys/${h}.json`, JSON.stringify({ ...kept, used: Date.now() }));
-      return { user: kept.user, key: kept.id };
+      return { user: kept.user, key: kept.id, ...(kept.expires ? { expires: kept.expires } : {}) };
     },
   };
 }

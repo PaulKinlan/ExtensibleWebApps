@@ -144,6 +144,8 @@ export async function bodyOf(request: Request, limit: number): Promise<string | 
 export interface Hooks {
   /** Someone left a space, or was removed from it: close their connections to it. */
   left?(space: string, user: string): void | Promise<void>;
+  /** An agent key for a space stopped working (revoked, renewed, or its member left): end what it still has open (src/server/mcp.ts). */
+  keys?(space: string): void | Promise<void>;
   /** Sends a message, as the host sends a space's email; null when the host has no mail set up. */
   mail?(message: Parameters<Email["send"]>[0]): Promise<Awaited<ReturnType<Email["send"]>> | null>;
 }
@@ -330,7 +332,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   /** A space's record, if the name is a space's. */
   const spaceOf = (name: string) => (SPACE_NAME.test(name) ? read<Space>(`spaces/${name}.json`) : Promise.resolve(null));
 
-  const keys = agentKeys(files, { isMember: async (name, user) => !!(await spaceOf(name))?.members[user] });
+  const keys = agentKeys(files, { isMember: async (name, user) => !!(await spaceOf(name))?.members[user], ended: (name) => hooks.keys?.(name) });
   const mcpSignIn = mcpOAuth(files, {
     user: async (request) => (await session(request))?.user ?? null,
     isMember: async (name, user) => !!(await spaceOf(name))?.members[user],
