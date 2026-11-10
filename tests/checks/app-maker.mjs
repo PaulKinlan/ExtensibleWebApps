@@ -152,9 +152,14 @@ export default async function ({ check, openTab, context, URL }) {
     // Make it.
     await ask("A reading list with a Sunday reminder");
     check("making an app shows every file on one review card first", await accept("makes Reading list, at /apps/reading-list/, with app.html, books.js, books.html, reminder.js, reminder.html"));
+    // The review card is on screen as soon as the maker asks to save, but the trace reaches the page in batches, so
+    // the model's turns may not be here yet: wait for the maker's first turn before reading what it was offered.
+    await page
+      .waitForFunction(() => window.__host.traces.some((e) => e.plugin === "fake-model" && e.detail?.startsWith('model-asked {"system":"You make small web apps')), null, { timeout: 10000 })
+      .catch(() => {});
     const turns = await page.evaluate(() => window.__host.traces.filter((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked")).map((e) => JSON.parse(e.detail.slice(12))));
     const tools = turns.find((t) => t.system.startsWith("You make small web apps"))?.tools ?? [];
-    check("the app maker's tools are the maker's, not the data's or the authoring service's", ["maker_check", "maker_list", "maker_read", "maker_save"].every((t) => tools.includes(t)) && !tools.some((t) => /^(data_(list|get|put|delete)|authoring_)/.test(t)), tools.join(" "));
+    check("the app maker's tools are the maker's, not the data's or the authoring service's", ["maker_check", "maker_list", "maker_read", "maker_save"].every((t) => tools.includes(t)) && !tools.some((t) => /^(data_(list|get|put|delete)|authoring_)/.test(t)), tools.join(" ") || `no maker turn in the trace (${turns.length} model turns)`);
     check("the app maker sees the bug only running the app shows, and saves a fix after a second card", await accept("changes reminder.js"));
     check("the app maker says where the app is", await seen(`${make} >> text=Made it: /apps/reading-list/`, 20000));
     // The trace reaches the page in batches, so the chat can say "Made it" before the last model turn's trace is here: wait for both checks.
