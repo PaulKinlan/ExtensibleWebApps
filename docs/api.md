@@ -426,11 +426,11 @@ The person's own plugins for an app, for a plugin editor, a Customize panel or a
 
 #### authoring.add
 
-`authoring.add(url)` → { ok: true, id } or { ok: false, error }
+`authoring.add(url, { everywhere }?)` → { ok: true, id } or { ok: false, error }
 
 Needs: `plugins:author`.
 
-Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn().
+Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn(). With { everywhere: true } it is added for every app the person opens on this device, and the review says so.
 
 #### authoring.arrange
 
@@ -463,6 +463,14 @@ Asks the person to point at a spot on the page, and says where: a selector and b
 Needs: `plugins:author`.
 
 A copy of a plugin the caller's app links, with an id and name of its own so it can run beside the original, and its templates read from where the original lives.
+
+#### authoring.everywhere
+
+`authoring.everywhere(id, on)` → { ok: true } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+Keeps one of the person's own plugins for every app they open on this device (on true), once they accept a review that says what it can do in each, or brings one back to the caller's app alone (on false). A plugin of the same id that an app links, or that the person keeps for that app, runs there instead.
 
 #### authoring.file
 
@@ -498,11 +506,11 @@ Locks a part of the page again, for a plugin that was let into it.
 
 #### authoring.mine
 
-`authoring.mine()` → [{ id, name, description, permissions, places, on, shared, error? }]
+`authoring.mine()` → [{ id, name, description, permissions, places, on, shared, everywhere, error? }]
 
 Needs: `plugins:author`.
 
-The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).
+The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. everywhere says which ones they use in every app (kept once, and on or off in all of them). error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).
 
 #### authoring.move
 
@@ -1034,7 +1042,7 @@ Ask a language model, through whichever provider plugin the app has (std/llm/ant
 
 Needs: `llm`.
 
-Adds one of choices() to the person's own plugins for the caller's app, once they accept a review of its code, and turns it on. It asks for its API key the first time it is asked something.
+Adds one of choices() to the person's own plugins for every app they open, once they accept a review of its code, and turns it on. It asks for its API key the first time it is asked something.
 
 #### llm.choices
 
@@ -1050,7 +1058,7 @@ The language models this site offers (its plugin registry's packages that provid
 
 Needs: `llm`.
 
-Asks a model. messages are { role: "user" | "assistant", content }, an assistant's { toolCalls: [{ id, name, args }], state }, or a tool's answer { role: "tool", id, name, content }; add each answer's message to messages to go on. tools are [{ name, description, parameters }]; schema (the platform's JSON Schema subset, as collections use) asks for an answer of that shape, in json, checked before it's returned. model is an id or a tier: best, balanced or fast (the default is the provider's setting). Without provider, the first ready one answers.
+Asks a model. messages are { role: "user" | "assistant", content }, an assistant's { toolCalls: [{ id, name, args }], state }, or a tool's answer { role: "tool", id, name, content }; add each answer's message to messages to go on. tools are [{ name, description, parameters }]; schema (the platform's JSON Schema subset, as collections use) asks for an answer of that shape, in json, checked before it's returned. model is an id or a tier: best, balanced or fast (the default is the provider's setting). Without provider, the one the person picked answers (prefer), else the first ready one; when none has its key, each asks for it in turn until the person gives one.
 
 #### llm.models
 
@@ -1060,13 +1068,21 @@ Needs: `llm`.
 
 The models a provider's vendor serves now (the first ready provider's, without one), and the model each tier stands for.
 
-#### llm.providers
+#### llm.prefer
 
-`llm.providers()` → [{ id, name, model?, ready }]
+`llm.prefer(provider?)` → { ok, provider? }
 
 Needs: `llm`.
 
-The providers the caller's app links; ready means it has its key.
+Sets which of providers() answers a request that names none, for every app the person opens on this device: what a model picker calls. Without one, back to the first that is ready.
+
+#### llm.providers
+
+`llm.providers()` → [{ id, name, model?, ready, preferred? }]
+
+Needs: `llm`.
+
+The providers the caller's app has; ready means it has its key, preferred that the person picked it (prefer).
 
 ### maker
 
@@ -1794,7 +1810,7 @@ Listeners get `{}`.
 
 ### `llm:complete`
 
-Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }. Listening needs provide:llm.
+Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }, with declined: true when the person gave it no key. Listening needs provide:llm.
 
 Mode: `bail`, 660000 ms per listener, fails open. Listening needs `provide:llm`.
 
@@ -1970,12 +1986,12 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `history` | Call history.state, history.undo, history.redo. |
 | `launch` | Call launch.take. |
 | `live` | Call sync.live. |
-| `llm` | Call llm.providers, llm.models, llm.choices, llm.add, llm.complete. |
+| `llm` | Call llm.providers, llm.prefer, llm.models, llm.choices, llm.add, llm.complete. |
 | `members` | Call sync.members. |
 | `network:<host>` | Call net.fetch. |
 | `notify` | Call notify.state, notify.request, notify.show. |
 | `outside` | Call outside.open, outside.close, outside.status. |
-| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.choose, authoring.share, authoring.unshare, authoring.save, authoring.remove, authoring.file. |
+| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.choose, authoring.share, authoring.unshare, authoring.everywhere, authoring.save, authoring.remove, authoring.file. |
 | `plugins:manage` | Call authoring.turn, authoring.move, plugins.setEnabled. |
 | `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.arrange, authoring.layout, authoring.inspect, authoring.check, plugins.app. |
 | `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source, sync.reflect, sync.trace. |
