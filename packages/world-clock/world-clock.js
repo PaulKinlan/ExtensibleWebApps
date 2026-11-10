@@ -25,10 +25,16 @@ const ZONES = [
 
 export default function (ctx) {
   const views = ctx.ui.views("world-clock.html");
-  const draw = async () => {
-    const clocks = await Promise.all(ZONES.map(async ([city, zone]) => ({ city, ...(await ctx.call("clock", "now", zone)) })));
-    views.render("strip", "clocks", { clocks });
+  // A call fails when the clock stops before answering: a person turned it off, or turned on another clock in its
+  // place. That isn't the World clock's error, so it asks once more, a moment later, of whichever clock is there then.
+  const draw = async (again = true) => {
+    try {
+      const clocks = await Promise.all(ZONES.map(async ([city, zone]) => ({ city, ...(await ctx.call("clock", "now", zone)) })));
+      views.render("strip", "clocks", { clocks });
+    } catch {
+      if (again) setTimeout(() => draw(false), 1000);
+    }
   };
   void draw();
-  setInterval(draw, 30_000);
+  setInterval(() => draw(), 30_000);
 }
