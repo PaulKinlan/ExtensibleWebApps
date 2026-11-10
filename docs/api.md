@@ -900,6 +900,26 @@ Needs: `folder:write`.
 
 Writes a file that isn't text, such as an image the person dropped or a sound, from a data: URL; at most 32 MB. As write, it doesn't ask the person.
 
+### follow
+
+What the signed-in person added, following them between their devices: their plugins and agents, which are on, where they moved views and the model they picked go to their account on the site's server, and come from it. Never an API key.
+
+#### follow.now
+
+`follow.now(app?)` → { on, name?, at?, error?, skipped, from }
+
+Needs: `plugins:manage`.
+
+Sends what changed here and brings what changed elsewhere now, rather than within the minute, then answers as status does.
+
+#### follow.status
+
+`follow.status(app?)` → { on, name?, at?, error?, skipped, from }
+
+Needs: `plugins:read`.
+
+Whether this device follows an account (`on`: someone is signed in and the account answers), whose, when they last agreed (`at`), why the last try failed (`error`, in words for the person), the files too big to follow (`skipped`), and the ids of the app's plugins and agents that came from the account (`from`).
+
 ### game
 
 A game loop. The game's state is a plain object its plugins agree on; each tick runs game:update, then game:rules (systems answer { state } with their changes), then game:frame for whatever draws it. A new rule is a plugin that listens to one of them.
@@ -1992,8 +2012,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `notify` | Call notify.state, notify.request, notify.show. |
 | `outside` | Call outside.open, outside.close, outside.status. |
 | `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.choose, authoring.share, authoring.unshare, authoring.everywhere, authoring.save, authoring.remove, authoring.file. |
-| `plugins:manage` | Call authoring.turn, authoring.move, plugins.setEnabled. |
-| `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.arrange, authoring.layout, authoring.inspect, authoring.check, plugins.app. |
+| `plugins:manage` | Call authoring.turn, authoring.move, plugins.setEnabled, follow.now. |
+| `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.arrange, authoring.layout, authoring.inspect, authoring.check, plugins.app, follow.status. |
 | `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source, sync.reflect, sync.trace. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
@@ -2038,6 +2058,7 @@ Reserved ids, which no plugin can take:
 - `email`
 - `files`
 - `folder`
+- `follow`
 - `game`
 - `history`
 - `hooks`
