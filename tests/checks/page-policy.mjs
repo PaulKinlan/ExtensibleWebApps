@@ -34,6 +34,13 @@ export default async function ({ check, context, URL, errors }) {
     frames(csp).includes("'self'") && frames(csp).length > 1 && frames(csp).every((source) => source === "'self'" || loopback.test(source)) && frames(PAGE_CSP).join(" ") === frames(csp).join(" "),
     `${frames(csp).join(" ")} | ${frames(PAGE_CSP).join(" ")}`,
   );
+  // Who may frame a page here: the site itself, and the named sites whose posts embed the demos. Never everyone.
+  const ancestors = /(?:^|;\s*)frame-ancestors ([^;]*)/.exec(csp)?.[1].trim().split(/\s+/) ?? [];
+  check(
+    "the page policy lets only this site and the named embedders frame a page, each by its full https origin",
+    ancestors.includes("'self'") && ancestors.every((source) => source === "'self'" || /^https:\/\/[a-z0-9.-]+$/.test(source)) && ancestors.join(" ") === "'self' https://aifoc.us",
+    ancestors.join(" "),
+  );
   const policies = (s) => /trusted-types ([^;]*)/.exec(s)?.[1].trim();
   check("an app made in the browser gets the same Trusted Types and Permissions-Policy (sw/made-page.js)", policies(PAGE_CSP) === policies(csp) && /require-trusted-types-for 'script'/.test(PAGE_CSP) && PERMISSIONS_POLICY === permissions, `${policies(PAGE_CSP)} | ${policies(csp)}`);
   check("the Permissions-Policy turns off what no app uses", ["camera=()", "geolocation=()", "usb=()", "payment=()"].every((f) => permissions.includes(f)), permissions);
