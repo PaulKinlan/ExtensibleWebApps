@@ -6,7 +6,8 @@
   - Plugins: query, here (every plugin on the page: { id, name, description,
     who, user, app, on, off, error, offHint, places, share }), groups (what
     can be added, by kind: { kind, title, about, packages }), samples,
-    registry, nothingFound. Each place is { key, where, label, ok, fragile,
+    registry, nothingFound. A package and a sample each say what they can do
+    once on (can, the kernel's words for their permissions). Each place is { key, where, label, ok, fragile,
     locked, unlocked, movable, moved }.
   - Make: make { starters, started, spotLabel, chosenSpot, name, code, rev,
     ok, problem, permissions, status, saved, editorLinked }. It is drawn even
@@ -75,6 +76,10 @@
   .customize details { display: block; padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); }
   .customize details > :not(summary) { margin-top: var(--space-3); }
   .customize summary { cursor: pointer; font-size: var(--text-md); font-weight: 600; }
+  /* What a plugin can do, folded under its row: one line until the person wants to read it. */
+  .customize details.can { padding: 0; border: 0; border-radius: 0; }
+  .customize details.can > summary { font-size: var(--text-sm); font-weight: 400; color: var(--fg-2); }
+  .customize details.can > :not(summary) { margin-top: var(--space-1); }
   .customize textarea { width: 100%; font-family: var(--mono, monospace); }
   .customize .stack { display: grid; gap: var(--space-2); }
 
@@ -208,7 +213,13 @@
                         <div class="entry-main">
                           <div class="head"><strong>{{p.name}}</strong><template if="p.state"><span class="pill {{p.stateClass}}">{{p.state}}</span></template></div>
                           <p class="muted">{{p.description}}</p>
-                          <template if="p.can"><p class="muted">{{p.can}}</p></template>
+                          <template if="p.can.length">
+                            <details class="can">
+                              <summary>What it can do once it's on</summary>
+                              <div class="asks"><template for="c of p.can"><span>{{c}}</span></template></div>
+                            </details>
+                          </template>
+                          <template if="p.asksNothing"><p class="muted">It asks for nothing: it can't draw, read or change anything.</p></template>
                           <template if="p.also"><p class="muted">{{p.also}}</p></template>
                         </div>
                         <div class="entry-actions">
@@ -230,8 +241,27 @@
                 <h3>Samples for this app</h3>
                 <p class="muted">Plugins the app's author wrote to try with it.</p>
               </div>
-              <div class="row">
-                <template for="s of samples"><button type="button" data-action="sample" data-value="{{s.href}}" data-sample="{{s.href}}" disabled="{{busy}}">{{s.title}}</button></template>
+              <div class="entries" role="list">
+                <template for="s of samples">
+                  <div role="listitem" key="{{s.href}}" class="entry sample">
+                    <div class="entry-main">
+                      <div class="head"><strong>{{s.title}}</strong><template if="s.state"><span class="pill {{s.stateClass}}">{{s.state}}</span></template></div>
+                      <template if="s.description"><p class="muted">{{s.description}}</p></template>
+                      <template if="s.where"><p class="muted">{{s.where}}.</p></template>
+                      <template if="s.can.length">
+                        <details class="can">
+                          <summary>What it can do once it's on</summary>
+                          <div class="asks"><template for="c of s.can"><span>{{c}}</span></template></div>
+                        </details>
+                      </template>
+                      <template if="s.asksNothing"><p class="muted">It asks for nothing: it can't draw, read or change anything.</p></template>
+                    </div>
+                    <div class="entry-actions">
+                      <template if="s.add"><button type="button" data-action="sample" data-value="{{s.href}}" data-sample="{{s.href}}" disabled="{{s.disabled}}">Add</button></template>
+                      <template if="s.turnOn"><button type="button" class="primary" data-action="turn" data-value="{{s.id}}" data-toggle="{{s.id}}">Turn on</button></template>
+                    </div>
+                  </div>
+                </template>
               </div>
             </section>
           </template>

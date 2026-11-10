@@ -18,9 +18,11 @@ The registry offers the general-purpose [standard plugins](../plugins.md) too: U
 
 ## What a person sees
 
-Customize lists the registry under **Add a plugin**, at the top of its panel: each plugin's name, what it does and what it asks for. **Add** puts it with the person's own plugins for that app, switched off, as with any plugin they add. If it needs a service another plugin in the registry provides, that plugin is added too, and Customize says so before they click.
+Customize lists the registry under **Add to this page**: each plugin's name, what it does and, folded under it, what it can do once it's on, in the kernel's own words for each permission (the same the review card uses). **Add** shows its code on a review card, and once the person accepts, puts it with their own plugins for that app and turns it on, with **Turn off** beside the message. If it needs a service another plugin in the registry provides, that plugin is added too, and Customize says so before they click.
 
-Try it: open any demo, open Customize, and add **World clock**. It needs the `clock` service, so **Clock** comes with it. Turn World clock on, and Clock comes on with it, since it provides what World clock needs: a strip of clocks appears at the foot of the page. Turn Clock off and World clock goes off too. Nothing here asks the app's author, or the site's `kernel.json`, for anything ([The layers](../layers.md#when-a-persons-plugin-needs-a-service)).
+The page at `/packages/` adds one too: **Add to an app** on a plugin's card lists the apps, and each is a link to the app that ends `#add=<id>` (`/demos/trip/app.html#add=world-clock`). The app's Customize answers such a link by opening and asking to add that plugin, exactly as its own Add does, so nothing is added until the person accepts the review. Only an id the registry lists can be asked for this way, and the page drops the `#add=…` from its address once it has passed it on, so loading it again asks nothing.
+
+Try it: open any demo, open Customize, and add **World clock** (or press **Add to an app** on it at `/packages/`). It needs the `clock` service, so **Clock** comes with it, and both are turned on: a strip of clocks appears at the foot of the page. Turn Clock off and World clock goes off too. Nothing here asks the app's author, or the site's `kernel.json`, for anything ([The layers](../layers.md#when-a-persons-plugin-needs-a-service)).
 
 ## A package
 
