@@ -11,11 +11,19 @@ import type { Command } from "../shared/protocol";
 /** What the service worker may ask the kernel. Everything else is refused. */
 const ALLOWED = new Set<Command>(["route"]);
 
-/** `introduced` settles once the kernel knows this tab (it answers no command before then). */
-export function serviceWorker(command: (name: Command, arg?: unknown) => Promise<unknown>, report: (source: string, text: string) => void, introduced: Promise<void>): void {
+/**
+ * `introduced` settles once the kernel knows this tab (it answers no command before then). `outOfDate` is called
+ * when the service worker finds this page is from before the site's last deploy and a part it asked for is gone.
+ */
+export function serviceWorker(command: (name: Command, arg?: unknown) => Promise<unknown>, report: (source: string, text: string) => void, introduced: Promise<void>, outOfDate: () => void): void {
   if (!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.addEventListener("message", (e: MessageEvent) => {
     const reply = e.ports[0];
+    if (reply && e.data?.t === "sw:out-of-date") {
+      // Heard: the worker leaves this tab to its host (it reloads only a tab with nothing to hear it).
+      reply.postMessage(true);
+      return outOfDate();
+    }
     if (!reply || e.data?.t !== "sw:kernel") return;
     if (!ALLOWED.has(e.data.name)) return reply.postMessage({ ok: false, error: `The service worker can't ask for ${e.data.name}` });
     // Taken: the service worker waits for this tab's answer instead of asking another tab.
