@@ -1,5 +1,6 @@
 {
   "std": [
+    "agents/chat",
     "ask-the-page",
     "board",
     "debug-console",

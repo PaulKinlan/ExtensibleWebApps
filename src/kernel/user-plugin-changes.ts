@@ -8,14 +8,19 @@
 // part is fetched the first time something changes: the person opens
 // Customize, a plugin they made is saved, a space sends a shared one.
 
+import { isAgentFile } from "../shared/agent-runner";
 import { FILE_PATH, readManifest } from "./manifest";
 import type { Store } from "./store";
 import { record } from "./trace";
 import { checkApp, EVERYWHERE, folderOf, type UserPlugin } from "./user-plugins";
 
 const FILE_NAME = /^[\w-][\w.-]{0,63}$/;
-/** A plugin is a .js file at the top of the app's folder; a .js file in a folder below it is one of a plugin's files, such as a template. */
-const isPlugin = (name: string) => name.endsWith(".js") && !name.includes("/");
+/** A plugin is a .js file at the top of the app's folder, or an agent's .agent.md; a .js file in a folder below it is one of a plugin's files, such as a template. */
+const isPlugin = (name: string) => (name.endsWith(".js") || isAgentFile(name)) && !name.includes("/");
+/** The name one is kept under: its id, so each id has one file. */
+const keptAs = (id: string, name: string) => `${id}${isAgentFile(name) ? ".agent.md" : ".js"}`;
+/** The file the same id would be kept under as the other kind: an id is a plugin or an agent, not both. */
+const otherForm = (name: string) => (name.endsWith(".js") ? name.replace(/\.js$/, ".agent.md") : name.replace(/\.agent\.md$/, ".js"));
 const MAX_BYTES = 5_000_000;
 
 type File = { name: string; data: Blob | string };
@@ -27,10 +32,13 @@ export interface Kept {
   list(app: string): Promise<UserPlugin[]>;
   /** Turns a plugin on or off in the folder it is kept in: an app's, or the one for every app. */
   setOn(folder: string, id: string, value: boolean): Promise<void>;
+  /** A file as the plugin to run: its own source, or the plugin an agent file becomes. */
+  plugin(file: string, text: string): Promise<{ source: string }>;
   tell(change: { app: string; added?: string[]; removed?: string }): void;
 }
 
-export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
+export function userPluginChanges({ store, origin, list, setOn, plugin, tell }: Kept) {
+  const manifestOf = async (file: string, text: string) => readManifest((await plugin(file, text)).source);
   /**
    * Turns off the person's plugins for an app that need a service `plugin` provided, now it doesn't, and the
    * ones that need theirs in turn. A service running from something else (`elsewhere`: a kernel module, the
@@ -59,7 +67,7 @@ export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
   }
 
   /**
-   * Adds files to an app's folder: plugins (.js) and the files they bring. Each plugin's manifest is
+   * Adds files to an app's folder: plugins (.js), agents (.agent.md) and the files they bring. Each plugin's manifest is
    * read first, and nothing is written if any is refused. A plugin that is added starts off.
    */
   async function add(app: string, files: File[], { quiet = false } = {}): Promise<{ ok: true; ids: string[] } | { ok: false; error: string }> {
@@ -75,15 +83,18 @@ export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
       if (size > MAX_BYTES) return { ok: false, error: `${f.name} is over 5 MB` };
       if (!isPlugin(f.name)) continue;
       try {
-        const id = readManifest(typeof f.data === "string" ? f.data : await f.data.text()).id;
+        const id = (await manifestOf(f.name, typeof f.data === "string" ? f.data : await f.data.text())).id;
+        if (ids.includes(id)) return { ok: false, error: `${f.name}: ${id} is in these files twice` };
         ids.push(id);
-        names.set(f, `${id}.js`);
+        names.set(f, keptAs(id, f.name));
       } catch (error) {
         return { ok: false, error: `${f.name}: ${error instanceof Error ? error.message : error}` };
       }
     }
-    if (!ids.length) return { ok: false, error: "Add at least one plugin (.js)" };
+    if (!ids.length) return { ok: false, error: "Add at least one plugin (.js) or agent (.agent.md)" };
     for (const f of files) await store.writeFile(`user/${app}/${names.get(f) ?? f.name}`, f.data);
+    // An id is a plugin or an agent, not both: the one added takes the place of the other.
+    for (const name of names.values()) await store.removeFile(`user/${app}/${otherForm(name)}`).catch(() => {});
     for (const id of ids) await setOn(app, id, false);
     record({ kind: "lifecycle", name: "user-plugin:add", detail: `${app}: ${files.map((f) => f.name).join(", ")}` });
     if (!quiet) tell({ app, added: ids });
@@ -96,7 +107,7 @@ export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
    */
   async function fetchFiles(url: string): Promise<{ ok: true; files: File[]; source: string } | { ok: false; error: string }> {
     const href = new URL(url, origin);
-    if (href.origin !== origin || !href.pathname.endsWith(".js")) return { ok: false, error: "Add a .js file from this site" };
+    if (href.origin !== origin || !(href.pathname.endsWith(".js") || isAgentFile(href.pathname))) return { ok: false, error: "Add a plugin's .js file, or an agent's .agent.md file, from this site" };
     const get = async (u: URL) => {
       const response = await fetch(u);
       if (!response.ok) throw new Error(`${u.pathname} answered ${response.status}`);
@@ -104,8 +115,9 @@ export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
     };
     try {
       const source = await (await get(href)).text();
-      const manifest = readManifest(source);
-      const files: File[] = [{ name: href.pathname.split("/").pop()!, data: source }];
+      const name = href.pathname.split("/").pop()!;
+      const manifest = await manifestOf(name, source);
+      const files: File[] = [{ name, data: source }];
       for (const name of manifest.files ?? []) files.push({ name, data: await get(new URL(name, href)) });
       return { ok: true, files, source };
     } catch (error) {
@@ -150,10 +162,10 @@ export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
      */
     async problem(app: string, files: File[]): Promise<string | undefined> {
       const plugins = files.filter((f) => isPlugin(f.name));
-      if (plugins.length !== 1 || typeof plugins[0].data !== "string") return "Add one plugin (.js) at a time, with the files its manifest lists";
+      if (plugins.length !== 1 || typeof plugins[0].data !== "string") return "Add one plugin (.js) or agent (.agent.md) at a time, with the files its manifest lists";
       let manifest;
       try {
-        manifest = readManifest(plugins[0].data);
+        manifest = await manifestOf(plugins[0].name, plugins[0].data);
       } catch (error) {
         return `${plugins[0].name}: ${error instanceof Error ? error.message : error}`;
       }
@@ -162,7 +174,7 @@ export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
       if (badName) return `${badName.name}: a file name is letters, digits, ., - and _`;
       const extra = files.find((f) => f !== plugins[0] && !listed.has(f.name));
       if (extra) return `${extra.name} isn't one of the files ${manifest.id} lists`;
-      const ours = new Set([`${manifest.id}.js`, ...listed]);
+      const ours = new Set([keptAs(manifest.id, plugins[0].name), ...listed]);
       // Only the plugins kept in this same folder can lose a file to it.
       for (const other of await list(app)) {
         if (!other.id || other.id === manifest.id || folderOf(app, other) !== app) continue;
@@ -259,6 +271,8 @@ export function userPluginChanges({ store, origin, list, setOn, tell }: Kept) {
         if (name === plugin.file || (await store.listFiles(at.join("/"))).includes(file)) return { ok: false, error: `${name} couldn't be read, so ${plugin.name ?? id} stays where it is` };
       }
       for (const [name, data] of files) await store.writeFile(`user/${to}/${name}`, data);
+      // As when one is added: it takes the place of the other kind kept under its id where it is going.
+      await store.removeFile(`user/${to}/${otherForm(plugin.file)}`).catch(() => {});
       for (const name of names) await store.removeFile(`user/${from}/${name}`);
       await setOn(from, id, false);
       await setOn(to, id, plugin.on);

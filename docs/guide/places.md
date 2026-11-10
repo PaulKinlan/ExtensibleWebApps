@@ -83,7 +83,7 @@ The page is open by default. An author can mark an area with `data-extend` on an
 
 The author lists their plugins in `app.html` with `<link rel="plugin">`. A person adds theirs without touching the app's files:
 
-1. **Customize** (bottom left of every app) adds a plugin by picking its files, pasting its code, or from a URL on the site. An author can suggest some with `<link rel="plugin-sample" href="…" title="…">`; they show as buttons there.
+1. **Customize** (bottom left of every app) adds a plugin by picking its files, pasting its code, or from a URL on the site. An agent is added the same way, from its `.agent.md` file ([Agents](agents.md#a-person-adding-an-agent)). An author can suggest some with `<link rel="plugin-sample" href="…" title="…">`; they show as buttons there.
 2. The files go into the person's data folder on this device, at `user/<app folder>/`: `user/demos/trip/countdown.js`. A plugin added from a URL brings the files its manifest lists in **`files`**, such as its templates and images:
 
    ```js

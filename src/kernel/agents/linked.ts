@@ -27,6 +27,12 @@ export function agentFiles(links: { href: string }[]): Promise<void> | undefined
   ));
 }
 
+/** An agent file the person added, as the plugin to run and the loop it runs (file.ts ownAgent). The reader is fetched for it. */
+export async function ownAgent(origin: string, file: string, text: string): Promise<{ source: string; runner: string }> {
+  await agentFiles([{ href: file }]);
+  return reader!.ownAgent(origin, text);
+}
+
 /**
  * A linked file as the plugin source to run: an agent file becomes a plugin, running the loop whose source
  * came with it (`runner`, fetched from runnerHref); anything else is left as it is.

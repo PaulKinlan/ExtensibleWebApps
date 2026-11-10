@@ -5,8 +5,10 @@
 //   user/demos/trip/countdown.js     the plugin
 //   user/demos/trip/countdown.html   its templates
 //   user/demos/trip/tram.png         anything else it lists in `files`
+//   user/demos/trip/tidy.agent.md    an agent of theirs (agents/file.ts)
 //
-// A .js file there means the plugin is installed for that app. Whether it
+// A .js file there means the plugin is installed for that app, and an
+// .agent.md file an agent, which runs the site's standard agent loop. Whether it
 // is on is kept in `user-plugins.json`, and a newly added plugin starts off:
 // the person turns it on in the Customize panel, after seeing what it asks
 // for and where it draws. The service worker serves the folder at
@@ -26,6 +28,8 @@
 // person changes something.
 
 import { part } from "./part";
+import { isAgentFile } from "../shared/agent-runner";
+import { ownAgent } from "./agents/linked";
 import { readManifest } from "./manifest";
 import type { Store } from "./store";
 import { record } from "./trace";
@@ -84,15 +88,21 @@ export function userPlugins(store: Store, origin: string, space?: string) {
    */
   const changed = new Set<(change: { app: string; added?: string[]; removed?: string }) => void>();
 
+  /**
+   * One of the person's files as the plugin to run: a plugin's own source, or the plugin an agent file becomes,
+   * with the loop it runs (agents/file.ts, fetched only when the person has an agent).
+   */
+  const plugin = async (file: string, text: string): Promise<{ source: string; runner?: string }> => (isAgentFile(file) ? ownAgent(origin, file, text) : { source: text });
+
   /** The plugins kept in one folder: an app's, or the one for every app. */
   async function kept(folder: string): Promise<UserPlugin[]> {
     const on = (await load())[folder] ?? [];
     const out: UserPlugin[] = [];
     for (const file of await store.listFiles(`user/${folder}`)) {
-      if (!file.endsWith(".js")) continue;
+      if (!file.endsWith(".js") && !isAgentFile(file)) continue;
       const source = (await store.readText(`user/${folder}/${file}`)) ?? "";
       try {
-        const m = readManifest(source);
+        const m = readManifest((await plugin(file, source)).source);
         out.push({ file, id: m.id, name: m.name, description: m.description, permissions: m.permissions, places: m.places, services: m.services ?? [], provides: Object.keys(m.provides ?? {}), on: on.includes(m.id) });
       } catch (error) {
         out.push({ file, on: false, error: error instanceof Error ? error.message : String(error) });
@@ -127,7 +137,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
   let changes: Promise<ReturnType<typeof import("./user-plugin-changes").userPluginChanges>> | undefined;
   const more = () =>
     (changes ??= part("the part that adds and removes your plugins", () => import("./user-plugin-changes")).then(
-      (m) => m.userPluginChanges({ store, origin, list, setOn, tell: (change) => changed.forEach((heard) => heard(change)) }),
+      (m) => m.userPluginChanges({ store, origin, list, setOn, plugin, tell: (change) => changed.forEach((heard) => heard(change)) }),
       (error) => {
         // A file that didn't load is asked for again by the next change.
         changes = undefined;
@@ -143,13 +153,14 @@ export function userPlugins(store: Store, origin: string, space?: string) {
     changed,
 
     /** The plugins to start with the app: the person's, that are on. `everywhere` marks one kept for every app, which gives way to a plugin of the same id the app links. */
-    async links(app: string): Promise<{ href: string; source: string; everywhere?: boolean }[]> {
+    async links(app: string): Promise<{ href: string; source: string; runner?: string; everywhere?: boolean }[]> {
       const links = [];
       for (const p of await list(app)) {
         if (!p.on) continue;
         const folder = folderOf(app, p);
         const source = await store.readText(`user/${folder}/${p.file}`);
-        if (source) links.push({ href: `${served}/${folder}/${p.file}`, source, ...(p.everywhere && { everywhere: true }) });
+        // (An agent comes with the loop it runs.)
+        if (source) links.push({ href: `${served}/${folder}/${p.file}`, source, ...(isAgentFile(p.file) && { runner: (await plugin(p.file, source)).runner }), ...(p.everywhere && { everywhere: true }) });
       }
       return links;
     },
@@ -167,6 +178,9 @@ export function userPlugins(store: Store, origin: string, space?: string) {
 
     on: (app: string, id: string) => turn(app, id, true),
     off: (app: string, id: string) => turn(app, id, false),
+
+    /** The manifest of a file the person would add, by its name: a plugin's own, or the one an agent file becomes. */
+    manifest: async (file: string, text: string) => readManifest((await plugin(file, text)).source),
 
     add: later("add"),
     fetch: later("fetch"),

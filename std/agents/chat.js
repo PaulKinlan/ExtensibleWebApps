@@ -19,10 +19,14 @@ export const manifest = {
   name: "Chat",
   description: "Write to the app's agents, such as the assistant or the builder, and read their answers.",
   version: "1.0.0",
-  permissions: ["ui", "bus:send:*", "llm"],
+  permissions: ["ui", "bus:send:*", "llm", "plugins:read"],
   services: ["agents", "bus", "llm"],
   // Each tab has its own conversation.
   scope: "tab",
+  // Where it draws on a page with no `chat` slot, when a person adds it to an app.
+  places: { chat: { at: "main", put: "append" } },
+  // Copied with it when a person adds it to an app.
+  files: ["chat.html"],
 };
 
 /** The lines of the conversation it keeps, and how many go with each message. */
@@ -94,6 +98,9 @@ export default function (ctx) {
       last = found;
     }
   })();
+
+  // An agent the person adds or removes while the chat is open: the list follows, once the agent has started.
+  ctx.on("plugins:changed", () => [0, 500, 1500].forEach((wait) => setTimeout(() => look().catch(() => {}), wait)));
 
   ctx.ui.onEvent(async (action, value) => {
     if (action === "agent" && typeof value === "string") {
