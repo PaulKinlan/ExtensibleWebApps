@@ -19,6 +19,7 @@ import type { Email } from "../seams/index.ts";
 import { nodeFiles } from "../seams/node.ts";
 import { smtpFromEnv } from "./smtp.ts";
 import { accounts } from "./auth/accounts.ts";
+import { FOLLOW_BODY } from "./auth/follow.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
 import { providerModules } from "./auth/providers/index.ts";
 import { signed } from "./signed.ts";
@@ -229,7 +230,8 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     let size = 0;
     for await (const chunk of request) {
       size += chunk.length;
-      if (size > 64 * 1024) return void response.writeHead(413).end();
+      // (What follows a person between devices is plugins' files, so it may be bigger: auth/follow.ts.)
+      if (size > (request.url?.startsWith("/auth/follow") ? FOLLOW_BODY : 64 * 1024)) return void response.writeHead(413).end();
       chunks.push(chunk);
     }
     const headers = new Headers();

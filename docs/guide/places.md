@@ -95,6 +95,8 @@ The author lists their plugins in `app.html` with `<link rel="plugin">`. A perso
 3. A plugin that is added **starts off**. Customize shows what it asks for and where it draws, and the person turns it on.
 4. The service worker serves the folder at `/user/<app folder>/`, so the plugin's templates and images load like any other file. An image next to a template (`<img src="tram.svg">`) is the plugin's own, so it needs no network permission.
 
+Signed in to the site, what a person adds follows them to every device they sign in on: their plugins and agents, which are on, where they moved them and the model they picked, never an API key ([Servers](../server.md#what-follows-a-person-between-devices)). Signed out, it all stays on the device.
+
 Customize is on in every app. An author who doesn't want the button (a kiosk, say) adds `<meta name="customize" content="off">` to `app.html`, which also leaves out inspect mode. The person still has the last word: opening the app with `?customize` brings the button back.
 
 Customize is itself a standard plugin, [`std/customize.js`](../../std/customize.js), which the host adds to every app with a `customize` slot pinned to a corner. It runs sandboxed like any other and does everything through the kernel's `authoring` service ([`src/kernel/authoring.ts`](../../src/kernel/authoring.ts)), so adding, removing or sharing a plugin waits for the person to accept a review card that shows its code; turning one on or off doesn't. Code pasted into it is turned on once its review is accepted. An agent, or a Customize of your own, can do the same with `plugins:author` and `plugins:manage`.

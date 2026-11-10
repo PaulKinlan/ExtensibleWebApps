@@ -33,7 +33,7 @@ The plugins in the top two layers reach an app at three levels. The level says w
 | --- | --- | --- | --- |
 | **Developer plugins** | The app's author, linked from `app.html` (std plugins or the app's own) | Browsers, and a space's server for `runs: "server"` or `"both"` | Everyone who opens the app |
 | **Space plugins** | A member, sharing one of their own with a space | Browsers only, never the server | Every member of that space, turned off until each turns it on |
-| **User plugins** | A person, in Customize, or their agent ([the registry](guide/plugin-registry.md) is one place to find them) | Their browser only | Them, on that device |
+| **User plugins** | A person, in Customize, or their agent ([the registry](guide/plugin-registry.md) is one place to find them) | Their browser only | Them, on that device; signed in, on each device they sign in on ([`follow`](server.md#what-follows-a-person-between-devices)) |
 
 Customize ([`std/customize.js`](../std/customize.js), a standard plugin the host adds to every app) works on them through the core `authoring` service. The kernel keeps user plugins ([`user-plugins.ts`](../src/kernel/user-plugins.ts)), and a space keeps its space plugins ([`plugins.ts`](../std/spaces/plugins.ts)). [Servers and spaces](server.md#space-plugins) says how a plugin is shared, turned on and removed.
 
@@ -62,7 +62,7 @@ The core is what every app and every space server needs to run any plugin at all
 | Keys and the network | [`secrets.ts`](../src/kernel/secrets.ts), [`net.ts`](../src/kernel/net.ts), [`address.ts`](../src/kernel/address.ts) | Secrets a plugin can use but never read, the requests made with them, and what counts as an email address (for the `email` module and the servers' accounts) |
 | Which plugins run | [`apps.ts`](../src/kernel/apps.ts), [`catalog.ts`](../src/kernel/catalog.ts), [`switches.ts`](../src/kernel/switches.ts) | An app's linked plugins, installed plugins, and their on/off switches |
 | Plugins' routes | [`routes.ts`](../src/kernel/routes.ts) | Requests for the routes plugins add: the site's, which the service worker passes on, and a space's public ones on its server |
-| The person's own plugins | [`user-plugins.ts`](../src/kernel/user-plugins.ts), [`user-plugin-changes.ts`](../src/kernel/user-plugin-changes.ts), [`authoring.ts`](../src/kernel/authoring.ts) | Plugins a person (or their agent) adds to an app, or to every app they open, and the help to write them. The core only reads which are on; adding, removing and moving one (`user-plugin-changes.ts`) is fetched the first time one changes, and `authoring.ts` when Customize first calls it |
+| The person's own plugins | [`user-plugins.ts`](../src/kernel/user-plugins.ts), [`user-plugin-changes.ts`](../src/kernel/user-plugin-changes.ts), [`authoring.ts`](../src/kernel/authoring.ts), [`panel-commands.ts`](../src/kernel/panel-commands.ts) | Plugins a person (or their agent) adds to an app, or to every app they open, and the help to write them. The core only reads which are on; adding, removing and moving one (`user-plugin-changes.ts`) is fetched the first time one changes, `authoring.ts` when Customize first calls it, and the page's `user:` and `place:` commands (`panel-commands.ts`) the first time one is run |
 | Where the person moved things | [`moves.ts`](../src/kernel/moves.ts) | The spots a person moved plugins' views to in an app (Customize's Arrange), used in place of the manifest's |
 | Describing itself | [`reference.ts`](../src/kernel/reference.ts), [`manifest-fields.ts`](../src/kernel/manifest-fields.ts) | The [API reference](api.md), built from the tables the kernel enforces. Fetched when someone asks for the reference |
 | An app's links | [`agents/linked.ts`](../src/kernel/agents/linked.ts) | An app's linked files as plugin sources, and fetching the agent file reader (below) once an app links an agent |
@@ -158,7 +158,7 @@ Beside each `module.ts` is `module.json`, which says what the module adds, the w
 | `commands` | The page commands it answers (`kernel.command`) |
 | `messages` | The message types it answers (`kernel.message`) |
 | `doors` | The doors it answers on a space's server (`kernel.door`) |
-| `starts` | `"always"` to start with every kernel, or `"space"` to start with a kernel that is for a space. Left out, the module starts when it is first used |
+| `starts` | `"always"` to start with every kernel, `"space"` to start with a kernel that is for a space, or `"account"` to start with a kernel on a device where the person is signed in to the site. Left out, the module starts when it is first used |
 
 In the browser the kernel starts with the manifests only. Each listed service has a stand-in in the kernel's table, and each hook's name is the kernel's, so a plugin that needs the service is accepted and nothing else can take the names. The kernel fetches the module's file and runs it the first time:
 
@@ -168,6 +168,8 @@ In the browser the kernel starts with the manifests only. Each listed service ha
 - or something reads the whole kernel: the API reference, or an agent's tools (the `tools` module offers every service's methods, so it starts them all).
 
 One module starts with every kernel: `history`. Undo has to hold every write from the first, and a module that started later would list only the writes made after it did, so its manifest says `"starts": "always"`. It is still a file of its own, fetched as the kernel starts and not part of the kernel's file. A module earns `"always"` only when starting late would lose something, never to save a fetch.
+
+One module starts only for someone signed in: `follow`, which brings what the person added on their other devices, says `"starts": "account"`. The account app leaves a mark in the data folder while someone is signed in on the device (`sync/signed-in.json`, [`std/account/module.ts`](../std/account/module.ts)), and the kernel starts those modules when it finds the mark, or when the person signs in. Nothing waits for them: an app opens with what the device has, and what arrives shows as it comes. Signed out, the module is never fetched and the server is never asked.
 
 A module that starts after the tabs opened hears each tab's address again (`internal/url`), so the router knows the screen. A module that can't be fetched is an error in the trace, calls to its service fail saying so, and the next use tries again.
 
@@ -185,6 +187,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
 | `email` | [`std/email/module.ts`](../std/email/module.ts) | The `email` service: mail from a space's server to its members, with daily limits |
 | `folder` | [`std/folder/module.ts`](../std/folder/module.ts) | The `folder` service: a folder of files the person works on (a Hugo site), picked on their disk or private in the browser; plugins other than its keeper propose writes, which the person reviews |
+| `follow` | [`std/follow/module.ts`](../std/follow/module.ts) | What a signed-in person added (plugins, agents, which are on, moves, their pick of model) follows them between their devices through their account; never a key. Starts only on a device where someone is signed in; see [Servers](server.md#what-follows-a-person-between-devices) |
 | `game` | [`std/game/module.ts`](../std/game/module.ts) | The `game` service: a game loop whose rules are plugins (`game:update`, `game:rules`, `game:frame` hooks each tick); see [Games and audio](guide/games-and-audio.md) |
 | `history` | [`std/history/module.ts`](../std/history/module.ts) | The `history` service: undo and redo across every plugin's writes. Starts with every kernel |
 | `launch` | [`std/launch/module.ts`](../std/launch/module.ts) | The `launch` service: files opened with an app installed from the browser (its manifest's `file_handlers`), handed to a plugin of that app once |

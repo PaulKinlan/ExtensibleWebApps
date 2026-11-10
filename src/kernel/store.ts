@@ -70,10 +70,17 @@ export class Store extends Service {
       // With `expected` (the contents the person reviewed, or null for "no such file"), only write if the file still matches.
       if (expected !== undefined && ((await this.readText(path)) ?? null) !== expected) throw new Error("The file changed while the review was open; nothing was written");
       await this.files!.write(path, text);
+      this.tell(path);
     });
   }
 
   private writes: Promise<void> = Promise.resolve();
+
+  /** Who hears the path of each file as it is written or removed (std/follow, which sends what the person added to their account). */
+  changed = new Set<(path: string) => void>();
+  private tell(path: string): void {
+    for (const heard of this.changed) heard(path);
+  }
 
   /** Runs a write after the ones asked for before it. */
   private queue(write: () => Promise<void>): Promise<void> {
@@ -108,13 +115,27 @@ export class Store extends Service {
 
   /** Writes any file, text or binary (an image a plugin brings), in the same queue as writeText. */
   writeFile(path: string, data: Blob | string): Promise<void> {
-    return this.queue(async () => this.files!.write(path, typeof data === "string" ? data : new Uint8Array(await data.arrayBuffer())));
+    return this.queue(async () => {
+      await this.files!.write(path, typeof data === "string" ? data : new Uint8Array(await data.arrayBuffer()));
+      this.tell(path);
+    });
   }
 
   /** Removes a file; one that is already gone is fine. */
   async removeFile(path: string): Promise<void> {
     await this.ready;
     await this.files!.remove(path);
+    this.tell(path);
+  }
+
+  /** Every file under a folder of the data folder, in folders inside it too, each as its path from the data folder. */
+  async listAll(path: string): Promise<string[]> {
+    await this.ready;
+    try {
+      return await this.files!.list(`${path}/`);
+    } catch {
+      return [];
+    }
   }
 
   /** The sources of the plugins kept in the data folder. */

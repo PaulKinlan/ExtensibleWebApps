@@ -80,18 +80,18 @@ export function listedModules(root = process.cwd(), platform = root): string[] {
 
 /** What a module's manifest (std/<name>/module.json) may say: what the module adds, by name. */
 const ADDS = ["services", "hooks", "commands", "messages", "doors"] as const;
-/** When a module starts by itself: with every kernel, or with a kernel that is for a space. Otherwise it starts when something it adds is first used. */
-const STARTS = ["always", "space"];
+/** When a module starts by itself: with every kernel, with a kernel that is for a space, or with one on a device where the person is signed in. Otherwise it starts when something it adds is first used. */
+const STARTS = ["always", "space", "account"];
 export interface ModuleManifest {
   services?: string[];
   hooks?: string[];
   commands?: string[];
   messages?: string[];
   doors?: string[];
-  starts?: "always" | "space";
+  starts?: "always" | "space" | "account";
 }
 
-/** A module's manifest, checked: only the keys above, each a list of names (and `starts` one of its two values). */
+/** A module's manifest, checked: only the keys above, each a list of names (and `starts` one of its values). */
 export function moduleManifest(name: string, root = process.cwd()): ModuleManifest {
   const file = resolve(root, "std", name, "module.json");
   if (!existsSync(file)) throw new Error(`std/${name}/module.ts has no manifest: add std/${name}/module.json saying what it adds (docs/layers.md)`);

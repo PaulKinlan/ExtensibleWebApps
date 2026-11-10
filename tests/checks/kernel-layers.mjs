@@ -30,6 +30,7 @@ const CORE = [
   "modules.ts",
   "moves.ts",
   "net.ts",
+  "panel-commands.ts",
   "part.ts",
   "paths.ts",
   "provided.ts",
@@ -66,6 +67,7 @@ const ON_DEMAND = [
   "agents/file.ts",
   "authoring.ts",
   "manifest-fields.ts",
+  "panel-commands.ts",
   "reference.ts",
   "user-plugin-changes.ts",
 ];

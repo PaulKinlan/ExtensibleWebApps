@@ -29,6 +29,7 @@ import { fakeAtproto } from "./fake-atproto.mjs";
 import { fakeProvider } from "./fake-oauth.mjs";
 import { fakeDns } from "./fake-dns.mjs";
 import { feedReaderChecks } from "./feed-reader.mjs";
+import { followChecks } from "./follow.mjs";
 
 const results = [];
 // Another site to sign in with, which both hosts are configured to use.
@@ -1167,6 +1168,8 @@ async function suite(name, make) {
     await mcpMoreChecks(server.url, check, owner, stranger);
     await mcpStreamChecks(server.url, check, owner, stranger);
     if (name === "node") await quietStreamChecks(check);
+    // What a person added, following them between devices: the account's side, the same on both hosts.
+    await followChecks(server.url, check, owner, stranger);
 
     // The same cases on both hosts. (On Cloudflare in production, the Worker's own egress refuses them too.)
     await networkGuardChecks(server.url, check, name);

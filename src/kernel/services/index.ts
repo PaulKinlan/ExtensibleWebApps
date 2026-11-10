@@ -9,6 +9,7 @@
 
 import type { apps } from "../apps";
 import type { Hosts } from "../hosts";
+import type { MovesStore } from "../moves";
 import type { Collections } from "../records";
 import type { Reference } from "../reference";
 import type { RemotePlugins, ServiceProvider } from "../remote";
@@ -38,6 +39,8 @@ export interface Kernel {
   reviews: Reviews;
   /** The person's own plugins for each app (user-plugins.ts). */
   userAdded: UserPlugins;
+  /** Where the person moved plugins' views in each app (moves.ts). */
+  moved: MovesStore;
   /** Opens an app again in every tab that has it open, after its plugins changed. */
   reopen(app: string): Promise<void>;
   /** The app open in a tab: its folder, as the page names it (`demos/markdown-editor`). Undefined for a tab with no app (the workbench). */

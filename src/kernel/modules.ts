@@ -37,7 +37,8 @@
 // it adds is used: a plugin that lists its service in `services` is installed,
 // a plugin calls its service or listens to its hook, the page runs its
 // command or sends its message. A module that must run from the start says
-// `"starts": "always"`, or `"space"` for a kernel that is for a space. A
+// `"starts": "always"`, `"space"` for a kernel that is for a space, or
+// `"account"` for a kernel on a device where the person is signed in. A
 // space's server starts them all. So an app's kernel is the core plus the
 // modules that app uses, and a module nothing uses costs nothing.
 //
@@ -54,6 +55,13 @@ import type { RouteRequest, RouteResponse } from "./routes";
 import { RESERVED } from "./manifest";
 import { declaredHooks, defineHook, type HookSpec } from "./hooks";
 import { record } from "./trace";
+
+/**
+ * The mark the account module (std/account) leaves in the data folder while the person is signed in to the site on
+ * this device: a session cookie can't be seen from here, and asking the server as every app opens would cost
+ * everyone who isn't signed in a request.
+ */
+export const SIGNED_IN = "sync/signed-in.json";
 
 /** The Cordis service a module's service is also registered as, so other modules can `inject` it. */
 const cordisName = (name: string) => `kernel.${name}`;
@@ -144,8 +152,11 @@ export interface ModuleManifest {
   commands?: string[];
   messages?: string[];
   doors?: string[];
-  /** Starts with every kernel ("always"), or with a kernel that is for a space ("space"). Without it, when first used. */
-  starts?: "always" | "space";
+  /**
+   * Starts with every kernel ("always"), with a kernel that is for a space ("space"), or with a kernel on a device
+   * where the person is signed in to the site ("account"). Without it, when first used.
+   */
+  starts?: "always" | "space" | "account";
 }
 
 /** A module as the build hands it to the kernel: its manifest, and the module itself (a server's kernel) or how to fetch it (the browser's). */
@@ -190,6 +201,8 @@ export function loadModules(
     eager?: boolean;
     /** Whether this kernel is for a space: the modules that say `"starts": "space"` start with it. */
     space?: boolean;
+    /** Whether someone is signed in to the site on this device: the modules that say `"starts": "account"` start once it says so. */
+    account?: () => Promise<boolean>;
     /** Told when a module started after the kernel did, so the core can tell it what it missed (the tabs' addresses). */
     onLate?: (name: string) => void;
   } = {},
@@ -381,6 +394,15 @@ export function loadModules(
   const ready = Promise.all(first.map((entry) => start(entry.name).catch(() => {}))).then(() => {
     late = true;
   });
+  /**
+   * The modules that start once someone is signed in. Nothing waits for them: an app opens with what the device
+   * has, and they bring the rest. Asked again when the person signs in (kernel.ts).
+   */
+  const account = () =>
+    void options.account?.().then((signedIn) => {
+      if (signedIn) for (const entry of entries) if (entry.manifest.starts === "account") start(entry.name).catch(() => {});
+    });
+  if (!options.eager) account();
   /** Starts the module that says it adds this, if it isn't running. Resolves false if no module adds it. */
   const need = (kind: keyof typeof owners) => (name: string): Promise<boolean> | undefined => {
     const owner = owners[kind].get(name);
@@ -389,6 +411,7 @@ export function loadModules(
   return {
     /** Settles once every module that starts with the kernel has started or failed. */
     ready,
+    account,
     /** Starts every module the site lists: for what describes the whole kernel (its reference, an agent's tools). Ones that fail are in the trace. */
     all: () => Promise.all(entries.map((entry) => start(entry.name).catch(() => {}))).then(() => {}),
     /** Starts the module that adds a page command, a message type or a door, if one says it does: undefined if none does. */
