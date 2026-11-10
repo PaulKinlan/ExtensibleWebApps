@@ -171,17 +171,25 @@ async function suite(name, make) {
     check("schedule: a job a month away doesn't run now", !heard.includes("next-month"));
     await schedule.cancel("next-month");
 
-    // What survives a restart: the host stops, a job comes due while it's down, and it starts again.
-    await schedule.set({ name: "missed", at: Date.now() + 50 });
-    await schedule.set({ name: "hourly", at: Date.now() + 50, every: 1000 });
+    // What survives a restart: the host stops, jobs come due while it's down, and it starts again.
+    // The host stops first, and the jobs it finds when it comes back are already overdue: "missed" by a moment,
+    // "hourly" by ten of its hours. Nothing here depends on how fast the machine is. (It used to: the jobs were set
+    // 50 ms ahead and the host stopped after, and on a slow disk the two saves took longer than that, so "missed" ran
+    // in the old host and was gone by the restart.)
     schedule.stop();
-    await wait(2300);
+    const before = heard.length;
+    const HOUR = 3_600_000;
+    await schedule.set({ name: "missed", at: Date.now() - 1 });
+    await schedule.set({ name: "hourly", at: Date.now() - 10 * HOUR + HOUR / 2, every: HOUR });
+    await wait(100);
+    check("restart: a host that has stopped runs nothing, even a job that is due", heard.length === before, JSON.stringify(heard.slice(before)));
     const back = await restart();
     const heardAfter = [];
     back.schedule.onDue((name) => void heardAfter.push(name));
-    // Both missed jobs run as the host starts again; a slow machine (CI) can take longer than a moment, so wait for
-    // them, but not as long as "hourly"'s next time (a second), which would run it twice.
-    for (let waited = 0; waited < 900 && !(heardAfter.includes("missed") && heardAfter.includes("hourly")); waited += 20) await wait(20);
+    // Both run as the host starts again; a slow machine (CI) can take longer than a moment, so wait for them.
+    // "hourly"'s next time is half an hour away, so waiting can't run it twice.
+    for (let waited = 0; waited < 5000 && !(heardAfter.includes("missed") && heardAfter.includes("hourly")); waited += 20) await wait(20);
+    await wait(50);
     const hourly = (await back.schedule.list()).find((j) => j.name === "hourly");
     check("restart: a repeating job missed several times runs once, then waits for its next time", heardAfter.filter((n) => n === "hourly").length === 1 && hourly?.at > Date.now(), JSON.stringify({ heardAfter, hourly }));
     await back.schedule.cancel("hourly");
