@@ -84,6 +84,16 @@ What is fetched on demand is a file of this site like any other: the service wor
 
 To see what a kernel is running, ask it: `window.__host.command("modules")` in a page answers each module's name and whether it has started.
 
+### A deploy and the pages already open
+
+Because the kernel is many files, each named with its content's hash, a page that was open before a deploy still asks for its own older ones, the first time it uses a part it hasn't fetched yet. Three things keep that from breaking it:
+
+- **The server still has them.** Each build asks the live site for the list the last build wrote (`/platform/kept.json`) and brings along the files this build no longer makes ([`scripts/keep-assets.mjs`](../scripts/keep-assets.mjs)). A file stays for 90 days after the last build that made it. This runs where a deploy is built (Cloudflare's Workers Builds), from the site named by `homepage` in `package.json`; a site that can't be asked stops the build, so a deploy never quietly drops them.
+- **A part that can't be fetched says why.** Every part fetched on first use goes through `part()` ([`src/kernel/part.ts`](../src/kernel/part.ts)), which turns the browser's "Failed to fetch dynamically imported module" into what happened and what to do: reload the page, or go back online.
+- **The page recovers.** When the server has no file for a built script, the service worker ([`sw.js`](../sw.js)) forgets the pages and scripts it kept, so the next load is all one version, and tells each open tab. A page in use shows "This page is older than the site is now" with a Reload button; a page that hadn't started yet, or whose own script is what failed, is loaded again by itself, once.
+
+[`tests/checks/out-of-date.mjs`](../tests/checks/out-of-date.mjs) holds all three.
+
 ## Kernel services
 
 These are capabilities with trusted code in the kernel: an app may use them, but not every app does. They are kernel modules (below), which a site picks, spaces included. One piece is still part of the core rather than a module: the agent file reader. It is fetched only once an app links an agent ([`agents/linked.ts`](../src/kernel/agents/linked.ts)).
