@@ -15,7 +15,8 @@
 // Deploys come from Cloudflare's Git integration (Workers Builds): build
 // command `npm run build` (which builds the space kernel too), deploy command
 // `npx wrangler deploy`. Branches other than main deploy with
-// `npx wrangler preview`, which needs the (empty) `previews` block below.
+// `npx wrangler preview`, which reads the `previews` block below and nothing
+// else for a preview's bindings and variables.
 {
   "name": "extensible-web-apps",
   "main": "src/server/cloudflare/worker.ts",
@@ -55,5 +56,26 @@
     "EMAIL_FROM": "paul@extensibleweb.app"
   },
   "keep_vars": true,
-  "previews": {}
+  // A branch's preview (https://<branch>-extensible-web-apps.<account>.workers.dev) inherits none of the
+  // bindings or variables above: it has only what is listed here. So every binding the Worker reads from
+  // `env` is repeated, or the preview answers "error code: 1101" wherever it reaches for one (/auth/, a
+  // space's kernel). tests/checks/preview-config.mjs fails when a binding above is missing here. Each
+  // preview gets Durable Objects and databases of its own, so its accounts and spaces are never the site's.
+  //
+  // Differences from the site, on purpose: a preview signs in with a passkey or Bluesky (which needs no
+  // secret, and nothing registered for the preview's address), not GitHub, whose secret previews don't have
+  // and whose OAuth app only calls back to extensibleweb.app; and it has no EMAIL binding or EMAIL_FROM, so
+  // mail a preview's space sends stays in that space's outbox.
+  "previews": {
+    "durable_objects": {
+      "bindings": [
+        { "name": "SPACE", "class_name": "Space" },
+        { "name": "ACCOUNTS", "class_name": "Accounts" }
+      ]
+    },
+    "worker_loaders": [{ "binding": "LOADER" }],
+    "vars": {
+      "AUTH_PROVIDERS": "[{\"id\":\"bluesky\"}]"
+    }
+  }
 }
