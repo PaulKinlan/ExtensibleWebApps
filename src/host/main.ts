@@ -556,8 +556,17 @@ const waitingForFile = new Map<string, [Slot, string, string, number, View]>();
 /** The views drawn in this page, as they came, so a plugin turned off here can be shown again. */
 const drawn = new Map<string, Extract<KernelToHost, { t: "render" }>>();
 
+/** A plugin a link to this app asked to add (#add=<id>, the registry page's "Add to an app"): Customize hears it once it has drawn. */
+let asked = withCustomize ? /^#add=([a-z0-9-]{1,64})$/.exec(location.hash)?.[1] : undefined;
+
 function render(slot: Slot, key: string, owner: string, order: number, view: View | null) {
   const id = `${slot}/${key}`;
+  if (asked && view && owner.split("@")[0] === "customize") {
+    send({ t: "event", owner, action: "add", value: asked, trace: newTrace() });
+    asked = undefined;
+    // Loading the page again doesn't ask again.
+    history.replaceState(history.state, "", location.pathname + location.search);
+  }
   if (!showing(owner)) {
     if (view) held.set(id, { t: "render", slot, key, owner, order, view });
     else held.delete(id);

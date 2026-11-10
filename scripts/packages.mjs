@@ -288,14 +288,7 @@ const escape = (text) => String(text).replace(/[&<>"]/g, (c) => ({ "&": "&amp;",
 function permissionWords(k, services) {
   const about = new Map(services.map((s) => [s.id, s.description]));
   return (permission) => {
-    const [kind, ...rest] = permission.split(":");
-    const what = rest.join(":");
-    if (kind === "secret" && what) return `Use a key you give it for ${what}, which it never sees: the site adds it to its requests.`;
-    if (kind === "network" && what) return `Connect to ${what}.`;
-    if (kind === "ui" && what.startsWith("transform:")) return `Change how ${what.slice(10)}'s view looks.`;
-    if (permission === "ui:theme") return "Change the app's colours and shapes.";
-    if (kind === "bus" && rest[0] === "send") return `Send messages to ${rest.slice(1).join(":") === "*" ? "any agent" : rest.slice(1).join(":")}.`;
-    if (kind === "agents" && rest[0] === "run") return `Start the ${rest.slice(1).join(":")} agent.`;
+    const [kind] = permission.split(":");
     const said = k.explain(permission);
     if (!said.startsWith("Use ")) return said;
     const service = about.get(kind);
@@ -332,7 +325,7 @@ export function renderPage(index, catalog, k) {
           <p>${escape(p.description)}</p>
           <ul class="facts">${facts.join("")}</ul>
           <details><summary>Asks for ${p.permissions.length ? `${p.permissions.length} permission${p.permissions.length === 1 ? "" : "s"}` : "nothing"}</summary><ul class="asks">${asks}</ul></details>
-          <p class="actions"><a href="${escape(p.href)}">Code</a> <button type="button" class="copy" data-copy="${escape(p.href)}">Copy address</button> <button type="button" class="copy" data-copy="${tag}">Copy ${p.kind === "agent" ? "agent" : "link"} tag</button></p>
+          <p class="actions">${offered ? `<button type="button" class="add" popovertarget="add-to" data-add="${escape(p.id)}" data-name="${escape(p.name)}" data-in="${escape(p.apps.join(" "))}">Add to an app</button> ` : ""}<a href="${escape(p.href)}">Code</a> <button type="button" class="copy" data-copy="${escape(p.href)}">Copy address</button> <button type="button" class="copy" data-copy="${tag}">Copy ${p.kind === "agent" ? "agent" : "link"} tag</button></p>
         </li>`;
   };
 
@@ -417,14 +410,14 @@ ${list(own)}
     </nav>
   </header>
   <main>
-    <p class="lede">Every plugin this site ships. Add any plugin under <a href="#add">Add to any app</a> to <em>any</em> app: open the app, open <strong>Customize</strong> (bottom left) and pick it under <strong>Add a plugin</strong>. Your own plugins go there too, by file, code or address.</p>
+    <p class="lede">Every plugin this site ships. Add any plugin under <a href="#add">Add to any app</a> to <em>any</em> app: press <strong>Add to an app</strong> on it here and pick the app, or open the app, open <strong>Customize</strong> (bottom left) and pick it under <strong>Add to this page</strong>. Your own plugins go there too, by file, code or address.</p>
     <dl class="key">
       <div><dt><span class="tag service">Service</span></dt><dd>Gives an app something new that other plugins use, such as a language model.</dd></div>
       <div><dt><span class="tag ui">On the page</span></dt><dd>Draws buttons, panels and views.</dd></div>
       <div><dt><span class="tag background">Behind the scenes</span></dt><dd>Checks, fetches or changes things, and draws nothing.</dd></div>
       <div><dt><span class="tag builtin">Built in</span></dt><dd>A service every app here already has. Some, such as <code>llm</code>, need a plugin you add to answer.</dd></div>
     </dl>
-    <p class="how">You see a plugin's code and what it asks for before it is added; it is kept on your device and starts switched off. One that needs a service brings the plugin that provides it. <a href="/docs/guide/plugin-registry">How the registry works</a> · <a href="/packages/index.json">index.json</a> · <a href="/packages/catalog.json">catalog.json</a></p>
+    <p class="how">You see a plugin's code and what it asks for before it is added; once you accept it, it is kept on your device and turned on, with Turn off beside it. One that needs a service brings the plugin that provides it. <a href="/docs/guide/plugin-registry">How the registry works</a> · <a href="/packages/index.json">index.json</a> · <a href="/packages/catalog.json">catalog.json</a></p>
     <search class="find">
       <label for="find">Find a plugin</label>
       <input id="find" type="search" placeholder="Try “model”, “undo”, “data:read” or “reading list”" autocomplete="off">
@@ -448,7 +441,7 @@ ${list(own)}
 
     <section id="add" data-section>
       <h2>Add to any app</h2>
-      <p class="about">These work in any app, even one whose author never planned for them. Add them from Customize in the app.</p>
+      <p class="about">These work in any app, even one whose author never planned for them. Add one from here with <strong>Add to an app</strong>, or from Customize in the app.</p>
 ${offeredHtml}
     </section>
 
@@ -477,6 +470,19 @@ ${demos}
       <p class="about">The home page, the workbench and the docs are made of plugins too: each chapter of the home page's story, the workbench's examples, and the docs' panel.</p>
 ${list(catalog.plugins.filter((p) => p.source === "site").sort(byName))}
     </section>
+    <!-- "Add to an app" on a card opens this: the apps to add it to. registry.js points each link at the app with #add=<id>, which Customize answers. -->
+    <div id="add-to" popover>
+      <h2>Add <span class="what">a plugin</span> to an app</h2>
+      <p class="about">Pick an app. It opens with the plugin's code and what it asks for on a card: nothing is added until you accept it, and it is yours alone, kept on this device.</p>
+      <ul class="apps">
+${catalog.apps
+  .filter((a) => a.path.startsWith("demos/"))
+  .sort((a, b) => a.title.localeCompare(b.title))
+  .map((a) => `        <li data-app="${escape(a.path)}"><a href="${escape(a.href)}">${escape(a.title)}</a></li>`)
+  .join("\n")}
+      </ul>
+      <p class="actions"><button type="button" popovertarget="add-to" popovertargetaction="hide">Cancel</button></p>
+    </div>
     <p class="none" hidden>Nothing matches. Try fewer words, or <button type="button" class="clear">show everything</button>.</p>
   </main>
 </body>
