@@ -17,10 +17,11 @@
 // What it leaves alone:
 //   - the fallback inside var(--token, fallback);
 //   - anything under 4px (a hairline or a nudge is not a spacing decision) and
-//     999px (a pill);
+//     a border-radius of 999px or more (a pill);
+//   - text in quotes and what url() points at;
 //   - a custom property an app.html sets: a page is where a theme is written;
 //   - a line that says why, in a comment: /* design-ok: the game's own palette */
-//   - a whole file whose first <style> starts with /* design-ok-file: reason */
+//   - a whole file (every <style> in it) whose first <style> starts with /* design-ok-file: reason */
 //
 // A note never fails `npm run check`. tests/checks/style-lint.mjs holds each
 // folder to the count in tests/style-baseline.json, so the number only goes down.
@@ -57,9 +58,12 @@ function withoutVars(value) {
  */
 export function lintSource(source, { page = false } = {}) {
   const notes = [];
-  for (const block of source.matchAll(/<style\b[^>]*>([^]*?)<\/style>/g)) {
+  // An HTML comment that mentions <style> is not a stylesheet: blank the comments, keeping every offset.
+  const html = source.replace(/<!--[^]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
+  const blocks = [...html.matchAll(/<style\b[^>]*>([^]*?)<\/style>/g)];
+  if (blocks.length && /^\s*\/\*\s*design-ok-file:/.test(blocks[0][1])) return notes;
+  for (const block of blocks) {
     const css = block[1];
-    if (/^\s*\/\*\s*design-ok-file:/.test(css)) continue;
     const start = block.index + block[0].indexOf(css);
     const allowed = new Set();
     const lineOf = (offset) => source.slice(0, start + offset).split("\n").length;
@@ -74,11 +78,15 @@ export function lintSource(source, { page = false } = {}) {
       const line = lineOf(d.index);
       if (allowed.has(line)) continue;
       if (page && prop.startsWith("--")) continue;
-      const value = withoutVars(raw);
+      // Not the plugin's choice of colour or size: a var() fallback, text in quotes, and what url() points at (url(#clip)).
+      const value = withoutVars(raw).replace(/"[^"]*"|'[^']*'/g, '""').replace(/url\([^)]*\)/gi, "url()");
       const colour = value.match(COLOUR);
       if (colour) notes.push({ line, kind: "colour", message: `${prop}: ${raw.replace(/\s+/g, " ")}  is a raw colour; use a colour token, or color-mix() of them` });
       if (SIZED.test(prop)) {
-        const fixed = [...value.matchAll(/(?<![\w.-])(\d*\.?\d+)(px|rem)\b/g)].filter((m) => { const px = Number(m[1]) * (m[2] === "rem" ? 16 : 1); return px >= 4 && px < 999; });
+        const fixed = [...value.matchAll(/(?<![\w.-])(-?\d*\.?\d+)(px|rem)\b/g)].filter((m) => {
+          const px = Math.abs(Number(m[1])) * (m[2] === "rem" ? 16 : 1);
+          return px >= 4 && !(prop === "border-radius" && px >= 999);
+        });
         if (fixed.length) notes.push({ line, kind: "size", message: `${prop}: ${raw.replace(/\s+/g, " ")}  is a size written by hand; use ${TOKEN_FOR(prop)}` });
       }
     }

@@ -20,12 +20,17 @@ export default async function ({ check }) {
     ["a hairline, a nudge and a pill", ".a { margin: 1px 0 2px; border-radius: 999px; gap: 0; }", ""],
     ["an id or a pseudo-class in a selector", "#fff000:hover, .a:not(#bed) { color: var(--fg); }", ""],
     ["a line that says why", ".a { color: #fc0; /* design-ok: the game's own gold */ }", ""],
+    ["a negative size, and a huge one that isn't a radius", ".a { margin-left: -8px; padding: 1000px; margin-top: -2px; }", "size:2 size:2"],
+    ["text in quotes and a url", ".a::before { content: \"#fff\"; filter: url(#abc); background: url('x.svg#fff000'); }", ""],
     ["a size the tokens don't cover", ".a { width: 240px; height: 12rem; }", ""],
   ];
   const wrong = cases.filter(([, css, want]) => kinds(css) !== want).map(([name, css]) => `${name}: ${kinds(css) || "nothing"}`);
   if (kinds(":root { --bg: #101010; }", { page: true }) !== "") wrong.push("a page setting a token");
   if (kinds(".a { --mine: #101010; }") !== "colour:2") wrong.push("a plugin setting a property to a raw colour");
   if (lintSource("<style>/* design-ok-file: a game */\n.a { color: #fff }</style>").length) wrong.push("a file that says why");
+  if (lintSource("<style>/* design-ok-file: a game */\n.a { color: #fff }</style>\n<style>.b { color: #000 }</style>").length) wrong.push("a file that says why, with two style blocks");
+  if (lintSource("<!-- the <style> below is the view's -->\n<style>/* design-ok-file: a game */\n.a { color: #fff }</style>").length) wrong.push("a <style> named in an HTML comment");
+  if (kinds("<!-- <style>.a { color: #fff }</style> -->") !== "") wrong.push("a stylesheet inside an HTML comment");
   check("the style lint notes raw colours and hand-written sizes, and leaves tokens, fallbacks and explained lines alone", wrong.length === 0, wrong.join("; "));
 
   const baseline = JSON.parse(readFileSync(new URL("../style-baseline.json", import.meta.url), "utf8")).folders;
