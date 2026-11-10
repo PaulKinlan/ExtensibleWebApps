@@ -665,16 +665,19 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (!sharing) return { ok: false, error: "Only a plugin in a space can be shared with it" };
           const own = mine.find((p) => p.id === id);
           if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
-          if (own.everywhere) return { ok: false, error: `${own.name ?? id} is one you use in every app. Keep it for this app alone first, then share it` };
-          if (method === "share" && isAgentFile(own.file)) return { ok: false, error: "An agent of yours can't be shared with a space yet" };
           return once(id, async () => {
             const code = (await current(id)) ?? "";
             const toShare = method === "share";
             const target = `the space: ${toShare ? "shares" : "stops sharing"} ${own.name ?? id}`;
-            const reason = toShare ? "Everyone in this space gets it on their devices, turned off, and each decides whether to turn it on." : "It goes from everyone else's devices, and stays here as yours.";
+            const what = isAgentFile(own.file) ? "agent" : "plugin";
+            const reason = toShare
+              ? `Everyone in this space gets this ${what} on their devices, turned off, and each decides whether to turn it on.${isAgentFile(own.file) ? " It asks each person's own model, with their own key." : ""}${own.everywhere ? " A copy for this app is what the space gets: yours stays in every app you open." : ""}`
+              : "It goes from everyone else's devices, and stays here as yours.";
             if (!(await ask(target, toShare ? "" : code, toShare ? code : "", reason))) return { ok: false, error: toShare ? "Not shared" : "Still shared" };
             if ((await current(id)) !== code) return { ok: false, error: changed };
-            const done = await (toShare ? sharing.share(app, id) : sharing.unshare(app, id));
+            const done = await (toShare ? sharing.share(app, id) : sharing.unshare(app, id)).catch((error: unknown) => {
+              throw new Error(`${own.name ?? id} couldn't be shared: ${error instanceof Error ? error.message : String(error)}`);
+            });
             return done ? { ok: true } : { ok: false, error: toShare ? `${id} couldn't be shared` : `${id} isn't shared with the space` };
           });
         }

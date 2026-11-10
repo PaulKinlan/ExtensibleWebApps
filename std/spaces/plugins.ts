@@ -29,6 +29,7 @@ import { readManifest } from "../../src/kernel/manifest";
 import type { Store } from "../../src/kernel/store";
 import { record as trace } from "../../src/kernel/trace";
 import { checkApp, type UserPlugins } from "../../src/kernel/user-plugins";
+import { isAgentFile } from "../../src/shared/agent-runner";
 
 const INDEX = "user/shared.json";
 /** A shared plugin and its files, as sent: one WebSocket message, which Cloudflare caps at 1 MiB. */
@@ -47,14 +48,18 @@ const fromBase64 = (text: string) => Uint8Array.from(atob(text), (c) => c.charCo
 /** Bytes as sent, in UTF-8: what the WebSocket limit counts. */
 export const sizeOf = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 
-/** A plugin's files as they are kept for an app: the plugin, and each file its manifest lists. */
+/** The file that is the plugin itself among those shared: its .js, or an agent's .agent.md, beside the files it lists. */
+const isMain = (f: SharedFile) => (f.name.endsWith(".js") || isAgentFile(f.name)) && !f.name.includes("/");
+
+/** A plugin's files as they are kept for an app (or, for `_everywhere`, for every app): the plugin or agent, and each file its manifest lists. */
 export async function filesOf(store: Store, userAdded: UserPlugins, app: string, id: string): Promise<SharedFile[] | undefined> {
   const plugin = (await userAdded.list(app)).find((p) => p.id === id);
   if (!plugin) return undefined;
   const source = await store.readText(`user/${app}/${plugin.file}`);
   if (source === undefined) return undefined;
   const out: SharedFile[] = [{ name: plugin.file, text: source }];
-  for (const name of readManifest(source).files ?? []) {
+  // (An agent's manifest is the one its file becomes.)
+  for (const name of (await userAdded.manifest(plugin.file, source)).files ?? []) {
     if (TEXT.test(name)) {
       const text = await store.readText(`user/${app}/${name}`);
       if (text !== undefined) out.push({ name, text });
@@ -71,8 +76,8 @@ export async function filesOf(store: Store, userAdded: UserPlugins, app: string,
  * its manifest lists, and none of its files belongs to another plugin there (which it would overwrite).
  */
 export async function problem(userAdded: UserPlugins, app: string, files: SharedFile[]): Promise<string | undefined> {
-  const plugins = files.filter((f) => f.name.endsWith(".js") && !f.name.includes("/"));
-  if (plugins.length !== 1 || !("text" in plugins[0])) return "Share one plugin (.js) at a time";
+  const plugins = files.filter(isMain);
+  if (plugins.length !== 1 || !("text" in plugins[0])) return "Share one plugin (.js) or agent (.agent.md) at a time";
   return userAdded.problem(app, decode(files));
 }
 
@@ -81,14 +86,14 @@ export async function problem(userAdded: UserPlugins, app: string, files: Shared
  * already there with that id goes first, so files it listed and this one doesn't aren't left behind.
  */
 export async function put(userAdded: UserPlugins, app: string, files: SharedFile[]) {
-  const source = files.find((f) => f.name.endsWith(".js") && !f.name.includes("/"));
-  const id = source && "text" in source ? readManifest(source.text).id : undefined;
+  const source = files.find(isMain);
+  const id = source && "text" in source ? (await userAdded.manifest(source.name, source.text)).id : undefined;
   if (id) await userAdded.remove(app, id, { quiet: true });
   return userAdded.add(app, decode(files), { quiet: true });
 }
 
 /** The files, as `user:add` takes them. */
-function decode(files: SharedFile[]): { name: string; data: Blob | string }[] {
+export function decode(files: SharedFile[]): { name: string; data: Blob | string }[] {
   return files.map((f) => ({ name: f.name, data: "text" in f ? f.text : new Blob([fromBase64(f.base64)]) }));
 }
 

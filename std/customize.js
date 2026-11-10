@@ -175,8 +175,8 @@ export default function (ctx) {
       places: p.on ? placesOf(page, p.id, running(p.id)) : [],
       // Off, it neither shows nor runs: say so in the row, with what turning it on does.
       offHint: p.on || p.error ? "" : `Off: it isn't running.${p.places.length ? ` Turn it on and it ${p.places.map(whereOfText).map((w) => w[0].toLowerCase() + w.slice(1)).join("; ")}.` : " Turn it on to use it."}`,
-      // One used in every app is kept once, outside any space: it isn't shared from here.
-      share: page.space && !p.everywhere && !p.agent ? (p.shared ? "Stop sharing" : "Share with the space") : "",
+      // (For one used in every app, a copy for this app is what the space gets.)
+      share: page.space ? (p.shared ? "Stop sharing" : "Share with the space") : "",
       // One of the person's own can follow them to every app they open, or go back to this app alone.
       reach: p.shared ? "" : p.everywhere ? "Only this app" : "Use in every app",
       reachTitle: p.everywhere ? "Keep it for this app alone, and take it out of your other apps" : "Add it to every app you open on this device, with the same on or off",

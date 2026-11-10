@@ -183,4 +183,4 @@ Two things stay the app author's to choose, so a file that asks for either is re
 - **The loop.** A person's agent runs the standard loop (`std/agents/runner.js`). A file with a `runner:` line isn't added.
 - **The door for outside agents.** A file with `outside:` isn't added.
 
-An agent of the person's isn't shared with a space yet.
+In a space, an agent of the person's is shared like any plugin of theirs: **Share with the space** in Customize, on a review card that says it is an agent. It reaches each member turned off, and asks each person's own model with their own key ([Space plugins](../server.md#space-plugins)).
