@@ -14,7 +14,9 @@
 //
 // Deploys come from Cloudflare's Git integration (Workers Builds): build
 // command `npm run build` (which builds the space kernel too), deploy command
-// `npx wrangler deploy`. Branches other than main deploy with
+// `npx wrangler deploy`. The build also brings along the scripts the last deploy served and this one no
+// longer makes (scripts/keep-assets.mjs, from the site named by `homepage` in package.json), so a page that
+// was open before a deploy can still fetch the parts of its own version. Branches other than main deploy with
 // `npx wrangler preview`, which reads the `previews` block below and nothing
 // else for a preview's bindings and variables.
 {

@@ -51,8 +51,59 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;
   // A page it serves waits for the host before its first paint (sw/render-blocking.js).
-  event.respondWith(event.request.mode === "navigate" ? answer(event, url).then(renderBlocking) : answer(event, url));
+  event.respondWith(event.request.mode === "navigate" ? answer(event, url).then(renderBlocking) : answer(event, url).then((response) => leftBehind(event, url, response)));
 });
+
+/** A built platform script: its content's hash is in its name, so each deploy has its own (public/_headers). */
+const BUILT = "/assets/";
+/** Where the time of the last reload this worker asked for is kept, for each page's address, so a page is never reloaded in a loop. */
+const RELOADED = "/__reloaded-for-a-newer-version";
+
+/**
+ * A built script the server doesn't have. Only one thing asks for a name the server never made: a page (or its
+ * kernel) from before the last deploy, wanting a part of its own older version that has since gone (the server
+ * keeps old ones for a long while, scripts/keep-assets.mjs, so this is a page older than that). Nothing can
+ * bring the file back, so the worker makes sure the way out works and says so:
+ *
+ *   - it forgets every page and script it kept, so the next load is the site as it is now, all of one version;
+ *   - it tells each open tab, whose host tells the person to reload (or reloads, if it hadn't started yet);
+ *   - a tab that asked for the file itself and has no host to hear (the page's own script is what failed to
+ *     load, so nothing on it works) is loaded again by the worker, once.
+ *
+ * @param {FetchEvent} event @param {URL} url @param {Response} response
+ */
+function leftBehind(event, url, response) {
+  // Not there: a 404, or a host that answers any address it has no file for with a page (a built script is never HTML).
+  const missing = response.status === 404 || /^text\/html\b/.test(response.headers.get("Content-Type") ?? "");
+  if (missing && url.pathname.startsWith(BUILT)) event.waitUntil(outOfDate(event.clientId, url.pathname).catch(() => {}));
+  return response;
+}
+
+/** @param {string} clientId @param {string} path */
+async function outOfDate(clientId, path) {
+  const cache = await caches.open(CACHE);
+  const kept = await cache.keys();
+  await Promise.all(kept.map((request) => [request, new URL(request.url).pathname]).filter(([, at]) => !at.startsWith(BUILT) && at !== RELOADED).map(([request]) => cache.delete(request)));
+  const tabs = await self.clients.matchAll({ type: "window" });
+  await Promise.all(
+    tabs.map(async (tab) => {
+      const heard = await new Promise((resolve) => {
+        const channel = new MessageChannel();
+        const timer = setTimeout(() => resolve(false), 1500);
+        channel.port1.onmessage = () => (clearTimeout(timer), resolve(true));
+        tab.postMessage({ t: "sw:out-of-date", path }, [channel.port2]);
+      });
+      if (heard || tab.id !== clientId) return;
+      // Once a minute for each address: a navigation gives the tab a new id, so its address is what is remembered,
+      // and one tab's reload never keeps another's from happening.
+      const mark = `${RELOADED}?${encodeURIComponent(tab.url)}`;
+      const last = Number(await (await cache.match(mark))?.text()) || 0;
+      if (Date.now() - last < 60_000) return;
+      await cache.put(mark, new Response(String(Date.now())));
+      await tab.navigate(tab.url).catch(() => {});
+    }),
+  );
+}
 
 /** @param {FetchEvent} event @param {URL} url */
 async function answer(event, url) {
@@ -93,7 +144,7 @@ async function cached(request, event) {
     }
     return response;
   });
-  if (cacheFirst(request)) {
+  if (cacheFirst(request) && new URL(request.url).pathname !== RELOADED) {
     const kept = await cache.match(request, KEPT);
     // A navigation can't be answered with a redirected response.
     if (kept && !(request.mode === "navigate" && kept.redirected)) {

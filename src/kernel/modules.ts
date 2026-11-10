@@ -45,6 +45,7 @@
 // or door its manifest doesn't list fails to start, and
 // tests/checks/module-manifests.mjs fails for one that lists what it never adds.
 
+import { part } from "./part";
 import type { Kernel } from "./services/index";
 import type { Sharing } from "./authoring";
 import type { Host } from "./hosts";
@@ -339,7 +340,7 @@ export function loadModules(
     const entry = byName.get(name);
     if (!entry) return Promise.reject(new Error(`No module ${name}`));
     const starting = (async () => {
-      const module = entry.module ?? (await entry.load!());
+      const module = entry.module ?? (await part(`the ${name} module`, entry.load!));
       const { fiber, uses } = run(entry, module);
       await Promise.all(uses.map(start));
       await fiber;

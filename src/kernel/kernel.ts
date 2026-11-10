@@ -8,6 +8,7 @@
 // own: each page runs the ones it links (the notes app is site/workbench/plugins/notes.js,
 // which only the workbench links).
 
+import { part } from "./part";
 import { Context } from "cordis";
 import { env } from "./env";
 import { defineHook, hooks, PLUGIN_HOOKS } from "./hooks";
@@ -109,7 +110,7 @@ const later = (name: string, make: () => Promise<ServiceProvider>): ServiceProvi
       throw new Error(`The ${name} service isn't running yet`);
     },
     load: () =>
-      (loading ??= make().then(
+      (loading ??= part(`the ${name} service`, make).then(
         (made) => void (services[name] = made),
         (error) => {
           loading = undefined;
@@ -372,7 +373,7 @@ services.plugins = pluginSwitches.service;
  * The kernel's API reference, built from the registries above. It describes the whole kernel, so every module the
  * site lists is started first; and the code that writes it is fetched only when someone asks (reference.ts).
  */
-const describing = () => Promise.all([import("./reference"), whole()]).then(([made]) => made);
+const describing = () => Promise.all([part("the kernel's reference", () => import("./reference")), whole()]).then(([made]) => made);
 /** Starts every module the site lists, and makes every service whose code waits to be used: the whole kernel, for what describes it. */
 const whole = () => Promise.all([kernelModules.all(), ...Object.values(services).map((s) => s.load?.().catch(() => {}))]).then(() => {});
 const describe = async () => (await describing()).reference(services, remote);

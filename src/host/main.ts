@@ -737,6 +737,39 @@ function notice(text: string, reported = true) {
   setTimeout(() => p.remove(), 4000);
 }
 
+/**
+ * The service worker found this page is from before the site's last deploy, and a part of that older version it
+ * asked for is no longer on the server (sw.js). A page still starting has nothing to lose, so it loads again,
+ * once; a page in use says so and leaves the moment to the person, since a reload would drop what they are doing.
+ */
+let toldOutOfDate = false;
+/** The kernel has welcomed this tab: the page is running, and may hold something the person would lose. */
+let kernelWelcomed = false;
+function outOfDate() {
+  const KEY = "platform:reloaded-for-a-newer-version";
+  const stored = (() => {
+    try {
+      return Number(sessionStorage.getItem(KEY)) || 0;
+    } catch {
+      return Date.now();
+    }
+  })();
+  if (!kernelWelcomed && Date.now() - stored > 60_000) {
+    sessionStorage.setItem(KEY, String(Date.now()));
+    return location.reload();
+  }
+  if (toldOutOfDate) return;
+  toldOutOfDate = true;
+  report("notice", "This page is from before the site was last updated, and part of that older version is no longer there. Reload the page.");
+  const p = document.createElement("p");
+  p.id = "out-of-date";
+  p.textContent = "This page is older than the site is now, so part of it can't load. ";
+  const button = Object.assign(document.createElement("button"), { type: "button", textContent: "Reload" });
+  button.addEventListener("click", () => location.reload());
+  p.append(button);
+  (document.getElementById("notice") ?? document.body.appendChild(Object.assign(document.createElement("div"), { id: "notice", role: "status" }))).append(p);
+}
+
 // ---- Commands (devtools and tests) ----
 
 let commandId = 0;
@@ -754,7 +787,8 @@ const bench = document.getElementById("devtools") ? workbench(command) : undefin
 /** Settles once the kernel has welcomed this tab: it answers commands from then on. */
 let welcomed!: () => void;
 const welcome = new Promise<void>((resolve) => (welcomed = resolve));
-serviceWorker(command, report, welcome);
+void welcome.then(() => (kernelWelcomed = true));
+serviceWorker(command, report, welcome, outOfDate);
 installable();
 const traces: TraceEvent[] = [];
 function showTrace(events: TraceEvent[]) {
