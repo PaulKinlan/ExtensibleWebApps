@@ -6,9 +6,9 @@
   .outline ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
   .outline button { all: unset; box-sizing: border-box; width: 100%; cursor: pointer; display: flex; justify-content: space-between; gap: var(--space-2); padding: 3px var(--space-2); border-radius: var(--radius); }
   .outline button:hover, .outline button:focus-visible { background: var(--bg-2); }
-  .outline [data-indent="1"] { padding-inline-start: calc(var(--space-2) + 0.9rem); }
-  .outline [data-indent="2"] { padding-inline-start: calc(var(--space-2) + 1.8rem); }
-  .outline [data-indent="3"], .outline [data-indent="4"], .outline [data-indent="5"] { padding-inline-start: calc(var(--space-2) + 2.7rem); }
+  .outline [data-indent="1"] { padding-inline-start: calc(var(--space-2) + var(--space-4)); }
+  .outline [data-indent="2"] { padding-inline-start: calc(var(--space-2) + 2 * var(--space-4)); }
+  .outline [data-indent="3"], .outline [data-indent="4"], .outline [data-indent="5"] { padding-inline-start: calc(var(--space-2) + 3 * var(--space-4)); }
   .outline .words { color: var(--fg-2); font-variant-numeric: tabular-nums; }
   .outline p { color: var(--fg-2); margin: 0; }
 </style>
