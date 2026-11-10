@@ -11,11 +11,19 @@
 //     the window (the Markdown editor's side panels once ran off the screen).
 // The rules are DESIGN.md's, measured: see "What the layout check holds every page to".
 // A page that must break one says so in ALLOWED below, with the reason.
+//
+// The same visit also says whether the page opened at all: at a phone's width
+// and a desktop's, a page fails if it logs an error to the console, throws one,
+// asks the site for a file that isn't there, or never draws (an app page with no
+// plugin's view on it, or a page with next to nothing to read). Each page is
+// opened once per size for both, so the two checks cost one pass. A new demo is
+// picked up from its folder, so nothing here names one.
 import { readdirSync, existsSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { serve } from "../../src/server/serve.ts";
+import { describeError } from "../page-errors.mjs";
 
 export const SIZES = { desktop: { width: 1280, height: 800 }, wide: { width: 1680, height: 1000 }, phone: { width: 390, height: 844 } };
 export const TALLEST_CONTROL = 64;
@@ -204,11 +212,40 @@ export function covered() {
   return found;
 }
 
+/** The sizes at which a page must also open cleanly: draw, and log no error. */
+const OPENS = ["phone", "desktop"];
+
+/** What the page shows once it has settled: how many plugin views are drawn, and how much there is to read. */
+const drawn = () => {
+  const seen = (/** @type {Element} */ el) => {
+    const box = el.getBoundingClientRect();
+    return box.width > 0 && box.height > 0;
+  };
+  // Text inside shadow roots counts: most of the site's pages are drawn by elements.
+  const text = (/** @type {Node} */ node) => {
+    let all = "";
+    for (const child of node.childNodes) {
+      if (child.nodeType === 3) all += child.textContent;
+      else if (child.nodeType === 1 && !["SCRIPT", "STYLE", "TEMPLATE"].includes(/** @type {Element} */ (child).tagName)) all += text(child) + (/** @type {Element} */ (child).shadowRoot ? text(/** @type {Element} */ (child).shadowRoot) : "");
+    }
+    return all;
+  };
+  return {
+    plugins: document.querySelectorAll('link[rel="plugin"], link[rel="agent"]').length,
+    // Customize is on every app's page, whatever the app links: it doesn't show that the app drew.
+    views: [...document.querySelectorAll('[data-key]:not([data-key^="customize"])')].filter(seen).length,
+    words: text(document.body).trim().split(/\s+/).filter(Boolean).length,
+  };
+};
+
 export default async function ({ check, context, URL, errors }) {
   const demos = new globalThis.URL("../../demos/", import.meta.url);
   const apps = readdirSync(demos, { withFileTypes: true }).filter((e) => e.isDirectory() && existsSync(new globalThis.URL(`${e.name}/app.html`, demos))).map((e) => `demos/${e.name}/app.html`);
   const pages = ["", "demos/", "docs/", "packages/", "new/", "workbench/", "account/", ...apps];
   const broken = [];
+  /** What stopped a page opening cleanly, and how many did. */
+  const problems = [];
+  let opened = 0;
   const look = async (page, label, size) => {
     const findings = await page.evaluate(measure, TALLEST_CONTROL).catch((e) => [`couldn't be measured: ${e.message}`]);
     findings.push(...(await page.evaluate(covered).catch(() => [])));
@@ -236,13 +273,49 @@ export default async function ({ check, context, URL, errors }) {
   for (const [size, viewport] of Object.entries(SIZES)) {
     const own = await context.browser().newContext({ viewport });
     const page = await own.newPage();
+    // While a page is opening, what it logs, throws or fails to fetch is put beside its name and size.
+    let watching = false;
+    /** @type {Set<string>} */
+    const found = new Set();
+    page.on("pageerror", (e) => watching && found.add(`threw ${describeError(undefined, page, e)}`));
+    page.on("console", (message) => {
+      if (watching && message.type() === "error") found.add(`console error: ${message.text().slice(0, 300)}`);
+    });
+    page.on("response", (response) => {
+      if (watching && response.status() >= 400 && response.url().startsWith(URL)) found.add(`${response.status()} for ${new globalThis.URL(response.url()).pathname}`);
+    });
+    const opens = OPENS.includes(size);
+    const report = (path) => {
+      watching = false;
+      for (const f of found) problems.push(`/${path} (${size}): ${f}`);
+      found.clear();
+    };
     for (const path of pages) {
+      watching = opens;
       const answer = await page.goto(`${URL}${path}`, { waitUntil: "load" }).catch((error) => String(error?.message ?? error).split("\n")[0]);
       if (typeof answer === "string" || !answer?.ok()) {
         broken.push(`/${path} ${size}: couldn't be opened (${typeof answer === "string" ? answer : `the server answered ${answer?.status()}`})`);
+        if (opens) found.add(`didn't open: ${typeof answer === "string" ? answer : `the server answered ${answer?.status()}`}`);
+        report(path);
         continue;
       }
+      // A page that links plugins has drawn once a view of one of them is on it. Customize's view doesn't count: the
+      // host adds it to every app, and it can be up before the app's own views are.
+      if (opens && (await page.evaluate(() => !!document.querySelector('link[rel="plugin"], link[rel="agent"]')).catch(() => false))) {
+        await page.waitForFunction(() => [...document.querySelectorAll('[data-key]:not([data-key^="customize"])')].some((el) => el.getBoundingClientRect().height > 0), null, { timeout: 15000 }).catch(() => {});
+      }
       const unready = await settle(page, path.endsWith("app.html"));
+      if (opens) {
+        const shown = await page.evaluate(drawn).catch(() => null);
+        if (!shown) found.add("couldn't be read once it had opened");
+        else {
+          if (shown.plugins && !shown.views) found.add(`never drew: it links ${shown.plugins} plugins and no view is on the page`);
+          if (shown.words < 5) found.add(`never drew: ${shown.words} words on the page`);
+          opened++;
+        }
+      }
+      // What follows clicks panels open; an error there is the panel's, and the checks of each panel catch it.
+      report(path);
       if (unready) broken.push(`/${path} ${size}: ${unready}`);
       else await look(page, `/${path}`, size);
       // Panels that open over the page are looked at open: the homepage's docs, and Customize on an app.
@@ -295,5 +368,10 @@ export default async function ({ check, context, URL, errors }) {
     await server.stop();
   }
 
+  check(
+    "every page of the site and every demo opens at a phone's width and a desktop's, draws, and logs no error",
+    problems.length === 0 && opened === pages.length * OPENS.length,
+    problems.length ? `\n  ${problems.slice(0, 40).join("\n  ")}${problems.length > 40 ? `\n  and ${problems.length - 40} more` : ""}` : `${pages.length} pages at ${OPENS.length} sizes`,
+  );
   check(`no page looks broken at desktop, wide or phone width (${pages.length + 1} pages: one-line controls under ${TALLEST_CONTROL}px, no sideways scroll even with long words, no controls drawn over each other)`, !broken.length, broken.slice(0, 12).join(" | ") + (broken.length > 12 ? ` | and ${broken.length - 12} more` : ""));
 }
