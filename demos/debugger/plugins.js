@@ -102,7 +102,7 @@ export default async function (ctx) {
           collections: Object.keys(m.collections ?? {}),
           places: Object.keys(m.places ?? {}),
           settings: Object.keys(m.settings ?? {}),
-          instances: p.instances.map((i) => ({ instance: i.instance, where: i.tab ? `for tab ${i.tab}` : "shared by every tab", runsIn: i.runsIn, hooks: i.heard.length })),
+          instances: p.instances.map((i) => ({ instance: i.instance, where: i.tab ? `for tab ${i.tab}` : "shared by every tab", runsIn: i.runsIn, hooks: i.heard.length === 1 ? "1 hook" : `${i.heard.length} hooks` })),
           stopped: !p.instances.length,
           manifest: json(m),
           code: code?.id === p.id ? code.text : "",

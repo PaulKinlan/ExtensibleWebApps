@@ -23,7 +23,7 @@
           <h3><code>{{t.path}}</code> <template if="t.spawner"><ui-badge tone="ok">spawner</ui-badge></template> <template if="t.mine"><ui-badge>this debugger</ui-badge></template></h3>
           <ul>
             <template for="w of t.workers">
-              <li key="{{w.instance}}"><strong>{{w.name}}</strong> <code>{{w.instance}}</code> <template if="w.shared"><ui-badge tone="accent">shared</ui-badge></template> <span class="muted">{{w.hooks}} hooks</span></li>
+              <li key="{{w.instance}}"><strong>{{w.name}}</strong> <code>{{w.instance}}</code> <template if="w.shared"><ui-badge tone="accent">shared</ui-badge></template> <span class="muted">{{w.hooks}}</span></li>
             </template>
           </ul>
           <template if="!t.workers.length"><p class="muted">Starts no workers.</p></template>
