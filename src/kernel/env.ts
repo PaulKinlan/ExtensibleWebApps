@@ -59,6 +59,12 @@ export interface KernelEnv {
    * The answer is null when no plugin has that route.
    */
   serve?(answer: (request: RouteRequest) => Promise<RouteResponse | null>): void;
+  /**
+   * On a server, tells the host that what a door answers may have changed (the door `mcp`: its tools, or
+   * which stream a session has), so the host asks the door again for the connections it keeps open, and
+   * doesn't have to ask on a timer (src/server/mcp.ts mcpStream).
+   */
+  changed?(door: string): void;
 }
 
 let current: KernelEnv | undefined;
