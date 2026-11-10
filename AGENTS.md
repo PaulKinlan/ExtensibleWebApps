@@ -42,7 +42,7 @@ Start with `npm run new-app -- my-app`: it copies [`starter/`](starter/), a list
 
 ```sh
 npm install
-npm run check        # finds mistakes in the apps without a browser: permissions, manifests, templates, slots (--json for tools)
+npm run check        # finds mistakes in the apps without a browser: permissions, manifests, templates, slots (--json for tools; --style lists raw colours and hand-written sizes, see DESIGN.md)
 npm run dev          # open http://localhost:5173/demos/<app>/app.html; the workbench at /workbench/ has the trace
 npm test             # builds, then opens every app in demos/ and checks each linked plugin draws
 npm run test:server  # after changing anything a space's server runs: the server checks on Node and wrangler dev

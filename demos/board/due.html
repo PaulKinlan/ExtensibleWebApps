@@ -3,7 +3,7 @@
   or calm, and the CSS picks the colour from data-tone.
 -->
 <style>
-  .due { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; color: var(--fg-2); background: var(--bg-2); }
+  .due { display: inline-flex; align-items: center; gap: var(--space-1); padding: 1px var(--space-2) 1px 6px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; color: var(--fg-2); background: var(--bg-2); }
   .due::before { content: "◷"; font-size: 0.85em; }
   .due[data-tone="near"] { color: light-dark(#1d4ed8, #93c5fd); background: color-mix(in srgb, #3b82f6 14%, transparent); }
   .due[data-tone="soon"] { color: light-dark(#b45309, #fcd34d); background: color-mix(in srgb, var(--warn) 18%, transparent); }
