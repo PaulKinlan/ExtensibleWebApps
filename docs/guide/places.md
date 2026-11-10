@@ -117,6 +117,8 @@ A plugin or agent with `plugins:manage` can do the same with `authoring.move(plu
 
 Customize's **Make a plugin** tab makes one of the person's own in three steps: pick a starter (a note, a list of links, a tally, or blank, from [`std/customize.templates/`](../../std/customize.templates/)), point at where it should show (the same pointing as Arrange, through `authoring.choose()`, which fills in the starter's `here` place), then name it, change the code if they like, and save it after the usual review. Other plugins can offer more ways to make one by drawing in the `customize.make` slot in that tab, such as an agent that writes a plugin from a description.
 
+The tab also offers **Write it for me**: it adds the [plugin maker](../../std/plugin-maker.js) from the registry, after its review, and the maker then draws in that slot. The person says what they want, a language model writes the plugin with their own key, and it is saved after the same review as any other.
+
 The **Layout** tab is the map for it: the app's slots and which plugins draw in each, the parts of the page its author named (ids, `data-part`, landmarks) with whether each is open, for review or locked, and every `ui-*` element a view can use (`authoring.layout()`).
 
 ## What places aren't for

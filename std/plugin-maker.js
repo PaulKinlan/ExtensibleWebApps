@@ -5,8 +5,9 @@
 // the review card that shows its code and what it may do, as with any plugin
 // they add. They can then ask for changes, and it saves the plugin again.
 //
-// A person adds it to any app from Customize's Add a plugin; an app can link
-// it too:
+// A person adds it to any app from Customize's Add a plugin, or with "Write
+// it for me" in Customize's Make tab, where it then draws too (the tab's
+// `customize.make` slot); an app can link it too:
 //
 //   <link rel="plugin" href="/std/plugin-maker.js">
 //   <slot name="plugin-maker"></slot>
@@ -122,7 +123,7 @@ export default function (ctx) {
     providers = list.map((p) => ({ ...p, picked: p.id === provider, label: `${p.name}${p.ready ? "" : " (asks for a key)"}` }));
     const none = !providers.length;
     if (none) choices = (await ctx.call("llm", "choices").catch(() => [])).map((c) => ({ ...c, busy: !!adding }));
-    views.render("plugin-maker", "maker", {
+    const view = {
       providers,
       none,
       choices,
@@ -135,7 +136,10 @@ export default function (ctx) {
       busy: !!working,
       suggested: SUGGESTED.map((text, n) => ({ n, text })),
       draft,
-    });
+    };
+    views.render("plugin-maker", "maker", view);
+    // And in Customize's Make tab, which leaves a slot for it ("Or have it written for you").
+    views.render("customize.make", "maker", view);
     return providers.length;
   };
 
