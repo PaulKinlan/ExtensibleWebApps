@@ -15,6 +15,7 @@
 // to let the next route try. When none answers, the request goes to the network.
 
 import routes from "./sw/routes/index.js";
+import { appAt } from "./sw/routes/apps.js";
 import { renderBlocking } from "./sw/render-blocking.js";
 import { onNotificationClick, onNotifyMessage } from "./sw/notifications.js";
 
@@ -31,6 +32,14 @@ self.addEventListener("notificationclick", onNotificationClick);
 self.addEventListener("message", (event) => {
   // A page's notification, shown by the worker so it outlives the page (sw/notifications.js).
   if (event.data?.t === "sw:notify") return onNotifyMessage(event);
+  // A page that is an app at the site's root asks, before following a link, whether its address is a screen of
+  // that app or a page of its own (src/host/root-screens.ts): answered as a visit to the address would be.
+  if (event.data?.t === "sw:screen" && typeof event.data.url === "string" && event.ports[0]) {
+    const url = new URL(event.data.url, location.href);
+    const port = event.ports[0];
+    const found = url.origin === location.origin ? appAt(new Request(url), url, { fetch: (request) => cached(request, event) }) : Promise.resolve(undefined);
+    return event.waitUntil(found.then((app) => port.postMessage(app?.folder === "/"), () => port.postMessage(false)));
+  }
   if (event.data?.t !== "sw:warm" || !Array.isArray(event.data.urls)) return;
   const urls = event.data.urls.filter((u) => typeof u === "string" && new URL(u, location.href).origin === location.origin).slice(0, 200);
   event.waitUntil(Promise.all(urls.map((u) => cached(new Request(u), event).catch(() => {}))));

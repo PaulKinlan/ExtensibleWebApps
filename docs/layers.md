@@ -128,6 +128,8 @@ Most services have moved out of the core into **kernel modules**. A module is a 
 
 Only the listed modules are part of the site's kernel, in the browser and on its servers ([`vite.kernel-modules.ts`](../vite.kernel-modules.ts)). A name with no `module.ts` stops the build, and a module that `uses` another the site doesn't list stops the kernel: neither quietly goes without. Beside `modules`, `kernel.json` may set `hooks`, the limits on hooks plugins define ([hooks of your own](guide/plugin-hooks.md)); any other setting stops the build. [`src/kernel/modules.ts`](../src/kernel/modules.ts) says how to write one.
 
+A project that has the platform as a dependency builds no kernel, and still picks its own: a `kernel.json` at its top, held to the same rules, lists which of the platform's modules its kernel runs. Every built kernel has a mark where a site's `kernel.json` goes, and the project's command writes the project's after it in its own copies of the browser's, Node's and Cloudflare's kernels ([`scripts/project-kernel.mjs`](../scripts/project-kernel.mjs), [An app of your own](guide/your-own-app.md#its-own-kerneljson)). A kernel with one written in runs only the modules it lists; this site's, as built, has none and runs the list above.
+
 #### A module's manifest
 
 Beside each `module.ts` is `module.json`, which says what the module adds, the way a plugin's manifest says what a plugin asks for before any of its code runs:

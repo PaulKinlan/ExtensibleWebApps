@@ -1,0 +1,63 @@
+# Runs the project checks (npm run test:project: tests/project/run.mjs) on
+# every pull request and on main, on Linux and on Windows: a project of your
+# own, made and run the way someone who has never seen this repo gets it.
+#
+# Each run builds the platform, packs the two npm packages as `npm publish`
+# would send them (scripts/release.mjs), and then, in a folder outside the
+# repo, makes a project with the create command, installs it, and runs its
+# `check`, `deploy -- --no-deploy` (with wrangler bundling the Worker, never
+# deploying it) and `dev`. So a change that breaks a project, on either
+# system, or that would publish a package that doesn't work, shows before it
+# merges.
+#
+# No browser and no secrets. Windows is here because a project's commands
+# write links, paths and .cmd shims differently there, and nothing else in
+# this repo's checks runs on it.
+
+name: Project checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Grouped by branch name, so a pull request's run and a run the keep-prs-current bot starts on the same branch
+# stop each other: only the newest head is checked.
+concurrency:
+  group: project-checks-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  project:
+    name: A project of your own (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      # One system failing says nothing about the other: let both finish.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      # As written, on both systems: the checks compare files, so Windows mustn't change their line endings.
+      - run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Builds the platform too (its `prepare` script): the site, and the Node and Cloudflare kernels.
+      - run: npm ci
+
+      - name: A project, from the packages
+        run: npm run test:project
+        env:
+          # wrangler without prompts or telemetry.
+          CI: "1"
+          WRANGLER_SEND_METRICS: "false"

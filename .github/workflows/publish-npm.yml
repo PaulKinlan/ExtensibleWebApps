@@ -1,0 +1,132 @@
+# Publishes the two npm packages, at one version:
+#
+#   extensible-web-apps     the platform, which a project of your own depends on
+#   create-extensible-app   `npm create extensible-app`, which makes such a project
+#
+# Run it from the Actions tab ("Publish to npm" → Run workflow), or with
+#   gh workflow run publish-npm.yml -f version=0.1.0
+#
+# It needs one repository secret, set once:
+#   NPM_TOKEN   an npm access token that may publish both packages (on npmjs.com:
+#               Access Tokens → Generate New Token → a granular token with read
+#               and write access to packages, or a classic "Automation" token)
+#
+# Nothing else is done by hand. The version is the workflow's input: it is
+# written into both packages for this run only (scripts/release.mjs) and never
+# committed, so the repo's package.json stays `private` at 0.0.0 and nobody
+# publishes a checkout by accident. The run:
+#
+#   1. builds the platform and runs the project checks on the packed packages
+#      (tests/project/run.mjs), so what is published is what was checked
+#   2. publishes the platform, then the create command, each with provenance
+#      (npm shows the commit and this run), skipping one already published at
+#      this version, so a run that failed half way can be run again
+#   3. tags the commit v<version>
+#
+# "Dry run" does everything except publish and tag: npm lists what it would
+# send. It needs no secret, so it can be run before one exists.
+
+name: Publish to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "The version to publish, e.g. 0.1.0 (no v in front)"
+        required: true
+      dry_run:
+        description: "Dry run: check and pack everything, publish nothing"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write # to tag the commit it published
+  id-token: write # for npm provenance
+
+# One publish at a time, and never stopped half way.
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Only from main
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Packages are published from main only, not from ${{ github.ref_name }}."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+
+      # Before anything is built: a publish with no token would fail at the last step, after ten minutes.
+      - name: Check there is a token
+        if: ${{ !inputs.dry_run }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::There is no NPM_TOKEN secret. Add one under Settings → Secrets and variables → Actions, then run this again."
+            exit 1
+          fi
+          # The token works, and says whose it is, before anything is published with it.
+          npm whoami >/dev/null || { echo "::error::npm didn't accept NPM_TOKEN: it may have expired or been revoked."; exit 1; }
+
+      # Builds the platform too (its `prepare` script).
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Packs both packages at a version of the check's own and runs a project from them.
+      - name: Project checks, on the packed packages
+        run: npm run test:project
+        env:
+          CI: "1"
+          WRANGLER_SEND_METRICS: "false"
+
+      - name: Set the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/release.mjs "$VERSION"
+
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: |
+          set -eu
+          # The platform first: the create command runs it from npm.
+          for folder in . scripts/create-extensible-app; do
+            name=$(node -p "require('./$folder/package.json').name")
+            if [ -z "$DRY_RUN" ] && [ "$(npm view "$name@$VERSION" version 2>/dev/null || true)" = "$VERSION" ]; then
+              echo "$name@$VERSION is already on npm: skipped"
+              continue
+            fi
+            # --ignore-scripts: it is built already (npm ci), and the checks ran on that build.
+            (cd "$folder" && npm publish --access public --provenance --ignore-scripts $DRY_RUN)
+            echo "- \`$name@$VERSION\`${DRY_RUN:+ (dry run: not published)}" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Tag the commit
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
+            echo "v$VERSION is already a tag: left as it is"
+          else
+            git tag "v$VERSION"
+            git push origin "v$VERSION"
+          fi

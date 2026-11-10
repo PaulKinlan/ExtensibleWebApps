@@ -19,6 +19,16 @@
 // rest), and the project's files at the root, beside them. So the app's own
 // address is `/`, and its page is app.html, also served as the front page.
 //
+// The front page is the app's page with a <base> naming its folder, `/`, as
+// the service worker serves an app's page at one of its screens
+// (sw/routes/apps.js): it is how the page knows it is an app at the root, whose
+// links to its screens (/book/42) move there without loading the page again
+// (src/host/router.ts). A project with an index.html of its own keeps it.
+//
+// A kernel.json at the top of the project picks the kernel modules its kernel
+// runs, and the limits on hooks, in place of the platform's own choice
+// (scripts/project-kernel.mjs). It isn't served.
+//
 // It needs the platform built: an install from GitHub or npm builds it
 // (its `prepare` script), and in a checkout of this repo `npm run build && npm run build:server`
 // does. It writes only in the project's .extensible/ folder, which is never committed.
@@ -28,12 +38,13 @@ import { copyFileSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, re
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SITE_PAGES } from "./deploy-app.mjs";
+import { browserKernel, cloudflareKernel, nodeKernel, projectKernel } from "./project-kernel.mjs";
 
 /** This package: the platform. */
 export const PLATFORM = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** A project's own files at its top that aren't the app's, and so aren't served. */
-const NOT_SERVED = ["node_modules", "package.json", "package-lock.json"];
+const NOT_SERVED = ["node_modules", "package.json", "package-lock.json", "kernel.json"];
 
 /** Whether a file or folder of the project is served, at any depth: nothing starting with a dot (.env, .git), no node_modules. */
 const servable = (name) => !name.startsWith(".") && name !== "node_modules";
@@ -80,20 +91,42 @@ export function siteEntries(project, { platform = PLATFORM } = {}) {
   return entries;
 }
 
+/** An app's page as its front page: with a <base> naming the root, as the service worker serves it at a screen (sw/routes/apps.js). */
+export const atRoot = (html) => (/<head\b[^>]*>/i.test(html) ? html.replace(/<head\b[^>]*>/i, (head) => `${head}\n  <base href="/">`) : `<base href="/">${html}`);
+
+/**
+ * The files of a project's site that are written, not linked or copied, by their address: the front page when
+ * it is the app's page (above), and the browser's kernel when the project has a kernel.json of its own.
+ * @param {string} project @param {Record<string, string>} entries @param {{ platform?: string, kernel?: { modules: string[], hooks?: Record<string, number> } }} [options]
+ * @returns {Record<string, string>}
+ */
+export function writtenFiles(project, entries, { platform = PLATFORM, kernel = projectKernel(project, { platform }) } = {}) {
+  /** @type {Record<string, string>} */
+  const written = {};
+  if (entries["index.html"] === join(project, "app.html")) written["index.html"] = atRoot(readFileSync(entries["index.html"], "utf8"));
+  if (kernel) {
+    const { path, text } = browserKernel(kernel, { platform });
+    written[path] = text;
+  }
+  return written;
+}
+
 /**
  * Makes `dir` the site again: a link to each of the platform's entries, and the project's folders as folders
  * holding a link to each file that's served, so a change to a file shows at once and nothing unservable
  * (plugins/.env) is reachable. Where a file can't be linked (Windows, without the right to), it is copied,
- * and the next change copies it again.
+ * and the next change copies it again. A file in `written` (by its address) is written with that text, and
+ * the platform's folder it is in is a folder of links around it.
  */
-function linkSite(dir, entries, project) {
+function linkSite(dir, entries, project, written = {}) {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
-  const place = (target, at, mine) => {
+  const place = (target, at, mine, address) => {
+    if (address in written) return writeFileSync(at, written[address]);
     const folder = lstatSync(target).isDirectory();
-    if (mine && folder) {
+    if (folder && (mine || Object.keys(written).some((path) => path.startsWith(`${address}/`)))) {
       mkdirSync(at);
-      for (const name of readdirSync(target)) if (servable(name)) place(join(target, name), join(at, name), true);
+      for (const name of readdirSync(target)) if (!mine || servable(name)) place(join(target, name), join(at, name), mine, `${address}/${name}`);
       return;
     }
     try {
@@ -104,7 +137,7 @@ function linkSite(dir, entries, project) {
       copyFileSync(target, at);
     }
   };
-  for (const [name, target] of Object.entries(entries)) place(target, join(dir, name), own(project, target));
+  for (const [name, target] of Object.entries(entries)) place(target, join(dir, name), own(project, target), name);
 }
 
 const inside = (folder, path) => path === folder || path.startsWith(folder + sep);
@@ -119,22 +152,31 @@ const own = (project, path) => inside(project, path) && !inside(join(project, "n
 export async function dev(project, { port = 5173, host = "127.0.0.1", platform = PLATFORM, quiet = false } = {}) {
   const dir = join(project, ".extensible");
   const site = join(dir, "site");
-  linkSite(site, siteEntries(project, { platform }), project);
+  // The project's own kernel.json, if it has one: read once, as a kernel reads its settings when it starts.
+  const kernel = projectKernel(project, { platform });
+  const lay = () => {
+    const entries = siteEntries(project, { platform });
+    linkSite(site, entries, project, writtenFiles(project, entries, { platform, kernel }));
+  };
+  lay();
   // A file or folder added anywhere in the project is served as soon as it's there.
   let timer;
   const watcher = watch(project, { recursive: true }, (_, file) => {
     if (file && !String(file).split(/[\\/]/).every(servable)) return;
+    // The kernels are running with the kernel.json they started with.
+    if (String(file) === "kernel.json" && !quiet) console.error("kernel.json changed: stop this and run it again to use it.");
     clearTimeout(timer);
     timer = setTimeout(() => {
       try {
-        linkSite(site, siteEntries(project, { platform }), project);
+        lay();
       } catch (error) {
         if (!quiet) console.error(error.message);
       }
     }, 100);
   });
   const { serve } = await import(pathToFileURL(join(platform, ".build", "server", "serve.js")).href);
-  const server = await serve({ port, host, site, spaces: join(dir, "spaces"), kernel: join(platform, ".build", "server", "space.js") });
+  // Spaces run the same kernel: the platform's, or the project's copy of it with its kernel.json in it.
+  const server = await serve({ port, host, site, spaces: join(dir, "spaces"), kernel: kernel ? nodeKernel(kernel, join(dir, "server"), { platform }) : join(platform, ".build", "server", "space.js") });
   return {
     url: `${server.url}/`,
     async stop() {
@@ -173,6 +215,8 @@ export function layoutProject(project, { name, platform = PLATFORM } = {}) {
     const mine = own(project, from);
     cpSync(from, join(site, entry), { recursive: true, dereference: true, filter: (path) => !mine || relative(project, path).split(sep).every(servable) });
   }
+  const kernel = projectKernel(project, { platform });
+  for (const [address, text] of Object.entries(writtenFiles(project, entries, { platform, kernel }))) writeFileSync(join(site, address), text);
 
   const jsonc = (text) => JSON.parse(text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1"));
   const config = jsonc(readFileSync(join(platform, "wrangler.jsonc"), "utf8"));
@@ -180,7 +224,8 @@ export function layoutProject(project, { name, platform = PLATFORM } = {}) {
   const appConfig = {
     ...config,
     name: worker,
-    main: rel(join(platform, config.main)),
+    // The platform's Worker, or the project's copy of it with its kernel.json in the kernel spaces run.
+    main: rel(kernel ? cloudflareKernel(kernel, join(target, "platform"), config.main, { platform }) : join(platform, config.main)),
     assets: { ...config.assets, directory: "./site" },
     // Only the app's mark: the platform's own site's variables (its email sender) aren't this project's.
     // Set your own in the Cloudflare dashboard; keep_vars keeps them across deploys.

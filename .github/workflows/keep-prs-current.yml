@@ -73,7 +73,7 @@ jobs:
               note "$pr" ""
               # A push made with this workflow's token starts no other workflow, so the merge commit, now the
               # pull request's head, would have no checks at all and could be merged untested. Start them here.
-              for checks in platform-checks.yml server-checks.yml; do
+              for checks in platform-checks.yml server-checks.yml project-checks.yml; do
                 gh workflow run "$checks" --repo "$REPO" --ref "$branch" || echo "::warning::Couldn't start $checks on $branch"
               done
             else
