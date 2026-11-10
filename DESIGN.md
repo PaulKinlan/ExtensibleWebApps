@@ -15,7 +15,7 @@ Use a token wherever one fits. A fixed value is a decision the next app, theme o
 | Kind | Tokens | Use |
 | --- | --- | --- |
 | Space | `--space-1` 4px, `-2` 8px, `-3` 12px, `-4` 16px, `-5` 24px, `-6` 32px | Every gap, padding and margin. `-2` between controls in a row, `-3` between things in a section, `-6` between sections. |
-| Type | `--text-sm` 13px, `-md` 15px, `-lg` 17px, `-xl` 21px, `-2xl` 30px | `-md` is body. One `h1` per page at `-2xl`, section headings (`h2`) at `-xl`. |
+| Type | `--text-xs` 12px, `--text-sm` 13px, `-md` 15px, `-lg` 17px, `-xl` 21px, `-2xl` 30px | `-md` is body. One `h1` per page at `-2xl`, section headings (`h2`) at `-xl`. `-xs` is for chips, counts and keyboard hints only. |
 | Colour | `--bg`, `--bg-2`, `--surface`, `--fg`, `--fg-2`, `--border`, `--accent`, `--accent-fg`, `--action`, `--action-fg`, `--ok`, `--warn`, `--danger` | Page, sunken areas, raised areas, text, quieter text, lines, the accent (links, focus and selection only), the main button (ink by default), and meaning. Never a raw hex value outside a theme. |
 | Size | `--control` 38px, `--control-sm` 30px | The height of every one-line control: buttons, fields, selects. The small one is for a button inside a table row or a list row. |
 | Shape | `--radius-sm`, `--radius`, `--radius-lg`, `--shadow-1`, `--shadow-2`, `--scrim`, `--ring` | Controls and cards use `--radius`; only things that float use `--shadow-2`; `--scrim` dims the page behind a dialog. |
@@ -34,7 +34,7 @@ A new token is added to `styles.css` and to the table in [Styling](docs/guide/st
 7. **Phones first.** Everything works at 390px wide with no sideways scroll. Rows wrap (`flex-wrap: wrap`); fixed widths are `min()` or `max-width`.
 8. **Columns can shrink.** A page or view grid writes its columns as `minmax(0, 1fr)` (or gives the item `min-width: 0`), and anything that shows text a person or a file supplied sets `overflow-wrap: anywhere`. A bare grid column is as wide as its longest word, so one long address pushes the page off the screen.
 9. **A panel over the page scrolls by itself.** Give the part that holds the content `overflow: auto; min-height: 0; overscroll-behavior: contain`, and give every box between it and the panel's edge `flex: 1; min-height: 0` (or a fixed height), so the content scrolls instead of being cut off and the page behind stays still.
-10. **Text stays readable.** Body copy no wider than about 40rem. Nothing below `--text-sm`.
+10. **Text stays readable.** Body copy no wider than about 40rem. Nothing below `--text-sm`, except a chip, a count or a keyboard hint at `--text-xs`.
 
 ## Who styles what
 

@@ -29,7 +29,7 @@
     .open:hover { color: var(--fg); background: var(--bg-2); border-color: color-mix(in srgb, var(--fg) 22%, var(--border)); }
     .open:focus-visible, input:focus-visible { outline: 3px solid var(--ring, color-mix(in srgb, var(--accent) 70%, transparent)); outline-offset: 2px; }
     .open svg { width: 16px; height: 16px; flex: none; }
-    kbd { font: 500 12px var(--mono); padding: 1px var(--space-1); border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-2); color: var(--fg-2); white-space: nowrap; }
+    kbd { font: 500 var(--text-xs, 12px) var(--mono); padding: 1px var(--space-1); border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-2); color: var(--fg-2); white-space: nowrap; }
     .open kbd:empty { display: none; }
     /* On a phone there are no shortcuts to show, and room is short. */
     @media (pointer: coarse) { .open kbd { display: none; } }

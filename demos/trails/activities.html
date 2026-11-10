@@ -11,8 +11,8 @@
   .log { display: flex; flex-direction: column; gap: var(--space-4); }
   .log-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
   .log-head h2 { margin: 0 auto 0 0; font-size: var(--text-xl); letter-spacing: -0.01em; }
-  .filters { display: flex; flex-wrap: wrap; gap: 6px; }
-  .filters button { height: 32px; padding: 0 14px; border-radius: 999px; background: var(--surface); }
+  .filters { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .filters button { height: 32px; padding: 0 var(--space-4); border-radius: 999px; background: var(--surface); }
   .filters button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 
   .new { border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); }
@@ -22,22 +22,22 @@
   .new ui-form { display: block; padding: var(--space-4); }
 
   .feed { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
-  .act { --kind: var(--accent); display: grid; grid-template-rows: auto 1fr; overflow: hidden; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: 0 1px 2px rgb(0 0 0 / 0.04); transition: transform var(--duration) var(--ease), box-shadow var(--duration) var(--ease); }
-  .act:hover { transform: translateY(-3px); box-shadow: 0 18px 32px -18px rgb(0 0 0 / 0.35); }
-  .act[data-kind="run"] { --kind: #f97316; }
-  .act[data-kind="ride"] { --kind: #0ea5e9; }
-  .act[data-kind="hike"] { --kind: #16a34a; }
-  .act[data-kind="swim"] { --kind: #8b5cf6; }
+  .act { --kind: var(--accent); display: grid; grid-template-rows: auto 1fr; overflow: hidden; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow-1); transition: transform var(--duration) var(--ease), box-shadow var(--duration) var(--ease); }
+  .act:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); }
+  .act[data-kind="run"] { --kind: #f97316; } /* design-ok: the app's own palette */
+  .act[data-kind="ride"] { --kind: #0ea5e9; } /* design-ok: the app's own palette */
+  .act[data-kind="hike"] { --kind: #16a34a; } /* design-ok: the app's own palette */
+  .act[data-kind="swim"] { --kind: #8b5cf6; } /* design-ok: the app's own palette */
   .map { position: relative; height: 150px; background: linear-gradient(160deg, color-mix(in srgb, var(--kind) 14%, var(--bg-2)), var(--bg-2)); }
   .map img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .map .kind { position: absolute; top: 10px; left: 10px; display: inline-flex; gap: 6px; align-items: center; padding: 3px 10px 3px 6px; border-radius: 999px; font-size: var(--text-sm); font-weight: 600; color: #fff; background: var(--kind); box-shadow: 0 4px 12px -4px var(--kind); }
-  .map .feel { position: absolute; top: 8px; right: 10px; font-size: 1.3rem; filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.2)); }
+  .map .kind { position: absolute; top: 10px; left: 10px; display: inline-flex; gap: var(--space-1); align-items: center; padding: 3px var(--space-3) 3px var(--space-2); border-radius: 999px; font-size: var(--text-sm); font-weight: 600; color: #fff; background: var(--kind); box-shadow: 0 4px 12px -4px var(--kind); } /* design-ok: the app's own palette */
+  .map .feel { position: absolute; top: 8px; right: 10px; font-size: var(--text-xl); filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.2)); } /* design-ok: the app's own palette */
   .body { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-3) var(--space-4) var(--space-4); }
   .body h3 { margin: 0; font-size: var(--text-lg); }
   .body time { color: var(--fg-2); font-size: var(--text-sm); }
   .numbers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); margin: 0; }
   .numbers div { display: flex; flex-direction: column-reverse; }
-  .numbers dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-2); }
+  .numbers dt { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-2); }
   .numbers dd { margin: 0; font-weight: 700; font-size: var(--text-xl); line-height: 1.15; font-family: var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
   .numbers dd small { font-size: 0.55em; font-weight: 600; color: var(--fg-2); margin-left: 2px; }
   .extra { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--fg-2); font-size: var(--text-sm); }
@@ -45,7 +45,7 @@
   .extra .pace::before { content: "⏱"; }
   .extra .climb::before { content: "⛰"; }
   .notes { margin: 0; color: var(--fg-2); font-size: var(--text-sm); }
-  .more { align-self: center; height: 36px; padding: 0 22px; border-radius: 999px; }
+  .more { align-self: center; height: 36px; padding: 0 var(--space-5); border-radius: 999px; }
 </style>
 
 <template id="feed">

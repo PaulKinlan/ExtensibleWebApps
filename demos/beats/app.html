@@ -50,7 +50,7 @@
       }
     }
     body {
-      background:
+      background: /* design-ok: the drum machine's own look */
         radial-gradient(50rem 28rem at 15% -5%, rgb(255 93 143 / 0.16), transparent 60%),
         radial-gradient(46rem 30rem at 95% 10%, rgb(94 180 255 / 0.14), transparent 60%),
         radial-gradient(40rem 30rem at 50% 110%, rgb(177 140 255 / 0.12), transparent 60%),
@@ -59,8 +59,8 @@
       grid-template-columns: minmax(0, 1fr) minmax(0, 360px);
     }
     body > header { align-items: center; background: transparent; border-bottom: 0; }
-    body > header h1 { font-size: 1.15rem; letter-spacing: 0.02em; display: flex; align-items: center; gap: 10px; }
-    body > header h1::before { content: ""; width: 14px; height: 14px; border-radius: 4px; background: #ff5d8f; box-shadow: 18px 0 #ffb547, 36px 0 #5ef0c9, 54px 0 #b18cff; margin-right: 58px; }
+    body > header h1 { font-size: var(--text-lg); letter-spacing: 0.02em; display: flex; align-items: center; gap: var(--space-2); }
+    body > header h1::before { content: ""; width: 14px; height: 14px; border-radius: 4px; background: #ff5d8f; box-shadow: 18px 0 #ffb547, 36px 0 #5ef0c9, 54px 0 #b18cff; margin-right: 58px; } /* design-ok: the drum machine's own look */
     body > header nav.site { margin-left: auto; }
     body > header nav.site a { color: var(--fg-2); text-decoration: none; }
     body > header nav.site a:hover { color: var(--accent); }
@@ -69,7 +69,7 @@
     [data-plugin="ripples"] canvas { width: 100%; height: auto; aspect-ratio: 1; display: block; }
     [data-plugin="ripples"] h2, [data-plugin="ripples"] h3 { font-size: var(--text-sm); text-transform: uppercase; letter-spacing: 0.12em; color: var(--fg-2); margin: 0; }
     .hint { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
-    .hint kbd { font: 600 0.75rem var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-2); }
+    .hint kbd { font: 600 0.75rem var(--mono); padding: 1px var(--space-1); border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-2); }
     @media (max-width: 800px) {
       body { grid-template-columns: minmax(0, 1fr); }
       body > header nav.site { margin-left: 0; width: 100%; }
