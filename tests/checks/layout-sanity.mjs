@@ -299,6 +299,11 @@ export default async function ({ check, context, URL, errors }) {
         report(path);
         continue;
       }
+      // A page that links plugins has drawn once a view of one of them is on it. Customize's view doesn't count: the
+      // host adds it to every app, and it can be up before the app's own views are.
+      if (opens && (await page.evaluate(() => !!document.querySelector('link[rel="plugin"], link[rel="agent"]')).catch(() => false))) {
+        await page.waitForFunction(() => [...document.querySelectorAll('[data-key]:not([data-key^="customize"])')].some((el) => el.getBoundingClientRect().height > 0), null, { timeout: 15000 }).catch(() => {});
+      }
       const unready = await settle(page, path.endsWith("app.html"));
       if (opens) {
         const shown = await page.evaluate(drawn).catch(() => null);
