@@ -603,6 +603,8 @@ export default function (ctx) {
       const packages = await call("packages");
       const maker = Array.isArray(packages) ? packages.find((x) => x.id === "plugin-maker") : undefined;
       if (maker?.adds.length) await addAll(maker.adds);
+      // Here already and turned off (the person's, or the app's own): the button turns it back on.
+      else if (maker) return turn(maker.id);
       else message = "The plugin maker isn't in this site's registry.";
       return draw();
     }

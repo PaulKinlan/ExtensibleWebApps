@@ -66,6 +66,13 @@ export default async function ({ check, context, URL, errors }) {
     check("what the person describes there is written, shown on a review card, and runs once accepted", reviewed && shown, `${reviewed} ${shown}`);
     const told = await page.waitForSelector(`${maker} >> text=I saved Written card`, { timeout: 10000 }).then(() => true, () => false);
     check("the Make tab says what was saved, with the panel still open", told && (await page.isVisible(maker)));
+
+    // Turned off, the offer is back, and the button turns the maker on again: nothing is added twice, so no review.
+    await command("user:off", { id: "plugin-maker" });
+    const again = await page.waitForSelector("ui-panel [data-add-maker]", { timeout: 15000 }).then(() => true, () => false);
+    await page.click("ui-panel [data-add-maker]").catch(() => {});
+    const back = await page.waitForSelector(`${maker} input[name="text"]`, { state: "visible", timeout: 15000 }).then(() => true, () => false);
+    check("with the plugin maker turned off, \"Write it for me\" turns it back on, with no second review", again && back && !(await page.locator(review).count()), `${again} ${back}`);
   } finally {
     for (const id of ["written-card", "plugin-maker", "written-for-me-model"]) await command("user:remove", { id }).catch(() => {});
     await own.close();
