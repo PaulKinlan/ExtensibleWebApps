@@ -23,6 +23,8 @@ const settingsHandlers = new Set<(values: Record<string, unknown>) => void>();
 /** The trace id of the hook or event being handled; calls made while handling it carry it. */
 let activeTrace: string | undefined;
 const send = (message: PluginToKernel) => port.postMessage(message);
+/** The name of an error for a call whose service had no running provider to answer it (the kernel says so with `gone`). */
+const GONE = "ServiceGone";
 
 /**
  * Runs a plugin handler with `trace` as the active trace for its synchronous
@@ -315,7 +317,7 @@ async function receive(message: KernelToPlugin) {
       const waiting = calls.get(message.id);
       calls.delete(message.id);
       if (message.ok) waiting?.resolve(message.value);
-      else waiting?.reject(new Error(message.error));
+      else waiting?.reject(Object.assign(new Error(message.error), message.gone ? { name: GONE } : {}));
       return;
     }
   }
@@ -325,6 +327,13 @@ async function receive(message: KernelToPlugin) {
 self.addEventListener("error", (e) => port && ctx.log(String(e.message ?? e), "error"));
 self.addEventListener("unhandledrejection", (e) => {
   const reason = e.reason;
+  // A call left unanswered because the service's provider stopped or is off (a person's doing, not this plugin's
+  // mistake): a note, saying which call and which plugin, and no error on the page.
+  if (reason instanceof Error && reason.name === GONE) {
+    e.preventDefault();
+    if (port) ctx.log(reason.message);
+    return;
+  }
   if (port) ctx.log(`Unhandled: ${reason instanceof Error ? reason.message : String(reason)}`, "error");
 });
 

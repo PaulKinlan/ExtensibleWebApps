@@ -48,22 +48,57 @@ export async function whoHas(name, { token, account, fetch = globalThis.fetch })
  * @param {string} name @param {string} path
  * @param {{ replace?: boolean, token?: string, account?: string, fetch?: typeof fetch }} [options]
  */
-export async function checkName(name, path, { replace = false, fetch = globalThis.fetch, ...given } = {}) {
+export async function checkName(name, path, options = {}) {
+  return (await lookUp(name, path, options)).said;
+}
+
+/**
+ * checkName, and what it found, for the step that keeps the last deploy's files (scripts/deploy-keep.mjs):
+ * `was` is "free" (no Worker has the name), "same" (this app's Worker), "other" (a Worker that isn't this app's,
+ * being replaced as --replace says) or "unknown" (the account couldn't be read, and --replace said to go on).
+ * `token` and `account` are what it read the account with.
+ * @param {string} name @param {string} path
+ * @param {{ replace?: boolean, token?: string, account?: string, fetch?: typeof fetch }} [options]
+ * @returns {Promise<{ said: string, was: "free" | "same" | "other" | "unknown", token?: string, account?: string }>}
+ */
+export async function lookUp(name, path, { replace = false, fetch = globalThis.fetch, ...given } = {}) {
   const token = given.token ?? process.env.CLOUDFLARE_API_TOKEN ?? wranglerToken();
   if (!token) throw new Error(`Couldn't check whether a Worker called "${name}" is already in the account: set CLOUDFLARE_API_TOKEN, or run \`npx wrangler login\`. (--replace deploys without checking.)`);
   const account = given.account ?? process.env.CLOUDFLARE_ACCOUNT_ID ?? (await onlyAccount(token, fetch));
+  const access = { token, account };
   let found;
   try {
     found = await whoHas(name, { token, account, fetch });
   } catch (error) {
-    if (replace) return `Couldn't check the account (${error.message}); deploying anyway, as --replace says`;
+    if (replace) return { said: `Couldn't check the account (${error.message}); deploying anyway, as --replace says`, was: "unknown", ...access };
     throw new Error(`${error.message}. Nothing was deployed. (--replace deploys without checking.)`);
   }
-  if (found.free) return `No Worker is called "${name}" yet: deploying a new one`;
-  if (found.app === path) return `The Worker "${name}" serves /${path}/ already: deploying a new version of it`;
+  if (found.free) return { said: `No Worker is called "${name}" yet: deploying a new one`, was: "free", ...access };
+  if (found.app === path) return { said: `The Worker "${name}" serves /${path}/ already: deploying a new version of it`, was: "same", ...access };
   const what = found.app === undefined ? "a Worker that npm run deploy:app didn't make (or made before Workers were marked)" : `a Worker serving another app, /${found.app}/`;
-  if (replace) return `"${name}" is ${what}: replacing it, as --replace says`;
+  if (replace) return { said: `"${name}" is ${what}: replacing it, as --replace says`, was: "other", ...access };
   throw new Error(`"${name}" is already ${what}. Deploying would replace it, so nothing was deployed. Pick another name with --name, or pass --replace if replacing it is what you want.`);
+}
+
+/**
+ * The workers.dev address a Worker in the account is served at, `https://<name>.<subdomain>.workers.dev/`.
+ * Throws if the account has no workers.dev subdomain, the Worker isn't served there (it has only a domain of
+ * its own), or the account can't be read.
+ * @param {string} name
+ * @param {{ token: string, account: string, fetch?: typeof fetch }} access
+ */
+export async function addressOf(name, { token, account, fetch = globalThis.fetch }) {
+  const read = async (path, what) => {
+    const response = await fetch(`${API}/accounts/${encodeURIComponent(account)}/workers/${path}`, { headers: { authorization: `Bearer ${token}` } });
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body.success) throw new Error(`Couldn't read ${what}: ${(body.errors ?? []).map((e) => e.message).join("; ") || `the API answered ${response.status}`}`);
+    return body.result ?? {};
+  };
+  const { subdomain } = await read("subdomain", "the account's workers.dev subdomain");
+  if (typeof subdomain !== "string" || !/^[a-z0-9-]+$/.test(subdomain)) throw new Error("The account has no workers.dev subdomain");
+  const { enabled } = await read(`scripts/${encodeURIComponent(name)}/subdomain`, `whether the Worker "${name}" is served on workers.dev`);
+  if (enabled !== true) throw new Error(`The Worker "${name}" isn't served on workers.dev`);
+  return `https://${name}.${subdomain}.workers.dev/`;
 }
 
 /** The token `wrangler login` keeps, or undefined. */

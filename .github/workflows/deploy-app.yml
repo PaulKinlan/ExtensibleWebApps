@@ -8,6 +8,12 @@
 # A Worker with the same name is replaced only if it serves this same app
 # (scripts/deploy-guard.mjs); tick "replace" to deploy over any other.
 #
+# A deploy keeps the built files the Worker's last deploy served, so a page
+# that is open while it happens still finds the scripts it names
+# (scripts/deploy-keep.mjs). It reads them from the Worker's workers.dev
+# address, which it finds itself; "keep_from" is only for a Worker served
+# somewhere else.
+#
 # It needs two repository secrets, set once:
 #   CLOUDFLARE_API_TOKEN    a token made from the "Edit Cloudflare Workers" template
 #   CLOUDFLARE_ACCOUNT_ID   the account the Workers go in
@@ -30,6 +36,10 @@ on:
         type: boolean
         required: false
         default: false
+      keep_from:
+        description: "Only for a Worker not served on workers.dev: the address it is served at now, to keep its last deploy's files from"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -58,13 +68,14 @@ jobs:
           APP: ${{ inputs.app }}
           NAME: ${{ inputs.name }}
           REPLACE: ${{ inputs.replace && '--replace' || '' }}
+          KEEP_FROM: ${{ inputs.keep_from }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo "::error::Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID repository secrets first (docs/guide/deploying-an-app.md)"
             exit 1
           fi
           set -o pipefail
-          npm run deploy:app -- "$APP" ${NAME:+--name "$NAME"} $REPLACE 2>&1 | tee deploy.log
+          npm run deploy:app -- "$APP" ${NAME:+--name "$NAME"} ${KEEP_FROM:+--keep-from "$KEEP_FROM"} $REPLACE 2>&1 | tee deploy.log
           url=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | tail -1 || true)
           {
             echo "### Deployed \`$APP\`"

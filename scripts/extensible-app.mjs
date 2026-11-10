@@ -10,7 +10,7 @@
 //
 //   extensible-app dev [--port 5173] [--host 127.0.0.1]   serves the app at http://localhost:5173/
 //   extensible-app check [--json]                         the app's mistakes, without a browser
-//   extensible-app deploy [--name n] [--replace] [--no-deploy] [--dev]
+//   extensible-app deploy [--name n] [--replace] [--keep-from address] [--no-deploy] [--dev]
 //                                                         the app on a Cloudflare Worker of its own, at /
 //
 // What it serves is one site: the platform's built files (dist/ of this
@@ -254,7 +254,7 @@ const run = (command, args, cwd) => {
 const USAGE = `Usage, in your project's folder:
   extensible-app dev [--port 5173] [--host 127.0.0.1]
   extensible-app check [--json]
-  extensible-app deploy [--name worker-name] [--replace] [--no-deploy] [--dev]`;
+  extensible-app deploy [--name worker-name] [--replace] [--keep-from address] [--no-deploy] [--dev]`;
 
 // npm runs it through a link in node_modules/.bin, so compare the file the link points at.
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
@@ -292,6 +292,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
     } else if (command === "deploy") {
       const name = option("--name");
       const replace = flag("--replace");
+      const keepFrom = option("--keep-from");
       const noDeploy = flag("--no-deploy");
       const local = flag("--dev");
       if (args.length) throw Object.assign(new Error(USAGE), { code: 2 });
@@ -299,11 +300,18 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
       const config = relative(project, laid.config);
       console.log(`Wrote ${relative(project, laid.target)}/ for the Worker "${laid.worker}"`);
       if (local) run("npx", ["wrangler", "dev", "-c", config], project);
-      else if (noDeploy) console.log(`Deploy it with: npx wrangler deploy -c ${config}`);
-      else {
-        // Never over a Worker that isn't this app's, unless asked to (scripts/deploy-guard.mjs).
-        const { checkName } = await import("./deploy-guard.mjs");
-        console.log(await checkName(laid.worker, laid.app, { replace }));
+      else if (noDeploy) {
+        // Something else deploys what this wrote: the last deploy's files are kept from the address given.
+        if (keepFrom) {
+          const [{ keepAssets }, { addressGiven }] = await Promise.all([import("./keep-assets.mjs"), import("./deploy-keep.mjs")]);
+          await keepAssets({ dist: laid.site, site: addressGiven(keepFrom), log: (text) => console.log(text) });
+        }
+        console.log(`Deploy it with: npx wrangler deploy -c ${config}`);
+      } else {
+        // Never over a Worker that isn't this app's, unless asked to (scripts/deploy-guard.mjs), and with the
+        // built files its last deploy served, so a page open during the deploy still finds them (scripts/deploy-keep.mjs).
+        const { beforeDeploy } = await import("./deploy-keep.mjs");
+        for (const line of await beforeDeploy(laid.worker, laid.app, laid.site, { replace, keepFrom })) console.log(line);
         run("npx", ["wrangler", "deploy", "-c", config], project);
         console.log(`Your app is at https://${laid.worker}.<your workers.dev subdomain>/`);
       }
