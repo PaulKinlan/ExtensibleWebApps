@@ -83,7 +83,8 @@ export async function quietStreamChecks(check) {
     changed = false;
     return { status: 200, json: { notices } };
   };
-  const watch = (w) => ((wake = w), () => void stopped++);
+  let lost;
+  const watch = (w, l) => ((wake = w), (lost = l), () => void stopped++);
   const open = (options = {}) => mcpStream({ method: "GET", path: "/mcp/door", door: "mcp", member: "m", query: { session: "s", stream: "abcdef0123456789" } }, ask, watch, { beat: 40, key: async () => key, ...options });
   const idle = listen(await open());
   await wait(400);
@@ -115,10 +116,15 @@ export async function quietStreamChecks(check) {
   key = {};
   const brief = listen(await open({ life: 150 }));
   const timeUp = await until(() => brief.ended, 2000);
+  // The host can no longer tell it of changes (the kernel stopped, or its connection to it closed): it ends, so the client opens another.
+  const deaf = listen(await open());
+  await until(() => deaf.retry !== undefined, 2000);
+  lost();
+  const lostEnded = await until(() => deaf.ended, 2000);
   check(
-    "mcp stream: it ends when its key stops working, when the key runs out, and when its own time is up, and stops watching each time",
-    cut && ranOut && timeUp && asks.length === before + 2 && stopped === 3,
-    JSON.stringify({ cut, ranOut, timeUp, asks: asks.length - before, stopped }),
+    "mcp stream: it ends when its key stops working, when the key runs out, when its own time is up, and when the host can't tell it of changes any more, and stops watching each time",
+    cut && ranOut && timeUp && lostEnded && asks.length === before + 3 && stopped === 4,
+    JSON.stringify({ cut, ranOut, timeUp, lostEnded, asks: asks.length - before, stopped }),
   );
 }
 

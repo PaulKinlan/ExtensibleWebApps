@@ -205,7 +205,9 @@ function cdata(text: string): string {
 
 /** HTML's text: tags, comments, scripts and styles taken out, in one pass. Anything left unclosed is dropped. */
 function strip(html: string): string {
-  const lower = html.toLowerCase();
+  // Only A to Z, so `lower` is as long as `html` and a place in one is the same place in the other
+  // (toLowerCase makes some letters longer: İ becomes two characters).
+  const lower = html.replace(/[A-Z]+/g, (letters) => letters.toLowerCase());
   let out = "";
   let at = 0;
   for (;;) {

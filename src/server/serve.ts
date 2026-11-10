@@ -80,17 +80,22 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     mail: async (message) => (options.email ? options.email.send(message) : null),
   });
 
-  /** The MCP streams open for each space (src/server/mcp.ts mcpStream): each one's way to be told to ask its door again. */
-  const watching = new Map<string, Set<() => void>>();
+  /** The MCP streams open for each space (src/server/mcp.ts mcpStream): each one's way to be told to ask its door again, or that nothing can tell it any more. */
+  const watching = new Map<string, Set<{ wake(): void; lost(): void }>>();
   /** Wakes a space's streams: its kernel said its door may answer differently, or a key for it ended. */
   function woken(name: string) {
-    for (const wake of [...(watching.get(name) ?? [])]) wake();
+    for (const stream of [...(watching.get(name) ?? [])]) stream.wake();
   }
-  const watch = (name: string): Watch => (wake) => {
+  /** A space's kernel stopped (it failed, or its folder is being copied): its streams end, and their clients open new ones, which start it again. */
+  function stopped(name: string) {
+    for (const stream of [...(watching.get(name) ?? [])]) stream.lost();
+  }
+  const watch = (name: string): Watch => (wake, lost) => {
     const set = watching.get(name) ?? new Set();
-    watching.set(name, set.add(wake));
+    const stream = { wake, lost };
+    watching.set(name, set.add(stream));
     return () => {
-      set.delete(wake);
+      set.delete(stream);
       if (!set.size && watching.get(name) === set) watching.delete(name);
     };
   };
@@ -131,7 +136,11 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
           spaces.delete(name);
           fail(error);
         });
-        worker.on("exit", () => spaces.delete(name));
+        worker.on("exit", () => {
+          // Only if it is still this space's kernel: a newer one may have started since.
+          if (spaces.get(name) === started) spaces.delete(name);
+          stopped(name);
+        });
       });
       spaces.set(name, started);
     }

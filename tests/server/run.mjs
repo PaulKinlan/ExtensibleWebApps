@@ -723,13 +723,14 @@ async function networkGuardChecks(base, check, host) {
     redirect: await probe(`http://127.0.0.1:${port}/hop-name`),
     outside: await probe("https://outside.example/"),
     unknown: await probe("https://broken.example/"),
+    nowhere: await probe("https://no-such-name.example/"),
   };
   local.close();
   const refused = (r) => r?.ok === false && /server's own network/.test(r.error);
   if (names)
     check(
-      "network guard (cloudflare): a name that leads to a private address is refused as on Node (any of its addresses, IPv6, behind an alias, or after a redirect), a name that leads outside is asked, and a name that can't be looked up isn't",
-      refused(names.inside) && /inside\.example \(10\.1\.2\.3\)/.test(names.inside.error) && refused(names.oneOfTwo) && refused(names.ipv6) && refused(names.alias) && refused(names.redirect) && !refused(names.outside) && !/where .* leads/.test(names.outside?.error ?? "") && names.unknown?.ok === false && /Couldn't find where broken\.example leads/.test(names.unknown.error),
+      "network guard (cloudflare): a name that leads to a private address is refused as on Node (any of its addresses, IPv6, behind an alias, or after a redirect), a name that leads outside is asked, and a name that can't be looked up or has no address isn't",
+      refused(names.inside) && /inside\.example \(10\.1\.2\.3\)/.test(names.inside.error) && refused(names.oneOfTwo) && refused(names.ipv6) && refused(names.alias) && refused(names.redirect) && !refused(names.outside) && !/where .* leads/.test(names.outside?.error ?? "") && names.unknown?.ok === false && /Couldn't find where broken\.example leads/.test(names.unknown.error) && names.nowhere?.ok === false && /no-such-name\.example leads.*no address/.test(names.nowhere.error),
       JSON.stringify(names),
     );
   check(

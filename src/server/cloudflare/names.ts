@@ -14,8 +14,8 @@
 //
 // The resolver is Cloudflare's (RESOLVER) unless the deployment names another
 // with the DNS_RESOLVER variable (the server checks name a stand-in on this
-// machine). A name that can't be looked up at all isn't asked: not knowing
-// where it leads is a refusal, not a pass.
+// machine). A name that can't be looked up at all, or has no address, isn't
+// asked: not knowing where it leads is a refusal, not a pass.
 
 /** The resolver asked when the deployment names none: Cloudflare's, as JSON. */
 export const RESOLVER = "https://cloudflare-dns.com/dns-query";

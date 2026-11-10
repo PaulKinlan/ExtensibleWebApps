@@ -55,11 +55,15 @@ const isAddress = (hostname: string) => hostname.startsWith("[") || /^\d+\.\d+\.
 /**
  * The first address on the server's own network that a name leads to, if any: asked of the resolver, since a
  * Worker can't look a name up itself (names.ts). Undefined for a name that only leads outside, and for an IP
- * address, which isOwnNetwork has already judged as written.
+ * address, which isOwnNetwork has already judged as written. Throws for a name with no address at all.
  */
 export async function leadsInside(hostname: string, resolver?: string): Promise<string | undefined> {
   if (isAddress(hostname)) return undefined;
-  return (await addressesOf(hostname, resolver)).find((address) => isOwnNetwork(address.includes(":") ? `[${address}]` : address));
+  const addresses = await addressesOf(hostname, resolver);
+  // A name the resolver has no address for isn't asked: the request's own lookup might know one (a hosts file
+  // under wrangler dev, a private zone), and that address would go unchecked.
+  if (!addresses.length) throw new Error(`Couldn't find where ${hostname} leads, so it wasn't asked: it has no address`);
+  return addresses.find((address) => isOwnNetwork(address.includes(":") ? `[${address}]` : address));
 }
 
 const refusal = (where: string) => new Error(`A server plugin can't reach ${where}: it is on the server's own network`);

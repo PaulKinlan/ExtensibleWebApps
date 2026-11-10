@@ -377,12 +377,15 @@ async function mcp(request: Request, env: Env): Promise<Response | undefined> {
   // the Worker watches the door (WATCH), and asks only when the object says something may have changed.
   if (asked.method === "GET") {
     const authorization = request.headers.get("authorization");
-    const watch: Watch = async (wake) => {
+    const watch: Watch = async (wake, lost) => {
       const opened = await space.fetch(new Request("https://space/watch/mcp", { headers: { upgrade: "websocket" } }));
       const socket = opened.webSocket;
       if (!socket) throw new Error("The space didn't let its door be watched");
       socket.accept();
       socket.addEventListener("message", () => wake());
+      // The socket went (the space's object restarted, or the connection dropped): nothing would wake the stream again.
+      socket.addEventListener("close", () => lost());
+      socket.addEventListener("error", () => lost());
       return () => {
         try {
           socket.close(1000, "The stream ended");

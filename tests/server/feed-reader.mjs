@@ -72,12 +72,15 @@ export async function feedReaderChecks(base, check, host) {
   const atom = `<?xml version="1.0"?><atom:feed xmlns:atom="http://www.w3.org/2005/Atom" xml:base="https://blog.example/"><atom:title>An &amp; Atom feed</atom:title>
 <atom:entry><atom:title type="html">&lt;b&gt;Bold&lt;/b&gt; &amp;mdash; news</atom:title><atom:link rel="self" href="/self"/><atom:link rel="alternate" href="posts/1"/><atom:id>tag:1</atom:id><atom:updated>2026-11-08T10:00:00Z</atom:updated><atom:summary><![CDATA[<!-- hidden --><style>p{}</style><p>Hello <a href="x">there</a></p>]]></atom:summary></atom:entry>
 <atom:entry xml:base="https://other.example/"><atom:title>Second</atom:title><atom:link href="two"/><atom:published>2026-11-07T10:00:00Z</atom:published><atom:content>&lt;script&gt;alert(1)&lt;/script&gt;Kept &sbquo;words&rsquo;</atom:content></atom:entry>
+<atom:entry><atom:title>İstanbul</atom:title><atom:link href="three"/><atom:published>2026-11-06T10:00:00Z</atom:published><atom:summary>İ&lt;STYLE&gt;p{color:red}&lt;/STYLE&gt;&lt;script&gt;hidden()&lt;/script&gt;&lt;p&gt;Kept&lt;/p&gt;</atom:summary></atom:entry>
 <atom:entry><atom:title>Left open</atom:title>
 </atom:feed>`;
   const same = [rss, atom].map((xml) => {
     const site = parse(xml, "https://feeds.example/feed.xml");
     const plugin = pluginParse(xml, "https://feeds.example/feed.xml");
     const newest = (items) => items.toSorted((a, b) => (b.published || "").localeCompare(a.published || ""));
+    // A letter whose lower case is longer (İ) ahead of a style and a script doesn't let their text through.
+    if (xml === atom && site.items[2]?.summary !== "İ Kept") return { ok: false, site, plugin };
     return { ok: JSON.stringify({ title: site.title, items: site.items }) === JSON.stringify({ title: plugin.title, items: newest(plugin.items) }) && site.items.length >= 2, site, plugin };
   });
   let notAFeed = "";

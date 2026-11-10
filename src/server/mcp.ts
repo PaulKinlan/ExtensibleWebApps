@@ -128,18 +128,20 @@ export function mcpResponse(result: RouteResponse | null): Response {
 const randomHex = () => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
 /**
- * How a host tells a stream to ask again: `watch(wake)` calls `wake` each time the space's kernel says what
- * its door answers may have changed, or a key for the space ended, and gives back a way to stop.
+ * How a host tells a stream to ask again: `watch(wake, lost)` calls `wake` each time the space's kernel says
+ * what its door answers may have changed, or a key for the space ended, and gives back a way to stop. It
+ * calls `lost` if it can no longer tell (the kernel stopped, or the connection it hears over closed): the
+ * stream ends then, and the client opens another, since nothing would wake it again.
  */
-export type Watch = (wake: () => void) => (() => void) | Promise<() => void>;
+export type Watch = (wake: () => void, lost: () => void) => (() => void) | Promise<() => void>;
 
 /**
  * A client's GET stream, kept open by the host. It asks the kernel (`ask`, the door `mcp`) once as it opens,
  * and after that only when the host's `watch` wakes it: then it checks the key still works (`key`), asks the
  * door whether the tools changed, and sends a notice when they did. Nothing is asked on a timer; a comment
  * goes out every `beat` so the connection is seen to be alive. It ends after `life`, when its key runs out or
- * stops working, or when the door says the session or stream is over (the client ended the session, or
- * opened a newer stream). An answer other than 200 to the first ask is the response.
+ * stops working, when the door says the session or stream is over (the client ended the session, or
+ * opened a newer stream), or when the host can no longer tell it of changes (`watch` says it's lost). An answer other than 200 to the first ask is the response.
  */
 export async function mcpStream(
   asked: RouteRequest,
@@ -152,7 +154,12 @@ export async function mcpStream(
   // Watching starts before the first ask, so a change between that ask and the stream opening isn't missed.
   let woken = false;
   let wake = () => void (woken = true);
-  const stop = await watch(() => wake());
+  let gone = false;
+  let lost: () => void = () => void (gone = true);
+  const stop = await watch(
+    () => wake(),
+    () => lost(),
+  );
   let opened: RouteResponse | null = null;
   let held: { expires?: number } | null = null;
   try {
@@ -232,8 +239,10 @@ export async function mcpStream(
         }
       };
       wake = () => void look();
+      lost = end;
       send(`retry: ${RETRY_MS}\n\n${events(first)}`);
-      if (woken) void look();
+      if (gone) end();
+      else if (woken) void look();
     },
     cancel() {
       finish();
