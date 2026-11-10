@@ -19,6 +19,11 @@
 //              app-maker (default: all)
 //   OUT        where the report, screenshots and made files go
 //              (default .build/real-model)
+//   MODEL      which Gemini model answers: a tier (best, balanced, fast) or a
+//              model's id. Without it each feature uses what it ships with,
+//              which is `best`. With it, the built site in dist/ is changed
+//              for the length of the run and put back after: the Gemini
+//              provider's default model, and the app maker's `model:`.
 //
 // Exits non-zero if any check fails.
 
@@ -44,8 +49,35 @@ if (unknown.length) {
   process.exit(2);
 }
 const ROOT = fileURLToPath(new globalThis.URL("../../", import.meta.url));
+const MODEL = (process.env.MODEL ?? "").trim();
+if (MODEL && !/^[a-z0-9][a-z0-9.-]{1,60}$/.test(MODEL)) {
+  console.error("MODEL is a tier (best, balanced, fast) or a model's id, such as gemini-3.8-flash.");
+  process.exit(2);
+}
 const OUT = process.env.OUT ? process.env.OUT : join(ROOT, ".build/real-model");
 mkdirSync(OUT, { recursive: true });
+
+/**
+ * The model choice, made in the built site the run serves. Each change must find its line: a file that no longer
+ * says what this expects fails the run, so a run never quietly uses another model than the one asked for.
+ */
+const restore = [];
+// Put back however the run ends.
+process.on("exit", () => restore.splice(0).forEach((undo) => undo()));
+if (MODEL) {
+  const change = (file, from, to) => {
+    const path = join(ROOT, "dist", file);
+    const text = readFileSync(path, "utf8");
+    if (text.split(from).length !== 2) {
+      console.error(`Can't set the model: dist/${file} doesn't have exactly one ${JSON.stringify(from)}. Run npm run build first.`);
+      process.exit(2);
+    }
+    restore.push(() => writeFileSync(path, text));
+    writeFileSync(path, text.replace(from, to));
+  };
+  change("std/llm/gemini.js", 'default: "best",', `default: ${JSON.stringify(MODEL)},`);
+  change("std/maker/app-maker.agent.md", "\nmodel: best\n", `\nmodel: ${MODEL}\n`);
+}
 
 const PORT = 4179;
 const URL = `http://localhost:${PORT}/`;
@@ -227,7 +259,8 @@ await feature("ask", async ({ context, errors, info, track }) => {
   const text = answered ? await page.textContent(`${ask} .answer`) : await page.textContent(ask).catch(() => "");
   check("the Gemini key card came up once and took the key", person.seen.keys === 1 && !person.seen.refusedKeyCards.length, `${person.seen.keys} key cards; ${person.seen.refusedKeyCards.join(" | ")}`);
   check("Gemini answers a question about a plugin on the page", answered && text.trim().length > 40, text.slice(0, 600));
-  check("the answer is about the plugin's code: it names the hook that stops the save", /beforeWrite|data:before/i.test(text), text.slice(0, 300));
+  // Only the plugin's code says what it stops: notes written all in capitals. A model may name the hook or say it in plain words.
+  check("the answer comes from the plugin's code: it says the note is stopped for being all capitals", /capital|upper.?case/i.test(text), text.slice(0, 300));
   const about = (await page.textContent(`${ask} .about-answer`).catch(() => "")) ?? "";
   check("it says which model answered and what it cost", /Answered by Gemini, \S+ · \d+ in, \d+ out tokens/.test(about), about);
   check("the answer reads as plain text, with no Markdown marks left in it", answered && !markdown(text), text.slice(0, 300));
@@ -480,7 +513,7 @@ for (const f of Object.values(features)) for (const [model, u] of Object.entries
 const md = [
   `# Model features with a real Gemini model`,
   ``,
-  `${results.length - failed.length} of ${results.length} checks passed. Features run: ${FEATURES.join(", ")}.`,
+  `${results.length - failed.length} of ${results.length} checks passed. Features run: ${FEATURES.join(", ")}. Model asked for: ${MODEL || "each feature's own (best)"}.`,
   ``,
   `| Model | Calls | Tokens in | Tokens out |`,
   `| --- | ---: | ---: | ---: |`,
