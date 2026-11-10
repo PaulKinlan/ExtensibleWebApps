@@ -28,7 +28,7 @@ export default async function (ctx) {
     api.ui.render(
       "side",
       "tidy",
-      html`<h2>Tidy</h2>
+      html`<h3>Tidy</h3>
         ${note
           ? html`<ui-toolbar><button data-action="tidy">Tidy this note</button><button data-action="export">Export as Markdown</button></ui-toolbar>`
           : html`<p><small>Open a note to tidy or export it.</small></p>`}

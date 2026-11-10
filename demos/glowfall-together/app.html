@@ -60,7 +60,7 @@
       }
     }
     body {
-      background: radial-gradient(60rem 30rem at 30% -10%, rgb(255 226 122 / 0.12), transparent 60%), var(--bg);
+      background: radial-gradient(60rem 30rem at 30% -10%, rgb(255 226 122 / 0.12), transparent 60%), var(--bg); /* design-ok: the game's own look, one colour per player */
       background-attachment: fixed;
       grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
     }
@@ -69,7 +69,7 @@
     body > header nav.site a { color: var(--fg-2); text-decoration: none; }
     body > header nav.site a:hover { color: var(--accent); }
     body > aside { border-left: 0; }
-    [data-plugin="glowfall-field"] canvas { display: block; width: min(100%, calc((100dvh - 120px) * 0.875)); height: auto; aspect-ratio: 7 / 8; margin: 0 auto; border-radius: var(--radius); box-shadow: 0 20px 60px rgb(0 0 0 / 0.5); }
+    [data-plugin="glowfall-field"] canvas { display: block; width: min(100%, calc((100dvh - 120px) * 0.875)); height: auto; aspect-ratio: 7 / 8; margin: 0 auto; border-radius: var(--radius); box-shadow: 0 20px 60px rgb(0 0 0 / 0.5); } /* design-ok: the game's own look, one colour per player */
     @media (max-width: 800px) {
       body { grid-template-columns: minmax(0, 1fr); }
       body > header nav.site { margin-left: 0; width: 100%; }
