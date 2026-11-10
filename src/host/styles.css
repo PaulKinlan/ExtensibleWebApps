@@ -106,6 +106,8 @@ dialog#review > [data-key] + [data-key] { margin-top: 16px; padding-top: 16px; b
 .ok { color: var(--ok); }
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .stack.row { flex-direction: row; align-items: center; }
+/* A button in a column keeps its own width, as it has in a row: stretched across the view it reads as a bar, not a button. */
+.stack:not(.row) > button { align-self: flex-start; }
 h2 { font-size: 15px; margin: 0; }
 /* Buttons, and links made to look like one (<a class="button">). */
 button, a.button { font: inherit; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--control); padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); cursor: pointer; text-decoration: none; white-space: nowrap; transition: background var(--duration) var(--ease), border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease); }
@@ -113,6 +115,8 @@ button, a.button { font: inherit; font-weight: 500; display: inline-flex; align-
 button:hover, a.button:hover { background: var(--bg-2); border-color: color-mix(in srgb, var(--fg) 22%, var(--border)); }
 button:active, a.button:active { transform: translateY(0.5px); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
+/* A toolbar's buttons that choose between views (aria-pressed): the chosen one says so. */
+ui-toolbar > button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 button.primary, a.button.primary, form > button[type="submit"]:only-of-type { background: var(--action); color: var(--action-fg); border-color: var(--action); }
 button.primary:hover, a.button.primary:hover, form > button[type="submit"]:only-of-type:hover { background: color-mix(in srgb, var(--action) 85%, var(--action-fg)); border-color: color-mix(in srgb, var(--action) 85%, var(--action-fg)); }
 :where(button, a.button, input, select, textarea, summary):focus-visible { outline: 3px solid var(--ring); outline-offset: 1px; }
@@ -216,6 +220,8 @@ body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; o
 .html-view button[type="submit"]:not(.secondary), .html-view button[data-primary] { background: var(--action); color: var(--action-fg); border-color: var(--action); }
 .html-view button[type="submit"]:not(.secondary):hover, .html-view button[data-primary]:hover { background: color-mix(in srgb, var(--action) 85%, var(--action-fg)); }
 .html-view button:disabled { opacity: 0.5; cursor: not-allowed; }
+/* A toolbar's buttons that choose between views (aria-pressed): the chosen one says so. */
+ui-toolbar > button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--surface)); }
 .html-view progress, .html-view meter { width: 100%; accent-color: var(--accent); }
 
 /* ---- Components ---- */

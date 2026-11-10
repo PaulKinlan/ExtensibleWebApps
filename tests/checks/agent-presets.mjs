@@ -48,7 +48,7 @@ export default async function ({ a, check, openTab, URL }) {
   const seen = (selector, timeout = 10000) => page.waitForSelector(selector, { timeout }).then(() => true, () => false);
   const chatSays = (text, timeout = 15000) => seen(`${chat} >> text=${text}`, timeout);
   const send = async (agent, text) => {
-    await page.selectOption(`${chat} select`, agent);
+    await page.selectOption(`${chat} select[data-action="agent"]`, agent);
     await page.fill(`${chat} input[name="text"]`, text);
     await page.click(`${chat} button[type="submit"]`);
   };
@@ -58,8 +58,9 @@ export default async function ({ a, check, openTab, URL }) {
     await page.evaluate((data) => window.__host.command("user:add", { app: "demos/assistant", files: [{ name: "fake-model.js", data }] }), MODEL);
     await page.evaluate(() => window.__host.command("user:on", { app: "demos/assistant", id: "fake-model" }));
 
-    const listed = await page.waitForFunction((s) => [...document.querySelectorAll(`${s} select option`)].map((o) => o.value).sort().join() === "assistant,builder", chat, { timeout: 10000 }).then(() => true, () => false);
-    check("the chat lists the app's agents that have an inbox", listed);
+    // The agents' picker only: with two models there (the app's and the scripted one) the chat draws a model picker beside it.
+    const listed = await page.waitForFunction((s) => [...document.querySelectorAll(`${s} select[data-action="agent"] option`)].map((o) => o.value).sort().join() === "assistant,builder", chat, { timeout: 10000 }).then(() => true, () => false);
+    check("the chat lists the app's agents that have an inbox", listed, listed ? "" : await page.evaluate((s) => [...document.querySelectorAll(`${s} select`)].map((select) => `${select.name || "select"}: ${[...select.options].map((o) => o.value).join(",")}`).join("; ") || "no select in the chat", chat));
 
     // The assistant: the app's commands are its tools.
     await send("assistant", "Add Piranesi by Susanna Clarke");
