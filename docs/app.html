@@ -13,33 +13,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>Extensible Web Apps docs</title>
   <meta name="description" content="How to build web apps that the people using them can change: the guide, the security model, and the reference.">
   <link rel="stylesheet" href="/platform/host.css">
   <script type="module" src="/platform/host.js"></script>
   <link rel="plugin" href="docs.js">
   <style>
-    body > header nav { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-left: auto; }
-    body > header h1 a { color: inherit; text-decoration: none; }
-    .docs { display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: 24px; padding: 16px; max-width: 1200px; width: 100%; box-sizing: border-box; margin: 0 auto; align-items: start; }
-    .contents { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+    .docs { grid-area: main; display: grid; grid-template-columns: minmax(0, 260px) minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5); max-width: 1200px; width: 100%; box-sizing: border-box; margin: 0 auto; align-items: start; }
+    .contents { position: sticky; top: var(--space-4); max-height: calc(100vh - var(--space-6)); overflow: auto; }
     .contents summary { display: none; }
     .page { min-width: 0; }
     @media (max-width: 800px) {
-      .docs { grid-template-columns: minmax(0, 1fr); }
-      .contents { position: static; max-height: none; border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; }
+      .docs { grid-template-columns: minmax(0, 1fr); padding: var(--space-4); }
+      .contents { position: static; max-height: none; border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2) var(--space-3); }
       .contents summary { display: list-item; cursor: pointer; font-weight: 600; }
     }
   </style>
 </head>
 <body>
   <header>
-    <h1><a href="./">Extensible Web Apps docs</a></h1>
-    <nav aria-label="Elsewhere">
+    <h1><a href="/docs/">Docs</a></h1>
+    <nav class="site" aria-label="This site">
       <a href="/">Home</a>
-      <a href="/demos/">Demo apps</a>
+      <a href="/demos/">All demos</a>
+      <a href="/packages/">Plugins</a>
+      <a href="/docs/" aria-current="page">Docs</a>
       <a href="/workbench/">Workbench</a>
-      <a href="https://github.com/PaulKinlan/ExtensibleWebApps">Code</a>
     </nav>
   </header>
   <div class="docs">

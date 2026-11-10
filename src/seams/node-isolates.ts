@@ -10,10 +10,21 @@
 // Cloudflare's isolates are stronger (a Dynamic Worker with no outbound
 // network at all); this is the development and self-hosting host.
 
-import { type ChildProcess, fork } from "node:child_process";
+import { type ChildProcess, execFileSync, fork } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { MessageChannel, type MessagePort } from "node:worker_threads";
 import type { Isolates } from "./index.ts";
+
+// Node 25+ blocks sockets under --permission unless --allow-net is passed; Node 22 has no --allow-net flag
+// and rejects unknown execArgv options on fork(). Probe once so both Node 22 and Node 25+ start cleanly.
+const ALLOW_NET_FLAG = (() => {
+  try {
+    execFileSync(process.execPath, ["--permission", "--allow-net", "-e", ""], { stdio: "ignore" });
+    return ["--allow-net"];
+  } catch {
+    return [];
+  }
+})();
 
 /** `allowPrivate`: hosts on the server's own network that plugins with `network` may reach anyway (src/server/network-guard.ts). */
 export function nodeIsolates(runtime: string, { allowPrivate = [] }: { allowPrivate?: string[] } = {}): Isolates {
@@ -33,7 +44,7 @@ export function nodeIsolates(runtime: string, { allowPrivate = [] }: { allowPriv
       stop(name);
       const child = fork(file, [], {
         // It may read its own runtime (beside it, in the build folder), and nothing else; no dynamic eval/Wasm, bounded heap, and OS-level net gate.
-        execArgv: ["--permission", `--allow-fs-read=${dirname(file)}/*`, ...(network ? ["--allow-net"] : []), "--disallow-code-generation-from-strings", "--max-old-space-size=128", "--no-warnings"],
+        execArgv: ["--permission", `--allow-fs-read=${dirname(file)}/*`, ...(network ? ALLOW_NET_FLAG : []), "--disallow-code-generation-from-strings", "--max-old-space-size=128", "--no-warnings"],
         // Nothing of the server's: no environment (keys live there), no input. Only the certificate authorities the
         // server trusts beyond Node's own (a company's, or a test's), so a plugin's https trusts the same sites.
         env: process.env.NODE_EXTRA_CA_CERTS ? { NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS } : {},

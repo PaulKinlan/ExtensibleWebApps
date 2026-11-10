@@ -16,6 +16,23 @@ export default async function ({ check, context, URL, errors }) {
   });
   check("every demo's header links Home, All demos, Docs and the Workbench", !noNav.length, noNav.join(", "));
 
+  const topPages = [
+    ["/", "", 'href="/" aria-current="page"'],
+    ["/demos/", "demos/", 'href="/demos/" aria-current="page"'],
+    ["/packages/", "packages/", 'href="/packages/" aria-current="page"'],
+    ["/docs/", "docs/app.html", 'href="/docs/" aria-current="page"'],
+  ];
+  const badTop = [];
+  for (const [label, file, current] of topPages) {
+    const html = await fetch(`${URL}${file}`).then((r) => r.text(), () => "");
+    const ok =
+      html.includes('<nav class="site" aria-label="This site">') &&
+      html.includes(current) &&
+      ["/", "/demos/", "/packages/", "/docs/", "/workbench/"].every((href) => html.includes(`href="${href}"`));
+    if (!ok) badTop.push(label);
+  }
+  check("/, /demos/, /packages/ and /docs/ share the same site header and current-page nav", !badTop.length, badTop.join(", "));
+
   const own = await context.browser().newContext();
   const page = await own.newPage();
   watchErrors(page, errors, "site-nav");
