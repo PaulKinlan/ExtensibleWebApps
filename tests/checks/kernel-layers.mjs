@@ -47,6 +47,7 @@ const CORE = [
   "store.ts",
   "switches.ts",
   "trace.ts",
+  "user-plugin-changes.ts",
   "user-plugins.ts",
 ];
 
@@ -65,6 +66,7 @@ const ON_DEMAND = [
   "authoring.ts",
   "manifest-fields.ts",
   "reference.ts",
+  "user-plugin-changes.ts",
 ];
 
 const files = (dir = "") =>

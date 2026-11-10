@@ -19,8 +19,8 @@ export const manifest = {
   name: "Chat",
   description: "Write to the app's agents, such as the assistant or the builder, and read their answers.",
   version: "1.0.0",
-  permissions: ["ui", "bus:send:*"],
-  services: ["agents", "bus"],
+  permissions: ["ui", "bus:send:*", "llm"],
+  services: ["agents", "bus", "llm"],
   // Each tab has its own conversation.
   scope: "tab",
 };
@@ -38,6 +38,8 @@ export default function (ctx) {
   const lines = [];
   let next = 0;
   let sending = false;
+  /** The models to pick from: [{ id, name, picked }]. */
+  let models = [];
 
   const say = (who, text, tone, from, to) => {
     lines.push({ n: ++next, who, text, tone, from, to });
@@ -45,10 +47,17 @@ export default function (ctx) {
   };
   const draw = () => {
     const agent = agents.find((a) => a.id === picked);
-    views.render("chat", "chat", { agents: agents.map((a) => ({ ...a, picked: a.id === picked })), none: !agents.length, about: agent?.description ?? "", lines, sending, name: agent?.name ?? "" });
+    views.render("chat", "chat", { agents: agents.map((a) => ({ ...a, picked: a.id === picked })), none: !agents.length, models: models.length > 1 ? models : [], about: agent?.description ?? "", lines, sending, name: agent?.name ?? "" });
+  };
+  /** The app's language models, for the picker: shown when there is more than one to pick from. */
+  const readModels = async () => {
+    const list = await ctx.call("llm", "providers").catch(() => []);
+    const on = list.find((p) => p.preferred) ?? list.find((p) => p.ready) ?? list[0];
+    models = list.map((p) => ({ id: p.id, name: p.ready ? p.name : `${p.name} (asks for your key)`, picked: p === on }));
   };
   /** Looks for agents again; resolves to how many it found. */
   const look = async () => {
+    await readModels();
     const list = await ctx.call("agents", "list").catch(() => []);
     agents = list.filter((a) => a.inbox).map(({ id, name, description }) => ({ id, name, description }));
     if (!agents.some((a) => a.id === picked)) picked = agents.find((a) => a.id === "assistant")?.id ?? agents[0]?.id ?? "";
@@ -89,6 +98,12 @@ export default function (ctx) {
   ctx.ui.onEvent(async (action, value) => {
     if (action === "agent" && typeof value === "string") {
       picked = value;
+      return draw();
+    }
+    if (action === "model" && typeof value === "string") {
+      // The person's pick, for every app: the one that answers until they pick another.
+      await ctx.call("llm", "prefer", value).catch(() => {});
+      await readModels();
       return draw();
     }
     if (action === "send") {

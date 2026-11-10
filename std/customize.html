@@ -4,7 +4,7 @@
   then, while it is open, one tab at a time:
 
   - Plugins: query, here (every plugin on the page: { id, name, description,
-    who, user, app, on, off, error, offHint, places, share }), groups (what
+    who, user, app, on, off, error, offHint, places, share, reach, reachTitle }), groups (what
     can be added, by kind: { kind, title, about, packages }), samples,
     registry, nothingFound. A package and a sample each say what they can do
     once on (can, the kernel's words for their permissions). Each place is { key, where, label, ok, fragile,
@@ -187,6 +187,7 @@
                   <div class="entry-actions">
                     <template if="p.on"><button type="button" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn off</button></template>
                     <template if="p.off"><button type="button" class="primary" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn on</button></template>
+                    <template if="p.reach"><button type="button" data-action="reach" data-value="{{p.id}}" data-reach="{{p.id}}" title="{{p.reachTitle}}">{{p.reach}}</button></template>
                     <template if="p.share"><button type="button" data-action="share" data-value="{{p.id}}" data-share="{{p.id}}">{{p.share}}</button></template>
                     <template if="p.user"><button type="button" class="secondary" data-action="remove" data-value="{{p.id}}" data-remove="{{p.id}}">Remove</button></template>
                   </div>

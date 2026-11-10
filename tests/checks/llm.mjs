@@ -114,6 +114,7 @@ export default async (ctx) => {
   ctx.log('asker-unsupported ' + await ctx.call('llm', 'complete', { messages: [{ role: 'user', content: 'hi' }], schema: { type: 'object', patternProperties: {} } }).then(() => 'answered', (e) => e.message));
   ctx.log('asker-bad ' + await ctx.call('llm', 'complete', { messages: [{ role: 'assistant', content: 'hi' }] }).then(() => 'answered', (e) => e.message));
   ctx.log('asker-default ' + (await ctx.call('llm', 'complete', { messages: [{ role: 'user', content: 'anyone' }] })).provider);
+  ctx.log('asker-absent ' + await ctx.call('llm', 'complete', { provider: 'llm-nobody', messages: [{ role: 'user', content: 'anyone' }] }).then((r) => 'answered by ' + r.provider, (e) => e.message));
   ctx.log('asker-done');
 };`);
     const providers = await pluginLog("asker", "asker-providers").catch(() => "");
@@ -165,6 +166,7 @@ export default async (ctx) => {
     check("an answer that isn't of the schema's shape is an error, not a value", /isn't of the shape asked for: answer/.test(await log("asker-shape")), await log("asker-shape"));
     check("a schema outside the platform's JSON Schema subset is refused before any vendor is asked", /patternProperties/.test(await log("asker-unsupported")), await log("asker-unsupported"));
     check("the kernel refuses a request whose first message isn't the person's", /first message is the person's/.test(await log("asker-bad")), await log("asker-bad"));
+    check("a provider that is named and isn't in the app is an error, never another vendor's answer", /^asker-absent No provider llm-nobody in this app/.test(await log("asker-absent")), await log("asker-absent"));
     check("without a provider named, the first ready one answers", /asker-default llm-(anthropic|openai|gemini)/.test(await log("asker-default")));
     check("the trace records each answer: provider, model, how it stopped and the tokens", await traceHas(a, (e) => e.name === "llm:complete" && e.plugin === "asker" && /llm-openai \S+ tool, 6 in, 2 out/.test(e.detail ?? "")));
   } finally {
