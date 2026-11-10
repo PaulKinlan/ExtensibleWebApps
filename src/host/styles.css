@@ -149,7 +149,8 @@ body:not(.workbench) > .place { display: block; grid-column: 1 / -1; }
 .place-pending { outline: 2px dashed var(--accent); outline-offset: 4px; }
 /* The Customize button (std/customize.js, in a <ui-panel>), on every app page: the host marks its slot pinned, and
    pins it to the bottom-left corner, above any floating chrome there (--chrome-bottom-left, see "Floating slots" below). */
-slot[pinned] > [data-plugin] { position: fixed; left: 16px; bottom: calc(16px + var(--chrome-bottom-left, 0px)); z-index: 10; }
+slot[pinned] > [data-plugin] { position: fixed; left: 0; bottom: var(--chrome-bottom-left, 0px); z-index: 10; padding: 16px; }
+/* The 16px around the button is inside its box, not outside it: a view's box clips what it paints, and the button's shadow has to fit. */
 /* The page ends with room for that button, so the last thing on it can be scrolled clear of it. */
 body:has(slot[pinned] > [data-plugin]) { padding-bottom: calc(72px + var(--chrome-bottom-left, 0px)); }
 
