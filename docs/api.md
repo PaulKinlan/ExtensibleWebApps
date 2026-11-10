@@ -488,6 +488,14 @@ Needs: `plugins:author`.
 
 Asks the person to point at a spot on the page, and says where: a selector and before, after, prepend or append, ready for a place in a new plugin's manifest. null if they cancel.
 
+#### authoring.components
+
+`authoring.components()` → [{ tag, attributes, about, html, everywhere }]
+
+Needs: `plugins:read`.
+
+The person's own reusable `ui-*` custom components for the caller's app.
+
 #### authoring.copy
 
 `authoring.copy(id)` → { id, name, code }
@@ -584,13 +592,29 @@ Needs: `plugins:author`.
 
 Removes one of the person's own plugins for the caller's app, once they accept a review.
 
-#### authoring.save
+#### authoring.removeComponent
 
-`authoring.save(code)` → { ok: true, id } or { ok: false, error }
+`authoring.removeComponent(tag)` → { ok: true } or { ok: false, error }
 
 Needs: `plugins:author`.
 
-Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins. Code that opens with `---` frontmatter is saved as an agent of theirs (an .agent.md file), which runs the standard agent loop.
+Removes one of the person's custom `ui-*` components for the caller's app, once they accept a review.
+
+#### authoring.save
+
+`authoring.save(code, files?)` → { ok: true, id } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+Saves a plugin (and any companion template/style files listed in its manifest's `files`) as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Code that opens with `---` frontmatter is saved as an agent of theirs (.agent.md).
+
+#### authoring.saveComponent
+
+`authoring.saveComponent(tag, html, { everywhere }?)` → { ok: true, tag } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+Saves a reusable `ui-*` template component (`<template>` with optional `<style>`, `{{attribute}}` holes and `<slot>`, and no `<script>`) for the caller's app (or every app when `everywhere: true`), once the person accepts a review. Plugins in the app can then use `<ui-...>` in their HTML views and templates.
 
 #### authoring.share
 
@@ -1320,6 +1344,22 @@ Needs: `outside`.
 
 Closes the door: outside agents can no longer call this plugin's tools.
 
+#### outside.closeLive
+
+`outside.closeLive()` → { ok }
+
+Needs: `plugins:author`.
+
+Closes this browser tab's live MCP link at once.
+
+#### outside.liveStatus
+
+`outside.liveStatus()` → { open, url?, clients: [name] }
+
+Needs: `plugins:read`.
+
+Whether this browser tab has an active live MCP link, its URL, and the names of connected MCP clients.
+
 #### outside.open
 
 `outside.open({ instructions? })` → { ok, tools: number }
@@ -1327,6 +1367,14 @@ Closes the door: outside agents can no longer call this plugin's tools.
 Needs: `outside`.
 
 Opens the door for outside agents: they may call this plugin's tools (tools.list), as this plugin. In a tab, its tools appear to the browser's agents through WebMCP; on a space's server, at /s/<space>/mcp/<plugin> for members' agents. `instructions` tells them what the app is for.
+
+#### outside.openLive
+
+`outside.openLive({ rotate? })` → { ok, open, url, clients: [name] }
+
+Needs: `plugins:author`.
+
+Opens a live MCP link (/mcp/live/<channel>/<token>) for the browser tab this call came from, so an external MCP client can connect directly to the live page on screen. Closing the tab or calling closeLive ends it.
 
 #### outside.status
 
@@ -2043,9 +2091,9 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `network:<host>` | Call net.fetch. |
 | `notify` | Call notify.state, notify.request, notify.show. |
 | `outside` | Call outside.open, outside.close, outside.status. |
-| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.choose, authoring.share, authoring.unshare, authoring.everywhere, authoring.save, authoring.remove, authoring.file. |
+| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.choose, authoring.share, authoring.unshare, authoring.everywhere, authoring.save, authoring.saveComponent, authoring.removeComponent, authoring.remove, authoring.file, outside.openLive, outside.closeLive. |
 | `plugins:manage` | Call authoring.turn, authoring.move, plugins.setEnabled, follow.now. |
-| `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.arrange, authoring.layout, authoring.inspect, authoring.check, plugins.app, follow.status. |
+| `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.arrange, authoring.layout, authoring.inspect, authoring.components, authoring.check, plugins.app, follow.status, outside.liveStatus. |
 | `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source, sync.reflect, sync.trace. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
@@ -2117,7 +2165,7 @@ Reserved ids, which no plugin can take:
 - `tools`
 - `transfer`
 
-Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`, `made`, `moves`.
+Paths that belong to the platform, which no plugin can read or write through `files`: `plugins`, `plugin-data`, `plugins.json`, `grants.json`, `changes.json`, `collections`, `user`, `user-plugins.json`, `secrets.json`, `sync`, `server`, `schedule`, `made`, `moves`, `agents`, `bus`, `llm.json`.
 
 ## Collections
 
@@ -2168,6 +2216,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-diagram>` | label | A Mermaid diagram: its text content is the diagram, in Mermaid's language (flowchart, sequenceDiagram, …). `label` says what it shows, for screen readers. Mermaid loads the first time one is drawn. |
 | `<ui-markdown>` | src, pages="/docs/", repo, sets-title, compact | A Markdown file in the template's folder (or below it), drawn as a page, with ```mermaid blocks as diagrams. Raw HTML in it shows as text. `pages` is a folder whose .md files are this app's screens (links to them drop .md); `repo` is where links to source go; `sets-title` makes its first heading the page's title; `compact` is for a list of contents. |
 | `<ui-debug>` | corner="bottom-left\|bottom-right\|top-left\|top-right\|inline", problems, label, toggle | A bug button that stays on screen and opens a panel holding the element's content. `problems` is a count shown on the bug; `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-copy="name"` copies the text of the element with `data-copy-source="name"`, headed with the page's address, browser and time. |
+| `<ui-dialog>` | open, label, close | A modal sheet that opens above the page when `open` is present (e.g. `open="{{editing}}"`), titled `label`. Closing it (×, Escape, a click outside, or a child with `data-close`) sends the `close` action. |
 | `<ui-panel>` | label, toggle, reopen | A button labelled `label` that opens a panel above the page, holding the element's content; where the button sits is up to the slot. `toggle` is sent with true or false as the panel opens and closes. A button inside with `data-close` closes the panel as well as sending its action; a new value of `reopen` opens it again. |
 | `<ui-preview>` | app="<name>", revision, label | A working copy of an app the person made in the browser (std/maker/), from /apps/<name>/, in a frame, with a link to open it in its own tab. Changing `revision` opens it again. |
 | `<ui-dictation>` | action, label, lang | A button that listens, with the browser's speech recognition, while it is pressed in. `action` is sent with { listening: true } when the microphone is on, { text, final } for what it hears (final: false while a phrase is still changing), and { listening: false, error? } when it stops. Disabled, saying why, in a browser without speech recognition. |
