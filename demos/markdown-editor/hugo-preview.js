@@ -22,7 +22,7 @@ const DEFAULT = "http://localhost:1313";
 export function serverOrigin(text) {
   try {
     const url = new URL(/^https?:\/\//.test(text.trim()) ? text.trim() : `http://${text.trim()}`);
-    const local = url.hostname === "localhost" || url.hostname.endsWith(".localhost") || url.hostname === "127.0.0.1" || url.hostname === "[::1]";
+    const local = url.hostname === "localhost" || url.hostname.endsWith(".localhost") || url.hostname === "127.0.0.1";
     return local ? url.origin : null;
   } catch {
     return null;
