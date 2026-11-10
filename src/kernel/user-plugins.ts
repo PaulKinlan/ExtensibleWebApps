@@ -25,6 +25,7 @@
 // plugins they need) is user-plugin-changes.ts, fetched the first time the
 // person changes something.
 
+import { part } from "./part";
 import { readManifest } from "./manifest";
 import type { Store } from "./store";
 import { record } from "./trace";
@@ -125,7 +126,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
   /** Adding, removing and turning on with what a plugin needs (user-plugin-changes.ts), fetched when first used. */
   let changes: Promise<ReturnType<typeof import("./user-plugin-changes").userPluginChanges>> | undefined;
   const more = () =>
-    (changes ??= import("./user-plugin-changes").then(
+    (changes ??= part("the part that adds and removes your plugins", () => import("./user-plugin-changes")).then(
       (m) => m.userPluginChanges({ store, origin, list, setOn, tell: (change) => changed.forEach((heard) => heard(change)) }),
       (error) => {
         // A file that didn't load is asked for again by the next change.

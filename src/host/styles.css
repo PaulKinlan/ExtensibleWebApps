@@ -143,6 +143,7 @@ canvas { width: 100%; border: 1px solid var(--border); border-radius: var(--radi
 #reference-text { font: 12px/1.5 var(--mono); max-height: 360px; overflow: auto; margin: 0 0 8px; padding: 8px 10px; white-space: pre-wrap; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-2); }
 #trace li.denied, #trace li.error { color: var(--danger); }
 #notice { position: fixed; right: 16px; bottom: 16px; max-width: 360px; }
+#notice button { margin-inline-start: 8px; }
 #notice p { margin: 4px 0 0; padding: 10px 14px; border-radius: var(--radius); background: var(--fg); color: var(--bg); box-shadow: var(--shadow-2); }
 /* Places: a plugin's views in a page that left no slot for them (places.ts). */
 .place { display: contents; }

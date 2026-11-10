@@ -5,6 +5,7 @@
 // The kernel calls `agentFiles` with an app's links before it reads them, so `asPlugin` can stay a plain
 // function. An agent file read before then is an error, never passed through as if it were a plugin.
 
+import { part } from "../part";
 import { isAgentFile } from "../../shared/agent-runner";
 import type { AgentConfig } from "./file";
 
@@ -17,7 +18,7 @@ let loading: Promise<void> | undefined;
 /** Has the agent file reader ready if any of these links is an agent file. Settles at once when none is, or it already is. */
 export function agentFiles(links: { href: string }[]): Promise<void> | undefined {
   if (reader || !links.some((link) => isAgentFile(link.href))) return undefined;
-  return (loading ??= import("./file").then(
+  return (loading ??= part("the agent file reader", () => import("./file")).then(
     (file) => void (reader = file),
     (error) => {
       loading = undefined;
