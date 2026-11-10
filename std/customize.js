@@ -7,8 +7,10 @@
 //     give the app something new other plugins use, such as a language
 //     model), plugins that show on the page, and ones that work behind the
 //     scenes. A plugin that has just been added says so where it is listed,
-//     with Turn on right there. The app's samples, and adding a plugin from
-//     files, pasted code or a URL, come last.
+//     with Turn on right there. The app's samples (each says what it adds),
+//     and adding a plugin from files, pasted code or a URL, come last. A link
+//     to the app that ends #add=<id> (the registry page's "Add to an app")
+//     opens the panel and asks to add that plugin.
 //   - Make: makes a new plugin of the person's own, in three steps: pick a
 //     starter (std/customize.templates/), point at where it should show on
 //     the page, then name it, change the code if they like, and save. Other
@@ -92,30 +94,6 @@ const whereOfText = (text) => {
   const m = /^(\w+)( each)? (.+)$/.exec(String(text));
   return m ? whereOf({ put: m[1], each: !!m[2], at: m[3] }) : String(text);
 };
-
-/** What a permission lets a plugin do, short enough for a list (the review card says it in full). */
-const canOf = (permission) => {
-  const [kind, verb, ...rest] = String(permission).split(":");
-  const what = rest.join(":");
-  if (permission === "ui") return "show things on this page";
-  if (permission === "network") return "reach sites on the internet";
-  if (kind === "network") return `reach ${[verb, what].filter(Boolean).join(":")}`;
-  if (kind === "data" && verb === "read") return `read your ${what} records`;
-  if (kind === "data" && verb === "write") return `change your ${what} records`;
-  if (kind === "hook" && verb === "listen") return `hear ${what}`;
-  if (kind === "hook" && verb === "intercept") return `change or stop ${what}`;
-  if (permission === "plugins:read") return "see this page's plugins";
-  if (permission === "plugins:manage") return "turn plugins on and off";
-  if (permission === "plugins:author") return "add or change your plugins (you're asked each time)";
-  if (kind === "provide") return `offer the ${[verb, what].filter(Boolean).join(":")} service`;
-  if (kind === "secret") return `keep your key for ${verb}`;
-  if (permission === "debug:read") return "see everything every plugin does";
-  if (permission === "live") return "send live messages to others in the space";
-  return verb ? `use ${permission}` : `use the ${permission} service`;
-};
-
-/** A sentence of what a plugin can do once it's on. */
-const canSay = (permissions) => (permissions?.length ? `It can ${[...new Set(permissions.map(canOf))].join(", ")}.` : "It asks for nothing.");
 
 /** An id from a name: lowercase words joined by dashes. */
 const slug = (name) =>
@@ -268,7 +246,9 @@ export default function (ctx) {
           add: !p.linked && !own,
           turnOn: !!own && !own.on,
           disabled: busy,
-          can: canSay(p.permissions),
+          // What its permissions let it do, in the kernel's own words (authoring.ts explain), as the review card says them.
+          can: p.can ?? [],
+          asksNothing: !p.can?.length,
           also: p.adds.length > 1 ? `Adds ${p.adds.filter((a) => a.id !== p.id).map((a) => a.name).join(", ")} too, which it needs.` : "",
         };
       });
@@ -283,7 +263,23 @@ export default function (ctx) {
         groups,
         registry: list.length > 0,
         nothingFound: !!query && !groups.length && !here.length,
-        samples: page.samples.filter((s) => matches({ name: s.title, id: s.href })),
+        // The app's samples say what each adds before it is pressed: what it is, where it shows and what it can do.
+        samples: page.samples
+          .filter((s) => matches({ name: `${s.title} ${s.name ?? ""}`, description: s.description, id: s.id ?? s.href }))
+          .map((s) => {
+            const own = s.id ? ownById.get(s.id) : undefined;
+            return {
+              ...s,
+              where: (s.places ?? []).map(whereOfText).join("; "),
+              can: s.can ?? [],
+              asksNothing: !!s.can && !s.can.length,
+              state: own ? (own.on ? "Added, on" : "Added, off") : "",
+              stateClass: own ? (own.on ? "on" : "off") : "",
+              add: !own,
+              turnOn: !!own && !own.on,
+              disabled: busy,
+            };
+          }),
       });
     }
     if (tab === "make") return views.render("customize", "panel", base);
@@ -418,6 +414,30 @@ export default function (ctx) {
     await draw();
   };
 
+  /**
+   * A link brought the person here to add one plugin from the registry (/packages/ "Add to an app" opens the
+   * app at #add=<id>, and the page passes the id on): the panel opens and its review card comes up, as if
+   * they had pressed its Add. Only what the registry lists can be asked for this way, and nothing is added
+   * until they accept the review.
+   */
+  const addAsked = async (id) => {
+    open = true;
+    tab = "plugins";
+    query = "";
+    reopen++;
+    follow = null;
+    const [packages, mine] = await Promise.all([call("packages"), call("mine")]);
+    const p = Array.isArray(packages) ? packages.find((x) => x.id === id) : undefined;
+    const own = Array.isArray(mine) ? mine.find((m) => m.id === id) : undefined;
+    if (!p) message = `This site's plugin registry has no plugin called “${id.slice(0, 64)}”.`;
+    else if (own) {
+      message = `${p.name} is already added here${own.on ? ", and on" : ". It's off"}.`;
+      follow = own.on ? null : { label: "Turn on", action: "turn", value: id };
+    } else if (p.linked) message = `${p.name} is already part of this app.`;
+    else return addAll(p.adds);
+    return draw();
+  };
+
   /** Loads a starter into Make. */
   const start = async (file) => {
     const code = await call("file", `customize.templates/${file}`);
@@ -454,6 +474,7 @@ export default function (ctx) {
       query = String(value ?? "").trim();
       return draw();
     }
+    if (action === "add") return addAsked(String(value ?? ""));
     if (action === "turn") return turn(String(value));
     if (action === "undo-turn") return undoTurn();
     if (action === "remove") {

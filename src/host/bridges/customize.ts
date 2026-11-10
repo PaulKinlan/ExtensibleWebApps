@@ -4,10 +4,17 @@
 // the file chooser, inspect mode (inspect.ts), arrange mode and pointing at a
 // spot (arrange.ts), and a map of where plugins can go on this page: its
 // slots, the parts its author named, and the ui-* elements views can use.
+// No page needs it as it starts, so the host fetches this file the first time
+// the kernel asks for it (bridges/index.ts): it imports nothing the page's own
+// script holds, or the two would be split into a third file every page loads.
 
-import { fragile } from "../places";
 import { nameOf } from "../names";
 import type { BridgeHost } from "./index";
+
+/** True if a selector leans on the page's structure rather than names the author chose, so an edit to the page may break it. */
+function fragile(selector: string): boolean {
+  return /:nth-|:first-|:last-|:only-/.test(selector) || (selector.match(/>/g) ?? []).length > 2;
+}
 
 /** Files a person picks to add as a plugin: the plugin's .js and the files it lists. */
 const ACCEPT = ".js,.html,.css,.json,.svg,.png,.jpg,.jpeg,.webp,.gif";
