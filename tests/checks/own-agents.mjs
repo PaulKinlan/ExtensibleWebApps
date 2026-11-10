@@ -93,6 +93,12 @@ export default async function ({ check, context, URL, errors }) {
     await page.waitForSelector('[data-toggle="assistant"]:has-text("Turn off")', { timeout: 15000 }).catch(() => {});
     const assistant = (await command("user:list", {})).find((p) => p.id === "assistant");
     check("an agent on the site is added from its address", !!assistant && assistant.on && assistant.file === "assistant.agent.md", JSON.stringify(assistant));
+    // The chat that was open all along offers it, with no reload.
+    const follows = await page.waitForSelector(`${chat} select[data-action="agent"] option[value="assistant"]`, { state: "attached", timeout: 15000 }).then(() => true, () => false);
+
+    // An id is a plugin or an agent, not both: files that give one id twice are refused, and nothing is kept.
+    const twice = await command("user:add", { files: [{ name: "twice.agent.md", data: AGENT.replace("id: my-helper", "id: twice") }, { name: "twice.js", data: MODEL.replaceAll("own-agents-model", "twice") }] }).catch((error) => ({ ok: false, error: String(error) }));
+    check("files that give one id twice, as a plugin and as an agent, are refused and nothing is kept", twice?.ok === false && /twice/.test(twice.error ?? "") && !(await command("user:list", {})).some((p) => p.id === "twice"), JSON.stringify(twice));
 
     // What an app's author chooses, a person's agent can't: another loop, or a door for outside agents.
     await paste(AGENT.replace("id: my-helper", "id: other-loop\nrunner: ./mine.js"));
@@ -108,8 +114,10 @@ export default async function ({ check, context, URL, errors }) {
     await accept("removes My helper");
     await said(/Removed My helper/);
     check("removing it takes its file away", !(await command("user:list", {})).some((p) => p.id === "my-helper"));
+    const left = await page.waitForSelector(`${chat} select[data-action="agent"] option[value="my-helper"]`, { state: "detached", timeout: 15000 }).then(() => true, () => false);
+    check("a chat that is open follows the agents a person adds and removes, with no reload", follows && left, `added ${follows}, removed ${left}`);
   } finally {
-    for (const id of ["my-helper", "assistant", "chat", "own-agents-model", "other-loop", "a-door"]) await command("user:remove", { id }).catch(() => {});
+    for (const id of ["my-helper", "assistant", "chat", "own-agents-model", "other-loop", "a-door", "twice"]) await command("user:remove", { id }).catch(() => {});
     await own.close();
   }
 }

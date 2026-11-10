@@ -19,6 +19,8 @@ const FILE_NAME = /^[\w-][\w.-]{0,63}$/;
 const isPlugin = (name: string) => (name.endsWith(".js") || isAgentFile(name)) && !name.includes("/");
 /** The name one is kept under: its id, so each id has one file. */
 const keptAs = (id: string, name: string) => `${id}${isAgentFile(name) ? ".agent.md" : ".js"}`;
+/** The file the same id would be kept under as the other kind: an id is a plugin or an agent, not both. */
+const otherForm = (name: string) => (name.endsWith(".js") ? name.replace(/\.js$/, ".agent.md") : name.replace(/\.agent\.md$/, ".js"));
 const MAX_BYTES = 5_000_000;
 
 type File = { name: string; data: Blob | string };
@@ -82,6 +84,7 @@ export function userPluginChanges({ store, origin, list, setOn, plugin, tell }: 
       if (!isPlugin(f.name)) continue;
       try {
         const id = (await manifestOf(f.name, typeof f.data === "string" ? f.data : await f.data.text())).id;
+        if (ids.includes(id)) return { ok: false, error: `${f.name}: ${id} is in these files twice` };
         ids.push(id);
         names.set(f, keptAs(id, f.name));
       } catch (error) {
@@ -91,7 +94,7 @@ export function userPluginChanges({ store, origin, list, setOn, plugin, tell }: 
     if (!ids.length) return { ok: false, error: "Add at least one plugin (.js) or agent (.agent.md)" };
     for (const f of files) await store.writeFile(`user/${app}/${names.get(f) ?? f.name}`, f.data);
     // An id is a plugin or an agent, not both: the one added takes the place of the other.
-    for (const [f, name] of names) await store.removeFile(`user/${app}/${name.endsWith(".js") ? name.replace(/\.js$/, ".agent.md") : name.replace(/\.agent\.md$/, ".js")}`).catch(() => {});
+    for (const name of names.values()) await store.removeFile(`user/${app}/${otherForm(name)}`).catch(() => {});
     for (const id of ids) await setOn(app, id, false);
     record({ kind: "lifecycle", name: "user-plugin:add", detail: `${app}: ${files.map((f) => f.name).join(", ")}` });
     if (!quiet) tell({ app, added: ids });
@@ -268,6 +271,8 @@ export function userPluginChanges({ store, origin, list, setOn, plugin, tell }: 
         if (name === plugin.file || (await store.listFiles(at.join("/"))).includes(file)) return { ok: false, error: `${name} couldn't be read, so ${plugin.name ?? id} stays where it is` };
       }
       for (const [name, data] of files) await store.writeFile(`user/${to}/${name}`, data);
+      // As when one is added: it takes the place of the other kind kept under its id where it is going.
+      await store.removeFile(`user/${to}/${otherForm(plugin.file)}`).catch(() => {});
       for (const name of names) await store.removeFile(`user/${from}/${name}`);
       await setOn(from, id, false);
       await setOn(to, id, plugin.on);

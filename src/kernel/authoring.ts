@@ -547,6 +547,11 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const current = (id: string) => saving.userAdded.read(app, id);
         /** Where one of the person's plugins is kept: this app's folder, or the one for every app. */
         const keptIn = (id: string) => folderOf(app, mine.find((p) => p.id === id) ?? {});
+        /** A plugin shared with the space stays the kind it is: the space sends its code to the other members as a plugin's. */
+        const sharedAsOther = async (id: string, file: string) => {
+          const own = mine.find((p) => p.id === id);
+          return own && isAgentFile(own.file) !== isAgentFile(file) && (await saving.shared()?.mark(app, [own]))?.[0]?.shared ? `${own.name ?? id} is shared with the space. Stop sharing it first` : undefined;
+        };
         const changed = "It changed while the review was open (in another tab, perhaps), so nothing was done. Look again and try once more.";
         const linkedHere = apps.linkedBy(tab) ?? [];
         /** The app's own plugin that one of the person's with this id would replace in this app, if any. */
@@ -596,6 +601,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (taken) return { ok: false, error: taken };
           const clashAdd = clash(m.id);
           if (clashAdd) return { ok: false, error: clashAdd };
+          const sharedAdd = await sharedAsOther(m.id, fetched.files[0].name);
+          if (sharedAdd) return { ok: false, error: sharedAdd };
           const manifest = m;
           return once(manifest.id, async () => {
             const stopped = await checked(manifest, fetched.source, "add");
@@ -632,6 +639,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (taken) return { ok: false, error: taken };
           const clashPick = clash(m.id);
           if (clashPick) return { ok: false, error: clashPick };
+          const sharedPick = await sharedAsOther(m.id, main[0].name);
+          if (sharedPick) return { ok: false, error: sharedPick };
           const manifest = m;
           return once(manifest.id, async () => {
             const stopped = await checked(manifest, source, "pick");
@@ -717,6 +726,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         // A copy of one of the app's own plugins, under its id, replaces it in this app; any other plugin's id is taken.
         const clashSave = clash(m.id, ". Give yours a new id.");
         if (clashSave) return { ok: false, error: clashSave };
+        const sharedSave = await sharedAsOther(m.id, `pasted${ext}`);
+        if (sharedSave) return { ok: false, error: sharedSave };
         const manifest = m;
         return once(manifest.id, async () => {
           const stopped = await checked(manifest, code, "save");
