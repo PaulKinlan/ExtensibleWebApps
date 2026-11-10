@@ -33,13 +33,17 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { checkApp } from "../std/maker/checks.js";
+import { projectKernel } from "./project-kernel.mjs";
 import { lintStyles, tally } from "./style-lint.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // The kernel's own manifest reader, capability gate and HTML allowlist,
 // bundled from src/ so this script can never disagree with them.
-async function loadKernelRules() {
+/** The kernel's own hook limits, before any kernel.json's. */
+let hookDefaults;
+
+async function loadKernelRules(root) {
   const entry = [
     'export { readManifest, RESERVED } from "./src/kernel/manifest.ts";',
     'export { PLUGIN_HOOKS } from "./src/kernel/hooks.ts";',
@@ -59,12 +63,23 @@ async function loadKernelRules() {
   } };
   const out = await build({ stdin: { contents: entry, resolveDir: ROOT, loader: "ts" }, bundle: true, write: false, format: "esm", platform: "neutral", external: ["node:*"], logLevel: "silent", plugins: [raw] });
   const rules = await import(`data:text/javascript;base64,${Buffer.from(out.outputFiles[0].text).toString("base64")}`);
-  // The hook limits the site set in kernel.json, as the kernel uses them.
-  Object.assign(rules.PLUGIN_HOOKS, rules.hookLimits(ROOT));
+  // The hook limits the site set in kernel.json, as the kernel uses them: a project's own kernel.json's
+  // if it has one (scripts/project-kernel.mjs), which stops here if it can't be used.
+  const own = root ? projectKernel(root) : undefined;
+  // The bundle above is the same module each time it is loaded, so its limits are still the last check's:
+  // start again from the kernel's own.
+  hookDefaults ??= { ...rules.PLUGIN_HOOKS };
+  Object.assign(rules.PLUGIN_HOOKS, hookDefaults, own ? (own.hooks ?? {}) : rules.hookLimits(ROOT));
   // The kernel reserves each service's name when it loads src/kernel/services/,
   // so reserve the same names here, read from the same folder.
   for (const name of serviceFiles()) rules.RESERVED.add(name);
-  return rules;
+  return { ...rules, left: own ? leftOut(own.modules) : new Set() };
+}
+
+/** The services of the platform's kernel modules that a project's kernel.json doesn't list: its kernel hasn't got them. */
+function leftOut(modules) {
+  const all = JSON.parse(readFileSync(join(ROOT, "kernel.json"), "utf8")).modules;
+  return new Set(all.filter((name) => !modules.includes(name)).flatMap((name) => JSON.parse(readFileSync(join(ROOT, "std", name, "module.json"), "utf8")).services ?? []));
 }
 
 /**
@@ -109,10 +124,12 @@ const rel = (file) => relative(ROOT, file) || ".";
 
 /** @param {string[]} targets @param {{ root?: string }} [options] root: a project whose files are served at the site's root */
 export async function checkApps(targets, { root } = {}) {
-  const rules = await loadKernelRules();
+  const { left, ...rules } = await loadKernelRules(root);
   const reference = loadReference();
+  // A service the project's kernel doesn't run isn't there to call: its methods are no part of the reference here.
+  for (const key of [...reference.methods.keys()]) if (left.has(key.split(".")[0])) reference.methods.delete(key);
   const apps = targets.length ? targets.map(appFile) : demoApps();
-  return apps.map((file) => checkAppFile(file, rules, reference, root));
+  return apps.map((file) => checkAppFile(file, rules, reference, root, left));
 }
 
 function demoApps() {
@@ -129,9 +146,9 @@ function appFile(target) {
 }
 
 /** One app on disk, read by the checks every app gets (std/maker/checks.js), with the kernel's rules and the reference. */
-function checkAppFile(file, rules, reference, root) {
+function checkAppFile(file, rules, reference, root, left = new Set()) {
   // Every service a call may name: the kernel's files and modules, and each one the reference documents.
-  const services = new Set([...serviceFiles(), ...[...reference.methods.keys()].map((k) => k.split(".")[0])]);
+  const services = new Set([...serviceFiles(), ...[...reference.methods.keys()].map((k) => k.split(".")[0])].filter((name) => !left.has(name)));
   const { problems, plugins } = checkApp(
     {
       page: file,

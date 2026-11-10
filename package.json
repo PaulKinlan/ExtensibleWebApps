@@ -2,7 +2,20 @@
   "name": "extensible-web-apps",
   "private": true,
   "version": "0.0.0",
+  "description": "A platform for web apps whoever uses them can change: a small kernel, and everything else a sandboxed plugin.",
   "license": "Apache-2.0",
+  "homepage": "https://extensibleweb.app/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PaulKinlan/ExtensibleWebApps.git"
+  },
+  "author": "Paul Kinlan",
+  "keywords": [
+    "extensible-web-apps",
+    "malleable-software",
+    "plugins",
+    "web-apps"
+  ],
   "type": "module",
   "bin": {
     "extensible-web-apps": "scripts/create-app.mjs",
@@ -23,6 +36,7 @@
     "test:seams": "node --no-warnings tests/seams/run.mjs",
     "test:server": "npm run build && npm run build:server && node --no-warnings tests/server/run.mjs",
     "test": "npm run build && npm run build:server && node tests/platform.test.mjs",
+    "test:project": "node tests/project/run.mjs",
     "reference": "vite build && node scripts/reference.mjs",
     "packages": "node scripts/packages.mjs",
     "gallery": "node scripts/gallery.mjs",

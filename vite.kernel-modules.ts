@@ -18,11 +18,21 @@
 // PLUGIN_HOOKS in src/kernel/hooks.ts), exported as `hookLimits`. A key the
 // kernel doesn't know, or a value that isn't a whole number above 0, stops
 // the build too: a site's settings are never quietly ignored.
+//
+// A project that has the platform as a dependency doesn't build a kernel: it
+// uses the ones built here. So each carries a mark (STAMP) where the project's
+// own kernel.json goes: scripts/project-kernel.mjs checks the project's file
+// by the rules below and writes it after the mark in the project's copies of
+// the kernels. A kernel with a kernel.json after its mark runs only the
+// modules that one lists, with its hook limits; one with nothing after it (as
+// built) runs this site's.
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { Plugin } from "vite";
 
 const ID = "virtual:kernel-modules";
+/** The mark in every built kernel that a project's own kernel.json goes after, as base64 (scripts/project-kernel.mjs). */
+export const STAMP = "site:kernel.json=";
 const NAME = /^[a-z][a-z0-9-]*$/;
 
 /** What kernel.json may say. */
@@ -51,15 +61,18 @@ export function hookLimits(root = process.cwd()): Record<string, number> {
   return limits;
 }
 
-/** The module names kernel.json lists, checked. */
-export function listedModules(root = process.cwd()): string[] {
+/**
+ * The module names kernel.json lists, checked. `platform` is where the modules are when that isn't `root`:
+ * a project's kernel.json lists modules of the platform it depends on.
+ */
+export function listedModules(root = process.cwd(), platform = root): string[] {
   const { modules } = readKernelJson(root);
   if (!Array.isArray(modules)) throw new Error("kernel.json needs a `modules` list");
   const seen = new Set<string>();
   for (const name of modules) {
     if (typeof name !== "string" || !NAME.test(name)) throw new Error(`kernel.json: ${JSON.stringify(name)} isn't a module name`);
     if (seen.has(name)) throw new Error(`kernel.json lists ${name} twice`);
-    if (!existsSync(resolve(root, "std", name, "module.ts"))) throw new Error(`kernel.json lists ${name}, but there is no std/${name}/module.ts`);
+    if (!existsSync(resolve(platform, "std", name, "module.ts"))) throw new Error(`kernel.json lists ${name}, but there is no std/${name}/module.ts`);
     seen.add(name);
   }
   return modules as string[];
@@ -126,7 +139,10 @@ export function kernelModules({ split = false }: { split?: boolean } = {}): Plug
       const imports = split ? [] : names.map((name, i) => `import m${i} from ${path(name)};`);
       const entry = (name: string, i: number) =>
         `{ name: ${JSON.stringify(name)}, manifest: ${JSON.stringify(manifests[name])}, ${split ? `load: () => import(${path(name)}).then((m) => m.default)` : `module: m${i}`} }`;
-      return `${imports.join("\n")}\nexport default [${names.map(entry).join(", ")}];\nexport const hookLimits = ${JSON.stringify(hookLimits(root))};\n`;
+      // What a project wrote after the mark, if this copy of the kernel is a project's. The mark is read at
+      // run time (never folded away by the build), so the text after it can change in the built file.
+      const stamped = `const mark = ${JSON.stringify(STAMP)};\nconst own = mark.slice(${STAMP.length});\nconst site = own ? JSON.parse(atob(own)) : undefined;`;
+      return `${imports.join("\n")}\n${stamped}\nconst all = [${names.map(entry).join(", ")}];\nexport default site ? all.filter((m) => site.modules.includes(m.name)) : all;\nexport const hookLimits = site ? site.hooks ?? {} : ${JSON.stringify(hookLimits(root))};\n`;
     },
   };
 }
