@@ -7,7 +7,7 @@
          checklist on the card's screen
 -->
 <style>
-  .count { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border-radius: 999px; font-weight: 600; font-size: 0.72rem; font-family: var(--mono); color: var(--fg-2); background: var(--bg-2); }
+  .count { display: inline-flex; align-items: center; gap: var(--space-1); padding: 1px var(--space-2) 1px 6px; border-radius: 999px; font-weight: 600; font-size: 0.72rem; font-family: var(--mono); color: var(--fg-2); background: var(--bg-2); }
   .count::before { content: "☑"; font-family: var(--font); }
   .count[data-all] { color: light-dark(#047857, #6ee7b7); background: color-mix(in srgb, var(--ok) 16%, transparent); }
 
