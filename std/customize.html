@@ -89,7 +89,7 @@
   .customize .make form { display: grid; gap: var(--space-3); margin: 0; }
   .customize .step { display: grid; gap: var(--space-3); padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); }
   .customize .step > h3 { display: flex; align-items: center; gap: var(--space-2); }
-  .customize .step > h3::before { content: attr(data-step); flex: none; display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--accent); color: var(--accent-fg, #fff); font-size: var(--text-sm); }
+  .customize .step > h3[data-step]::before { content: attr(data-step); flex: none; display: inline-grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; background: var(--accent); color: var(--accent-fg, #fff); font-size: var(--text-sm); }
   .customize .starters { display: grid; grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr)); gap: var(--space-2); }
   .customize .starters button { display: grid; gap: 2px; align-content: start; justify-items: start; text-align: left; padding: var(--space-2) var(--space-3); min-height: 64px; height: auto; white-space: normal; line-height: 1.3; }
   .customize .starters button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
@@ -293,6 +293,13 @@
               <button type="button" key="{{s.file}}" data-action="starter" data-value="{{s.file}}" data-starter="{{s.file}}" aria-pressed="{{s.pressed}}"><strong>{{s.title}}</strong><small>{{s.about}}</small></button>
             </template>
           </div>
+        </div>
+        <div class="step write">
+          <h3>Or have it written for you</h3>
+          <template if="!make.makerLinked">
+            <p class="muted">Say what you want in your own words, and a language model writes the plugin. You see its code before it runs, and it uses your own key.</p>
+            <div class="row"><button type="button" data-action="maker" data-add-maker>Write it for me</button></div>
+          </template>
           <slot name="customize.make"></slot>
         </div>
         <!-- One form, so choosing a spot sends the name and code as they are now, and they come back as typed. -->
