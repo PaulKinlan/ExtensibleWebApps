@@ -88,7 +88,8 @@ export function measure(tallest) {
   // A panel over the page (a docked panel, a dialog) with more in it than fits must scroll: nothing inside it may be
   // cut off by a box that hides what overflows (the homepage's docs panel once cut its page off, and the wheel
   // scrolled the page behind instead).
-  const within = (el, test) => { for (let p = el; p && p.nodeType === 1; p = p.parentElement ?? p.getRootNode().host) if (test(p)) return p; return null; };
+  // Up the tree as it is drawn: what an element puts in a <slot> sits inside the box around that slot (Customize's panel is one).
+  const within = (el, test) => { for (let p = el; p && p.nodeType === 1; p = p.assignedSlot ?? p.parentElement ?? p.getRootNode().host) if (test(p)) return p; return null; };
   const over2 = (el) => { const s = getComputedStyle(el); return s.position === "fixed" && el.getBoundingClientRect().height >= innerHeight / 2; };
   const cut = all.filter((el) => {
     if (!shown(el) || el.scrollHeight <= el.clientHeight + 16 || el.clientHeight < 80) return false;
@@ -121,15 +122,34 @@ export function covered() {
   // A column that scrolls by itself (the homepage's playground) is taken to its end too.
   for (const box of document.querySelectorAll("main, aside, main *")) if (box.scrollHeight > box.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(box).overflowY)) box.scrollTop = box.scrollHeight;
   const chrome = [...document.querySelectorAll("slot[pinned] > [data-plugin], slot[float] > [data-plugin]")].filter((el) => getComputedStyle(el).position === "fixed" && el.getBoundingClientRect().width > 0);
+  // What a person reads or presses in the page's columns, and inside the elements there (ui-table's cells, ui-form's fields).
+  const READ = "p, li, td, th, h2, h3, label, a, button, input, select, textarea";
+  const deep = (root, out = []) => {
+    for (const el of root.querySelectorAll("*")) {
+      if (el.matches(READ)) out.push(el);
+      if (el.shadowRoot) deep(el.shadowRoot, out);
+    }
+    return out;
+  };
+  const readable = [...document.querySelectorAll("main, aside")].flatMap((column) => deep(column));
+  // Is `inner` inside `outer`, through the shadow roots between them?
+  const holds = (outer, inner) => { for (let p = inner; p; p = p.parentNode ?? p.host) if (p === outer) return true; return false; };
+  // Everything drawn at a point, in the page and in each shadow root there.
+  const at = (x, y) => {
+    const hit = new Set();
+    const from = (root) => { for (const el of root.elementsFromPoint(x, y)) { if (hit.has(el)) continue; hit.add(el); if (el.shadowRoot) from(el.shadowRoot); } };
+    from(document);
+    return hit;
+  };
   const found = [];
   for (const el of chrome) {
     const c = el.getBoundingClientRect();
-    const under = [...document.querySelectorAll("main p, main li, main td, main th, main h2, main h3, main label, main a, main button, main input, main select, main textarea, aside p, aside li, aside button, aside a")].find((other) => {
-      if (el.contains(other) || !other.checkVisibility() || chrome.some((x) => x.contains(other))) return false;
+    const under = readable.find((other) => {
+      if (!other.checkVisibility() || chrome.some((x) => holds(x, other))) return false;
       const r = other.getBoundingClientRect();
       const left = Math.max(r.left, c.left), right = Math.min(r.right, c.right), top = Math.max(r.top, c.top), bottom = Math.min(r.bottom, c.bottom);
       // Really under it there, not scrolled out of sight inside a box of its own.
-      return right - left > 4 && bottom - top > 4 && document.elementsFromPoint((left + right) / 2, (top + bottom) / 2).includes(other);
+      return right - left > 4 && bottom - top > 4 && at((left + right) / 2, (top + bottom) / 2).has(other);
     });
     if (under) found.push(`with the page scrolled to its end, ${el.dataset.plugin.split("@")[0]}'s floating button still covers ${under.tagName.toLowerCase()} "${(under.textContent || under.placeholder || "").trim().slice(0, 30)}"`);
   }
