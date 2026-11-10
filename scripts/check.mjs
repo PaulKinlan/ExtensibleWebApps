@@ -5,6 +5,7 @@
 //   npm run check                    every app in demos/
 //   npm run check demos/habits       one app (a folder with an app.html, or the file)
 //   npm run check -- --json          the same, as JSON, for tools and agents
+//   npm run check -- --style         also list each raw colour and hand-written size (DESIGN.md)
 //
 // What it checks, for each app:
 //   app.html   loads the platform, links at least one plugin, and has a
@@ -23,12 +24,16 @@
 // follow names written as plain strings: ctx.call("data", "put", "library", …)
 // is checked, ctx.call(service, …) isn't.
 // It exits with 1 if there is any error; warnings alone don't fail it.
+//
+// It also counts what each app's CSS writes by hand where DESIGN.md has a token
+// (scripts/style-lint.mjs). Those are notes, never errors or warnings.
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { checkApp } from "../std/maker/checks.js";
+import { lintStyles, tally } from "./style-lint.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -137,10 +142,11 @@ function checkAppFile(file, rules, reference, root) {
     },
     { ...rules, ...reference, services },
   );
-  return { app: rel(dirname(file)), plugins: plugins.map((p) => p.id), problems };
+  const style = lintStyles(dirname(file)).map((n) => ({ ...n, file: rel(resolve(n.file)) }));
+  return { app: rel(dirname(file)), plugins: plugins.map((p) => p.id), problems, style };
 }
 
-function print(apps) {
+function print(apps, listStyle = false) {
   let errors = 0;
   let warnings = 0;
   for (const app of apps) {
@@ -151,12 +157,19 @@ function print(apps) {
     for (const p of mine) console.log(`    ${p.level.padEnd(7)} ${p.file}${p.line ? `:${p.line}` : ""}  ${p.message}`);
   }
   console.log(`\n${errors} error${errors === 1 ? "" : "s"}, ${warnings} warning${warnings === 1 ? "" : "s"}`);
+  const styled = apps.filter((a) => a.style.length);
+  if (!styled.length) return;
+  console.log(`\nStyle notes: ${tally(styled.flatMap((a) => a.style))} in ${styled.length} app${styled.length === 1 ? "" : "s"} where DESIGN.md has a token${listStyle ? "" : " (add --style to list them)"}`);
+  for (const app of styled) {
+    console.log(`    ${app.app}  ${tally(app.style)}`);
+    if (listStyle) for (const n of app.style) console.log(`        ${n.file}:${n.line}  ${n.message}`);
+  }
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
-  const apps = await checkApps(args.filter((a) => a !== "--json"));
+  const apps = await checkApps(args.filter((a) => !a.startsWith("--")));
   if (args.includes("--json")) console.log(JSON.stringify({ ok: apps.every((a) => !a.problems.some((p) => p.level === "error")), apps }, null, 2));
-  else print(apps);
+  else print(apps, args.includes("--style"));
   process.exitCode = apps.some((a) => a.problems.some((p) => p.level === "error")) ? 1 : 0;
 }

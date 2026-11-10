@@ -23,7 +23,7 @@
   .readout small { font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; color: #4c7d63; }
   .readout strong { font-size: 1.6rem; line-height: 1; text-shadow: 0 0 12px rgb(158 255 199 / 0.5); font-variant-numeric: tabular-nums; }
   .knobs { display: flex; flex-wrap: wrap; gap: var(--space-4); flex: 1; min-width: 220px; }
-  .knobs label { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 140px; font-size: var(--text-sm); color: var(--fg-2); }
+  .knobs label { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; min-width: 140px; font-size: var(--text-sm); color: var(--fg-2); }
   .knobs input[type="range"] { width: 100%; accent-color: var(--accent); }
 
   /* Patterns */
@@ -36,12 +36,12 @@
   /* A pad pops as it sounds (scale 1.12) and spills a little past its cell. In a scrolling box that spill would
      bring a scrollbar in and out on the edge steps, resizing the whole grid on every bar, so the grid scrolls only
      sideways and its padding is room for the spill. */
-  .grid { display: grid; grid-template-columns: minmax(84px, max-content) repeat(16, minmax(0, 1fr)); gap: 6px; align-items: center; overflow-x: auto; overflow-y: clip; padding: 4px 4px 4px 0; }
+  .grid { display: grid; grid-template-columns: minmax(84px, max-content) repeat(16, minmax(0, 1fr)); gap: 6px; align-items: center; overflow-x: auto; overflow-y: clip; padding: var(--space-1) var(--space-1) var(--space-1) 0; }
   .grid > .row { display: contents; }
   .steps span { font-weight: 600; font-size: 0.62rem; font-family: var(--mono); text-align: center; color: var(--fg-2); opacity: 0.6; }
   .steps span[data-beat] { opacity: 1; }
   .steps span[data-now] { color: var(--accent); opacity: 1; }
-  .track { display: flex; align-items: center; gap: 8px; padding-right: var(--space-2); }
+  .track { display: flex; align-items: center; gap: var(--space-2); padding-right: var(--space-2); }
   .track button { flex: none; width: 28px; height: 28px; padding: 0; border-radius: 8px; font-size: 13px; color: var(--hue); background: color-mix(in srgb, var(--hue) 14%, transparent); border-color: color-mix(in srgb, var(--hue) 35%, transparent); }
   .track button[aria-pressed="true"] { color: var(--fg-2); background: transparent; border-style: dashed; border-color: var(--border); }
   .track span { font-weight: 600; font-size: var(--text-sm); }
