@@ -514,19 +514,19 @@ Moves one of a plugin's places in the caller's app to another spot on the page, 
 
 #### authoring.packages
 
-`authoring.packages()` → [{ id, name, description, href, permissions, added, linked, adds: [href] }]
+`authoring.packages()` → [{ id, name, description, href, permissions, can, added, linked, adds: [{ id, name, href }] }]
 
 Needs: `plugins:read`.
 
-The site's plugin registry (/packages/): each package, whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.
+The site's plugin registry (/packages/): each package, what its permissions let it do in words (can), whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.
 
 #### authoring.page
 
-`authoring.page()` → { space, places: [{ plugin, name, at, put, each, state, matches, fragile }], running: [{ id, name, user, unlocked }], samples: [{ href, title }], inspect }
+`authoring.page()` → { space, places: [{ plugin, name, at, put, each, state, matches, fragile }], running: [{ id, name, user, unlocked }], samples: [{ href, title, id?, name?, description?, can?, places? }], inspect }
 
 Needs: `plugins:read`.
 
-The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match, or slot when the page has its own slot of that name), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample), and whether it has inspect mode.
+The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match, or slot when the page has its own slot of that name), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample) with what each is and can do once on (read from its manifest), and whether it has inspect mode.
 
 #### authoring.pick
 
