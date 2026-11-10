@@ -2,8 +2,6 @@
   "about": "The most raw colours and hand-written sizes each folder may have (scripts/style-lint.mjs, tests/checks/style-lint.mjs). Lower a number when you clean a folder; never raise one. A folder not listed is held to 0.",
   "folders": {
     "demos/audio-editor": 8,
-    "demos/beats": 47,
-    "demos/board": 78,
     "demos/calendar": 1,
     "demos/debugger": 2,
     "demos/doodle": 2,
@@ -12,7 +10,6 @@
     "demos/invoice": 2,
     "demos/markdown-editor": 6,
     "demos/menu": 2,
-    "demos/trails": 39,
     "demos/trip": 2
   }
 }

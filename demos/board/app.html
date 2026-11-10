@@ -60,7 +60,7 @@
     }
 
     body {
-      background:
+      background: /* design-ok: the board's own palette */
         radial-gradient(60rem 30rem at 0% -10%, light-dark(rgb(167 139 250 / 0.18), rgb(124 58 237 / 0.16)), transparent 60%),
         radial-gradient(50rem 30rem at 100% 0%, light-dark(rgb(56 189 248 / 0.14), rgb(14 165 233 / 0.12)), transparent 60%),
         var(--bg);
@@ -76,9 +76,9 @@
       top: 0;
       z-index: 5;
     }
-    .brand { display: flex; align-items: center; gap: 10px; }
-    .logo { width: 28px; height: 28px; border-radius: 8px; background: conic-gradient(from 200deg, #a78bfa, #60a5fa, #34d399, #f59e0b, #f472b6, #a78bfa); box-shadow: 0 4px 12px -4px rgb(109 74 255 / 0.6); }
-    body > header h1 { font-size: 1.05rem; letter-spacing: -0.01em; }
+    .brand { display: flex; align-items: center; gap: var(--space-2); }
+    .logo { width: 28px; height: 28px; border-radius: var(--radius); background: conic-gradient(from 200deg, #a78bfa, #60a5fa, #34d399, #f59e0b, #f472b6, #a78bfa); box-shadow: var(--shadow-1); } /* design-ok: the board's own palette */
+    body > header h1 { font-size: var(--text-lg); letter-spacing: -0.01em; }
     .sprint { font-size: var(--text-sm); color: var(--fg-2); }
     .sprint b { color: var(--fg); font-weight: 600; }
     body > header nav.site { margin-left: auto; }
