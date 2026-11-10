@@ -63,6 +63,7 @@ Every page is sent with a policy ([`public/_headers`](../../public/_headers)), s
 
 - **Scripts only from the site's files.** No inline `<script>`: put it in a file next to the page.
 - **Trusted Types.** Markup, script text and script addresses reach the page only through named policies. Plugins never see this: their views are copied into the page element by element ([`src/host/sanitize.ts`](../../src/host/sanitize.ts)). Code on the page that sets `innerHTML` from a string is refused; build elements, or use a policy named in the header ([`src/host/trusted.ts`](../../src/host/trusted.ts)).
+- **Frames only of this site and of your own device.** A page may frame this site's own pages (an app made in the browser, in its preview) and a server on the person's device by loopback address: `localhost`, `*.localhost` or `127.0.0.1`, which is how the Markdown editor shows a `hugo server`. Any other frame is refused by the browser, whatever put it there. The policy can't name an IPv6 address, so `[::1]` isn't one of them: use `localhost`.
 - **Permissions-Policy.** Device features no app uses (camera, location, USB, payments…) are off.
 
 The test run fails on any page that breaks it ([`tests/policy-watch.mjs`](../../tests/policy-watch.mjs)), and on a page or platform file over the [performance budget](../../tests/perf-budget.json) ([`tests/checks/perf-budget.mjs`](../../tests/checks/perf-budget.mjs)).

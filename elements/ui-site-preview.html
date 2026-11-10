@@ -6,14 +6,15 @@
       action="preview" label="The post, as Hugo shows it"></ui-site-preview>
 
   Attributes: address (an http: or https: address on this device: localhost,
-  *.localhost, 127.0.0.1 or [::1]; anything else isn't shown), revision
+  *.localhost or 127.0.0.1; anything else isn't shown), revision
   (changing it checks the server again and reloads the page, after a save
   say), label (what it shows, for screen readers), action (sent with "up",
   "down" or "blocked" each time it checks the server, so the plugin can say
   how to start one; "blocked" means the browser refused to let this site
   reach the device, which the person can allow in the site's settings).
 
-  It only ever shows a server on the device, never another site, so a
+  It only ever shows a server on the device, never another site (the page's
+  own policy, frame-src in public/_headers, refuses any other frame too), so a
   plugin can't use it to put someone else's page in front of the person, and
   never this site's own address. The frame is sandboxed: its page may run
   scripts (Hugo's live reload), but it has an origin of its own that reaches
