@@ -19,8 +19,9 @@ vendor's models. Link one or more from an app's `app.html`:
 A person can add a model to any app, without its developer linking one. The site's plugin registry
 (`/packages/`) offers these four, so they're in Customize's Add a plugin. And a plugin that needs a
 model can offer them itself: `llm.choices()` lists the registry's packages that ask for
-`provide:llm`, and `llm.add(id)` adds the one the person picks as their own plugin for the app,
-once they accept its review card, and turns it on. [Ask the page](../ask-the-page.js) and the
+`provide:llm`, and `llm.add(id)` adds the one the person picks as their own plugin, once they
+accept its review card, and turns it on. It is added for every app they open on this device, not
+only the one they were in, so a model is added once. [Ask the page](../ask-the-page.js) and the
 [plugin maker](../plugin-maker.js) do this when the page has no model.
 
 ```js
@@ -31,7 +32,30 @@ if (!(await ctx.call("llm", "providers")).length) {
 }
 ```
 
-Either way, the key is the person's own: the model asks for it the first time it's asked something.
+Either way, the key is the person's own: the model asks for it the first time it's asked something,
+and it is kept once for the device, so the next app doesn't ask again. A model added in Customize
+is for that app until the person presses **Use in every app** on its row.
+
+## Which provider answers
+
+A request that names a `provider` gets that one. Without one, the person's pick answers, else the
+first that has its key. When none has a key, each asks for it in turn: **Not now** on one model's
+key card moves to the next, so nobody has to give a key to the first model listed to reach the one
+they have a key for.
+
+The pick is `llm.prefer(id)`, kept for the person on this device for every app, and
+`llm.providers()` marks it `preferred`. A plugin where a person writes to a model can offer it as
+a picker; the [chat](../agents/chat.js) and the [app maker](../maker/your-apps.js) do when the app
+has more than one model.
+
+```js
+const providers = await ctx.call("llm", "providers"); // [{ id, name, model?, ready, preferred? }]
+await ctx.call("llm", "prefer", providers[1].id);     // it answers from now on, in every app
+await ctx.call("llm", "prefer");                      // back to the first that has its key
+```
+
+A provider plugin that the person gives no key answers `{ error, declined: true }` to
+`llm:complete`, which is what lets the next one ask.
 
 ## Which model
 

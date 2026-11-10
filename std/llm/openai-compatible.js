@@ -84,7 +84,7 @@ export default function (ctx) {
   ctx.on("llm:models", async ({ provider }) => {
     if (provider !== manifest.id) return undefined;
     try {
-      if (!(await ensureKey())) return { error: `No ${manifest.name} key was given` };
+      if (!(await ensureKey())) return { error: `No ${manifest.name} key was given`, declined: true };
       const models = await list();
       const model = await resolve();
       return { models, tiers: { best: model, balanced: model, fast: model } };
@@ -96,7 +96,7 @@ export default function (ctx) {
   ctx.on("llm:complete", async (request) => {
     if (request.provider !== manifest.id) return undefined;
     try {
-      if (!(await ensureKey())) return { error: `No ${manifest.name} key was given` };
+      if (!(await ensureKey())) return { error: `No ${manifest.name} key was given`, declined: true };
       const model = await resolve(request.model);
       const body = { model, messages: toMessages(request) };
       if (request.maxTokens) body.max_tokens = request.maxTokens;

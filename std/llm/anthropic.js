@@ -150,7 +150,7 @@ export default function (ctx) {
   ctx.on("llm:models", async ({ provider }) => {
     if (provider !== manifest.id) return undefined;
     try {
-      if (!(await ensureKey())) return { error: "No Anthropic API key was given" };
+      if (!(await ensureKey())) return { error: "No Anthropic API key was given", declined: true };
       const models = await list();
       const ids = models.map((m) => m.id);
       return { models, tiers: Object.fromEntries(Object.entries(TIERS).map(([name, t]) => [name, newest(ids, t.pattern) ?? t.fallback])) };
@@ -162,7 +162,7 @@ export default function (ctx) {
   ctx.on("llm:complete", async (request) => {
     if (request.provider !== manifest.id) return undefined;
     try {
-      if (!(await ensureKey())) return { error: "No Anthropic API key was given" };
+      if (!(await ensureKey())) return { error: "No Anthropic API key was given", declined: true };
       const model = await resolve(request.model ?? (await setting()));
       const body = { model, max_tokens: request.maxTokens ?? 16000, messages: toMessages(request.messages) };
       if (request.system) body.system = request.system;

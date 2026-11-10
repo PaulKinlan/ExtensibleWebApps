@@ -26,7 +26,7 @@ import type { Dispatch } from "../shared/protocol";
 import type { RemotePlugins, ServiceProvider } from "./remote";
 import { allowed, type Outcome, type Request } from "./review";
 import type { Store } from "./store";
-import type { UserPlugin, UserPlugins } from "./user-plugins";
+import { EVERYWHERE, folderOf, type UserPlugin, type UserPlugins } from "./user-plugins";
 import { asMove, movable, type Moved } from "./moves";
 
 type Apps = { linkedBy(tab: string): string[] | undefined; tabsWith?(id: string): string[] };
@@ -208,17 +208,20 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       mine: {
         args: "()",
-        returns: "[{ id, name, description, permissions, places, on, shared, error? }]",
+        returns: "[{ id, name, description, permissions, places, on, shared, everywhere, error? }]",
         needs: "plugins:author",
-        description: "The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).",
+        description: "The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. everywhere says which ones they use in every app (kept once, and on or off in all of them). error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).",
         params: [],
       },
       add: {
-        args: "(url)",
+        args: "(url, { everywhere }?)",
         returns: "{ ok: true, id } or { ok: false, error }",
         needs: "plugins:author",
-        description: "Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn().",
-        params: [{ name: "url", schema: { type: "string", description: "The plugin's .js file on this site: /packages/clock/clock.js" } }],
+        description: "Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn(). With { everywhere: true } it is added for every app the person opens on this device, and the review says so.",
+        params: [
+          { name: "url", schema: { type: "string", description: "The plugin's .js file on this site: /packages/clock/clock.js" } },
+          { name: "options", schema: { type: "object", description: "{ everywhere: true } to add it for every app, not only this one" } },
+        ],
       },
       turn: {
         args: "(id, on)",
@@ -314,6 +317,16 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         description: "In a space: stops sharing a space plugin, once the person accepts a review. It goes from the other members' devices and stays here as theirs.",
         params: [{ name: "id", schema: { type: "string", description: "The id of a plugin shared with the space" } }],
       },
+      everywhere: {
+        args: "(id, on)",
+        returns: "{ ok: true } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Keeps one of the person's own plugins for every app they open on this device (on true), once they accept a review that says what it can do in each, or brings one back to the caller's app alone (on false). A plugin of the same id that an app links, or that the person keeps for that app, runs there instead.",
+        params: [
+          { name: "id", schema: { type: "string", description: "The id of one of the person's own plugins" } },
+          { name: "on", schema: { type: "boolean", description: "true for every app, false for this app only" } },
+        ],
+      },
       save: {
         args: "(code)",
         returns: "{ ok: true, id } or { ok: false, error }",
@@ -360,7 +373,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const [id] = args;
         const app = saving.appIn(tab);
         const own = app && typeof id === "string" ? (await saving.userAdded.list(app)).find((p) => p.id === id) : undefined;
-        if (app && own) return { id, name: own.name ?? id, code: (await saving.store.readText(`user/${app}/${own.file}`)) ?? "" };
+        if (app && own) return { id, name: own.name ?? id, code: (await saving.userAdded.read(app, id as string)) ?? "" };
         if (typeof id !== "string" || !(apps.linkedBy(tab) ?? []).includes(id)) throw new Error(`${String(id)} isn't a plugin in this app`);
         const plugin = remote.installed.get(id);
         if (!plugin) throw new Error(`${id} hasn't loaded yet`);
@@ -430,6 +443,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           places: Object.values(p.places ?? {}).map((at) => `${at.put}${at.each ? " each" : ""} ${at.at}`),
           on: p.on,
           shared: !!p.shared,
+          everywhere: !!p.everywhere,
           ...(p.error ? { error: p.error } : needs(p) ? { error: needs(p) } : {}),
         }));
       }
@@ -511,20 +525,21 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         // off turns off the ones that need it. Neither waits on kernel.json: that is the site's, not theirs.
         const has = new Set(saving.services());
         const also = on ? await saving.userAdded.onWithNeeds(app, id, (service) => has.has(service), (service, not) => has.has(service) && remote.providers.get(service) !== not) : await saving.userAdded.offWithDependents(app, id, (service, not) => has.has(service) && remote.providers.get(service) !== not);
-        await saving.reopen(app);
+        // One the person uses in every app is on or off in every app.
+        const all = await saving.userAdded.list(app);
+        await saving.reopen([id, ...also.map((p) => p.id)].some((changed) => all.find((p) => p.id === changed)?.everywhere) ? EVERYWHERE : app);
         return { ok: true, also: also.map((p) => ({ id: p.id, name: p.name ?? p.id })) };
       }
-      if (["save", "remove", "add", "pick", "share", "unshare"].includes(method)) {
+      if (["save", "remove", "add", "pick", "share", "unshare", "everywhere"].includes(method)) {
         const app = appOf(tab);
         const caller = instance.split("@")[0];
         const mine = await saving.userAdded.list(app);
         const ask = async (target: string, before: string, after: string, reason: string) =>
           allowed(await saving.ask({ plugin: caller, instance, name: remote.installed.get(caller)?.manifest.name ?? caller, place: `author:${app}`, target, before, after, reason, once: true }, dispatch));
         /** The code of one of the person's plugins as it is now, or undefined if there is none with that id. */
-        const current = async (id: string) => {
-          const file = (await saving.userAdded.list(app)).find((p) => p.id === id)?.file;
-          return file ? ((await saving.store.readText(`user/${app}/${file}`)) ?? "") : undefined;
-        };
+        const current = (id: string) => saving.userAdded.read(app, id);
+        /** Where one of the person's plugins is kept: this app's folder, or the one for every app. */
+        const keptIn = (id: string) => folderOf(app, mine.find((p) => p.id === id) ?? {});
         const changed = "It changed while the review was open (in another tab, perhaps), so nothing was done. Look again and try once more.";
         const linkedHere = apps.linkedBy(tab) ?? [];
         /** The app's own plugin that one of the person's with this id would replace in this app, if any. */
@@ -555,11 +570,14 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         };
 
         if (method === "add") {
-          const [url] = args;
+          const [url, options] = args;
           if (typeof url !== "string") return { ok: false, error: "add(url) takes the plugin's .js file on this site" };
+          // For every app the person opens here, rather than this one: a language model they bring their own key to, say.
+          const everywhere = !!options && typeof options === "object" && (options as { everywhere?: unknown }).everywhere === true;
+          const folder = everywhere ? EVERYWHERE : app;
           const fetched = await saving.userAdded.fetch(url);
           if (!fetched.ok) return fetched;
-          const wrongAdd = await saving.userAdded.problem(app, fetched.files);
+          const wrongAdd = await saving.userAdded.problem(folder, fetched.files);
           if (wrongAdd) return { ok: false, error: wrongAdd };
           let m;
           try {
@@ -577,13 +595,14 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
             if (stopped) return stopped;
             const before = await current(manifest.id);
             const review = asked(manifest, before);
-            if (!(await ask(review.target, review.before, fetched.source, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not added" };
+            const reach = everywhere ? " It is added for every app you open on this device, not only this one." : "";
+            if (!(await ask(`${review.target}${everywhere ? ", for every app" : ""}`, review.before, fetched.source, `Once it is on, it can: ${words(manifest.permissions)}${reach}`))) return { ok: false, error: "Not added" };
             if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
             // The files the person saw, not the site's files read again.
-            const added = await saving.userAdded.add(app, fetched.files);
+            const added = await saving.userAdded.add(folder, fetched.files);
             if (!added.ok) return added;
             // Adding a plugin again turns it off: stop the copy that was running.
-            await saving.reopen(app);
+            await saving.reopen(folder);
             return { ok: true, id: manifest.id };
           });
         }
@@ -627,6 +646,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (!sharing) return { ok: false, error: "Only a plugin in a space can be shared with it" };
           const own = mine.find((p) => p.id === id);
           if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
+          if (own.everywhere) return { ok: false, error: `${own.name ?? id} is one you use in every app. Keep it for this app alone first, then share it` };
           return once(id, async () => {
             const code = (await current(id)) ?? "";
             const toShare = method === "share";
@@ -645,11 +665,31 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
           return once(id, async () => {
             const code = (await current(id)) ?? "";
-            if (!(await ask(`your plugins: removes ${own.name ?? id}`, code, "", "It stops, and its file is deleted. Your data is kept."))) return { ok: false, error: "Not removed" };
+            if (!(await ask(`your plugins: removes ${own.name ?? id}${own.everywhere ? ", from every app" : ""}`, code, "", "It stops, and its file is deleted. Your data is kept."))) return { ok: false, error: "Not removed" };
             // Remove only what the person saw.
             if ((await current(id)) !== code) return { ok: false, error: changed };
             await saving.userAdded.remove(app, id);
-            await saving.reopen(app);
+            await saving.reopen(keptIn(id));
+            return { ok: true };
+          });
+        }
+
+        if (method === "everywhere") {
+          const [id, on] = args;
+          const own = mine.find((p) => p.id === id);
+          if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
+          if (typeof on !== "boolean") return { ok: false, error: "everywhere(id, on) takes true or false" };
+          if (!!own.everywhere === on) return { ok: true };
+          if (on && (await saving.shared()?.mark(app, [own]))?.[0]?.shared) return { ok: false, error: `${own.name ?? id} is shared with the space. Stop sharing it first` };
+          return once(id, async () => {
+            const code = (await current(id)) ?? "";
+            const reason = on ? `It will run in every app you open on this device, not only this one. In each, it can: ${words(own.permissions ?? [])}` : "It stays in this app, and stops running in the others.";
+            // Asked before it reaches further; bringing it back to one app only narrows what it can do.
+            if (on && !(await ask(`your plugins: uses ${own.name ?? id} in every app`, "", code, reason))) return { ok: false, error: "Still for this app only" };
+            if ((await current(id)) !== code) return { ok: false, error: changed };
+            const moved = await saving.userAdded.everywhere(app, id, on);
+            if (!moved.ok) return moved;
+            await saving.reopen(EVERYWHERE);
             return { ok: true };
           });
         }
@@ -676,12 +716,13 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (!(await ask(review.target, review.before, code, `Once it is on, it can: ${words(manifest.permissions)}`))) return { ok: false, error: "Not saved" };
           // Replace only the version the person saw, or add one that still isn't there.
           if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
-          const added = await saving.userAdded.add(app, [{ name: `${manifest.id}.js`, data: code }]);
+          // One the person uses in every app is saved where it is kept.
+          const added = await saving.userAdded.add(keptIn(manifest.id), [{ name: `${manifest.id}.js`, data: code }]);
           if (!added.ok) return added;
           await saving.userAdded.on(app, manifest.id);
           // Opening the app again stops a running copy with other code (if only this app uses it) and starts the new code under the same id.
           await saving.turnOn([manifest.id]);
-          await saving.reopen(app);
+          await saving.reopen(keptIn(manifest.id));
           return { ok: true, id: manifest.id };
         });
       }

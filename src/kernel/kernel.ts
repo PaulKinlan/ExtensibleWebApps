@@ -32,7 +32,7 @@ import { isolateHost } from "./isolate-host";
 import { agentFiles, asPlugin } from "./agents/linked";
 import { asMove, moves as makeMoves } from "./moves";
 import { record, recent, setSink, startedAt, tap } from "./trace";
-import { checkApp, userPlugins } from "./user-plugins";
+import { checkApp, EVERYWHERE, userPlugins } from "./user-plugins";
 import type { Opened } from "../shared/protocol";
 
 
@@ -201,12 +201,13 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
   await kernelModules.ready;
   await space()?.ready?.();
   if (!hosts.list.includes(host)) return;
-  let mine: { href: string; source: string }[] = [];
+  let mine: { href: string; source: string; everywhere?: boolean }[] = [];
   let ids = new Set<string>();
   let moves: Awaited<ReturnType<typeof moved.get>> = {};
   try {
     if (app !== undefined) {
-      checkApp(app);
+      // (The folder for the plugins a person uses in every app is no app's own.)
+      if (checkApp(app) === EVERYWHERE) throw 0;
       // In a space, the space hears which app is open, so the plugins of it that run on the server start there.
       space()?.use?.(app);
       mine = await userAdded.links(app);
@@ -233,6 +234,9 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
       return undefined;
     }
   };
+  // One the person uses in every app gives way to the app's own plugin of that id: the app runs as its author wrote it.
+  const own = new Set(links.map(idOf));
+  mine = mine.filter((link) => !link.everywhere || !own.has(idOf(link)));
   const replaced = new Set(mine.map(idOf).filter((id): id is string => !!id));
   const linked: { href: string; source: string; runner?: string }[] = [...links.filter((link) => !replaced.has(idOf(link) ?? "")), ...mine];
   // A copy of a plugin with other code or from another address (the app's, where the person's now replaces it, or the person's, where
@@ -278,16 +282,17 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
 
 /** Opens an app again in every tab that has it open, after its user plugins or places changed. */
 async function reopen(app: string) {
+  // A change to a plugin the person uses in every app reaches every app that is open.
+  const changed = (open?: { app?: string }): open is { app: string; links: { href: string; source: string }[] } => open?.app !== undefined && (app === EVERYWHERE || open.app === app);
   // Every tab lets go of what the app no longer links first, so nothing a plugin replaces is still held by another tab.
-  const mine = await userAdded.links(app).catch(() => []);
   for (const host of hosts.list) {
     const open = openApps.get(host.tab);
-    if (open?.app === app) apps.drop(host, [...open.links, ...mine]);
+    if (changed(open)) apps.drop(host, [...open.links, ...(await userAdded.links(open.app).catch(() => []))]);
   }
   for (const host of hosts.list) {
     const open = openApps.get(host.tab);
-    if (open?.app === app) {
-      await openApp(host, open.links, app);
+    if (changed(open)) {
+      await openApp(host, open.links, open.app);
       // What the app links changed, and its plugins are running now: plugins.app() and llm.providers() answer differently.
       pluginSwitches.opened(host.tab);
     }
@@ -527,6 +532,9 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   return undefined;
 }
 
+/** The apps a change to one of the person's plugins reaches: this one, or all of them for one they use in every app. */
+const keptFor = async (app: string, id: string) => ((await userAdded.list(app)).some((p) => p.id === id && p.everywhere) ? EVERYWHERE : app);
+
 /** The Customize panel's commands: the person's own plugins for an app, and the places they let plugins into. */
 async function customize(name: string, arg: unknown): Promise<unknown> {
   const a = (arg ?? {}) as Record<string, unknown>;
@@ -554,11 +562,12 @@ async function customize(name: string, arg: unknown): Promise<unknown> {
     case "user:off":
       // As in Customize (authoring.ts): the person's plugins that provide what it needs come on with it.
       await (name === "user:on" ? userAdded.onWithNeeds(app, id, (service) => Object.hasOwn(services, service), (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not) : userAdded.offWithDependents(app, id, (service, not) => Object.hasOwn(services, service) && remote.providers.get(service) !== not));
-      await reopen(app);
+      await reopen(await keptFor(app, id));
       return true;
     case "user:remove": {
+      const where = await keptFor(app, id);
       const removed = await userAdded.remove(app, id);
-      await reopen(app);
+      await reopen(where);
       return removed;
     }
     case "place:ask": {
