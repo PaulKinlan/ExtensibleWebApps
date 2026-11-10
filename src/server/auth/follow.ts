@@ -30,8 +30,8 @@ const MAX_ITEM = 256 * 1024;
 /** Everything one person's account keeps, and how many items. */
 const MAX_TOTAL = 4 * 1024 * 1024;
 const MAX_ITEMS = 2000;
-/** A kind, then what it names: nothing a path or a log could be confused by. */
-const KEY = /^[a-z]{1,12}:[\w.~|/-]{1,300}$/;
+/** Only the four kinds of thing that follow a person, each named with nothing a path or a log could be confused by. Anything else (a key, say) is refused. */
+const KEY = /^(?:(?:file|on|move):[\w.~|/-]{1,300}|llm:prefer)$/;
 const HASH = /^[\w+/=-]{1,100}$/;
 
 interface Entry {
@@ -90,7 +90,7 @@ export function follow(
     const writes: { key: string; text?: string }[] = [];
     for (const change of changes as Record<string, unknown>[]) {
       const key = change?.key;
-      if (typeof key !== "string" || !KEY.test(key)) return refuse(`${JSON.stringify(key).slice(0, 80)} isn't the name of something an account keeps`);
+      if (typeof key !== "string" || !KEY.test(key)) return refuse(`${String(JSON.stringify(key)).slice(0, 80)} isn't the name of something an account keeps`);
       const had = items[key];
       if (change.gone === true) {
         if (!had || had.gone) continue;
@@ -131,7 +131,8 @@ export function follow(
       if (request.method === "GET") {
         const since = Number(url.searchParams.get("since") ?? 0);
         if (!Number.isSafeInteger(since) || since < 0) return refuse("since is the last number this device saw");
-        return changed(user, since);
+        // In the queue with the saves, so an item's number and hash are never read with another save's value.
+        return serial(() => changed(user, since));
       }
       const text = await bodyOf(request, FOLLOW_BODY);
       if (text === null) return refuse(`That is more than ${kb(FOLLOW_BODY)} in one request: send fewer changes at a time`, 413);

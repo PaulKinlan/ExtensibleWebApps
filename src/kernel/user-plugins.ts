@@ -176,6 +176,8 @@ export function userPlugins(store: Store, origin: string, space?: string) {
       return plugin ? ((await store.readText(`user/${folderOf(app, plugin)}/${plugin.file}`)) ?? "") : undefined;
     },
 
+    /** Turns one on or off in exactly the folder named, whatever else has its id (std/follow, which is told the folder). */
+    mark: (folder: string, id: string, value: boolean) => setOn(checkApp(folder), id, value),
     on: (app: string, id: string) => turn(app, id, true),
     off: (app: string, id: string) => turn(app, id, false),
 

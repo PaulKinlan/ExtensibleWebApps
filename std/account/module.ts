@@ -74,7 +74,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const res = await fetch(new URL(path, self.location.origin), body === undefined ? {} : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     if (path === "/auth/me" && (res.status === 404 || !res.headers.get("content-type")?.includes("json"))) return { status: 404, unavailable: true };
     const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    if (path === "/auth/me") await mark(res.ok).catch(() => {});
+    // Only a plain answer says who is signed in: a server that is failing says nothing about it.
+    if (path === "/auth/me" && (res.ok || res.status === 401)) await mark(res.ok).catch(() => {});
     if (!res.ok && res.status !== 401) throw new Error(typeof data.error === "string" ? data.error : `The server answered ${res.status}`);
     return { ...data, status: res.status, site: self.location.origin };
   };

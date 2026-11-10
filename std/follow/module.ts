@@ -42,7 +42,7 @@ import { EVERYWHERE, folderOf } from "../../src/kernel/user-plugins";
 const STATE = "sync/account.json";
 const AT = "/auth/follow";
 /** The same names the account takes (src/server/auth/follow.ts). */
-const KEY = /^[a-z]{1,12}:[\w.~|/-]{1,300}$/;
+const KEY = /^(?:(?:file|on|move):[\w.~|/-]{1,300}|llm:prefer)$/;
 /** A file in user/: an app's folder (or the one for every app), then the file, which may be in a plugin's own folder. */
 const FILE = /^[\w-]+(\/[\w-][\w.-]*)+$/;
 const TEXT = /\.(js|mjs|html|css|json|svg|txt|md)$/i;
@@ -83,6 +83,8 @@ export interface Following {
 type Item = { key: string; v: number; h?: string; value?: unknown; gone?: true };
 
 const hex = (bytes: ArrayBuffer) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padStart(2, "0")).join("");
+/** How big a value is as the account counts it: its JSON, in UTF-8 bytes. */
+const bytesOf = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).length;
 const sha = async (data: Uint8Array | string) => hex(await crypto.subtle.digest("SHA-256", typeof data === "string" ? new TextEncoder().encode(data) : (data as BufferSource))).slice(0, 40);
 const toBase64 = (bytes: Uint8Array) => {
   let out = "";
@@ -131,16 +133,19 @@ export default {
     };
     const status = { on: false, error: undefined as string | undefined, skipped: [] as string[] };
 
-    /** Everything on this device that follows the person, by key: its hash now, and how to read its value. */
-    async function here(): Promise<Map<string, { h: string; value: () => unknown }>> {
-      const out = new Map<string, { h: string; value: () => unknown }>();
-      const add = async (key: string, value: unknown) => void (wanted(key) && out.set(key, { h: await sha(JSON.stringify(value)), value: () => value }));
+    type Here = Map<string, { h: string; value: () => unknown }>;
+    /**
+     * Everything on this device that follows the person, by key: its hash now, and how to read its value. A folder
+     * or file that can't be read throws, so the round stops: a failed read must never look like something removed.
+     */
+    async function here(): Promise<Here> {
+      const out: Here = new Map();
       for (const path of await store.listAll("user")) {
         const rel = path.slice("user/".length);
         const key = `file:${rel}`;
         if (!FILE.test(rel) || !wanted(key)) continue;
         const bytes = await store.readBytes(path);
-        if (!bytes) continue;
+        if (!bytes) throw new Error(`Couldn't read ${rel} on this device, so nothing was sent to your account. Try again in a moment.`);
         out.set(key, {
           h: await sha(bytes),
           value: () => {
@@ -149,6 +154,13 @@ export default {
           },
         });
       }
+      for (const [key, item] of await marks()) out.set(key, item);
+      return out;
+    }
+    /** The part of it that isn't files: what is on, the moves and the pick of model. */
+    async function marks(): Promise<Here> {
+      const out: Here = new Map();
+      const add = async (key: string, value: unknown) => void (wanted(key) && out.set(key, { h: await sha(JSON.stringify(value)), value: () => value }));
       const on = await store.readJson<Record<string, unknown>>("user-plugins.json", {});
       for (const [folder, ids] of Object.entries(on ?? {})) if (Array.isArray(ids)) for (const id of ids) if (typeof id === "string") await add(`on:${folder}/${id}`, true);
       for (const name of await store.listFiles("moves")) {
@@ -160,44 +172,56 @@ export default {
       if (typeof prefer === "string" && prefer) await add("llm:prefer", prefer);
       return out;
     }
+    /** One item's hash as it is on this device this moment, read again just before the account's is written over it. */
+    const hashNow = async (key: string): Promise<string | undefined> => {
+      if (!key.startsWith("file:")) return (await marks()).get(key)?.h;
+      const bytes = await store.readBytes(`user/${key.slice("file:".length)}`);
+      return bytes && (await sha(bytes));
+    };
 
     /** While it writes what the account sent, the files it writes aren't changes the person made. */
     let applying = false;
-    /** Writes one item as the account has it (`value` undefined: it was removed). Says whether it could. */
-    async function put(key: string, value: unknown): Promise<boolean> {
+    /**
+     * Writes one item as the account has it (`value` undefined: it was removed). "bad" is an item this device will
+     * never take (not a name or value it knows); "failed" is one it couldn't write this time, to try again.
+     */
+    async function put(key: string, value: unknown): Promise<"ok" | "bad" | "failed"> {
       const [kind, name] = [key.slice(0, key.indexOf(":")), key.slice(key.indexOf(":") + 1)];
       try {
         if (kind === "file") {
-          if (!FILE.test(name)) return false;
+          if (!FILE.test(name)) return "bad";
           const v = value as { t?: unknown; b?: unknown } | undefined;
           if (v === undefined) await store.removeFile(`user/${name}`);
           else if (typeof v.t === "string") await store.writeFile(`user/${name}`, v.t);
           else if (typeof v.b === "string") await store.writeFile(`user/${name}`, new Blob([fromBase64(v.b) as BlobPart]));
-          else return false;
-          return true;
+          else return "bad";
+          return "ok";
         }
         if (kind === "on") {
           const at = name.lastIndexOf("/");
-          if (at < 1) return false;
-          await (value === undefined ? userAdded.off : userAdded.on)(name.slice(0, at), name.slice(at + 1));
-          return true;
+          if (at < 1) return "bad";
+          // In exactly the folder the key names: an every-app plugin of the same id is another item.
+          if (!/^[\w-]+(\/[\w-]+)*$/.test(name.slice(0, at))) return "bad";
+          await userAdded.mark(name.slice(0, at), name.slice(at + 1), value !== undefined);
+          return "ok";
         }
         if (kind === "move") {
           const [app, plugin, place] = name.split("|");
           const to = value === undefined ? null : asMove(value);
-          if (!app || !plugin || !place || to === undefined || !/^[\w-]+(\/[\w-]+)*$/.test(app)) return false;
+          if (!app || !plugin || !place || to === undefined || !/^[\w-]+(\/[\w-]+)*$/.test(app)) return "bad";
           await moved.set(app, plugin, place, to);
-          return true;
+          return "ok";
         }
         if (key === "llm:prefer") {
-          if (value !== undefined && typeof value !== "string") return false;
+          if (value !== undefined && typeof value !== "string") return "bad";
           await store.writeJson("llm.json", value ? { prefer: value } : {});
-          return true;
+          return "ok";
         }
       } catch (error) {
         record({ kind: "error", name: "follow:not-kept", detail: `${key}: ${error instanceof Error ? error.message : String(error)}` });
+        return "failed";
       }
-      return false;
+      return "bad";
     }
     /** The apps open here that an item is part of, to open again once it changed. */
     const touches = (key: string, app: string) => /^(file|on):_everywhere\//.test(key) || key === "llm:prefer" || key.startsWith(`file:${app}/`) || key.startsWith(`on:${app}/`) || key.startsWith(`move:${app}|`);
@@ -205,8 +229,9 @@ export default {
     const ask = async (path: string, body?: unknown): Promise<{ status: number; data: any }> => {
       const res = await fetch(new URL(path, self.location.origin), body === undefined ? { cache: "no-store" } : { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const isJson = (res.headers.get("content-type") ?? "").includes("json");
-      // A site with no server answers with a page, or nothing: there is no account to follow.
-      return { status: isJson ? res.status : 404, data: isJson ? await res.json().catch(() => ({})) : {} };
+      // A site with no server answers with a page: there is no account to follow. A server that is failing (a 502
+      // page from a proxy) keeps its status, and is asked again later.
+      return { status: isJson || !res.ok ? res.status : 404, data: isJson ? await res.json().catch(() => ({})) : {} };
     };
 
     let stopped = false;
@@ -245,10 +270,11 @@ export default {
       const arrived: string[] = [];
       // A plugin's files before the mark that turns it on.
       const items = (Array.isArray(pulled.data.items) ? (pulled.data.items as Item[]) : []).filter((i) => i && typeof i.key === "string" && wanted(i.key)).sort((a, b) => Number(b.key.startsWith("file:")) - Number(a.key.startsWith("file:")));
+      let failed = 0;
       applying = true;
       try {
         for (const item of items) {
-          const local = mine.get(item.key)?.h;
+          let local = mine.get(item.key)?.h;
           const known = s.known[item.key];
           if (item.gone ? local === undefined : local === item.h) {
             // Already the same here.
@@ -257,8 +283,14 @@ export default {
             continue;
           }
           // Changed here since this device last agreed with the account: this device's goes up instead.
-          if (item.gone ? local !== known : known !== undefined && local !== known) continue;
-          if (!(await put(item.key, item.gone ? undefined : item.value))) continue;
+          const theirs = () => (item.gone ? local !== known : known !== undefined && local !== known);
+          if (theirs()) continue;
+          // Read again, now: the person may have changed it since the round began.
+          local = await hashNow(item.key);
+          if (theirs()) continue;
+          const kept = await put(item.key, item.gone ? undefined : item.value);
+          if (kept === "failed") failed++;
+          if (kept !== "ok") continue;
           if (item.gone) {
             delete s.known[item.key];
             from.delete(item.key);
@@ -274,19 +306,27 @@ export default {
       } finally {
         applying = false;
       }
-      s.version = Number(pulled.data.version) || s.version;
       s.from = [...from].sort();
       if (arrived.length) {
         record({ kind: "lifecycle", name: "follow:arrived", plugin: "follow", detail: `${arrived.length} from your account` });
-        mine = await here();
+        // Open apps show what arrived whatever happens next: a failed send below must not leave old code running.
+        if (arrived.some((key) => /^(file|on):_everywhere\//.test(key) || key === "llm:prefer")) await kernel.reopen(EVERYWHERE);
+        else for (const app of new Set(hosts.list.map((host) => kernel.appIn(host.tab)).filter((app): app is string => !!app))) if (arrived.some((key) => touches(key, app))) await kernel.reopen(app);
       }
+      // Something couldn't be written here: the device stays where it was with the account, so the next round brings it again.
+      if (failed) {
+        await store.writeJson(STATE, s);
+        throw new Error(`Couldn't keep ${failed === 1 ? "one thing" : `${failed} things`} from your account on this device. It will try again; if it keeps happening, this device may be out of space.`);
+      }
+      s.version = Number(pulled.data.version) || s.version;
+      if (arrived.length) mine = await here();
 
       const changes: { key: string; h?: string; value?: unknown; gone?: true; size: number }[] = [];
       const skipped: string[] = [];
       for (const [key, item] of mine) {
         if (s.known[key] === item.h) continue;
         const value = item.value();
-        const size = JSON.stringify(value).length;
+        const size = bytesOf(value);
         if (size > MAX_ITEM) skipped.push(key.slice(key.indexOf(":") + 1));
         else changes.push({ key, h: item.h, value, size });
       }
@@ -312,11 +352,6 @@ export default {
       status.error = undefined;
       await store.writeJson(STATE, s);
       record({ kind: "lifecycle", name: "follow:synced", plugin: "follow", detail: `version ${s.version}` });
-
-      if (arrived.length) {
-        if (arrived.some((key) => /^(file|on):_everywhere\//.test(key) || key === "llm:prefer")) await kernel.reopen(EVERYWHERE);
-        else for (const app of new Set(hosts.list.map((host) => kernel.appIn(host.tab)).filter((app): app is string => !!app))) if (arrived.some((key) => touches(key, app))) await kernel.reopen(app);
-      }
     }
 
     /** One round at a time; a change while one runs is another round after it. */

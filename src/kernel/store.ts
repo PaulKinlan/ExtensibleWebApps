@@ -128,14 +128,13 @@ export class Store extends Service {
     this.tell(path);
   }
 
-  /** Every file under a folder of the data folder, in folders inside it too, each as its path from the data folder. */
+  /**
+   * Every file under a folder of the data folder, in folders inside it too, each as its path from the data folder.
+   * A folder that can't be read throws: its caller (std/follow) must not take a failed read for an empty folder.
+   */
   async listAll(path: string): Promise<string[]> {
     await this.ready;
-    try {
-      return await this.files!.list(`${path}/`);
-    } catch {
-      return [];
-    }
+    return this.files!.list(`${path}/`);
   }
 
   /** The sources of the plugins kept in the data folder. */

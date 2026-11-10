@@ -71,12 +71,15 @@ export default async function ({ check, context, errors }) {
     await command(out.page, "user:add", { app: APP, url: "/demos/trip/samples/plum.js" });
     await command(out.page, "user:on", { app: APP, id: "plum" });
     await out.page.waitForFunction(() => window.__host.traces.some((e) => e.name === "user-plugin:on" && e.plugin === "plum"), null, { timeout: 10000 }).catch(() => {});
+    // Customize too, where signed in it says what follows them: signed out it asks nothing of the account.
+    await out.page.click("ui-panel .launch");
+    await out.page.waitForSelector('[data-plugin-id="plum"]', { timeout: 15000 }).catch(() => {});
     await new Promise((r) => setTimeout(r, 1500));
     const quiet = await out.page.evaluate(async () => ({
       started: window.__host.traces.filter((e) => e.plugin === "follow").map((e) => e.name),
       fetched: (await window.__host.command("fetched")).filter((url) => /kernel-follow|\/auth\//.test(url)),
     }));
-    check("follow: signed out, a person's plugin stays on the device and nothing of the account's is fetched or asked", !quiet.started.length && !quiet.fetched.length && (await list(out.page)).some((p) => p.id === "plum" && p.on), JSON.stringify(quiet));
+    check("follow: signed out, a person's plugin stays on the device and nothing of the account's is fetched or asked, with Customize open too", !quiet.started.length && !quiet.fetched.length && !(await out.page.$('[data-part="account"]')) && (await list(out.page)).some((p) => p.id === "plum" && p.on), JSON.stringify(quiet));
 
     // Ann signs in on her first device, and adds things.
     const first = await device("first device");

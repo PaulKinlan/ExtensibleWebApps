@@ -220,8 +220,9 @@ export default function (ctx) {
   const drawNow = async () => {
     // Closed, only Make stays drawn (hidden), so a draft being typed is still there when the panel opens again.
     if (!open) return views.render("customize", "panel", { open: false, reopen, notMake: true, arrange: lastArrange, make: makeView(lastEditorLinked) });
-    // (`follow` is there on a site that keeps accounts, and says nothing is followed while the person is signed out.)
-    const [mine, page, account] = await Promise.all([call("mine"), call("page"), ctx.call("follow", "status").catch(() => null)]);
+    const [mine, page] = await Promise.all([call("mine"), call("page")]);
+    // Signed out, the `follow` module isn't asked, so it is never fetched: the page says whether someone is signed in on this device.
+    const account = page?.account ? await ctx.call("follow", "status").catch(() => null) : null;
     if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, reopen, notMake: true, make: makeView(false), message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
     lastArrange = !!page.arrange;
     lastEditorLinked = page.running.some((r) => r.id === "plugin-editor");

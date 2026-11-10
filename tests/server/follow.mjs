@@ -45,10 +45,12 @@ export async function followChecks(base, check, owner, stranger) {
 
   const big = await post(owner, [{ key: "file:demos/trip/big.js", h: "b", value: { t: "x".repeat(300 * 1024) } }]);
   const odd = await post(owner, [{ key: "../secrets.json", h: "s", value: "k" }]);
+  const secret = await post(owner, [{ key: "secrets:openai", h: "s", value: "k" }]);
+  const empty = await post(owner, [{}]);
   const after = await get(owner);
   check(
     "follow: a file too big for the account, or something that isn't one of a person's additions, is refused saying why, and nothing changes",
-    big.status === 413 && /at most 256 KB/.test(big.body.error ?? "") && /stays on this device/.test(big.body.error ?? "") && odd.status === 400 && /isn't the name of something an account keeps/.test(odd.body.error ?? "") && after.body.version === 5,
-    JSON.stringify([big.body, odd.body, after.body.version]),
+    big.status === 413 && /at most 256 KB/.test(big.body.error ?? "") && /stays on this device/.test(big.body.error ?? "") && odd.status === 400 && /isn't the name of something an account keeps/.test(odd.body.error ?? "") && secret.status === 400 && empty.status === 400 && after.body.version === 5,
+    JSON.stringify([big.body, odd.body, secret, empty, after.body.version]),
   );
 }
