@@ -102,6 +102,10 @@ export default async function ({ check, context, errors }) {
     const called = await checkProject(folder);
     writeFileSync(join(folder, "main.js"), plugin);
     check("extensible-app check says a service of a module the project left out isn't there", called.problems.some((p) => p.level === "error" && /there is no bus service on this site/.test(p.message)), JSON.stringify(called.problems));
+    writeFileSync(join(folder, "main.js"), plugin.replace('permissions: ["ui"]', 'permissions: ["ui", "schedule"]').replace("export default async function (ctx) {", 'export default async function (ctx) {\n  ctx.schedule.every("tidy", 60, () => {});'));
+    const scheduled = await checkProject(folder);
+    writeFileSync(join(folder, "main.js"), plugin);
+    check("and says so of a shorthand for one (ctx.schedule.every)", scheduled.problems.some((p) => p.level === "error" && /ctx\.schedule\.every uses the schedule service, and there is no schedule service on this site/.test(p.message)), JSON.stringify(scheduled.problems));
 
     const laid = layoutProject(folder);
     const deployed = JSON.parse(readFileSync(laid.config, "utf8").replace(/^\/\/.*$/gm, ""));
@@ -113,6 +117,8 @@ export default async function ({ check, context, errors }) {
       deployed.main === "platform/src/server/cloudflare/worker.ts" && existsSync(join(laid.target, deployed.main)) && ours.version !== theirs.version && /^[0-9a-f]{12}$/.test(ours.version ?? "") && read(JSON.stringify(ours.modules)).modules.join() === "debug,router" && marks(JSON.stringify(ours.modules)) === 1,
       `${deployed.main} ${ours.version} ${theirs.version}`,
     );
+    const sent = readFileSync(join(laid.site, "_headers"), "utf8");
+    check("a site with a kernel.json of its own has browsers check /assets/ each time, since its kernel changes with that file", /^\/assets\/\*\n\s+Cache-Control: public, max-age=0, must-revalidate$/m.test(sent) && !/immutable/.test(sent) && /immutable/.test(readFileSync("dist/_headers", "utf8")) && sent.includes("/assets/runtime-*"), sent.slice(0, 400));
     check("the deployed site's browser kernel has it too, and kernel.json itself isn't served", read(readFileSync(join(laid.site, "assets", built[0]), "utf8")).hooks.max === 3 && !existsSync(join(laid.site, "kernel.json")));
     check("the platform's own kernels are left as they were", marks(readFileSync(join("dist/assets", built[0]), "utf8")) === 1 && !new RegExp(`${STAMP}[A-Za-z0-9+/]`).test(readFileSync(join("dist/assets", built[0]), "utf8") + readFileSync(".build/cloudflare/kernel-source.js", "utf8") + readFileSync(".build/server/space.js", "utf8")));
 
@@ -139,6 +145,21 @@ export default async function ({ check, context, errors }) {
     await tab.click("#to-book");
     const moved = await tab.waitForFunction(() => location.pathname === "/book/42", null, { timeout: 8000 }).then(() => true, () => false);
     check("a link to a screen of an app at the root moves there with the History API, without loading the page", moved && (await tab.evaluate(() => window.__sameLoad === true && location.search === "?tab=notes")), await tab.evaluate(() => location.href));
+    const asked = await tab.evaluate(() =>
+      Promise.all(
+        ["/book/7", "/apps/reading-list/", "/s/some-space/book/7", "/user/x/y", "/account/"].map(
+          (address) =>
+            new Promise((answer) => {
+              const { port1, port2 } = new MessageChannel();
+              port1.onmessage = (event) => answer(event.data);
+              navigator.serviceWorker.controller.postMessage({ t: "sw:screen", url: new URL(address, location.href).href }, [port2]);
+            }),
+        ),
+      ),
+    );
+    check("the service worker says an address is the root app's screen only where no other route or page answers it (/apps/, /s/, /user/, /account/)", asked.join() === "true,false,false,false,false", asked.join());
+    const kernelCache = await tab.evaluate(async (file) => (await fetch(`/assets/${file}`)).headers.get("Cache-Control"), built[0]);
+    check("extensible-app dev sends the project's kernel to be checked each time, not kept for a year", /must-revalidate/.test(kernelCache ?? "") && !/immutable/.test(kernelCache ?? ""), String(kernelCache));
     const screen = await tab.evaluate(() => window.__host.command("modules")).then((m) => m.find((x) => x.name === "router"));
     check("the kernel hears the screen the tab moved to", !!screen, JSON.stringify(screen));
     await tab.click("#to-home");

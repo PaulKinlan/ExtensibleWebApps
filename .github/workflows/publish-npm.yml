@@ -18,10 +18,13 @@
 #
 #   1. builds the platform and runs the project checks on the packed packages
 #      (tests/project/run.mjs), so what is published is what was checked
-#   2. publishes the platform, then the create command, each with provenance
+#   2. tags the commit v<version>, before publishing anything, so the tag says
+#      which commit a version is. A version whose tag is on another commit, or
+#      that is on npm with no tag, stops the run: one version is one commit
+#   3. publishes the platform, then the create command, each with provenance
 #      (npm shows the commit and this run), skipping one already published at
-#      this version, so a run that failed half way can be run again
-#   3. tags the commit v<version>
+#      this version, so a run that failed half way can be run again from the
+#      same commit
 #
 # "Dry run" does everything except publish and tag: npm lists what it would
 # send. It needs no secret, so it can be run before one exists.
@@ -99,6 +102,32 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: node scripts/release.mjs "$VERSION"
 
+      # First, so that a run which publishes one package and then fails can only be run again from this
+      # commit: both packages of a version, and its tag, always come from one commit.
+      - name: Tag the commit
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -eu
+          tagged=$(git ls-remote origin "refs/tags/v$VERSION" | cut -f1)
+          if [ -n "$tagged" ]; then
+            if [ "$tagged" != "$(git rev-parse HEAD)" ]; then
+              echo "::error::v$VERSION is already tagged on $tagged, not on this commit. Publish this commit under a new version."
+              exit 1
+            fi
+            echo "v$VERSION is already this commit's tag: carrying on where the last run stopped"
+          else
+            for name in extensible-web-apps create-extensible-app; do
+              if [ "$(npm view "$name@$VERSION" version 2>/dev/null || true)" = "$VERSION" ]; then
+                echo "::error::$name@$VERSION is on npm but no commit is tagged v$VERSION, so there is no telling which commit it came from. Publish under a new version."
+                exit 1
+              fi
+            done
+            git tag "v$VERSION"
+            git push origin "v$VERSION"
+          fi
+
       - name: Publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -117,16 +146,3 @@ jobs:
             (cd "$folder" && npm publish --access public --provenance --ignore-scripts $DRY_RUN)
             echo "- \`$name@$VERSION\`${DRY_RUN:+ (dry run: not published)}" >> "$GITHUB_STEP_SUMMARY"
           done
-
-      - name: Tag the commit
-        if: ${{ !inputs.dry_run }}
-        env:
-          VERSION: ${{ inputs.version }}
-        run: |
-          set -eu
-          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null; then
-            echo "v$VERSION is already a tag: left as it is"
-          else
-            git tag "v$VERSION"
-            git push origin "v$VERSION"
-          fi

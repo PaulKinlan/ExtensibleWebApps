@@ -96,17 +96,27 @@ export const atRoot = (html) => (/<head\b[^>]*>/i.test(html) ? html.replace(/<he
 
 /**
  * The files of a project's site that are written, not linked or copied, by their address: the front page when
- * it is the app's page (above), and the browser's kernel when the project has a kernel.json of its own.
- * @param {string} project @param {Record<string, string>} entries @param {{ platform?: string, kernel?: { modules: string[], hooks?: Record<string, number> } }} [options]
+ * it is the app's page (above), and, when the project has a kernel.json of its own (`kernel`, as projectKernel
+ * read it; undefined for none), the browser's kernel with it in, and the site's _headers.
+ *
+ * The project's kernel keeps the platform's address for it, which the kernel's modules import it by. The
+ * platform's _headers tell browsers a file in /assets/ never changes; this one does, whenever the project's
+ * kernel.json does. So such a site's /assets/ are checked with the server each time instead (a short
+ * "not changed" answer), or a browser could keep running an old kernel.json's kernel for a year.
+ * @param {string} project @param {Record<string, string>} entries @param {{ modules: string[], hooks?: Record<string, number> } | undefined} kernel @param {{ platform?: string }} [options]
  * @returns {Record<string, string>}
  */
-export function writtenFiles(project, entries, { platform = PLATFORM, kernel = projectKernel(project, { platform }) } = {}) {
+export function writtenFiles(project, entries, kernel, { platform = PLATFORM } = {}) {
   /** @type {Record<string, string>} */
   const written = {};
   if (entries["index.html"] === join(project, "app.html")) written["index.html"] = atRoot(readFileSync(entries["index.html"], "utf8"));
   if (kernel) {
     const { path, text } = browserKernel(kernel, { platform });
     written[path] = text;
+    const headers = readFileSync(join(platformSite(platform), "_headers"), "utf8");
+    const forever = /^(\/assets\/\*\n[ \t]+Cache-Control:)[^\n]*\bimmutable\b[^\n]*$/gm;
+    if ((headers.match(forever) ?? []).length !== 1) throw new Error("The platform's _headers don't say how long /assets/ are kept as this version of extensible-app reads it, so a project's own kernel.json can't be served safely: remove your kernel.json, or update the platform.");
+    written["_headers"] = headers.replace(forever, "$1 public, max-age=0, must-revalidate");
   }
   return written;
 }
@@ -156,7 +166,7 @@ export async function dev(project, { port = 5173, host = "127.0.0.1", platform =
   const kernel = projectKernel(project, { platform });
   const lay = () => {
     const entries = siteEntries(project, { platform });
-    linkSite(site, entries, project, writtenFiles(project, entries, { platform, kernel }));
+    linkSite(site, entries, project, writtenFiles(project, entries, kernel, { platform }));
   };
   lay();
   // A file or folder added anywhere in the project is served as soon as it's there.
@@ -216,7 +226,7 @@ export function layoutProject(project, { name, platform = PLATFORM } = {}) {
     cpSync(from, join(site, entry), { recursive: true, dereference: true, filter: (path) => !mine || relative(project, path).split(sep).every(servable) });
   }
   const kernel = projectKernel(project, { platform });
-  for (const [address, text] of Object.entries(writtenFiles(project, entries, { platform, kernel }))) writeFileSync(join(site, address), text);
+  for (const [address, text] of Object.entries(writtenFiles(project, entries, kernel, { platform }))) writeFileSync(join(site, address), text);
 
   const jsonc = (text) => JSON.parse(text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "").replace(/,(\s*[}\]])/g, "$1"));
   const config = jsonc(readFileSync(join(platform, "wrangler.jsonc"), "utf8"));

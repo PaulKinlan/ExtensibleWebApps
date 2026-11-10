@@ -35,6 +35,9 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // The kernel's own manifest reader, capability gate and HTML allowlist,
 // bundled from src/ so this script can never disagree with them.
+/** The kernel's own hook limits, before any kernel.json's. */
+let hookDefaults;
+
 async function loadKernelRules(root) {
   const entry = [
     'export { readManifest, RESERVED } from "./src/kernel/manifest.ts";',
@@ -58,7 +61,10 @@ async function loadKernelRules(root) {
   // The hook limits the site set in kernel.json, as the kernel uses them: a project's own kernel.json's
   // if it has one (scripts/project-kernel.mjs), which stops here if it can't be used.
   const own = root ? projectKernel(root) : undefined;
-  Object.assign(rules.PLUGIN_HOOKS, own ? (own.hooks ?? {}) : rules.hookLimits(ROOT));
+  // The bundle above is the same module each time it is loaded, so its limits are still the last check's:
+  // start again from the kernel's own.
+  hookDefaults ??= { ...rules.PLUGIN_HOOKS };
+  Object.assign(rules.PLUGIN_HOOKS, hookDefaults, own ? (own.hooks ?? {}) : rules.hookLimits(ROOT));
   // The kernel reserves each service's name when it loads src/kernel/services/,
   // so reserve the same names here, read from the same folder.
   for (const name of serviceFiles()) rules.RESERVED.add(name);

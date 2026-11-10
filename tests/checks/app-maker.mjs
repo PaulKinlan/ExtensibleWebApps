@@ -152,6 +152,8 @@ export default async function ({ check, openTab, context, URL }) {
     // Make it.
     await ask("A reading list with a Sunday reminder");
     check("making an app shows every file on one review card first", await accept("makes Reading list, at /apps/reading-list/, with app.html, books.js, books.html, reminder.js, reminder.html"));
+    // The trace reaches the page in batches, so the review card can be up before the model's first turn is in it.
+    await page.waitForFunction(() => window.__host.traces.some((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked")), null, { timeout: 10000 }).catch(() => {});
     const turns = await page.evaluate(() => window.__host.traces.filter((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked")).map((e) => JSON.parse(e.detail.slice(12))));
     const tools = turns.find((t) => t.system.startsWith("You make small web apps"))?.tools ?? [];
     check("the app maker's tools are the maker's, not the data's or the authoring service's", ["maker_check", "maker_list", "maker_read", "maker_save"].every((t) => tools.includes(t)) && !tools.some((t) => /^(data_(list|get|put|delete)|authoring_)/.test(t)), tools.join(" "));

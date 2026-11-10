@@ -37,7 +37,9 @@ self.addEventListener("message", (event) => {
   if (event.data?.t === "sw:screen" && typeof event.data.url === "string" && event.ports[0]) {
     const url = new URL(event.data.url, location.href);
     const port = event.ports[0];
-    const found = url.origin === location.origin ? appAt(new Request(url), url, { fetch: (request) => cached(request, event) }) : Promise.resolve(undefined);
+    // An address another route answers (a space's /s/…, a made app's /apps/…, a person's /user/…) is never the root app's screen.
+    const reserved = routes.some((route) => route.prefix && url.pathname.startsWith(route.prefix));
+    const found = url.origin === location.origin && !reserved ? appAt(new Request(url), url, { fetch: (request) => cached(request, event) }) : Promise.resolve(undefined);
     return event.waitUntil(found.then((app) => port.postMessage(app?.folder === "/"), () => port.postMessage(false)));
   }
   if (event.data?.t !== "sw:warm" || !Array.isArray(event.data.urls)) return;
