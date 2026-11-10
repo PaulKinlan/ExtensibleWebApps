@@ -7,6 +7,6 @@
     "Your data": ["import-export", "sync-status", "undo"],
     "Turning plugins on and off": ["reset", "switchboard"],
     "Looking inside": ["debug-console", "hook-tracer", "view-source"],
-    "Agents": ["board"]
+    "Agents": ["board", "chat"]
   }
 }

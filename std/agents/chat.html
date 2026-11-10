@@ -37,7 +37,7 @@
         </label>
       </template>
     </div>
-    <template if="none"><p>This app has no agent to write to. Link one with an inbox, such as <code>&lt;link rel="agent" href="/std/agents/assistant.agent.md"&gt;</code>.</p></template>
+    <template if="none"><p>This app has no agent to write to. Add one in Customize, under “Add a plugin or an agent from files, code or an address”: the address <code>/std/agents/assistant.agent.md</code> adds the assistant. An app's author links one with <code>&lt;link rel="agent" href="/std/agents/assistant.agent.md"&gt;</code>.</p></template>
     <template if="!none">
       <p class="about">{{about}}</p>
       <template if="lines.length">

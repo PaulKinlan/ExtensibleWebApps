@@ -21,6 +21,7 @@
 // plugins (a security reviewer) may stop it with { block: reason }, which
 // the caller gets back as the error, or let it through to the review.
 
+import { isAgentFile } from "../shared/agent-runner";
 import { readManifest } from "./manifest";
 import type { Dispatch } from "../shared/protocol";
 import type { RemotePlugins, ServiceProvider } from "./remote";
@@ -126,6 +127,11 @@ export function explain(permission: string): string {
   if (kind === "ui" && verb === "transform" && what) return `Change how ${what}'s view looks.`;
   if (kind === "bus" && verb === "send") return `Send messages to ${what === "*" ? "any agent" : what}.`;
   if (kind === "agents" && verb === "run" && what) return `Start the ${what} agent.`;
+  if (permission === "llm") return "Ask a language model, with the key you gave it.";
+  if (permission === "agent") return "Work as an agent: when something wakes it, it asks a model what to do and uses the tools it is allowed.";
+  if (permission === "bus:inbox") return "Get the messages written to it.";
+  if (permission === "bus:ask") return "Ask you a question, on the board.";
+  if (permission === "commands") return "Run this app's commands, as its buttons and shortcuts do.";
   if (kind === "data" && verb === "read") return `Read the ${what} records, and hear when they change.`;
   if (kind === "data" && verb === "write") return `Change the ${what} records. Unless it made them, you are asked first each time.`;
   if (kind === "hook" && verb === "listen") return `Hear ${what}.`;
@@ -208,7 +214,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       mine: {
         args: "()",
-        returns: "[{ id, name, description, permissions, places, on, shared, everywhere, error? }]",
+        returns: "[{ id, name, description, permissions, places, on, shared, everywhere, agent, error? }]",
         needs: "plugins:author",
         description: "The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. everywhere says which ones they use in every app (kept once, and on or off in all of them). error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).",
         params: [],
@@ -251,7 +257,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         args: "()",
         returns: "{ ok: true, ids } or { ok: false, error }",
         needs: "plugins:author",
-        description: "Opens the file chooser, right after the person clicks, and adds the plugin they pick (with any files it lists) to their own for the caller's app, once they accept a review of its code. It is added off.",
+        description: "Opens the file chooser, right after the person clicks, and adds the plugin they pick (with any files it lists), or the agent (.agent.md), to their own for the caller's app, once they accept a review of its code. It is added off.",
         params: [],
       },
       unlock: {
@@ -331,7 +337,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         args: "(code)",
         returns: "{ ok: true, id } or { ok: false, error }",
         needs: "plugins:author",
-        description: "Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins.",
+        description: "Saves a plugin as one of the person's own for the caller's app, and turns it on, once they accept a review that shows its code and what it asks for. Its id can't be one of the app's own plugins. Code that opens with `---` frontmatter is saved as an agent of theirs (an .agent.md file), which runs the standard agent loop.",
         params: [{ name: "code", schema: { type: "string", description: "The plugin's whole source: `export const manifest = { ... }` first, then `export default function (ctx) { ... }`" } }],
       },
       remove: {
@@ -444,6 +450,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           on: p.on,
           shared: !!p.shared,
           everywhere: !!p.everywhere,
+          agent: isAgentFile(p.file),
           ...(p.error ? { error: p.error } : needs(p) ? { error: needs(p) } : {}),
         }));
       }
@@ -540,6 +547,11 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const current = (id: string) => saving.userAdded.read(app, id);
         /** Where one of the person's plugins is kept: this app's folder, or the one for every app. */
         const keptIn = (id: string) => folderOf(app, mine.find((p) => p.id === id) ?? {});
+        /** A plugin shared with the space stays the kind it is: the space sends its code to the other members as a plugin's. */
+        const sharedAsOther = async (id: string, file: string) => {
+          const own = mine.find((p) => p.id === id);
+          return own && isAgentFile(own.file) !== isAgentFile(file) && (await saving.shared()?.mark(app, [own]))?.[0]?.shared ? `${own.name ?? id} is shared with the space. Stop sharing it first` : undefined;
+        };
         const changed = "It changed while the review was open (in another tab, perhaps), so nothing was done. Look again and try once more.";
         const linkedHere = apps.linkedBy(tab) ?? [];
         /** The app's own plugin that one of the person's with this id would replace in this app, if any. */
@@ -571,7 +583,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
 
         if (method === "add") {
           const [url, options] = args;
-          if (typeof url !== "string") return { ok: false, error: "add(url) takes the plugin's .js file on this site" };
+          if (typeof url !== "string") return { ok: false, error: "add(url) takes a plugin's .js file, or an agent's .agent.md file, on this site" };
           // For every app the person opens here, rather than this one: a language model they bring their own key to, say.
           const everywhere = !!options && typeof options === "object" && (options as { everywhere?: unknown }).everywhere === true;
           const folder = everywhere ? EVERYWHERE : app;
@@ -581,7 +593,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (wrongAdd) return { ok: false, error: wrongAdd };
           let m;
           try {
-            m = readManifest(fetched.source);
+            m = await saving.userAdded.manifest(fetched.files[0].name, fetched.source);
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : String(error) };
           }
@@ -589,6 +601,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (taken) return { ok: false, error: taken };
           const clashAdd = clash(m.id);
           if (clashAdd) return { ok: false, error: clashAdd };
+          const sharedAdd = await sharedAsOther(m.id, fetched.files[0].name);
+          if (sharedAdd) return { ok: false, error: sharedAdd };
           const manifest = m;
           return once(manifest.id, async () => {
             const stopped = await checked(manifest, fetched.source, "add");
@@ -610,14 +624,14 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         if (method === "pick") {
           const files = (await saving.page(tab, "pick", [], dispatch)) as { name: string; data: string | Blob }[] | null;
           if (!files?.length) return { ok: false, error: "No file chosen" };
-          const main = files.filter((f) => f.name.endsWith(".js") && typeof f.data === "string");
-          if (main.length !== 1) return { ok: false, error: "Pick one plugin's .js file, and any files it lists" };
+          const main = files.filter((f) => (f.name.endsWith(".js") || isAgentFile(f.name)) && typeof f.data === "string");
+          if (main.length !== 1) return { ok: false, error: "Pick one plugin's .js file and any files it lists, or one agent's .agent.md file" };
           const wrongPick = await saving.userAdded.problem(app, files);
           if (wrongPick) return { ok: false, error: wrongPick };
           const source = main[0].data as string;
           let m;
           try {
-            m = readManifest(source);
+            m = await saving.userAdded.manifest(main[0].name, source);
           } catch (error) {
             return { ok: false, error: error instanceof Error ? error.message : String(error) };
           }
@@ -625,6 +639,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (taken) return { ok: false, error: taken };
           const clashPick = clash(m.id);
           if (clashPick) return { ok: false, error: clashPick };
+          const sharedPick = await sharedAsOther(m.id, main[0].name);
+          if (sharedPick) return { ok: false, error: sharedPick };
           const manifest = m;
           return once(manifest.id, async () => {
             const stopped = await checked(manifest, source, "pick");
@@ -647,6 +663,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           const own = mine.find((p) => p.id === id);
           if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
           if (own.everywhere) return { ok: false, error: `${own.name ?? id} is one you use in every app. Keep it for this app alone first, then share it` };
+          if (method === "share" && isAgentFile(own.file)) return { ok: false, error: "An agent of yours can't be shared with a space yet" };
           return once(id, async () => {
             const code = (await current(id)) ?? "";
             const toShare = method === "share";
@@ -697,8 +714,10 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const [code] = args;
         if (typeof code !== "string" || code.length > MAX) return { ok: false, error: `A plugin is code, at most ${MAX} characters` };
         let m;
+        // Code that opens with frontmatter is an agent file (agents/file.ts), kept as <id>.agent.md.
+        const ext = /^\s*---\r?\n/.test(code) ? ".agent.md" : ".js";
         try {
-          m = readManifest(code);
+          m = await saving.userAdded.manifest(`pasted${ext}`, ext === ".js" ? code : code.trimStart());
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
         }
@@ -707,6 +726,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         // A copy of one of the app's own plugins, under its id, replaces it in this app; any other plugin's id is taken.
         const clashSave = clash(m.id, ". Give yours a new id.");
         if (clashSave) return { ok: false, error: clashSave };
+        const sharedSave = await sharedAsOther(m.id, `pasted${ext}`);
+        if (sharedSave) return { ok: false, error: sharedSave };
         const manifest = m;
         return once(manifest.id, async () => {
           const stopped = await checked(manifest, code, "save");
@@ -717,7 +738,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           // Replace only the version the person saw, or add one that still isn't there.
           if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
           // One the person uses in every app is saved where it is kept.
-          const added = await saving.userAdded.add(keptIn(manifest.id), [{ name: `${manifest.id}.js`, data: code }]);
+          const added = await saving.userAdded.add(keptIn(manifest.id), [{ name: `${manifest.id}${ext}`, data: ext === ".js" ? code : code.trimStart() }]);
           if (!added.ok) return added;
           await saving.userAdded.on(app, manifest.id);
           // Opening the app again stops a running copy with other code (if only this app uses it) and starts the new code under the same id.
