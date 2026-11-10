@@ -10,6 +10,7 @@
                  and what a link here asks for (an invite, confirming an email)
   providers.js   the other sites this server lets people sign in with
   email.js       the address apps in your spaces may email you at
+  model-keys.js  whether your model API keys follow you, encrypted, and unlocking them here
   spaces.js      your spaces: make one, invite people, open an app in one, move one
   agent-keys.js  keys that let agents outside the browser use a space as you
   page.js        what the service needs done in the page: passkeys, a file picked
@@ -28,6 +29,7 @@
   <link rel="plugin" href="account.js">
   <link rel="plugin" href="agent-keys.js">
   <link rel="plugin" href="email.js">
+  <link rel="plugin" href="model-keys.js">
   <link rel="plugin" href="providers.js">
   <link rel="plugin" href="spaces.js">
   <style>
@@ -52,6 +54,7 @@
     <h1>Your account</h1>
     <slot name="main"><p>Loading your account…</p></slot>
     <slot name="email"></slot>
+    <slot name="model-keys"></slot>
     <slot name="spaces"></slot>
     <slot name="keys"></slot>
   </main>

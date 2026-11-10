@@ -2,10 +2,15 @@
 // added, which of them are on, where they moved views, and the model they
 // picked. A device's kernel (std/follow/module.ts) sends what changed there
 // and asks for what changed elsewhere; the account keeps the latest of each.
-// Never an API key: a device never sends one, and nothing here asks for one.
+//
+// A person can have their API keys follow them too. The account never keeps
+// one it could read: a device encrypts each key before sending it, with a key
+// only the person's devices hold (std/follow/vault.ts), so a `key:` or
+// `vault:` item is ciphertext and what unlocks it never comes here. An item of
+// those kinds that isn't in that shape is refused.
 //
 // The account doesn't know what an item means. Each is a key (`file:demos/trip/countdown.js`,
-// `on:_everywhere/clock`, `move:demos/trip|clock|main`, `llm:prefer`), a JSON
+// `on:_everywhere/clock`, `move:demos/trip|clock|main`, `llm:prefer`, `key:gemini`, `vault:pass`), a JSON
 // value and the hash the device gave it. Every change takes the next number,
 // so a device that says the last number it saw gets only what is newer. An
 // item that was removed stays as a mark (`gone`), so the other devices remove
@@ -14,6 +19,7 @@
 //
 // The routes, under the accounts' /auth/ (accounts.ts), for whoever is signed in:
 //   GET  /auth/follow?since=<n>   { user, name, version, items: [{ key, v, h, value } | { key, v, gone: true }] }
+//        (&only=vault gives only the items of that kind)
 //   POST /auth/follow { changes: [{ key, h, value } | { key, gone: true }] }   { version, saved: [{ key, v }] }
 //
 // Kept on the accounts' files seam, so the same on Node and Cloudflare:
@@ -30,9 +36,28 @@ const MAX_ITEM = 256 * 1024;
 /** Everything one person's account keeps, and how many items. */
 const MAX_TOTAL = 4 * 1024 * 1024;
 const MAX_ITEMS = 2000;
-/** Only the four kinds of thing that follow a person, each named with nothing a path or a log could be confused by. Anything else (a key, say) is refused. */
-const KEY = /^(?:(?:file|on|move):[\w.~|/-]{1,300}|llm:prefer)$/;
+/** Only the kinds of thing that follow a person, each named with nothing a path or a log could be confused by. Anything else is refused. */
+const KEY = /^(?:(?:file|on|move):[\w.~|/-]{1,300}|llm:prefer|key:[a-z][a-z0-9-]{0,40}|vault:(?:pass|prf-[0-9a-f]{16}))$/;
 const HASH = /^[\w+/=-]{1,100}$/;
+
+const B64 = /^[A-Za-z0-9+/]+={0,2}$/;
+const b64 = (value: unknown, min: number, max: number) => typeof value === "string" && value.length >= min && value.length <= max && B64.test(value);
+const only = (value: Record<string, unknown>, names: string[]) => Object.keys(value).length === names.length && names.every((name) => name in value);
+/**
+ * Whether a `key:` or `vault:` item is in the shape a device encrypts it to (std/follow/vault.ts): an AES-GCM
+ * nonce and ciphertext, and for a vault key what it was locked with. Nothing else fits, so a device with a
+ * mistake in it can't leave a readable key here.
+ */
+function encrypted(key: string, value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const v = value as Record<string, unknown>;
+  if (!b64(v.iv, 16, 16)) return false;
+  if (key.startsWith("key:")) return only(v, ["iv", "ct"]) && b64(v.ct, 24, 12_000);
+  // A vault key is 32 bytes and its tag: 64 characters.
+  if (!b64(v.ct, 64, 64) || typeof v.id !== "string" || !/^[0-9a-f]{16}$/.test(v.id)) return false;
+  if (key === "vault:pass") return v.kind === "pass" && only(v, ["kind", "id", "salt", "iter", "iv", "ct"]) && b64(v.salt, 24, 24) && Number.isSafeInteger(v.iter) && (v.iter as number) > 0;
+  return v.kind === "prf" && only(v, ["kind", "id", "cred", "iv", "ct"]) && typeof v.cred === "string" && /^[\w-]{1,1400}$/.test(v.cred);
+}
 
 interface Entry {
   v: number;
@@ -66,11 +91,11 @@ export function follow(
     return index && typeof index.version === "number" && index.items && typeof index.items === "object" ? index : { version: 0, items: {} };
   };
 
-  async function changed(user: { id: string; name: string }, since: number): Promise<Response> {
+  async function changed(user: { id: string; name: string }, since: number, kind?: string): Promise<Response> {
     const index = await indexOf(user.id);
     const items = [];
     for (const [key, entry] of Object.entries(index.items).sort((a, b) => a[1].v - b[1].v)) {
-      if (entry.v <= since) continue;
+      if (entry.v <= since || (kind && !key.startsWith(`${kind}:`))) continue;
       if (entry.gone) {
         // A device that has seen nothing has nothing to remove.
         if (since > 0) items.push({ key, v: entry.v, gone: true });
@@ -100,6 +125,7 @@ export function follow(
       }
       if (typeof change.h !== "string" || !HASH.test(change.h) || change.value === undefined) return refuse(`${key} needs its value and its hash`);
       if (had && !had.gone && had.h === change.h) continue;
+      if (/^(?:key|vault):/.test(key) && !encrypted(key, change.value)) return refuse(`${key} wasn't encrypted on the device first, and your account never keeps a key it could read. Nothing was saved.`);
       const text = JSON.stringify(change.value);
       const n = new TextEncoder().encode(text).length;
       if (n > MAX_ITEM) return refuse(`${key} is ${kb(n)}, and your account keeps a file of at most ${kb(MAX_ITEM)}. It stays on this device only.`, 413);
@@ -132,7 +158,9 @@ export function follow(
         const since = Number(url.searchParams.get("since") ?? 0);
         if (!Number.isSafeInteger(since) || since < 0) return refuse("since is the last number this device saw");
         // In the queue with the saves, so an item's number and hash are never read with another save's value.
-        return serial(() => changed(user, since));
+        const kind = url.searchParams.get("only") ?? undefined;
+        if (kind !== undefined && !/^[a-z]{1,10}$/.test(kind)) return refuse("only is a kind of item: file, on, move, llm, key or vault");
+        return serial(() => changed(user, since, kind));
       }
       const text = await bodyOf(request, FOLLOW_BODY);
       if (text === null) return refuse(`That is more than ${kb(FOLLOW_BODY)} in one request: send fewer changes at a time`, 413);

@@ -15,6 +15,7 @@ import type { Reference } from "../reference";
 import type { RemotePlugins, ServiceProvider } from "../remote";
 import type { Store } from "../store";
 import type { Reviews } from "../review";
+import type { Secrets } from "../secrets";
 import type { UserPlugins } from "../user-plugins";
 
 /** What a service file can use. */
@@ -41,6 +42,8 @@ export interface Kernel {
   userAdded: UserPlugins;
   /** Where the person moved plugins' views in each app (moves.ts). */
   moved: MovesStore;
+  /** The person's API keys, for the module that carries them, encrypted, between their devices (std/follow), and a way to ask them for the passphrase that unlocks those (std/account). */
+  secrets: Pick<Secrets, "loaded" | "all" | "keep" | "ask">;
   /** Opens an app again in every tab that has it open, after its plugins changed. */
   reopen(app: string): Promise<void>;
   /** The app open in a tab: its folder, as the page names it (`demos/markdown-editor`). Undefined for a tab with no app (the workbench). */

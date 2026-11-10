@@ -154,9 +154,10 @@
               <template if="space"><p class="muted">Yours are on this device until you share one. The space's reach every member turned off, and each person turns them on for themselves.</p></template>
               <template if="account">
                 <div class="account" data-part="account">
-                  <p class="muted">Signed in as {{account.name}}. The plugins and agents you add, which are on, where you move them and the model you pick follow you to every device you sign in on. API keys stay on each device.</p>
+                  <p class="muted">Signed in as {{account.name}}. The plugins and agents you add, which are on, where you move them and the model you pick follow you to every device you sign in on. {{account.keys}}</p>
                   <button type="button" data-action="sync-now">Sync now</button>
                 </div>
+                <template if="account.keysLocked"><p class="hint" data-part="keys-locked"><a href="/account/">Unlock your keys on your account page</a>, once, and they are on this device from then on.</p></template>
                 <template if="account.error"><p class="error">{{account.error}}</p></template>
                 <template if="account.skipped"><p class="hint">{{account.skipped}}</p></template>
               </template>

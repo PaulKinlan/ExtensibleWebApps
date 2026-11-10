@@ -95,7 +95,7 @@ The author lists their plugins in `app.html` with `<link rel="plugin">`. A perso
 3. A plugin that is added **starts off**. Customize shows what it asks for and where it draws, and the person turns it on.
 4. The service worker serves the folder at `/user/<app folder>/`, so the plugin's templates and images load like any other file. An image next to a template (`<img src="tram.svg">`) is the plugin's own, so it needs no network permission.
 
-Signed in to the site, what a person adds follows them to every device they sign in on: their plugins and agents, which are on, where they moved them and the model they picked, never an API key ([Servers](../server.md#what-follows-a-person-between-devices)). Signed out, it all stays on the device.
+Signed in to the site, what a person adds follows them to every device they sign in on: their plugins and agents, which are on, where they moved them and the model they picked. Their API keys follow only if they ask on their account page, encrypted so the site can't read them ([Servers](../server.md#what-follows-a-person-between-devices)). Signed out, it all stays on the device.
 
 Customize is on in every app. An author who doesn't want the button (a kiosk, say) adds `<meta name="customize" content="off">` to `app.html`, which also leaves out inspect mode. The person still has the last word: opening the app with `?customize` brings the button back.
 

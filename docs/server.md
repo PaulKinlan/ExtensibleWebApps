@@ -122,13 +122,19 @@ A space's owner can move it from one host to another, say from Cloudflare to a N
 
 Signed out, everything a person adds to an app stays on the device they added it on. Signed in, it follows them: the plugins and agents they added (to one app or to every app), which of them are on, where they moved views, and the model they picked show on every device they sign in on, and a plugin removed on one goes from the others. In Customize the Plugins tab says so, marks what came **From your account**, and has **Sync now**.
 
-**API keys never follow.** A device sends only the four kinds of thing below, and the account takes nothing else. Keys stay in each device's own `secrets.json`, so a model that came from the account asks for its key once on each device.
+**API keys follow only if the person asks, and the server can never read one.** Until they ask, keys stay in each device's own `secrets.json`, and a model that came from the account asks for its key once on each device. On their account page, **Your model keys** has them protect their keys with a passkey or a passphrase ([`account/model-keys.js`](../account/model-keys.js)). From then on:
+
+- **Each key is encrypted on the device before it is sent** ([`std/follow/vault.ts`](../std/follow/vault.ts)), with a random vault key made on the device where the person turned this on (AES-GCM). The account keeps only that ciphertext, and refuses a `key:` or `vault:` item in any other shape.
+- **The vault key is kept in the account too, locked** with a key derived from the passphrase (PBKDF2) or from the passkey (the WebAuthn PRF extension, where the browser and the passkey have it). The passphrase is typed into a card the kernel draws, so no plugin holds it; neither it nor what the passkey derives is ever sent to the server.
+- **A new device asks once.** Signed in, the account page and Customize say the keys are waiting; the person unlocks them with the passphrase or passkey, the device keeps the vault key (in the origin's IndexedDB, so every app and space on the device has it), and the keys come and go like anything else that follows them. A second way to unlock can be added from a device that has them.
+- **Nothing recovers a lost passphrase or passkey.** The person takes the keys out of their account (each device keeps the ones it has) and starts again.
+- **A key removed on one unlocked device is removed on the others,** as a plugin is. A vendor refusing a key forgets it everywhere the same way.
 
 The account's side is [`src/server/auth/follow.ts`](../src/server/auth/follow.ts), two routes under `/auth/` on both hosts, for whoever is signed in:
 
 | Route | What it does |
 | --- | --- |
-| `GET /auth/follow?since=<n>` | The items changed after number `n`: `{ user, name, version, items: [{ key, v, h, value }] }`, with `{ key, v, gone: true }` for one that was removed |
+| `GET /auth/follow?since=<n>` | The items changed after number `n`: `{ user, name, version, items: [{ key, v, h, value }] }`, with `{ key, v, gone: true }` for one that was removed. `&only=vault` gives one kind |
 | `POST /auth/follow` `{ changes }` | Keeps each `{ key, h, value }` (or `{ key, gone: true }`), giving each change the next number: `{ version, saved }` |
 
 An item is a key, a JSON value and the hash the device gave it. The account doesn't read the values; when two devices change the same item, the one that reaches the account last is kept.
@@ -139,6 +145,8 @@ An item is a key, a JSON value and the hash the device gave it. The account does
 | `on:demos/trip/countdown` | That plugin is on |
 | `move:demos/trip\|countdown\|days` | Where they moved one of a plugin's views |
 | `llm:prefer` | The model that answers when a request names none |
+| `key:gemini` | An API key, encrypted: `{ iv, ct }` |
+| `vault:pass`, `vault:prf-<passkey>` | The vault key, locked with the passphrase or a passkey |
 
 One account keeps at most 4 MB in 2000 items, and a file of at most 256 KB; a bigger file stays on its device, and Customize says which. The items are files on the accounts' files seam (`follow/<user>/`), so they live where the accounts do: `<spaces>/_accounts/` on Node, the accounts' Durable Object on Cloudflare.
 

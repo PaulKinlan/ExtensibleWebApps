@@ -56,6 +56,12 @@ const STATES = {
 };
 
 /** How a place's `put` reads. */
+/** What the account line says of the person's API keys (follow.status: keys). */
+const KEYS = {
+  off: "API keys stay on each device.",
+  locked: "Your API keys are in your account, encrypted, and this device hasn't unlocked them yet.",
+  on: "Your API keys follow you too, encrypted so this site can't read them.",
+};
 const PUTS = { before: "above", after: "below", prepend: "at the top of", append: "at the bottom of", replace: "instead of", hide: "hides" };
 
 /** The kinds of package, as the /packages/ page groups them too. */
@@ -238,7 +244,7 @@ export default function (ctx) {
       message,
       follow,
       // Signed in: what the person adds follows them to their other devices (std/follow).
-      account: account?.on ? { name: account.name ?? "you", error: account.error ?? "", skipped: account.skipped?.length ? `Too big to follow you, so only on this device: ${account.skipped.join(", ")}.` : "" } : null,
+      account: account?.on ? { name: account.name ?? "you", keys: KEYS[account.keys] ?? KEYS.off, keysLocked: account.keys === "locked", error: account.error ?? "", skipped: account.skipped?.length ? `Too big to follow you, so only on this device: ${account.skipped.join(", ")}.` : "" } : null,
       space: page.space,
       inspect: page.inspect,
       arrange: page.arrange,
