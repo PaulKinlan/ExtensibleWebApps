@@ -31,12 +31,13 @@ import { accounts } from "../auth/accounts.ts";
 import { providersFrom } from "../auth/providers.ts";
 import { providerModules } from "../auth/providers/index.ts";
 import { type Decision, frontDoor, unrouted } from "../front-door.ts";
-import { mcpAddress, mcpRequest, mcpResponse, mcpStream } from "../mcp.ts";
+import { mcpAddress, mcpRequest, mcpResponse, mcpStream, type Watch } from "../mcp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
 import { transferRoute } from "../transfer.ts";
 import { feedReader } from "../feed-reader.ts";
-import { isOwnNetwork } from "./network-guard.ts";
+import { isOwnNetwork, leadsInside } from "./network-guard.ts";
+import { resolverFrom } from "./names.ts";
 // Server plugins' way out to the network: an entrypoint of this Worker, so it is exported here.
 export { NetworkGuard } from "./network-guard.ts";
 
@@ -53,6 +54,8 @@ interface Env {
   EMAIL_FROM?: string;
   /** Private hosts server plugins may reach anyway, comma-separated, as on Node (network-guard.ts). For tests under wrangler dev. */
   ALLOW_PRIVATE_HOSTS?: string;
+  /** The DNS-over-HTTPS resolver that says where a name leads (names.ts), when not Cloudflare's. The server checks name a stand-in. */
+  DNS_RESOLVER?: string;
 }
 
 interface KernelStub {
@@ -128,8 +131,8 @@ class PluginHost extends RpcTarget {
   /** The plugins' way out to the network: this Worker's NetworkGuard, with the hosts the deployment allows. */
   private guard(): Fetcher {
     const allow = (this.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean);
-    const exports = (this.ctx as unknown as { exports: { NetworkGuard(options: { props: { allow: string[] } }): Fetcher } }).exports;
-    return exports.NetworkGuard({ props: { allow } });
+    const exports = (this.ctx as unknown as { exports: { NetworkGuard(options: { props: { allow: string[]; resolver: string } }): Fetcher } }).exports;
+    return exports.NetworkGuard({ props: { allow, resolver: resolverFrom(this.env.DNS_RESOLVER) } });
   }
 
   async post(name: string, message: unknown): Promise<void> {
@@ -171,6 +174,11 @@ class PluginHost extends RpcTarget {
     return this.env.ACCOUNTS.getByName("accounts").members(this.space);
   }
 
+  /** The kernel says what a door answers may have changed: whoever watches the door is told (Space.fetch, WATCH). */
+  async changed(door: string): Promise<void> {
+    tellWatchers(this.ctx, door);
+  }
+
   site(url: string): Promise<Response> {
     const { pathname, search } = new URL(url);
     return this.env.ASSETS.fetch(new Request(`https://assets${pathname}${search}`));
@@ -190,6 +198,23 @@ async function send(env: Env, message: Message): Promise<Delivery> {
     return { ok: false, error: `${e.code ? `${e.code}: ` : ""}${e.message ?? String(error)}` };
   }
 }
+
+/**
+ * Where the Worker watches one of a space's doors, on the space's object: a WebSocket that says "changed" each
+ * time the kernel says the door may answer differently, or a key for the space ended. It is how an MCP
+ * client's stream, kept open in the Worker, knows when to ask the door again without asking on a timer
+ * (src/server/mcp.ts mcpStream). The object takes it with the hibernation API, so an open stream doesn't keep
+ * the space's object in memory. No request from outside reaches this path: the front door sends the object
+ * only /s/<space>/kernel.
+ */
+const WATCH = /^\/watch\/([a-z]+)$/;
+const tellWatchers = (ctx: DurableObjectState, door: string) => {
+  for (const socket of ctx.getWebSockets(`watch:${door}`)) {
+    try {
+      socket.send("changed");
+    } catch {}
+  }
+};
 
 /** The header the Worker names a space's client's member with, for the space to know them by. */
 const MEMBER = "x-ewa-member";
@@ -251,10 +276,28 @@ export class Space extends DurableObject<Env> {
     await this.kernel(where.space).tick(where.origin, this.plugins);
   }
 
+  /** An agent key for the space ended: the Worker's open streams check theirs again. */
+  async keysChanged(): Promise<void> {
+    tellWatchers(this.ctx, "mcp");
+  }
+
+  /** A watcher went: its end is closed too. (Nothing is kept for one but the socket itself.) */
+  webSocketClose(socket: WebSocket, code: number): void {
+    try {
+      socket.close(code === 1005 || code === 1006 ? 1000 : code);
+    } catch {}
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-    const space = /^\/s\/([^/]+)\/kernel$/.exec(url.pathname)?.[1] ?? "";
     if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") return new Response("Expected a WebSocket", { status: 426 });
+    const watched = WATCH.exec(url.pathname)?.[1];
+    if (watched) {
+      const { 0: watcher, 1: here } = new WebSocketPair();
+      this.ctx.acceptWebSocket(here, [`watch:${watched}`]);
+      return new Response(null, { status: 101, webSocket: watcher });
+    }
+    const space = /^\/s\/([^/]+)\/kernel$/.exec(url.pathname)?.[1] ?? "";
     const kernel = this.kernel(space);
     const { 0: client, 1: server } = new WebSocketPair();
     server.accept();
@@ -281,6 +324,7 @@ export class Accounts extends DurableObject<Env> {
   // Other sites to sign in with come from the Worker's vars (AUTH_PROVIDERS) and secrets (<ID>_CLIENT_SECRET).
   private auth = accounts(durableFiles(this.ctx.storage.sql as unknown as Sql), providersFrom(this.env as unknown as Record<string, unknown>, providerModules), {
     left: (space, user) => this.env.SPACE.getByName(space).revoke(user),
+    keys: (space) => this.env.SPACE.getByName(space).keysChanged(),
     mail: (message) => send(this.env, message),
   });
 
@@ -314,7 +358,7 @@ export class Accounts extends DurableObject<Env> {
   }
 
   /** Which member of a space an agent's key (an Authorization header) is for, if it's one (src/server/mcp.ts). */
-  async agent(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string } | null> {
+  async agent(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string; expires?: number } | null> {
     return this.auth.agent(authorization, space, plugin);
   }
 }
@@ -329,10 +373,23 @@ async function mcp(request: Request, env: Env): Promise<Response | undefined> {
   const asked = await mcpRequest(request, at, (authorization, space, plugin) => accounts.agent(authorization, space, plugin));
   if (asked instanceof Response) return asked;
   const space = env.SPACE.getByName(at.space);
-  // A client's GET stream stays open in the Worker, which asks the space's object now and then; the object isn't held open.
+  // A client's GET stream stays open in the Worker. The space's object isn't held open for it, or asked on a timer:
+  // the Worker watches the door (WATCH), and asks only when the object says something may have changed.
   if (asked.method === "GET") {
     const authorization = request.headers.get("authorization");
-    return mcpStream(asked, (knock) => space.route(at.space, url.origin, knock), { allowed: async () => !!(await accounts.agent(authorization, at.space, at.plugin)) });
+    const watch: Watch = async (wake) => {
+      const opened = await space.fetch(new Request("https://space/watch/mcp", { headers: { upgrade: "websocket" } }));
+      const socket = opened.webSocket;
+      if (!socket) throw new Error("The space didn't let its door be watched");
+      socket.accept();
+      socket.addEventListener("message", () => wake());
+      return () => {
+        try {
+          socket.close(1000, "The stream ended");
+        } catch {}
+      };
+    };
+    return mcpStream(asked, (knock) => space.route(at.space, url.origin, knock), watch, { key: () => accounts.agent(authorization, at.space, at.plugin) });
   }
   return mcpResponse(await space.route(at.space, url.origin, asked));
 }
@@ -387,9 +444,12 @@ async function answer(request: Request, env: Env, decision: Decision): Promise<R
     case "route":
       return (await mcp(request, env)) ?? (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
     case "feed":
-      return feedReader(request, (url, signal) => {
-        // Cloudflare's egress reaches only the public internet; a host written as a private address is refused here too.
-        if (!allowedPrivate(env).has(url.hostname.toLowerCase().replace(/^\[|\]$/g, "")) && isOwnNetwork(url.hostname)) throw new Error(`The feed reader can't reach ${url.host}: it is on the server's own network`);
+      return feedReader(request, async (url, signal) => {
+        // A host written as a private address is refused here, and so is a name that leads to one (names.ts), as on Node.
+        if (!allowedPrivate(env).has(url.hostname.toLowerCase().replace(/^\[|\]$/g, ""))) {
+          const inside = isOwnNetwork(url.hostname) || (await leadsInside(url.hostname, resolverFrom(env.DNS_RESOLVER)));
+          if (inside) throw new Error(`The feed reader can't reach ${url.host}: it is on the server's own network`);
+        }
         return fetch(url, { redirect: "manual", signal, headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.5" } });
       });
     case "asset":

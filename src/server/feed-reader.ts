@@ -12,7 +12,8 @@
 //
 //   - https only, a redirect at a time, and never to the server's own
 //     network (each host gives a `get` that refuses it: on Node by the
-//     address a name looks up to, on Cloudflare by the host as written);
+//     address a name looks up to, on Cloudflare by the host as written
+//     and by the addresses a resolver gives for a name);
 //   - at most 2 MB, within 15 seconds, and only something that is a feed;
 //   - only text comes back: titles, http(s) links, dates and plain
 //     summaries with any HTML taken out, never the feed's own bytes, so
@@ -212,8 +213,11 @@ function strip(html: string): string {
     if (lt < 0) return out + html.slice(at);
     out += html.slice(at, lt) + " ";
     let end: number;
-    if (lower.startsWith("<!--", lt)) end = (i => (i < 0 ? -1 : i + 3))(html.indexOf("-->", lt + 4));
-    else if (/^<(script|style)\b/.test(lower.slice(lt, lt + 8))) {
+    if (lower.startsWith("<!--", lt)) {
+      // `end` is the comment's last character, as it is a tag's below.
+      const close = html.indexOf("-->", lt + 4);
+      end = close < 0 ? -1 : close + 2;
+    } else if (/^<(script|style)\b/.test(lower.slice(lt, lt + 8))) {
       const name = lower.startsWith("<script", lt) ? "script" : "style";
       const close = lower.indexOf(`</${name}`, lt);
       end = close < 0 ? -1 : html.indexOf(">", close);

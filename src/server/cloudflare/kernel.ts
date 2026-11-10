@@ -37,6 +37,8 @@ export interface SpaceHost extends IsolateHost {
   deliver(message: Message): Promise<{ ok: true; id: string } | { ok: false; error: string } | null>;
   /** Sets the space's alarm for the earliest scheduled job, or clears it. */
   wake(at: number | undefined): Promise<void>;
+  /** What a door answers may have changed (the door `mcp`): the Worker's open streams for the space ask it again. */
+  changed(door: string): Promise<void>;
 }
 
 /**
@@ -102,6 +104,7 @@ export class SpaceKernel extends DurableObject {
           addresses: () => host.addresses(),
           members: () => host.members(),
           deliver: (message: Message) => host.deliver(message),
+          changed: (door: string) => void host.changed(door).catch(() => {}),
         }),
         onError: (report) => {
           addEventListener("error", (e) => report("kernel:error", String((e as ErrorEvent).message ?? e)));

@@ -9,8 +9,12 @@
 /** How long after a save (the same address, a new revision) one more load is the server's live reload, not the frame going elsewhere. */
 const RELOAD_GRACE = 5000;
 
-/** True for an http(s) address on this device. @param {URL} url */
-const onDevice = (url) => /^https?:$/.test(url.protocol) && (url.hostname === "localhost" || url.hostname.endsWith(".localhost") || url.hostname === "127.0.0.1" || url.hostname === "[::1]");
+/**
+ * True for an http(s) address on this device. The page's policy holds frames to the same addresses
+ * (frame-src in public/_headers), which can't name an IPv6 address, so [::1] isn't one: localhost is.
+ * @param {URL} url
+ */
+const onDevice = (url) => /^https?:$/.test(url.protocol) && (url.hostname === "localhost" || url.hostname.endsWith(".localhost") || url.hostname === "127.0.0.1");
 
 export default class UiSitePreview extends HTMLElement {
   static observedAttributes = ["address", "revision", "label"];

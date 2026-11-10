@@ -50,6 +50,8 @@ setEnv({
   },
   addresses: () => askServer<string[]>("addresses", []),
   members: () => askServer<{ id: string; name: string }[]>("members", []),
+  // serve.ts keeps MCP clients' streams open, and asks their door again when told (src/server/mcp.ts).
+  changed: (door: string) => parentPort!.postMessage({ t: "changed", door }),
   // serve.ts delivers mail when the deployment has SMTP (src/server/smtp.ts); without it, it stays in the outbox.
   ...(workerData.email ? { deliver: (message: Message) => askServer<DeliverResult>("deliver", { ok: false, error: "The server didn't answer" }, { message }) } : {}),
   serve(answer) {

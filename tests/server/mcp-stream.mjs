@@ -1,8 +1,9 @@
 // A space's MCP server, a third pass, on each host:
 //
 // - A connected client that sits idle hears when the door's tools change: it
-//   keeps a GET stream open, and the host asks the door now and then
-//   (src/server/mcp.ts mcpStream). A session has one stream, the newest.
+//   keeps a GET stream open, and the host asks the door when the kernel says
+//   something may have changed, never on a timer (src/server/mcp.ts
+//   mcpStream). A session has one stream, the newest.
 // - The key a signed-in client gets lasts an hour, and comes with a refresh
 //   token it trades for a new key in the old one's place
 //   (src/server/auth/mcp-oauth.ts). A spent refresh token used again revokes
@@ -10,6 +11,7 @@
 // - Someone signed out signs in on the page that asks them, and comes back to
 //   it: with a passkey there (signin.js), or with another site (`return`).
 
+import { mcpStream } from "../../src/server/mcp.ts";
 import { device } from "./mcp.mjs";
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -63,6 +65,61 @@ async function fakeSignIn(base, query) {
   const atProvider = await get(start.headers.get("location"));
   const back = await get(atProvider.headers.get("location"));
   return { status: back.status, location: back.headers.get("location") };
+}
+
+/**
+ * The stream by itself, with a stand-in for the kernel and the host: it asks the door once as it opens, and
+ * again only when it is woken.
+ */
+export async function quietStreamChecks(check) {
+  const asks = [];
+  let changed = false;
+  let wake;
+  let stopped = 0;
+  let key = {};
+  const ask = async (request) => {
+    asks.push(request.query?.first ? "first" : "again");
+    const notices = changed ? [{ jsonrpc: "2.0", method: "notifications/tools/list_changed" }] : [];
+    changed = false;
+    return { status: 200, json: { notices } };
+  };
+  const watch = (w) => ((wake = w), () => void stopped++);
+  const open = (options = {}) => mcpStream({ method: "GET", path: "/mcp/door", door: "mcp", member: "m", query: { session: "s", stream: "abcdef0123456789" } }, ask, watch, { beat: 40, key: async () => key, ...options });
+  const idle = listen(await open());
+  await wait(400);
+  const whileIdle = { asks: [...asks], comments: idle.comments, messages: idle.messages.length };
+  // Something may have changed, but didn't: the door is asked, and nothing is sent. Then it did.
+  wake();
+  await wait(100);
+  const afterNothing = { asks: asks.length, messages: idle.messages.length };
+  changed = true;
+  wake();
+  wake();
+  await until(() => idle.messages.length > 0, 2000);
+  await wait(100);
+  const afterChange = { asks: asks.length, messages: idle.messages.length };
+  check(
+    "mcp stream: an open stream asks the kernel once as it opens and then only when told something may have changed, never on a timer; comments keep the connection alive meanwhile",
+    whileIdle.asks.join() === "first" && whileIdle.comments >= 3 && whileIdle.messages === 0 && afterNothing.asks === 2 && afterNothing.messages === 0 && afterChange.messages === 1 && afterChange.asks <= 4,
+    JSON.stringify({ whileIdle, afterNothing, afterChange }),
+  );
+  // Its key stops working: the next time it's woken, it ends, and stops watching.
+  key = null;
+  wake();
+  const cut = await until(() => idle.ended, 2000);
+  // A key that runs out ends the stream then, with nothing asked; so does the stream's own time.
+  const before = asks.length;
+  key = { expires: Date.now() + 150 };
+  const short = listen(await open());
+  const ranOut = await until(() => short.ended, 2000);
+  key = {};
+  const brief = listen(await open({ life: 150 }));
+  const timeUp = await until(() => brief.ended, 2000);
+  check(
+    "mcp stream: it ends when its key stops working, when the key runs out, and when its own time is up, and stops watching each time",
+    cut && ranOut && timeUp && asks.length === before + 2 && stopped === 3,
+    JSON.stringify({ cut, ranOut, timeUp, asks: asks.length - before, stopped }),
+  );
 }
 
 export async function mcpStreamChecks(base, check, owner, stranger) {

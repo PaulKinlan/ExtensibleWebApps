@@ -11,9 +11,11 @@
 // as a change by plugin:fetch, so the stories are there offline too.
 //
 // Only https: a feed at http:// is refused, and so is one that redirects to
-// http://. On a Node server the platform also keeps it off the server's own
-// network (src/server/network-guard.ts), so an address someone typed can't
-// reach the machine it runs on.
+// http://. The platform also keeps it off the server's own network, on Node
+// (src/server/network-guard.ts) and on Cloudflare
+// (src/server/cloudflare/network-guard.ts), so an address someone typed can't
+// reach the machine it runs on, whether it is written as an address or as a
+// name that leads to one.
 
 export const manifest = {
   id: "fetch",
@@ -160,15 +162,20 @@ function concat(chunks) {
  * An RSS or Atom feed's title and stories, read with patterns: a server plugin has no DOMParser. Only text
  * comes out (titles, a plain summary, a link), so nothing in a feed is ever shown as HTML. `url` is where the
  * feed came from, for the links in it that are relative.
+ *
+ * It is the same reading as the site's own feed reader (src/server/feed-reader.ts), kept in step with it by a
+ * check (tests/server/feed-reader.mjs): every step is a single pass over the text, with no pattern that
+ * rescans the rest of the feed for each unclosed tag. So a feed made to be slow to read (many `<item>`s or
+ * `<title>`s never closed) takes as long as a plain one of its size, and can't hold up the other feeds.
  */
-function parse(xml, url) {
+export function parse(xml, url) {
   let text = String(xml);
-  const root = /<(?:([\w-]+):)?(rss|feed|RDF)\b([^>]*)>/i.exec(text);
+  const root = /<(?:([\w-]{1,40}):)?(rss|feed|RDF)\b([^<>]{0,2000})>/i.exec(text);
   if (!root) throw new Error("That isn't an RSS or Atom feed");
   // An Atom feed may name its elements with a prefix (<atom:feed>, <atom:entry>): read them without it.
   if (root[1] && root[2].toLowerCase() === "feed") text = text.replace(new RegExp(`<(/?)${root[1]}:`, "g"), "<$1");
   const feedBase = baseOf(root[3], url);
-  const entries = [...text.matchAll(/<(item|entry)\b([^>]*)>([\s\S]*?)<\/\1>/gi)].map((m) => ({ body: m[3], base: baseOf(m[2], feedBase) }));
+  const entries = entriesOf(text).map((e) => ({ body: e.body, base: baseOf(e.attributes, feedBase) }));
   const first = text.search(/<(item|entry)\b/i);
   const head = first < 0 ? text : text.slice(0, first);
   const items = entries.map(({ body: entry, base }) => {
@@ -181,10 +188,69 @@ function parse(xml, url) {
   return { title: words(tag(head, "title")).slice(0, 200), items };
 }
 
-/** What's inside the first <name>…</name>, CDATA unwrapped. */
+/** Each <item> or <entry>: its attributes and what's inside, in one pass. One left open ends the list. */
+function entriesOf(text) {
+  const found = [];
+  const marks = /<(\/?)(item|entry)\b([^<>]{0,2000})>/gi;
+  let open = null;
+  for (let m = marks.exec(text); m; m = marks.exec(text)) {
+    const name = m[2].toLowerCase();
+    if (!m[1] && !open) open = { name, attributes: m[3], from: marks.lastIndex };
+    else if (m[1] && open?.name === name) {
+      found.push({ attributes: open.attributes, body: text.slice(open.from, m.index) });
+      open = null;
+    }
+  }
+  return found;
+}
+
+/** What's inside the first <name>…</name>, CDATA unwrapped: found with one forward search for each end. */
 function tag(xml, name) {
-  const m = new RegExp(`<${name}\\b[^>]*>([\\s\\S]*?)</${name}>`, "i").exec(xml);
-  return m ? m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim() : "";
+  const start = new RegExp(`<${name}\\b[^<>]{0,2000}>`, "i").exec(xml);
+  if (!start) return "";
+  const from = start.index + start[0].length;
+  const end = new RegExp(`</${name}\\s*>`, "ig");
+  end.lastIndex = from;
+  const close = end.exec(xml);
+  return close ? cdata(xml.slice(from, close.index)).trim() : "";
+}
+
+/** Text with each <![CDATA[…]]> unwrapped; one left open runs to the end. */
+function cdata(text) {
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const open = text.indexOf("<![CDATA[", at);
+    if (open < 0) return out + text.slice(at);
+    out += text.slice(at, open);
+    const close = text.indexOf("]]>", open + 9);
+    if (close < 0) return out + text.slice(open + 9);
+    out += text.slice(open + 9, close);
+    at = close + 3;
+  }
+}
+
+/** HTML's text: tags, comments, scripts and styles taken out, in one pass. Anything left unclosed is dropped. */
+function strip(html) {
+  const lower = html.toLowerCase();
+  let out = "";
+  let at = 0;
+  for (;;) {
+    const lt = html.indexOf("<", at);
+    if (lt < 0) return out + html.slice(at);
+    out += html.slice(at, lt) + " ";
+    let end;
+    if (lower.startsWith("<!--", lt)) {
+      const close = html.indexOf("-->", lt + 4);
+      end = close < 0 ? -1 : close + 2;
+    } else if (/^<(script|style)\b/.test(lower.slice(lt, lt + 8))) {
+      const name = lower.startsWith("<script", lt) ? "script" : "style";
+      const close = lower.indexOf(`</${name}`, lt);
+      end = close < 0 ? -1 : html.indexOf(">", close);
+    } else end = html.indexOf(">", lt);
+    if (end < 0) return out;
+    at = end + 1;
+  }
 }
 
 /** The address an element's xml:base attribute (in `attributes`) gives, against `base`; `base` if it has none. */
@@ -199,33 +265,30 @@ function baseOf(attributes, base) {
 
 /** A story's link: RSS's <link>text</link>, or Atom's <link href> (the alternate one, if it says), against `base`. Only http(s). */
 function linkOf(entry, base) {
-  const atom = [...entry.matchAll(/<link\b([^>]*)\/?>/gi)].map((m) => ({ href: /\bhref\s*=\s*["']([^"']+)["']/i.exec(m[1])?.[1], rel: /\brel\s*=\s*["']([^"']+)["']/i.exec(m[1])?.[1] })).filter((l) => l.href);
+  const atom = [...entry.matchAll(/<link\b([^<>]{0,2000})>/gi)]
+    .map((m) => ({ href: /\bhref\s*=\s*["']([^"']+)["']/i.exec(m[1])?.[1], rel: /\brel\s*=\s*["']([^"']+)["']/i.exec(m[1])?.[1] }))
+    .filter((l) => l.href);
   const written = decode((atom.find((l) => !l.rel || l.rel === "alternate") ?? atom[0])?.href ?? tag(entry, "link")).trim();
   if (!written) return "";
-  let link;
   try {
-    link = new URL(written, base).href;
+    const link = new URL(written, base).href;
+    return /^https?:\/\//i.test(link) ? link.slice(0, 2000) : "";
   } catch {
     return "";
   }
-  return /^https?:\/\//i.test(link) ? link.slice(0, 2000) : "";
 }
 
 /** A title: text, so "&lt;story&gt;" stays as the words "<story>". Any tags (from CDATA) are taken out first. */
 function words(text) {
-  return decode(String(text).replace(/<[^>]*>/g, " "))
+  return decode(decode(strip(String(text))))
     .replace(/\s+/g, " ")
     .trim();
 }
 
 /** A summary, which feeds often send as escaped HTML: text with any HTML taken out, entities decoded and spaces made single. */
 function plain(html) {
-  return decode(
-    decode(String(html))
-      .replace(/<!--[\s\S]*?-->/g, " ")
-      .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
-      .replace(/<[^>]*>/g, " "),
-  )
+  // A summary is cut to 400 characters, so only its start is read.
+  return decode(strip(decode(String(html).slice(0, 50_000))))
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -233,18 +296,18 @@ function plain(html) {
 /** The named entities feeds use most, beyond XML's five: curly quotes, dashes, the ellipsis. */
 const NAMED = {
   amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
-  rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", hellip: "…", mdash: "—", ndash: "–", bull: "•", middot: "·",
-  copy: "©", reg: "®", trade: "™", deg: "°", laquo: "«", raquo: "»", times: "×", euro: "€", pound: "£",
+  rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", sbquo: "‚", bdquo: "„", prime: "′", Prime: "″",
+  hellip: "…", mdash: "—", ndash: "–", bull: "•", middot: "·", copy: "©", reg: "®", trade: "™", deg: "°",
+  laquo: "«", raquo: "»", lsaquo: "‹", rsaquo: "›", times: "×", divide: "÷", euro: "€", pound: "£", yen: "¥", cent: "¢", sect: "§", para: "¶",
 };
 
 function decode(text) {
-  return String(text).replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, e) => {
-    const k = e.toLowerCase();
-    if (k[0] === "#") {
-      const n = k[1] === "x" ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10);
+  return String(text).replace(/&(#x[0-9a-f]{1,8}|#\d{1,10}|[a-z]{1,32});/gi, (all, e) => {
+    if (e[0] === "#") {
+      const n = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
       return n > 0 && n < 0x110000 ? String.fromCodePoint(n) : "";
     }
-    return NAMED[k] ?? all;
+    return NAMED[e] ?? NAMED[e.toLowerCase()] ?? all;
   });
 }
 
