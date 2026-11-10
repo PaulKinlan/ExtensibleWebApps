@@ -198,7 +198,7 @@ export default function (ctx) {
   };
 
   /** What Make shows, from the draft. */
-  const makeView = (editorLinked) => ({
+  const makeView = (editorLinked, makerLinked = lastMakerLinked) => ({
     ...make,
     starters: STARTERS.map((s) => ({ ...s, pressed: String(s.file === make.starter) })),
     started: !!make.starter,
@@ -208,10 +208,12 @@ export default function (ctx) {
     problem: make.check && !make.check.ok ? make.check.error : "",
     permissions: make.check?.ok ? make.check.permissions : [],
     editorLinked,
+    makerLinked,
   });
   /** What the page said last, for drawing Make while the panel is closed. */
   let lastArrange = false;
   let lastEditorLinked = false;
+  let lastMakerLinked = false;
 
   const drawNow = async () => {
     // Closed, only Make stays drawn (hidden), so a draft being typed is still there when the panel opens again.
@@ -220,6 +222,7 @@ export default function (ctx) {
     if (!Array.isArray(mine) || !page?.places) return views.render("customize", "panel", { open, reopen, notMake: true, make: makeView(false), message: mine?.error ?? page?.error ?? "Couldn't read this app's plugins" });
     lastArrange = !!page.arrange;
     lastEditorLinked = page.running.some((r) => r.id === "plugin-editor");
+    lastMakerLinked = page.running.some((r) => r.id === "plugin-maker");
     const tabs = { plugins: tab === "plugins", make: tab === "make", layout: tab === "layout" };
     const pressed = Object.fromEntries(Object.entries(tabs).map(([k, v]) => [k, String(v)]));
     const base = {
@@ -593,6 +596,14 @@ export default function (ctx) {
           make.rev++;
         }
       }
+      return draw();
+    }
+    if (action === "maker") {
+      // The plugin maker (std/plugin-maker.js) draws in this tab's slot once it is on the page.
+      const packages = await call("packages");
+      const maker = Array.isArray(packages) ? packages.find((x) => x.id === "plugin-maker") : undefined;
+      if (maker?.adds.length) await addAll(maker.adds);
+      else message = "The plugin maker isn't in this site's registry.";
       return draw();
     }
     if (action === "editor") {

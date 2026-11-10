@@ -20,7 +20,8 @@
   .maker form button { height: var(--control); flex: 0 0 auto; width: auto; }
   .maker > button, .maker .again { justify-self: start; width: auto; }
   .maker .suggested { display: flex; flex-wrap: wrap; gap: var(--space-1); margin: 0; padding: 0; list-style: none; max-height: none; }
-  .maker .suggested button { height: auto; min-height: var(--control-sm); padding: var(--space-1) var(--space-3); text-align: left; }
+  .maker .suggested button { height: auto; min-height: var(--control-sm); padding: var(--space-1) var(--space-3); text-align: left; white-space: normal; }
+  .maker .suggested li { min-width: 0; }
   .maker .models { display: grid; gap: var(--space-1); }
   .maker .models li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1); }
   .maker .models span { color: var(--fg-2); font-size: var(--text-sm); }
