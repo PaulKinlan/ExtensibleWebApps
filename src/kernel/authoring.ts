@@ -120,6 +120,12 @@ export function explain(permission: string): string {
   const what = rest.join(":");
   if (permission === "ui") return "Draw on this page.";
   if (permission === "network") return "Connect to sites on the internet.";
+  if (kind === "network" && verb) return `Connect to ${[verb, what].filter(Boolean).join(":")}.`;
+  if (kind === "secret" && verb) return `Use a key you give it for ${verb}, which it never sees: the site adds it to its requests.`;
+  if (permission === "ui:theme") return "Change the app's colours and shapes.";
+  if (kind === "ui" && verb === "transform" && what) return `Change how ${what}'s view looks.`;
+  if (kind === "bus" && verb === "send") return `Send messages to ${what === "*" ? "any agent" : what}.`;
+  if (kind === "agents" && verb === "run" && what) return `Start the ${what} agent.`;
   if (kind === "data" && verb === "read") return `Read the ${what} records, and hear when they change.`;
   if (kind === "data" && verb === "write") return `Change the ${what} records. Unless it made them, you are asked first each time.`;
   if (kind === "hook" && verb === "listen") return `Hear ${what}.`;
@@ -162,6 +168,27 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
     return undefined;
   };
   const words = (permissions: string[]) => (permissions.length ? permissions.map(explain).join(" ") : "Nothing: it can't draw, read or change anything.");
+  /** A permission in words for a list (Customize's), where one that is a service's name says so. */
+  const say = (permission: string, known: Iterable<string> = saving.services()) => ([...known].includes(permission) ? `Use the ${permission} service.` : explain(permission));
+  /** What a sample is and asks for, read from its file, so the person sees what a sample's button adds before pressing it. */
+  const sampled = new Map<string, Promise<{ href: string; title: string }>>();
+  /** Read once for as long as the kernel runs: the panel asks on every draw. */
+  const sample = (s: { href: string; title: string }) => {
+    let reading = sampled.get(s.href);
+    if (!reading) sampled.set(s.href, (reading = readSample(s)));
+    return reading.then((read) => ({ ...read, title: s.title }));
+  };
+  const readSample = async (s: { href: string; title: string }) => {
+    try {
+      const response = await fetch(new URL(s.href, saving.origin));
+      if (!response.ok) throw new Error(`${response.status}`);
+      const m = readManifest(await response.text());
+      return { ...s, id: m.id, name: m.name, description: m.description ?? "", can: m.permissions.map((permission) => say(permission)), places: Object.values(m.places ?? {}).map((at) => `${at.put}${at.each ? " each" : ""} ${at.at}`) };
+    } catch {
+      // Its button still adds it, and the review says what is wrong with it.
+      return s;
+    }
+  };
 
   return {
     description: "The person's own plugins for an app, for a plugin editor, a Customize panel or an agent: reads the code of the plugins in the caller's app and files next to the caller, checks a draft's manifest, and adds, saves, turns on and off, removes and shares the person's own plugins. Every change but on and off waits for them to accept a review. The caller must be tab-scoped, or linked by an open app.",
@@ -205,16 +232,16 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       page: {
         args: "()",
-        returns: "{ space, places: [{ plugin, name, at, put, each, state, matches, fragile }], running: [{ id, name, user, unlocked }], samples: [{ href, title }], inspect }",
+        returns: "{ space, places: [{ plugin, name, at, put, each, state, matches, fragile }], running: [{ id, name, user, unlocked }], samples: [{ href, title, id?, name?, description?, can?, places? }], inspect }",
         needs: "plugins:read",
-        description: "The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match, or slot when the page has its own slot of that name), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample), and whether it has inspect mode.",
+        description: "The caller's page as Customize shows it: whether it is in a space, how each plugin's places went (drawn, waiting, declined, locked, no match, or slot when the page has its own slot of that name), which plugins run and which locked places each was let into, the samples the app offers (link rel=plugin-sample) with what each is and can do once on (read from its manifest), and whether it has inspect mode.",
         params: [],
       },
       packages: {
         args: "()",
-        returns: "[{ id, name, description, href, permissions, added, linked, adds: [href] }]",
+        returns: "[{ id, name, description, href, permissions, can, added, linked, adds: [{ id, name, href }] }]",
         needs: "plugins:read",
-        description: "The site's plugin registry (/packages/): each package, whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.",
+        description: "The site's plugin registry (/packages/): each package, what its permissions let it do in words (can), whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.",
         params: [],
       },
       pick: {
@@ -407,7 +434,11 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         }));
       }
       if (method === "page") {
-        return { space: !!saving.shared(), ...((await saving.page(tab, "state", [], dispatch)) as object) };
+        const state = (await saving.page(tab, "state", [], dispatch)) as { samples?: { href: string; title: string }[] };
+        // Only this site's files are read: a sample linked from elsewhere keeps its title alone.
+        // The first 40 are read for what they are and ask for; any past that keep their title.
+        const samples = await Promise.all((state.samples ?? []).map((s, i) => (i < 40 && new URL(s.href, saving.origin).origin === saving.origin ? sample(s) : s)));
+        return { space: !!saving.shared(), ...state, samples };
       }
       if (method === "inspect") return saving.page(tab, "inspect", [], dispatch);
       if (method === "layout") return saving.page(tab, "layout", [], dispatch);
@@ -430,6 +461,8 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         const have = new Set(app ? (await saving.userAdded.list(app)).map((p) => p.id) : []);
         const running = new Set(saving.services());
         const providerOf = (service: string) => (running.has(service) ? undefined : packages.find((p) => p.provides.includes(service)));
+        /** The services a permission may name: the ones running here, and the ones a registry package provides. */
+        const known = new Set([...running, ...packages.flatMap((p) => p.provides)]);
         /** The package and, first, every package that provides a service it needs and isn't here yet. */
         const withNeeds = (pkg: Package, seen = new Set<string>()): Package[] => {
           if (seen.has(pkg.id)) return [];
@@ -443,6 +476,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           description: pkg.description,
           href: pkg.href,
           permissions: pkg.permissions,
+          can: pkg.permissions.map((permission) => say(permission, known)),
           added: have.has(pkg.id),
           // A standard plugin the app links already runs here: adding a copy of it would clash.
           linked: (apps.linkedBy(tab) ?? []).includes(pkg.id),

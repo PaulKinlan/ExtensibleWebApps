@@ -1,4 +1,4 @@
-// The /packages/ page's search, filters and copy buttons. The page is complete without it:
+// The /packages/ page's search, filters, copy buttons and "Add to an app". The page is complete without it:
 // every plugin is in the HTML (written by scripts/packages.mjs), and this only hides the ones
 // that don't match. It builds no markup, so it needs nothing from the page's Trusted Types policy.
 
@@ -44,6 +44,22 @@ find.addEventListener("input", apply);
 for (const b of filters) b.addEventListener("click", () => (pick(b.dataset.filter), apply()));
 document.querySelector(".clear")?.addEventListener("click", () => ((find.value = ""), pick("all"), apply(), find.focus()));
 if (find.value || filter !== "all") apply();
+
+// "Add to an app": the list of apps is one popover for the whole page (the button opens it by itself). Each
+// link in it is pointed at its app with #add=<id>, which the app's Customize answers by asking to add that
+// plugin; the apps that link the plugin already are left out.
+const addTo = document.getElementById("add-to");
+document.addEventListener("click", (event) => {
+  const button = event.target.closest?.("button.add");
+  if (!button || !addTo) return;
+  const has = new Set((button.dataset.in ?? "").split(" ").filter(Boolean));
+  addTo.querySelector(".what").textContent = button.dataset.name;
+  for (const item of addTo.querySelectorAll("li[data-app]")) {
+    item.hidden = has.has(item.dataset.app);
+    const link = item.querySelector("a");
+    link.hash = `add=${button.dataset.add}`;
+  }
+});
 
 document.addEventListener("click", async (event) => {
   const button = event.target.closest?.("button.copy");

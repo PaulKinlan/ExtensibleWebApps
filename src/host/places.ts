@@ -375,8 +375,3 @@ export function places(host: PlacesHost) {
 }
 
 export type Places = ReturnType<typeof places>;
-
-/** True if a selector leans on the page's structure rather than names the author chose, so an edit to the page may break it. */
-export function fragile(selector: string): boolean {
-  return /:nth-|:first-|:last-|:only-/.test(selector) || (selector.match(/>/g) ?? []).length > 2;
-}
