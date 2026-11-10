@@ -17,7 +17,7 @@
 
   .new { border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); }
   .new summary { padding: var(--space-3) var(--space-4); font-weight: 600; cursor: pointer; list-style: none; }
-  .new summary::before { content: "＋"; margin-right: 8px; color: var(--accent); }
+  .new summary::before { content: "＋"; margin-right: var(--space-2); color: var(--accent); }
   .new[open] summary { border-bottom: 1px solid var(--border); }
   .new ui-form { display: block; padding: var(--space-4); }
 
@@ -41,7 +41,7 @@
   .numbers dd { margin: 0; font-weight: 700; font-size: var(--text-xl); line-height: 1.15; font-family: var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
   .numbers dd small { font-size: 0.55em; font-weight: 600; color: var(--fg-2); margin-left: 2px; }
   .extra { display: flex; flex-wrap: wrap; gap: var(--space-3); color: var(--fg-2); font-size: var(--text-sm); }
-  .extra span::before { margin-right: 4px; }
+  .extra span::before { margin-right: var(--space-1); }
   .extra .pace::before { content: "⏱"; }
   .extra .climb::before { content: "⛰"; }
   .notes { margin: 0; color: var(--fg-2); font-size: var(--text-sm); }
