@@ -73,6 +73,10 @@ export default async function ({ check, context, URL, WORKBENCH, errors }) {
         return error.message;
       }
     })();
+    // However many old files there are, none inside the days is left behind.
+    const many = Object.fromEntries(Array.from({ length: 2500 }, (_, i) => [`kernel-llm-${i}.js`, ago(2)]));
+    const all = await outcome({ site: "https://site.example/", fetcher: site(many, Object.fromEntries(Object.keys(many).map((name) => [`assets/${name}`, "x"]))) });
+    check("every file inside the days is kept, however many there are", all.did?.kept.length === 2500 && all.did.dropped === 0, JSON.stringify({ kept: all.did?.kept.length, error: all.error }));
     check("a site address that isn't one stops the build", /isn't a site's address/.test(String(unknown)), String(unknown));
   } finally {
     rmSync(dist, { recursive: true, force: true });
@@ -139,6 +143,15 @@ export default async (ctx) => {
     });
     const again = await bare.waitForFunction(() => !window.__before, null, { timeout: 4000 }).then(() => true, () => false);
     check("and not a second time straight after: a page is never reloaded in a loop", !again);
+    // Another tab, at another address, is still reloaded: one tab's reload doesn't use up another's.
+    const other = await own.newPage();
+    await other.goto(`${URL}${LIST}?other`);
+    await other.evaluate(() => {
+      window.__before = true;
+      void fetch("/assets/host-part-GONE.js");
+    });
+    const otherReloaded = await other.waitForFunction(() => !window.__before, null, { timeout: 8000 }).then(() => true, () => false);
+    check("another tab that asked in the same minute is still loaded again", otherReloaded);
   } finally {
     if (existsSync(away)) renameSync(away, join(assets, reference));
     await own.close();

@@ -56,7 +56,7 @@ self.addEventListener("fetch", (event) => {
 
 /** A built platform script: its content's hash is in its name, so each deploy has its own (public/_headers). */
 const BUILT = "/assets/";
-/** Where the time of the last reload this worker asked for is kept, so a page is never reloaded in a loop. */
+/** Where the time of the last reload this worker asked for is kept, for each page's address, so a page is never reloaded in a loop. */
 const RELOADED = "/__reloaded-for-a-newer-version";
 
 /**
@@ -94,9 +94,12 @@ async function outOfDate(clientId, path) {
         tab.postMessage({ t: "sw:out-of-date", path }, [channel.port2]);
       });
       if (heard || tab.id !== clientId) return;
-      const last = Number(await (await cache.match(RELOADED))?.text()) || 0;
+      // Once a minute for each address: a navigation gives the tab a new id, so its address is what is remembered,
+      // and one tab's reload never keeps another's from happening.
+      const mark = `${RELOADED}?${encodeURIComponent(tab.url)}`;
+      const last = Number(await (await cache.match(mark))?.text()) || 0;
       if (Date.now() - last < 60_000) return;
-      await cache.put(RELOADED, new Response(String(Date.now())));
+      await cache.put(mark, new Response(String(Date.now())));
       await tab.navigate(tab.url).catch(() => {});
     }),
   );

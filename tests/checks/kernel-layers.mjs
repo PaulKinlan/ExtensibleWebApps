@@ -30,6 +30,7 @@ const CORE = [
   "modules.ts",
   "moves.ts",
   "net.ts",
+  "part.ts",
   "paths.ts",
   "provided.ts",
   "records.ts",

@@ -9,7 +9,7 @@
 // So each build brings the previous deploy's files along with it. It asks the live site for
 // platform/kept.json (the list the last build wrote: each file in assets/, and the day it was last part of a
 // build), downloads the ones this build no longer makes, and puts them in dist/assets/ beside the new ones.
-// A file stays for KEEP_DAYS after the last build that made it, and at most MOST old files stay (the newest).
+// A file stays for KEEP_DAYS after the last build that made it: every one of them, however many.
 //
 //   node scripts/keep-assets.mjs            writes dist/platform/kept.json; on a deploy, keeps the old files too
 //
@@ -26,7 +26,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** Where the list is served: not under /assets/, whose files are never asked for twice. */
 export const LIST = "platform/kept.json";
 export const KEEP_DAYS = 90;
-export const MOST = 2000;
 /** A built file's name: letters, digits, dots, dashes, underscores. Nothing else is ever fetched or written. */
 const NAME = /^[\w][\w.-]*$/;
 const DAY = 86_400_000;
@@ -91,7 +90,7 @@ export async function keepAssets({ dist = join(ROOT, "dist"), site, today = new 
     const old = Object.entries(before)
       .filter(([name]) => !(name in files))
       .sort((a, b) => b[1].localeCompare(a[1]) || a[0].localeCompare(b[0]));
-    const wanted = old.filter(([, last]) => today.getTime() - Date.parse(last) <= KEEP_DAYS * DAY).slice(0, MOST);
+    const wanted = old.filter(([, last]) => today.getTime() - Date.parse(last) <= KEEP_DAYS * DAY);
     dropped = old.length - wanted.length;
     // A few at a time: a site is asked for its own files, not flooded with them.
     for (let i = 0; i < wanted.length; i += 8) {
