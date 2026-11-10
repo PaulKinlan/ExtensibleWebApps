@@ -213,8 +213,8 @@ body.inspecting .inspect-picked { outline: 3px solid var(--accent) !important; o
 .html-view input:user-invalid { border-color: var(--danger); }
 .html-view button { height: var(--control); padding: 0 16px; border-radius: var(--radius); font-weight: 500; }
 .html-view button:hover { background: var(--bg-2); }
-.html-view button[type="submit"], .html-view button[data-primary] { background: var(--action); color: var(--action-fg); border-color: var(--action); }
-.html-view button[type="submit"]:hover, .html-view button[data-primary]:hover { background: color-mix(in srgb, var(--action) 85%, var(--action-fg)); }
+.html-view button[type="submit"]:not(.secondary), .html-view button[data-primary] { background: var(--action); color: var(--action-fg); border-color: var(--action); }
+.html-view button[type="submit"]:not(.secondary):hover, .html-view button[data-primary]:hover { background: color-mix(in srgb, var(--action) 85%, var(--action-fg)); }
 .html-view button:disabled { opacity: 0.5; cursor: not-allowed; }
 .html-view progress, .html-view meter { width: 100%; accent-color: var(--accent); }
 

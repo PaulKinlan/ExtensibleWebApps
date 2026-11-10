@@ -37,7 +37,7 @@ export default async function (ctx) {
     const thisMonth = all.filter((a) => a.date.startsWith(month));
     return {
       month: Math.round(thisMonth.reduce((s, a) => s + a.km, 0)),
-      sessions: thisMonth.length,
+      sessions: thisMonth.length === 1 ? "1 session" : `${thisMonth.length} sessions`,
       tiles: [
         tile("run", "Longest run", run, run?.km.toFixed(1), "km"),
         tile("ride", "Longest ride", ride, ride?.km.toFixed(1), "km"),

@@ -17,8 +17,8 @@ export default async function ({ check, context, URL, errors }) {
   const seen = (selector, timeout = 8000) => page.waitForSelector(selector, { state: "attached", timeout }).then(() => true, () => false);
 
   // View source: pick Quiet please, and see its code and its permissions in words.
-  await page.waitForSelector(`${inspect} ${source} button[data-action="show:quiet-please"]`, { timeout: 8000 });
-  await page.click(`${inspect} ${source} button[data-action="show:quiet-please"]`);
+  await page.waitForSelector(`${inspect} ${source} select[data-action="show"] option[value="quiet-please"]`, { state: "attached", timeout: 8000 });
+  await page.selectOption(`${inspect} ${source} select[data-action="show"]`, "quiet-please");
   const code = await page
     .waitForFunction((s) => /data:beforeWrite:learning/.test(document.querySelector(`${s} ui-code`)?.value ?? ""), `${inspect} ${source}`, { timeout: 5000 })
     .then(() => true, () => false);
