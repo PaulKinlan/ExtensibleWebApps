@@ -25,18 +25,18 @@
     :host([no-button]) .open { display: none; }
 
     /* 32px like the page's buttons, so it fits the app header without growing it as it draws. */
-    .open { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control, 38px); padding: 0 6px 0 var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg-2); cursor: pointer; font: 500 var(--text-sm) var(--font); transition: color var(--duration, 140ms), background var(--duration, 140ms), border-color var(--duration, 140ms); }
+    .open { display: inline-flex; align-items: center; gap: var(--space-2); min-height: var(--control, 38px); padding: 0 var(--space-2) 0 var(--space-3); border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg-2); cursor: pointer; font: 500 var(--text-sm) var(--font); transition: color var(--duration, 140ms), background var(--duration, 140ms), border-color var(--duration, 140ms); }
     .open:hover { color: var(--fg); background: var(--bg-2); border-color: color-mix(in srgb, var(--fg) 22%, var(--border)); }
     .open:focus-visible, input:focus-visible { outline: 3px solid var(--ring, color-mix(in srgb, var(--accent) 70%, transparent)); outline-offset: 2px; }
     .open svg { width: 16px; height: 16px; flex: none; }
-    kbd { font: 500 12px var(--mono); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-2); color: var(--fg-2); white-space: nowrap; }
+    kbd { font: 500 12px var(--mono); padding: 1px var(--space-1); border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg-2); color: var(--fg-2); white-space: nowrap; }
     .open kbd:empty { display: none; }
     /* On a phone there are no shortcuts to show, and room is short. */
     @media (pointer: coarse) { .open kbd { display: none; } }
 
-    dialog { width: min(640px, calc(100vw - 2 * var(--space-4))); max-height: min(70vh, 560px); margin: 12vh auto auto; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: 0 24px 64px light-dark(rgb(16 16 32 / 0.22), rgb(0 0 0 / 0.6)), 0 2px 6px light-dark(rgb(16 16 32 / 0.08), rgb(0 0 0 / 0.4)); overflow: hidden; }
+    dialog { width: min(640px, calc(100vw - 2 * var(--space-4))); max-height: min(70vh, 560px); margin: 12vh auto auto; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-2); overflow: hidden; }
     dialog[open] { display: flex; flex-direction: column; animation: rise var(--duration, 140ms) var(--ease, ease-out); }
-    dialog::backdrop { background: light-dark(rgb(16 16 32 / 0.28), rgb(0 0 0 / 0.5)); backdrop-filter: blur(2px); }
+    dialog::backdrop { background: var(--scrim); backdrop-filter: blur(2px); }
     @keyframes rise { from { opacity: 0; transform: translateY(6px) scale(0.99); } }
     @media (prefers-reduced-motion: reduce) { dialog[open] { animation: none; } }
     @media (max-width: 600px) { dialog { margin-top: var(--space-4); max-height: calc(100dvh - 2 * var(--space-4)); } }

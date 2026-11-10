@@ -17,16 +17,16 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     :host { display: inline-block; }
-    .launch { display: inline-flex; align-items: center; height: 40px; padding: 0 var(--space-3); border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-2); cursor: pointer; font: 600 var(--text-sm) var(--font); }
+    .launch { display: inline-flex; align-items: center; height: 40px; padding: 0 var(--space-3); border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-1); cursor: pointer; font: 600 var(--text-sm) var(--font); }
     .launch:hover { background: var(--bg-2); }
     .launch:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); outline-offset: 2px; }
     /* A popover, so it opens in the top layer, above the page and outside its view's containment. Manual, so a review card above it doesn't close it (ui-panel.js closes it on Escape and a click outside). */
-    #panel { position: fixed; margin: auto; inset: 0; width: min(720px, calc(100vw - 2 * var(--space-4))); max-height: min(85vh, 900px); overflow: auto; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: 0 8px 32px rgb(0 0 0 / 0.2); }
+    #panel { position: fixed; margin: auto; inset: 0; width: min(720px, calc(100vw - 2 * var(--space-4))); max-height: min(85vh, 900px); overflow: auto; padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); color: var(--fg); box-shadow: var(--shadow-2); }
     #panel:not(:popover-open) { display: none; }
-    #panel::backdrop { background: rgb(0 0 0 / 0.3); }
+    #panel::backdrop { background: var(--scrim); }
     header { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
     header h2 { flex: 1; margin: 0; font-size: var(--text-lg); }
-    .close { all: unset; cursor: pointer; width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--radius); color: var(--fg-2); font-size: 20px; }
+    .close { all: unset; cursor: pointer; width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--radius); color: var(--fg-2); font-size: var(--text-xl); }
     .close:hover { background: var(--bg-2); color: var(--fg); }
     .close:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent); }
   </style>

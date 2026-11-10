@@ -18,7 +18,7 @@ Use a token wherever one fits. A fixed value is a decision the next app, theme o
 | Type | `--text-sm` 13px, `-md` 15px, `-lg` 17px, `-xl` 21px, `-2xl` 30px | `-md` is body. One `h1` per page at `-2xl`, section headings (`h2`) at `-xl`. |
 | Colour | `--bg`, `--bg-2`, `--surface`, `--fg`, `--fg-2`, `--border`, `--accent`, `--accent-fg`, `--action`, `--action-fg`, `--ok`, `--warn`, `--danger` | Page, sunken areas, raised areas, text, quieter text, lines, the accent (links, focus and selection only), the main button (ink by default), and meaning. Never a raw hex value outside a theme. |
 | Size | `--control` 38px, `--control-sm` 30px | The height of every one-line control: buttons, fields, selects. The small one is for a button inside a table row or a list row. |
-| Shape | `--radius-sm`, `--radius`, `--radius-lg`, `--shadow-1`, `--shadow-2`, `--ring` | Controls and cards use `--radius`; only things that float use `--shadow-2`. |
+| Shape | `--radius-sm`, `--radius`, `--radius-lg`, `--shadow-1`, `--shadow-2`, `--scrim`, `--ring` | Controls and cards use `--radius`; only things that float use `--shadow-2`; `--scrim` dims the page behind a dialog. |
 | Motion | `--duration`, `--ease` | Transitions only. |
 
 A new token is added to `styles.css` and to the table in [Styling](docs/guide/styling.md), in the same change.

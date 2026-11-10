@@ -6,7 +6,7 @@
 <template>
   <style>
     /* A tone is a stripe along the top edge, painted as a background so the card keeps its shape and a theme's shadow (even none) can't remove it. */
-    :host { --tone: transparent; display: flex; flex-direction: column; gap: var(--space-3); padding: 20px; background: linear-gradient(var(--tone) 0 0) top / 100% 3px no-repeat, var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); min-width: 0; }
+    :host { --tone: transparent; display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-5); background: linear-gradient(var(--tone) 0 0) top / 100% 3px no-repeat, var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); min-width: 0; }
     :host([tone="accent"]) { --tone: var(--accent); }
     :host([tone="ok"]) { --tone: var(--ok); }
     :host([tone="warn"]) { --tone: var(--warn); }
