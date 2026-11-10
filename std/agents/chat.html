@@ -1,14 +1,16 @@
 <!--
-  Chat. chat.js sends { agents, none, about, name, lines, sending }: agents
+  Chat. chat.js sends { agents, none, about, name, lines, sending, models }: agents
   is [{ id, name, description, picked }], the agents with an inbox; none is
   true when there are none; about is the picked agent's description; lines
   is [{ n, who, text, tone }], oldest first. The picker sends "agent" with an
-  id, and the form sends "send" with { text }.
+  id, and the form sends "send" with { text }. models is [{ id, name,
+  picked }], the language models to pick from when the app has more than
+  one; its picker sends "model" with an id.
 -->
 <style>
   .chat { display: grid; gap: var(--space-2); }
   .chat-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
-  .chat-head h2 { margin: 0; }
+  .chat-head h2 { margin: 0; flex: 1 1 auto; }
   .chat .about { color: var(--fg-2); font-size: var(--text-sm); margin: 0; }
   .chat ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); max-height: 24rem; overflow: auto; }
   .chat li p { margin: 0; white-space: pre-wrap; }
@@ -24,6 +26,13 @@
         <label>With
           <select data-action="agent" aria-label="Which agent you write to" disabled="{{sending}}">
             <template for="a of agents"><option key="{{a.id}}" value="{{a.id}}" selected="{{a.picked}}">{{a.name}}</option></template>
+          </select>
+        </label>
+      </template>
+      <template if="models.length">
+        <label>Model
+          <select data-action="model" aria-label="Which language model answers" disabled="{{sending}}">
+            <template for="m of models"><option key="{{m.id}}" value="{{m.id}}" selected="{{m.picked}}">{{m.name}}</option></template>
           </select>
         </label>
       </template>

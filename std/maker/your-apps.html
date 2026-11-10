@@ -1,6 +1,7 @@
 <!--
   Your apps. your-apps.js sends two views:
-  make: { working, request, steps: [{ n, text, ok }], answer: { text, tone }, targets: [{ name, title, picked }] }
+  make: { working, request, steps: [{ n, text, ok }], answer: { text, tone }, targets: [{ name, title, picked }], models: [{ id, name, picked }] }
+  models is the language models to pick from when the page has more than one; its picker sends "model" with an id.
   apps: { none, apps: [{ name, title, url, picked }], app: { name, title, url, revision }, files: [{ name, count, open, versions: [{ version, when, by, note, current, removed }] }], folder: { text, tone },
           space: { name, offline, sharedHere, waiting: [{ name, title, by, when, changed, label }], own: [{ name, title }] } (in a space only), sharing: { text, tone } }
   "folder" saves the picked app's files to a folder on the person's disk; "open-folder" makes an app from one.
@@ -25,6 +26,13 @@
 <template id="make">
   <ui-card class="make">
     <h2>Make an app</h2>
+    <template if="models.length">
+      <label class="row">Model
+        <select data-action="model" aria-label="Which language model makes it" disabled="{{working}}">
+          <template for="m of models"><option key="{{m.id}}" value="{{m.id}}" selected="{{m.picked}}">{{m.name}}</option></template>
+        </select>
+      </label>
+    </template>
     <form data-action="make">
       <label class="row">For
         <select name="app" aria-label="Make a new app, or change one you made" disabled="{{working}}">

@@ -27,8 +27,8 @@ export const manifest = {
   name: "Your apps",
   description: "Describe an app to make it, or a change to one you made; see each app running, and go back to an earlier version of any file.",
   version: "1.0.0",
-  permissions: ["ui", "apps:read", "apps:make", "bus:send:app-maker", "hook:listen:agent:toolResult"],
-  services: ["maker", "bus"],
+  permissions: ["ui", "apps:read", "apps:make", "bus:send:app-maker", "hook:listen:agent:toolResult", "llm"],
+  services: ["maker", "bus", "llm"],
   // Each tab has its own preview and conversation.
   scope: "tab",
 };
@@ -50,6 +50,8 @@ export default function (ctx) {
   let steps = [];
   let answer = null;
   let target = "";
+  /** The models to pick from: [{ id, name, picked }]. */
+  let models = [];
   /** What the last folder save or open said. */
   let folder = null;
   /** In a space: the apps its members shared, and what the last share or accept said. */
@@ -58,11 +60,19 @@ export default function (ctx) {
   /** In a space: the apps the person made outside it, on this device, to copy in. */
   let own = [];
 
+  /** The app's language models, for the picker: shown when there is more than one to pick from. */
+  const readModels = async () => {
+    const list = await ctx.call("llm", "providers").catch(() => []);
+    const on = list.find((p) => p.preferred) ?? list.find((p) => p.ready) ?? list[0];
+    models = list.map((p) => ({ id: p.id, name: p.ready ? p.name : `${p.name} (asks for your key)`, picked: p === on }));
+  };
+
   const draw = () => {
     const app = apps.find((a) => a.name === picked);
     views.render("make", "make", {
       working,
       request,
+      models: models.length > 1 ? models : [],
       steps,
       answer,
       targets: [{ name: "", title: "A new app", picked: !target }, ...apps.map((a) => ({ name: a.name, title: `Change ${a.title}`, picked: a.name === target }))],
@@ -87,6 +97,7 @@ export default function (ctx) {
   };
   const load = async () => {
     apps = await ctx.call("maker", "list").catch(() => []);
+    await readModels();
     await loadShared();
     if (picked && !apps.some((a) => a.name === picked)) picked = "";
     if (!picked && apps.length) picked = apps[0].name;
@@ -161,6 +172,12 @@ export default function (ctx) {
 
   ctx.ui.onEvent(async (action, value) => {
     if (action === "make") return make(value?.text, value?.app);
+    if (action === "model" && typeof value === "string") {
+      // The person's pick, for every app: the one that answers until they pick another.
+      await ctx.call("llm", "prefer", value).catch(() => {});
+      await readModels();
+      return draw();
+    }
     if (action === "pick") {
       picked = String(value);
       open = "";
@@ -216,4 +233,6 @@ export default function (ctx) {
   });
 
   void load();
+  // The models start beside it, some a little later: read them again as they come.
+  for (const wait of [500, 1500, 4000]) setTimeout(() => readModels().then(draw), wait);
 }

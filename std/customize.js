@@ -164,7 +164,7 @@ export default function (ctx) {
       id: p.id,
       name: p.name,
       description: p.description,
-      who: p.shared ? "The space's" : "Yours",
+      who: p.shared ? "The space's" : p.everywhere ? "Yours, in every app" : "Yours",
       user: true,
       on: p.on,
       off: !p.on,
@@ -173,7 +173,11 @@ export default function (ctx) {
       places: p.on ? placesOf(page, p.id, running(p.id)) : [],
       // Off, it neither shows nor runs: say so in the row, with what turning it on does.
       offHint: p.on || p.error ? "" : `Off: it isn't running.${p.places.length ? ` Turn it on and it ${p.places.map(whereOfText).map((w) => w[0].toLowerCase() + w.slice(1)).join("; ")}.` : " Turn it on to use it."}`,
-      share: page.space ? (p.shared ? "Stop sharing" : "Share with the space") : "",
+      // One used in every app is kept once, outside any space: it isn't shared from here.
+      share: page.space && !p.everywhere ? (p.shared ? "Stop sharing" : "Share with the space") : "",
+      // One of the person's own can follow them to every app they open, or go back to this app alone.
+      reach: p.shared ? "" : p.everywhere ? "Only this app" : "Use in every app",
+      reachTitle: p.everywhere ? "Keep it for this app alone, and take it out of your other apps" : "Add it to every app you open on this device, with the same on or off",
       shared: p.shared,
     }));
     const theirs = app
@@ -485,6 +489,17 @@ export default function (ctx) {
       await draw();
       const result = await call("remove", value);
       message = result?.ok === false ? (result.error === "Not removed" ? `${name} is still here.` : result.error) : `Removed ${name}. Your data from it is kept.`;
+      return draw();
+    }
+    if (action === "reach") {
+      const mine = await call("mine");
+      const p = Array.isArray(mine) ? mine.find((m) => m.id === value) : undefined;
+      if (!p) return;
+      message = "Waiting for your answer on the review card…";
+      follow = null;
+      await draw();
+      const result = await call("everywhere", p.id, !p.everywhere);
+      message = result?.ok === false ? (result.error === "Still for this app only" ? `${p.name} is still only in this app.` : result.error) : p.everywhere ? `${p.name} is now only in this app.` : `${p.name} is now in every app you open on this device.`;
       return draw();
     }
     if (action === "share") {

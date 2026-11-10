@@ -57,6 +57,8 @@ export interface Provider {
   name: string;
   model?: string;
   ready: boolean;
+  /** The one the person picked to answer when a request names none (llm.prefer). */
+  preferred?: boolean;
 }
 
 export interface LlmRequest {
@@ -134,7 +136,10 @@ function cleanAnswer(value: Record<string, unknown>, provider: string) {
 }
 
 const make = (kernel: ModuleKernel): ServiceProvider => {
-  const { root, apps, remote } = kernel;
+  const { root, apps, remote, store } = kernel;
+  /** The provider the person picked to answer when a request names none: theirs, on this device, for every app. */
+  const PREFERENCE = "llm.json";
+  const preference = async () => (await store.readJson<{ prefer?: string }>(PREFERENCE, {})).prefer;
   kernel.hook("llm:providers", {
     mode: "waterfall",
     timeoutMs: 2000,
@@ -150,7 +155,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     onFailure: "open",
     needs: "provide:llm",
     args: "request, with provider set to the id of the provider that should answer",
-    description: "Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }. Listening needs provide:llm.",
+    description: "Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }, with declined: true when the person gave it no key. Listening needs provide:llm.",
   });
 
   kernel.hook("llm:models", {
@@ -178,6 +183,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       seen.add(p.id);
       out.push({ id: p.id, name: typeof p.name === "string" ? p.name : p.id, model: typeof p.model === "string" ? p.model : undefined, ready: p.ready === true });
     }
+    const prefer = await preference();
+    for (const p of out) if (p.id === prefer) p.preferred = true;
     return out;
   }
 
@@ -185,7 +192,8 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
    * The site's language models a person can add to the caller's app: the registry's packages
    * (/packages/index.json) that ask for provide:llm. Adding one goes through the authoring service as the
    * caller, with only the rights this needs, so the person still accepts a review of the model plugin's code,
-   * and the plugin is theirs: on this device, for this app, never in the app's files.
+   * and the plugin is theirs: on this device, never in the app's files. It is kept for every app they open
+   * (user-plugins.ts), so a model and its key are added once.
    */
   async function offered(plugin: string, dispatch: unknown, method: "choices" | "add", id?: unknown) {
     const as = (right: string, name: string, args: unknown[]) => callService(remote.services, plugin, new Set([right]), "authoring", name, args, dispatch as { trace?: string }) as Promise<any>;
@@ -199,7 +207,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       return { ok: true, id: model.id };
     }
     if (!model.added) {
-      const added = await as("plugins:author", "add", [model.href]);
+      const added = await as("plugins:author", "add", [model.href, { everywhere: true }]);
       if (!added?.ok) return added;
     }
     const on = await as("plugins:manage", "turn", [model.id, true]);
@@ -209,7 +217,13 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   const service: ServiceProvider = {
     description: "Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js). The caller never holds a key.",
     methods: {
-      providers: { args: "()", returns: "[{ id, name, model?, ready }]", needs: "llm", description: "The providers the caller's app links; ready means it has its key." },
+      providers: { args: "()", returns: "[{ id, name, model?, ready, preferred? }]", needs: "llm", description: "The providers the caller's app has; ready means it has its key, preferred that the person picked it (prefer)." },
+      prefer: {
+        args: "(provider?)",
+        returns: "{ ok, provider? }",
+        needs: "llm",
+        description: "Sets which of providers() answers a request that names none, for every app the person opens on this device: what a model picker calls. Without one, back to the first that is ready.",
+      },
       models: {
         args: "(provider?)",
         returns: "{ models: [{ id, name? }], tiers: { best, balanced, fast }, provider }",
@@ -226,25 +240,36 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         args: "(id)",
         returns: "{ ok, id?, error? }",
         needs: "llm",
-        description: "Adds one of choices() to the person's own plugins for the caller's app, once they accept a review of its code, and turns it on. It asks for its API key the first time it is asked something.",
+        description: "Adds one of choices() to the person's own plugins for every app they open, once they accept a review of its code, and turns it on. It asks for its API key the first time it is asked something.",
       },
       complete: {
         args: "({ messages, system?, tools?, schema?, model?, maxTokens?, provider? })",
         returns: "{ text, json?, toolCalls, stop, usage: { input, output }, provider, model, message }",
         needs: "llm",
         description:
-          'Asks a model. messages are { role: "user" | "assistant", content }, an assistant\'s { toolCalls: [{ id, name, args }], state }, or a tool\'s answer { role: "tool", id, name, content }; add each answer\'s message to messages to go on. tools are [{ name, description, parameters }]; schema (the platform\'s JSON Schema subset, as collections use) asks for an answer of that shape, in json, checked before it\'s returned. model is an id or a tier: best, balanced or fast (the default is the provider\'s setting). Without provider, the first ready one answers.',
+          'Asks a model. messages are { role: "user" | "assistant", content }, an assistant\'s { toolCalls: [{ id, name, args }], state }, or a tool\'s answer { role: "tool", id, name, content }; add each answer\'s message to messages to go on. tools are [{ name, description, parameters }]; schema (the platform\'s JSON Schema subset, as collections use) asks for an answer of that shape, in json, checked before it\'s returned. model is an id or a tier: best, balanced or fast (the default is the provider\'s setting). Without provider, the one the person picked answers (prefer), else the first ready one; when none has its key, each asks for it in turn until the person gives one.',
       },
     },
     capability: () => "llm",
     async call(plugin, method, args, dispatch) {
       if (method === "providers") return providers(dispatch, plugin);
       if (method === "choices" || method === "add") return offered(plugin, dispatch, method, args[0]);
+      if (method === "prefer") {
+        const id = args[0];
+        if (id !== undefined && id !== "" && (typeof id !== "string" || !(await providers(dispatch, plugin)).some((p) => p.id === id))) throw new Error("prefer takes the id of one of llm.providers(), or nothing");
+        await store.writeJson(PREFERENCE, id ? { prefer: id } : {});
+        return id ? { ok: true, provider: id } : { ok: true };
+      }
       const named = method === "models" ? args[0] : (args[0] as LlmRequest | undefined)?.provider;
       if (named !== undefined && typeof named !== "string") throw new Error("provider is a provider's id, from llm.providers()");
       const request = method === "complete" ? checkRequest(args[0]) : undefined;
       const list = await providers(dispatch, plugin);
-      const chosen = named !== undefined ? list.find((p) => p.id === named) : (list.find((p) => p.ready) ?? list[0]);
+      // Named, else the one the person picked, else the first with its key. With no key anywhere, each is asked in
+      // turn: a provider the person gives no key ("Not now" on its card) answers { declined }, and the next one asks.
+      const picked = named !== undefined ? list.find((p) => p.id === named) : (list.find((p) => p.preferred) ?? list.find((p) => p.ready));
+      const rest = named === undefined && !picked ? list.slice(1) : [];
+      // (A provider that was named and isn't here is an error, never another vendor.)
+      let chosen = named !== undefined ? picked : (picked ?? list[0]);
       if (!chosen) throw new Error(named !== undefined ? `No provider ${named} in this app` : "This app has no language model yet. Add one from Customize (Add a plugin), such as Claude (Anthropic), and paste your own API key when it asks");
       if (method === "models") {
         const value = (await root.serial(dispatch, "llm:models", { provider: chosen.id })) as unknown;
@@ -258,7 +283,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       const started = performance.now();
       // Dispatched with serial, which awaits each provider in turn: cordis's bail doesn't wait, so a
       // provider in another worker (whose answer is a promise) would win even when it passes.
-      const value = (await root.serial(dispatch, "llm:complete", { ...request, provider: chosen.id })) as unknown;
+      let value = (await root.serial(dispatch, "llm:complete", { ...request, provider: chosen.id })) as unknown;
+      while (isObject(value) && value.declined === true && rest.length) {
+        chosen = rest.shift()!;
+        value = (await root.serial(dispatch, "llm:complete", { ...request, provider: chosen.id })) as unknown;
+      }
       const ms = Math.round(performance.now() - started);
       if (!isObject(value)) {
         record({ kind: "error", name: "llm:complete", plugin, detail: `${chosen.id} didn't answer` });
