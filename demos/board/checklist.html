@@ -7,21 +7,21 @@
          checklist on the card's screen
 -->
 <style>
-  .count { display: inline-flex; align-items: center; gap: var(--space-1); padding: 1px var(--space-2) 1px 6px; border-radius: 999px; font-weight: 600; font-size: 0.72rem; font-family: var(--mono); color: var(--fg-2); background: var(--bg-2); }
+  .count { display: inline-flex; align-items: center; gap: var(--space-1); padding: 1px var(--space-2); border-radius: 999px; font-weight: 600; font-size: var(--text-xs); font-family: var(--mono); color: var(--fg-2); background: var(--bg-2); }
   .count::before { content: "☑"; font-family: var(--font); }
-  .count[data-all] { color: light-dark(#047857, #6ee7b7); background: color-mix(in srgb, var(--ok) 16%, transparent); }
+  .count[data-all] { color: var(--ok); background: color-mix(in srgb, var(--ok) 16%, transparent); }
 
   .checklist { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); border-radius: var(--radius-lg); background: var(--bg-2); }
   .checklist h3 { display: flex; align-items: baseline; margin: 0; font-size: var(--text-md); }
   .checklist h3 small { margin-left: auto; font-weight: 600; font-size: var(--text-sm); font-family: var(--mono); color: var(--fg-2); }
   .checklist progress { width: 100%; height: 8px; border: 0; border-radius: 999px; overflow: hidden; appearance: none; background: color-mix(in srgb, var(--fg) 10%, transparent); }
   .checklist progress::-webkit-progress-bar { background: transparent; }
-  .checklist progress::-webkit-progress-value { border-radius: 999px; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #22d3ee)); transition: width var(--duration) var(--ease); }
+  .checklist progress::-webkit-progress-value { border-radius: 999px; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #22d3ee)); transition: width var(--duration) var(--ease); } /* design-ok: the board's own palette */
   .checklist progress::-moz-progress-bar { border-radius: 999px; background: var(--accent); }
   .checklist[data-all] progress::-webkit-progress-value { background: var(--ok); }
   .checklist[data-all] progress::-moz-progress-bar { background: var(--ok); }
   .checklist ul { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
-  .checklist li { display: flex; align-items: center; gap: var(--space-2); padding: 6px var(--space-2); border-radius: var(--radius); transition: background var(--duration) var(--ease); }
+  .checklist li { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2); border-radius: var(--radius); transition: background var(--duration) var(--ease); }
   .checklist li:hover { background: color-mix(in srgb, var(--surface) 80%, transparent); }
   .checklist label { flex: 1; display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
   .checklist input[type="checkbox"] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
@@ -31,7 +31,7 @@
   @media (hover: none) { .checklist .remove { opacity: 1; } }
   .checklist form input { width: 100%; box-sizing: border-box; height: 34px; padding: 0 var(--space-3); font: inherit; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
   .checklist form input:focus { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); border-color: var(--accent); }
-  .checklist .cheer { margin: 0; font-size: var(--text-sm); color: light-dark(#047857, #6ee7b7); font-weight: 600; }
+  .checklist .cheer { margin: 0; font-size: var(--text-sm); color: var(--ok); font-weight: 600; }
 </style>
 
 <template id="count">

@@ -51,16 +51,16 @@
       }
     }
     body {
-      background:
+      background: /* design-ok: the app's own palette */
         radial-gradient(56rem 26rem at 10% -8%, light-dark(rgb(251 146 60 / 0.16), rgb(234 88 12 / 0.14)), transparent 60%),
         radial-gradient(44rem 26rem at 100% 0%, light-dark(rgb(219 39 119 / 0.1), rgb(219 39 119 / 0.1)), transparent 60%),
         var(--bg);
       background-attachment: fixed;
       grid-template-columns: minmax(0, 1fr) minmax(0, 340px);
     }
-    body > header { align-items: center; background: transparent; border-bottom: 0; padding-top: 18px; }
-    body > header h1 { font-size: 1.4rem; letter-spacing: -0.02em; display: flex; align-items: center; gap: 10px; }
-    body > header h1::before { content: ""; width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(from 30deg, #f97316, #db2777, #7c3aed, #0ea5e9, #16a34a, #f97316); mask: radial-gradient(circle, transparent 6px, #000 7px); }
+    body > header { align-items: center; background: transparent; border-bottom: 0; padding-top: var(--space-4); }
+    body > header h1 { font-size: var(--text-xl); letter-spacing: -0.02em; display: flex; align-items: center; gap: var(--space-2); }
+    body > header h1::before { content: ""; width: 26px; height: 26px; border-radius: 50%; background: conic-gradient(from 30deg, #f97316, #db2777, #7c3aed, #0ea5e9, #16a34a, #f97316); mask: radial-gradient(circle, transparent 6px, #000 7px); } /* design-ok: the app's own palette */
     body > header nav.site { margin-left: auto; }
     body > header nav.site a { color: var(--fg-2); text-decoration: none; }
     body > header nav.site a:hover { color: var(--accent); }
@@ -68,8 +68,8 @@
     .chart { padding: var(--space-4) var(--space-5); border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); }
     [data-plugin="weekly"] h2, [data-plugin="weekly"] h3 { margin: 0 0 var(--space-2); font-size: var(--text-xl); letter-spacing: -0.01em; }
     [data-plugin="weekly"] canvas { width: 100%; height: auto; aspect-ratio: 1200 / 440; display: block; }
-    .chart .key { display: flex; flex-wrap: wrap; gap: 14px; margin: var(--space-2) 0 0; padding: 0; list-style: none; font-size: var(--text-sm); color: var(--fg-2); }
-    .chart .key li::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; background: var(--c); vertical-align: -1px; }
+    .chart .key { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-2) 0 0; padding: 0; list-style: none; font-size: var(--text-sm); color: var(--fg-2); }
+    .chart .key li::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: var(--space-2); background: var(--c); vertical-align: -1px; }
     @media (max-width: 800px) {
       body { grid-template-columns: minmax(0, 1fr); }
       body > header nav.site { margin-left: 0; width: 100%; }
