@@ -30,8 +30,9 @@
 // An MCP client gets a session (Mcp-Session-Id) when it connects. When the
 // door's tools change (a plugin starts or stops, a collection comes or goes),
 // the server says so with notifications/tools/list_changed: on the session's
-// GET stream if it keeps one open (the host asks this door now and then
-// whether anything changed, src/server/mcp.ts mcpStream), else ahead of the
+// GET stream if it keeps one open (this tells the host when something may
+// have changed, env().changed, and the host then asks this door whether the
+// tools did, src/server/mcp.ts mcpStream), else ahead of the
 // answer to its next request, as a short event stream (Streamable HTTP lets a
 // POST be answered that way). A client that only takes JSON gets plain JSON,
 // and lists the tools again when it chooses.
@@ -43,6 +44,7 @@
 //
 // A kernel module (docs/layers.md): a site that lists `outside` (and `tools`) in kernel.json has it.
 
+import { env } from "../../src/kernel/env";
 import { callService, type ServiceProvider } from "../../src/kernel/remote";
 import type { ModuleKernel } from "../../src/kernel/modules";
 import type { Host } from "../../src/kernel/hosts";
@@ -187,17 +189,35 @@ export default {
       }
     }
 
+    // On a space's server, the host keeps MCP clients' streams open and asks this door only when told that
+    // something may have changed (src/server/mcp.ts): the tools (plugins came or went, a door opened or
+    // closed), or a session's stream (ended, or a newer one took over). Told once for a burst of changes.
+    let telling: ReturnType<typeof setTimeout> | undefined;
+    const tell = () => {
+      const changed = hosts.mode === "server" ? env().changed : undefined;
+      if (!changed) return;
+      clearTimeout(telling);
+      telling = setTimeout(() => changed("mcp"), 300);
+    };
+
+    // A manifest the space's server reads can bring a collection, and with it a tool, with no plugin starting:
+    // a browser-only plugin of an app a device opens in the space is only read there (std/spaces/server-apps.ts).
+    root.on("internal/learned", tell);
+
     root.on("internal/stopped", (instance: string) => {
+      tell();
       const door = doors.get(instance);
       if (!door) return;
       doors.delete(instance);
       void withdraw(door);
     });
+    root.on("internal/started", tell);
     // A tab that opens the app later gets the tools too, and plugins starting or stopping change what the
     // tools are (a collection comes or goes): offer each door's tools again, to the tabs that have its app
     // open now. A tab that has closed takes its key with it.
     let refreshing: ReturnType<typeof setTimeout> | undefined;
     root.on("plugins:changed", () => {
+      tell();
       clearTimeout(refreshing);
       refreshing = setTimeout(() => {
         for (const door of doors.values()) {
@@ -209,6 +229,7 @@ export default {
     });
     kernel.cleanup(() => {
       clearTimeout(refreshing);
+      clearTimeout(telling);
       for (const door of doors.values()) void withdraw(door);
       doors.clear();
     });
@@ -276,13 +297,21 @@ export default {
         if (!options.session) return { status: 400, json: { reply: { jsonrpc: "2.0", id: null, error: { code: -32600, message: "DELETE ends a session: send its Mcp-Session-Id" } } } };
         sessions.delete(options.session);
         ended.add(options.session);
+        // Its stream, if it has one open, hears that it's over.
+        tell();
         if (ended.size > 500) ended.delete(ended.values().next().value!);
         return { status: 200 };
       }
       // The host asks, for a client's GET stream, whether its tools changed since it last heard.
       if (options.method === "GET") {
         if (!session || !options.stream) return { status: 400, json: { reply: { jsonrpc: "2.0", id: null, error: { code: -32600, message: "A stream needs a session: connect first" } } } };
-        if (options.first) session.stream = options.stream;
+        if (options.first) {
+          // An older stream for the session hears that this one took over.
+          if (session.stream && session.stream !== options.stream) tell();
+          session.stream = options.stream;
+        }
+        // Taken up again after the kernel restarted: the stream that asks first is the session's.
+        else if (!session.stream) session.stream = options.stream;
         else if (session.stream !== options.stream) return { status: 409, json: { reply: { jsonrpc: "2.0", id: null, error: { code: -32000, message: "A newer stream for this session took over" } } } };
         const json: McpAnswer = {};
         if (door) {
@@ -397,6 +426,7 @@ export default {
           const door: Door = doors.get(instance) ?? { instance, name: plugin?.manifest.name ?? base(instance), keys: new Map(), calls: [] };
           door.instructions = instructions;
           doors.set(instance, door);
+          tell();
           for (const host of tabsOf(door)) await offer(door, host, dispatch);
           record({ kind: "note", name: "outside:open", plugin: instance, trace: dispatch.trace, detail: hosts.mode === "server" ? "mcp" : "webmcp" });
           return { ok: true, tools: (await toolsOf(door, dispatch)).length };
@@ -405,6 +435,7 @@ export default {
           const door = doors.get(instance);
           if (door) {
             doors.delete(instance);
+            tell();
             await withdraw(door);
           }
           return { ok: true };

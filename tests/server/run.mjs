@@ -23,10 +23,11 @@ import { authenticator } from "./authenticator.mjs";
 import { blueskyChecks } from "./bluesky.mjs";
 import { mcpChecks } from "./mcp.mjs";
 import { mcpMoreChecks } from "./mcp-more.mjs";
-import { mcpStreamChecks } from "./mcp-stream.mjs";
+import { mcpStreamChecks, quietStreamChecks } from "./mcp-stream.mjs";
 import { pagePolicyChecks } from "./page-policy.mjs";
 import { fakeAtproto } from "./fake-atproto.mjs";
 import { fakeProvider } from "./fake-oauth.mjs";
+import { fakeDns } from "./fake-dns.mjs";
 import { feedReaderChecks } from "./feed-reader.mjs";
 
 const results = [];
@@ -38,6 +39,8 @@ fake.env.AUTH_PROVIDERS = JSON.stringify([...JSON.parse(fake.env.AUTH_PROVIDERS)
 // A mail server the Node host sends server plugins' email to (src/server/smtp.ts). Cloudflare's, under wrangler dev, only logs it.
 const mailbox = await fakeSmtp();
 const FROM = "Spaces <spaces@example.com>";
+// A resolver the Cloudflare host asks where a name leads (src/server/cloudflare/names.ts), with a table of its own.
+const dns = await fakeDns();
 
 /** A free port on this machine. */
 const freePort = () =>
@@ -83,7 +86,7 @@ const hosts = {
     async start() {
       cpSync("tests/fixtures/server-app", "dist/server-app", { recursive: true });
       const port = await freePort();
-      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries({ ...fake.env, EMAIL_FROM: FROM, ALLOW_PRIVATE_HOSTS: "127.0.0.1" }).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
+      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries({ ...fake.env, EMAIL_FROM: FROM, ALLOW_PRIVATE_HOSTS: "127.0.0.1", DNS_RESOLVER: dns.url }).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
       let log = "";
       await new Promise((ready, fail) => {
         const timer = setTimeout(() => fail(new Error(`wrangler dev didn't start: ${log.slice(-500)}`)), 60_000);
@@ -687,6 +690,7 @@ async function networkGuardChecks(base, check, host) {
   // A server on this machine: / says hello, and /hop redirects to the same server by the name localhost.
   const local = createHttpServer((req, res) => {
     if (req.url === "/hop") return res.writeHead(302, { location: `http://localhost:${local.address().port}/` }).end();
+    if (req.url === "/hop-name") return res.writeHead(302, { location: "https://inside.example/" }).end();
     if (req.url === "/hop-ip") return res.writeHead(307, { location: `http://[::ffff:7f00:1]:${local.address().port}/` }).end();
     res.end("hello from inside");
   });
@@ -709,8 +713,26 @@ async function networkGuardChecks(base, check, host) {
     metadata: await probe("http://169.254.169.254/latest/meta-data/", "agent"),
     tampered: await probe(`http://[::1]:${port}/`, "tampered"),
   };
+  // A name is judged by where it leads. Cloudflare asks a resolver before each request (the checks' own, with a
+  // table of names); Node checks the address each connection goes to, which `byName` above covers with localhost.
+  const names = host !== "cloudflare" ? null : {
+    inside: await probe("https://inside.example/"),
+    oneOfTwo: await probe("https://loop.example/"),
+    ipv6: await probe("https://six.example/"),
+    alias: await probe("https://alias.example/"),
+    redirect: await probe(`http://127.0.0.1:${port}/hop-name`),
+    outside: await probe("https://outside.example/"),
+    unknown: await probe("https://broken.example/"),
+    nowhere: await probe("https://no-such-name.example/"),
+  };
   local.close();
   const refused = (r) => r?.ok === false && /server's own network/.test(r.error);
+  if (names)
+    check(
+      "network guard (cloudflare): a name that leads to a private address is refused as on Node (any of its addresses, IPv6, behind an alias, or after a redirect), a name that leads outside is asked, and a name that can't be looked up or has no address isn't",
+      refused(names.inside) && /inside\.example \(10\.1\.2\.3\)/.test(names.inside.error) && refused(names.oneOfTwo) && refused(names.ipv6) && refused(names.alias) && refused(names.redirect) && !refused(names.outside) && !/where .* leads/.test(names.outside?.error ?? "") && names.unknown?.ok === false && /Couldn't find where broken\.example leads/.test(names.unknown.error) && names.nowhere?.ok === false && /no-such-name\.example leads.*no address/.test(names.nowhere.error),
+      JSON.stringify(names),
+    );
   check(
     `network guard (${host}): a server plugin with network can't reach the server's own network: localhost, ::1, a mapped address, the metadata service, or a redirect inside`,
     refused(seen.byName) && refused(seen.ipv6) && refused(seen.mapped) && refused(seen.metadata) && refused(seen.redirect) && refused(seen.redirectToIp),
@@ -1144,6 +1166,7 @@ async function suite(name, make) {
     await mcpChecks(server.url, check, owner, stranger);
     await mcpMoreChecks(server.url, check, owner, stranger);
     await mcpStreamChecks(server.url, check, owner, stranger);
+    if (name === "node") await quietStreamChecks(check);
 
     // The same cases on both hosts. (On Cloudflare in production, the Worker's own egress refuses them too.)
     await networkGuardChecks(server.url, check, name);

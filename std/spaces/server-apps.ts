@@ -44,7 +44,14 @@ export function pluginLinks(html: string, base: string, rels: string[] = ["plugi
   return out;
 }
 
-export function serverApps(remote: RemotePlugins, store: Store, origin: string, fetcher: (url: string) => Promise<Response> = (url) => fetch(url)) {
+export function serverApps(
+  remote: RemotePlugins,
+  store: Store,
+  origin: string,
+  fetcher: (url: string) => Promise<Response> = (url) => fetch(url),
+  /** Called when an app's plugins have been read: the collections the space knows of may have changed. */
+  learned: () => void = () => {},
+) {
   let apps: string[] = [];
   /** The apps whose plugins were started since the kernel started. */
   const started = new Set<string>();
@@ -139,6 +146,7 @@ export function serverApps(remote: RemotePlugins, store: Store, origin: string, 
       }
     } finally {
       started();
+      learned();
     }
     return complete;
   }

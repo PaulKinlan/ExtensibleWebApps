@@ -407,7 +407,9 @@ can't reach from its worker.
   dictionary that takes them, so they aren't marked.
 - **Hugo preview.** `hugo-preview.js` puts a `<ui-site-preview>` in a panel,
   pointing at the post's address on your `hugo server` (localhost:1313 unless
-  you change it). The element shows only a server on your own device. If
+  you change it). The element shows only a server on your own device
+  (`localhost`, a name under it, or `127.0.0.1`), and the page's own policy
+  refuses a frame of anything else. If
   nothing answers, the panel says how to start Hugo; Hugo reloads the page
   when you save, and the panel does too. If the page in the frame goes
   anywhere else (a link you click in it, or the server sending it on), the

@@ -27,7 +27,7 @@ import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, too
 import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
 import { accept } from "./websocket.ts";
 import { headerRules } from "./header-rules.ts";
-import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse, mcpStream } from "./mcp.ts";
+import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse, mcpStream, type Watch } from "./mcp.ts";
 import { feedReader } from "./feed-reader.ts";
 import { nodeGet } from "./feed-reader-node.ts";
 
@@ -75,8 +75,30 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     left(space, user) {
       for (const [socket, who] of clients) if (who.space === space && who.user === user) socket.close(4403, "You're no longer in this space");
     },
+    // A key ended: the streams its space has open check theirs again.
+    keys: (space) => woken(space),
     mail: async (message) => (options.email ? options.email.send(message) : null),
   });
+
+  /** The MCP streams open for each space (src/server/mcp.ts mcpStream): each one's way to be told to ask its door again, or that nothing can tell it any more. */
+  const watching = new Map<string, Set<{ wake(): void; lost(): void }>>();
+  /** Wakes a space's streams: its kernel said its door may answer differently, or a key for it ended. */
+  function woken(name: string) {
+    for (const stream of [...(watching.get(name) ?? [])]) stream.wake();
+  }
+  /** A space's kernel stopped (it failed, or its folder is being copied): its streams end, and their clients open new ones, which start it again. */
+  function stopped(name: string) {
+    for (const stream of [...(watching.get(name) ?? [])]) stream.lost();
+  }
+  const watch = (name: string): Watch => (wake, lost) => {
+    const set = watching.get(name) ?? new Set();
+    const stream = { wake, lost };
+    watching.set(name, set.add(stream));
+    return () => {
+      set.delete(stream);
+      if (!set.size && watching.get(name) === set) watching.delete(name);
+    };
+  };
 
   /** Spaces whose kernel is stopped while their folder is copied out or in, until it's done. */
   const paused = new Map<string, Promise<void>>();
@@ -92,6 +114,8 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
         const worker = new Worker(resolve(options.kernel), { workerData: { dir: join(resolve(options.spaces), name), origin: url, allowPrivate: options.allowPrivate ?? [], email: !!options.email } });
         worker.on("message", (m) => {
           if (m?.t === "ready") ready(worker);
+          // What its `mcp` door answers may have changed: the streams open for the space ask again.
+          if (m?.t === "changed" && m.door === "mcp") woken(name);
           // The kernel asks about its members: their email addresses (the only ones its plugins may email) and names.
           // Mail the email module wrote to the outbox, to send.
           if (m?.t === "deliver" && options.email)
@@ -112,7 +136,11 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
           spaces.delete(name);
           fail(error);
         });
-        worker.on("exit", () => spaces.delete(name));
+        worker.on("exit", () => {
+          // Only if it is still this space's kernel: a newer one may have started since.
+          if (spaces.get(name) === started) spaces.delete(name);
+          stopped(name);
+        });
       });
       spaces.set(name, started);
     }
@@ -283,12 +311,12 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
     const asked = await mcpRequest(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), at, auth.agent);
     // A GET is the client's stream, which ends when its key stops working.
-    const allowed = async () => !!(await auth.agent(headers.get("authorization"), at.space, at.plugin));
+    const key = () => auth.agent(headers.get("authorization"), at.space, at.plugin);
     const answer =
       asked instanceof Response
         ? asked
         : asked.method === "GET"
-          ? await mcpStream(asked, (knock) => ask(at.space, knock), { allowed })
+          ? await mcpStream(asked, (knock) => ask(at.space, knock), watch(at.space), { key })
           : mcpResponse(await ask(at.space, asked, MCP_TIMEOUT_MS));
     // A body refused before it was read (too big, or no key) is still on the connection: close it rather than reuse it.
     if (!request.complete) answer.headers.set("connection", "close");

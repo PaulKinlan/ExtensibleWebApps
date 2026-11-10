@@ -61,7 +61,7 @@ export default {
 
     if (hosts.mode === "server") {
       /** The apps opened in the space, whose server plugins it runs: only on a server that runs plugins. */
-      const onServer = where.isolates ? serverApps(remote, store, where.origin, where.site) : undefined;
+      const onServer = where.isolates ? serverApps(remote, store, where.origin, where.site, () => root.emit("internal/learned")) : undefined;
       const hub = syncHub(root, store, records, hosts, (app) => onServer?.use(app), draining.get(store));
       // A space keeps the plugins its members share with each other, and never runs them.
       const shared = spacePlugins(userAdded, store, hosts, (message) => hub.tell(message));
