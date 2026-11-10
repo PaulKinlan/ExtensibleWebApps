@@ -9,14 +9,14 @@
 <style>
   .make form { display: grid; gap: var(--space-2); margin: 0; }
   .make textarea { font: inherit; min-height: 5rem; padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
-  .make .row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
-  .make ol { margin: 0; padding-left: 1.25rem; color: var(--fg-2); font-size: var(--text-sm); }
+  .make .row { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .make ol { margin: 0; padding-left: var(--space-5); color: var(--fg-2); font-size: var(--text-sm); }
   .make .answer { white-space: pre-wrap; margin: 0; }
   .yours .list { display: flex; flex-wrap: wrap; gap: var(--space-1); }
   .yours .list button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
   .yours .files { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
   .yours .files li > div { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
-  .yours .versions { margin: var(--space-1) 0 0; padding-left: 1.25rem; font-size: var(--text-sm); color: var(--fg-2); }
+  .yours .versions { margin: var(--space-1) 0 0; padding-left: var(--space-5); font-size: var(--text-sm); color: var(--fg-2); }
   .yours code { font: var(--text-sm)/1.4 var(--mono); }
   .yours :is(.shared, .own-apps) ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
   .yours :is(.shared, .own-apps) li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }

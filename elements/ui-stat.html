@@ -13,7 +13,7 @@
     .value { font-size: calc(var(--text-2xl) + 4px); font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--fg); overflow-wrap: anywhere; }
     /* The change sits in a pill, coloured by tone. */
     .delta { font-size: var(--text-sm); font-weight: 500; font-variant-numeric: tabular-nums; color: var(--tone); }
-    :host([tone]) .delta { padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--tone) 12%, transparent); }
+    :host([tone]) .delta { padding: 2px var(--space-2); border-radius: 999px; background: color-mix(in srgb, var(--tone) 12%, transparent); }
     :host([tone="ok"]) { --tone: var(--ok); }
     :host([tone="danger"]) { --tone: var(--danger); }
     :host([tone="warn"]) { --tone: var(--warn); }

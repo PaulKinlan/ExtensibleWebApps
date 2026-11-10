@@ -23,7 +23,7 @@
     label.check { flex-direction: row; align-items: center; gap: var(--space-2); color: var(--fg); font-size: var(--text-md); }
     label.wide { grid-column: 1 / -1; }
     /* Fields: a little taller than the page's, sunk slightly into the surface, and lit by the accent when in use. */
-    input:not([type=checkbox]), select, textarea { font: inherit; font-size: var(--text-md); font-weight: 400; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: var(--control, 38px); padding: 0 12px; box-shadow: inset 0 1px 2px light-dark(rgb(16 16 32 / 0.04), rgb(0 0 0 / 0.25)); transition: border-color var(--duration, 140ms) var(--ease, ease), box-shadow var(--duration, 140ms) var(--ease, ease); }
+    input:not([type=checkbox]), select, textarea { font: inherit; font-size: var(--text-md); font-weight: 400; color: var(--fg); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); min-height: var(--control, 38px); padding: 0 var(--space-3); box-shadow: inset 0 1px 2px light-dark(rgb(16 16 32 / 0.04), rgb(0 0 0 / 0.25)); transition: border-color var(--duration, 140ms) var(--ease, ease), box-shadow var(--duration, 140ms) var(--ease, ease); }
     input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--fg-2) 75%, transparent); }
     /* Not while focused or invalid, so those borders stay as they are. */
     :is(input:not([type=checkbox]), select, textarea):not(:focus, [aria-invalid=true]):hover { border-color: color-mix(in srgb, var(--fg) 28%, var(--border)); }
@@ -45,7 +45,7 @@
     li > :first-child { flex: 1 1 16rem; min-width: 0; }
     .group { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(min(5rem, 100%), 1fr)); }
     /* The same buttons as the page's (src/host/styles.css), which can't reach into a shadow root. */
-    button { font: inherit; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--control, 38px); padding: 0 16px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); cursor: pointer; white-space: nowrap; transition: background var(--duration, 140ms) var(--ease, ease), border-color var(--duration, 140ms) var(--ease, ease); }
+    button { font: inherit; font-weight: 500; display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); height: var(--control, 38px); padding: 0 var(--space-4); border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--fg); cursor: pointer; white-space: nowrap; transition: background var(--duration, 140ms) var(--ease, ease), border-color var(--duration, 140ms) var(--ease, ease); }
     button:hover { background: var(--bg-2); border-color: color-mix(in srgb, var(--fg) 22%, var(--border)); }
     button:active { box-shadow: none; transform: translateY(0.5px); }
     button[type=button] { font-size: var(--text-sm); height: var(--control-sm, 30px); padding: 0 var(--space-3); }
