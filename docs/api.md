@@ -212,6 +212,38 @@ Needs: `account`.
 
 Asks the server's accounts (src/server/auth/) for something, as the person signed in on this device; `site` is the site's own address, for links to it. A 401 comes back as { status: 401 }, not an error; /auth/me answers { status: 404, unavailable: true } when the site has no server.
 
+#### account.keys
+
+`account.keys()` → { state, passphrase, passkey }
+
+Needs: `account`.
+
+Whether the person's API keys follow them between devices: `state` is off, locked (their account keeps them, and this device hasn't been given what unlocks them), on, or signed-out; `passphrase` and `passkey` say what unlocks them. The server keeps them encrypted and can't read one.
+
+#### account.keys:protect
+
+`account.keys:protect({ passkey: true }?)` → { state, passphrase, passkey }
+
+Needs: `account`.
+
+Has the person's API keys follow them, encrypted on this device with a key only that passphrase or passkey unlocks. Called again on a device that has them unlocked, it adds another way to unlock them.
+
+#### account.keys:remove
+
+`account.keys:remove()` → { state, passphrase, passkey }
+
+Needs: `account`.
+
+Takes the person's API keys out of their account. Each device keeps the keys it has, and asks for a key it hasn't.
+
+#### account.keys:unlock
+
+`account.keys:unlock({ passkey: true }?)` → { state, passphrase, passkey }
+
+Needs: `account`.
+
+Unlocks the person's API keys on this device, once: from then on they come and go with everything else that follows them. It fails, saying so, if the passphrase or passkey isn't the one.
+
 #### account.load
 
 `account.load(space)` → { status } | null
@@ -902,11 +934,11 @@ Writes a file that isn't text, such as an image the person dropped or a sound, f
 
 ### follow
 
-What the signed-in person added, following them between their devices: their plugins and agents, which are on, where they moved views and the model they picked go to their account on the site's server, and come from it. Never an API key.
+What the signed-in person added, following them between their devices: their plugins and agents, which are on, where they moved views and the model they picked go to their account on the site's server, and come from it. Their API keys too if they asked for that on their account page, encrypted so the server can't read one.
 
 #### follow.now
 
-`follow.now(app?)` → { on, name?, at?, error?, skipped, from }
+`follow.now(app?)` → { on, name?, at?, error?, skipped, from, keys }
 
 Needs: `plugins:manage`.
 
@@ -914,11 +946,11 @@ Sends what changed here and brings what changed elsewhere now, rather than withi
 
 #### follow.status
 
-`follow.status(app?)` → { on, name?, at?, error?, skipped, from }
+`follow.status(app?)` → { on, name?, at?, error?, skipped, from, keys }
 
 Needs: `plugins:read`.
 
-Whether this device follows an account (`on`: someone is signed in and the account answers), whose, when they last agreed (`at`), why the last try failed (`error`, in words for the person), the files too big to follow (`skipped`), and the ids of the app's plugins and agents that came from the account (`from`).
+Whether this device follows an account (`on`: someone is signed in and the account answers), whose, when they last agreed (`at`), why the last try failed (`error`, in words for the person), the files too big to follow (`skipped`), the ids of the app's plugins and agents that came from the account (`from`), and whether their API keys follow them (`keys`: off, locked until this device is given what unlocks them, or on).
 
 ### game
 
@@ -1980,7 +2012,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `ui:transform:<plugin>` | Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
-| `account` | Call account.get, account.post, account.register, account.signin, account.start, account.load, account.came. |
+| `account` | Call account.get, account.post, account.register, account.signin, account.start, account.load, account.keys, account.keys:protect, account.keys:unlock, account.keys:remove, account.came. |
 | `agents:run:<agent>` | Call agents.run. |
 | `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.unshare. |
 | `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.check. |
