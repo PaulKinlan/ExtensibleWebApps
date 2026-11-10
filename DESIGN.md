@@ -58,9 +58,18 @@ Three levels, lowest first: the platform (`@layer platform`), each plugin's own 
 
 A new app in `demos/` is checked without being listed. A page that needs something signed in or filled in before most of it draws should be opened in that state there, as the account page is. If a page must break a rule, add it to `ALLOWED` in that file with the reason.
 
+## What the style lint counts
+
+[scripts/style-lint.mjs](scripts/style-lint.mjs) reads the CSS in every app, std plugin and element and notes each place a value is written by hand where a token exists: a raw colour (`#hex`, `rgb()`, `hsl()`, `oklch()`), and a `px` or `rem` size in `font-size`, `gap`, `padding`, `margin` or `border-radius`. `npm run check` prints the count for each app, and `npm run check -- --style` lists every one with its file and line.
+
+- A note never fails `npm run check`. `npm test` fails when a folder has **more** than its number in [tests/style-baseline.json](tests/style-baseline.json), and a folder that isn't listed there, such as a new app, is held to none. Lower a folder's number when you clean it; never raise one.
+- It leaves alone the fallback in `var(--token, fallback)`, anything under 4px, a `999px` pill radius, text in quotes and what `url()` points at, and a custom property that an `app.html` sets (a page is where a theme is written).
+- When a value is what it is on purpose, say why on the same line: `/* design-ok: the game's own gold */`. A file that is all its own look starts its first `<style>` with `/* design-ok-file: reason */`.
+- For a tint, mix tokens instead of writing a colour: `color-mix(in srgb, var(--accent) 16%, transparent)`.
+
 ## Before you open a pull request that changes what a person sees
 
 - Look at it at desktop and phone width, in light and dark. Take the screenshots and put them in the PR.
 - Open the page in the state people use it in: signed in, with data, with an error showing.
 - Search for the same pattern elsewhere when you fix one: a fault in one plugin's CSS is usually copied in its neighbours.
-- `npm test` passes, including the layout check.
+- `npm test` passes, including the layout check and the style baseline.
