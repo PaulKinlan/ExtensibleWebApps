@@ -122,23 +122,40 @@ export function stretch() {
 export function reach() {
   const found = [];
   const inView = (el) => el.parentElement?.closest("[data-plugin]");
-  const walk = (rules) => {
+  const parts = (text) => text.split(/,(?![^(]*\))/).map((part) => part.trim()).filter(Boolean);
+  // A rule nested in another (main { input { … } }) styles what the two say together.
+  const nested = (inner, outer) => (outer ? (inner.includes("&") ? inner.replaceAll("&", `:is(${outer})`) : `:is(${outer}) ${inner}`) : inner);
+  // The selector without what it only looks at: :has(…) is a condition, not the thing styled.
+  const styled = (selector) => { let out = selector, last; do { last = out; out = out.replace(/:has\((?:[^()]|\([^()]*\))*\)/g, ""); } while (out !== last); return out; };
+  // :hover, :focus and the like match nothing now; ask what the rule would style when they do. Inside :not() they
+  // are left as written, so input:not(:disabled) still reads as a selector.
+  const settled = (selector) => {
+    const kept = [];
+    const held = selector.replace(/:not\((?:[^()]|\([^()]*\))*\)/g, (m) => `\u0000${kept.push(m) - 1}\u0000`);
+    return held.replace(/:(hover|focus-visible|focus-within|focus|active|checked|disabled|enabled|invalid|valid|placeholder-shown)\b/g, "").replace(/::[\w-]+(\([^)]*\))?/g, "").replace(/\u0000(\d+)\u0000/g, (_, i) => kept[i]);
+  };
+  const check = (selector, rule) => {
+    const subjectOf = styled(selector);
+    // Naming the view it styles is a choice: [data-plugin="month"] td, or a class or id that is used inside a view.
+    // The name has to hold the element styled; body:has([data-plugin="month"]) input names nothing.
+    const markers = [...subjectOf.matchAll(/\[data-(?:plugin|key)[^\]]*\]/g)].map(([m]) => m);
+    const named = [...subjectOf.matchAll(/[.#][\w-]+/g)].some(([word]) => { try { return document.querySelector(`[data-plugin] ${word}`); } catch { return false; } });
+    if (named) return;
+    let hits = [];
+    try { hits = [...document.querySelectorAll(settled(selector) || "*")].filter(inView); } catch { found.push(`the page's own CSS rule "${selector}" couldn't be read by the check`); return; }
+    hits = hits.filter((el) => !markers.some((marker) => { try { return el.closest(marker); } catch { return false; } }));
+    if (!hits.length) return;
+    const subject = subjectOf.split(/[\s>+~]+(?![^(]*\))/).pop().replace(/::?[\w-]+(\([^)]*\))?/g, "");
+    found.push(`the page's own CSS rule "${selector}" restyles ${hits.length} element${hits.length === 1 ? "" : "s"} inside plugin views (${[...rule.style].slice(0, 3).join(", ")}): name the plugin, as in [data-plugin="…"] ${subject || "*"}, or leave it to the view`);
+  };
+  const walk = (rules, outer = "") => {
     for (const rule of rules) {
       if (rule instanceof CSSLayerBlockRule) continue; // the platform's and the plugins' own, each scoped by the host
-      if (rule instanceof CSSMediaRule || rule instanceof CSSSupportsRule || rule instanceof CSSContainerRule) { walk(rule.cssRules); continue; }
-      if (!(rule instanceof CSSStyleRule)) continue;
-      for (const selector of rule.selectorText.split(/,(?![^(]*\))/).map((part) => part.trim())) {
-        if (selector.includes("[data-plugin") || selector.includes("[data-key")) continue;
-        // Broad when nothing in it names something of the view's own: a class or id that is used inside a view is a choice.
-        const named = [...selector.matchAll(/[.#][\w-]+/g)].some(([word]) => { try { return document.querySelector(`[data-plugin] ${word}`); } catch { return false; } });
-        if (named) continue;
-        const subject = selector.split(/[\s>+~]+(?![^(]*\))/).pop().replace(/::?[\w-]+(\([^)]*\))?/g, "");
-        // :hover, :focus and the like match nothing now; ask what the rule would style when they do.
-        const still = selector.replace(/:(hover|focus-visible|focus-within|focus|active|checked|disabled|invalid|placeholder-shown)\b/g, "").replace(/::[\w-]+/g, "");
-        let hits = [];
-        try { hits = [...document.querySelectorAll(still || "*")].filter(inView); } catch { /* a selector this browser doesn't read */ }
-        if (hits.length) found.push(`the page's own CSS rule "${selector}" restyles ${hits.length} element${hits.length === 1 ? "" : "s"} inside plugin views (${[...rule.style].slice(0, 3).join(", ")}): name the plugin, as in [data-plugin="…"] ${subject || "*"}, or leave it to the view`);
-      }
+      if (rule instanceof CSSStyleRule) {
+        const selectors = parts(rule.selectorText).map((selector) => nested(selector, outer));
+        if (rule.style.length) for (const selector of selectors) check(selector, rule);
+        if (rule.cssRules?.length) walk(rule.cssRules, selectors.join(", "));
+      } else if (rule.cssRules) walk(rule.cssRules, outer); // @media, @supports, @container, @scope
     }
   };
   for (const sheet of document.styleSheets) { try { walk(sheet.cssRules); } catch { /* another origin's sheet */ } }
@@ -235,7 +252,15 @@ export default async function ({ check, context, URL, errors }) {
         await settle(page, true);
         await page.waitForTimeout(800);
         const open = (await page.evaluate(measure, TALLEST_CONTROL).catch((e) => [`couldn't be measured: ${e.message}`])).filter((f) => !f.includes("drawn over each other"));
+        open.push(...(await page.evaluate(reach).catch(() => [])));
         for (const finding of open) if (!ALLOWED.some(([allowed]) => allowed.test(`/${path} ${size}: ${finding}`))) broken.push(`/${path} ${size}, ${label} open: ${finding}`);
+      }
+      // Customize fills its list when it opens, in the app's own page: once per app, see that the page's CSS leaves it alone.
+      if (size === "desktop" && path.endsWith("app.html") && !unready && !PANELS.some(([where]) => where === path) && (await page.locator("ui-panel .launch").count())) {
+        if (await page.locator("ui-panel .launch").first().click({ timeout: 5000 }).then(() => true, () => false)) {
+          await settle(page, true);
+          for (const finding of await page.evaluate(reach).catch(() => [])) broken.push(`/${path} ${size}, Customize open: ${finding}`);
+        }
       }
     }
     await own.close();
