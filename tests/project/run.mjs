@@ -45,11 +45,14 @@ function npm(args, cwd, { command = "npm", env = {} } = {}) {
   return { status: result.status, stdout: result.stdout ?? "", out: `${result.stdout ?? ""}${result.stderr ?? ""}${result.error ? result.error.message : ""}` };
 }
 
+/** The JSON npm printed with --json: an array on lines of its own, after whatever else reached the output (colour codes have a "[" too). */
+const json = (stdout) => JSON.parse(stdout.slice(stdout.search(/^\[\s*$/m)));
+
 /** Packs a package as it is now, into `to`. Returns the tarball. The platform is already built, so nothing is built again. */
 function pack(folder, to) {
   const packed = npm(["pack", "--ignore-scripts", "--pack-destination", to, "--json"], folder);
   if (packed.status !== 0) throw new Error(`npm pack failed in ${folder}: ${packed.out.slice(-800)}`);
-  const [{ filename }] = JSON.parse(packed.stdout.slice(packed.stdout.indexOf("[")));
+  const [{ filename }] = json(packed.stdout);
   return join(to, filename.replace(/^@/, "").replace("/", "-"));
 }
 
@@ -84,7 +87,7 @@ try {
   }
   check("the repo's package.json files are as they were after packing", packageFiles.every((file, i) => readFileSync(file, "utf8") === before[i]));
   const listed = npm(["pack", "--dry-run", "--ignore-scripts", "--json"], ROOT);
-  const files = listed.status === 0 ? JSON.parse(listed.stdout.slice(listed.stdout.indexOf("["))).flatMap((p) => p.files.map((f) => f.path)) : [];
+  const files = listed.status === 0 ? json(listed.stdout).flatMap((p) => p.files.map((f) => f.path)) : [];
   const has = (path) => files.includes(path);
   check(
     "the platform's package has what a project runs (the built site, both server kernels, the commands, the starter) and none of this site's own built pages or tests",
