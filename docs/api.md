@@ -2202,6 +2202,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `services` | Optional. Up to 30 services the plugin calls that not every site runs, by name: ["llm", "bus"]. The kernel's own services (data, storage, settings and the rest) are always there and needn't be listed. A plugin that lists a service the site doesn't run isn't started, and says which one is missing, so an app that needs it fails when it opens rather than on its first call. The site lists the services it runs in kernel.json (docs/layers.md). |
 | `provides` | Optional. Up to 5 services the plugin provides, by name: { mail: { description, methods: { send: { args?, returns?, description, needs? } } } }. Each needs the permission provide:<name>, and the plugin answers its calls with ctx.provide (shared plugins only, not scope "tab"). Other plugins call it with ctx.call(name, method, ...args) and the permission <name>, or what a method's `needs` says. A name the kernel or another plugin already has is refused. See docs/layers.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, or paths in a folder beside it like plugin-editor.templates/card.js (up to four folders deep, and the first folder's name has a dot in it, so it can never be another app's folder). They are copied with it when a person adds it to an app. |
+| `standIn` | Optional, with the ui permission. { slot, key, html }: a view the kernel draws in the plugin's place, at the slot and key the plugin will draw its own, until the person first does something in it. The plugin starts then, draws its own view over it, and hears what they did once it has (so it listens before it first draws). For a plugin that is a panel behind a button: the button costs nothing until it is opened. `html` is at most 2,000 characters. |
 
 Reserved ids, which no plugin can take:
 
@@ -2452,6 +2453,7 @@ For devtools and tests, from the page: `window.__host.command(name, arg)`.
 
 | Command | What it does |
 | --- | --- |
+| `plugins-panel` | Asks for the workbench's plugins panel, which the kernel draws only in pages that asked. |
 | `bench` | (n) Times a hook round trip to a plugin worker against one answered in the kernel. |
 | `reload-test` | (n) Reloads word-count n times and counts listeners and workers before and after. |
 | `reload` | (id) Restarts a plugin's workers. |
