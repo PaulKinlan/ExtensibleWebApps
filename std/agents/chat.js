@@ -1,7 +1,6 @@
-// Chat: a box to write to the app's agents, and their answers. It lists the
-// agents the app links that have an inbox (`- message: true` in their file),
-// such as the standard assistant and builder beside it, and sends what the
-// person writes to the one they pick, waiting for the answer.
+// Chat: a box to write to the app's agents, and their answers — or directly to
+// the app's language model with live streaming updates when the app links a
+// model with no inbox agent.
 //
 // Add it to any app with three lines in its app.html, beside a model (std/llm/):
 //
@@ -9,16 +8,17 @@
 //   <link rel="plugin" href="/std/agents/chat.js">
 //   <slot name="chat"></slot>
 //
-// It sends with `bus:send:*`: a message is information for the agent, never
-// permission, so an agent still may do only what its own file allows. The
-// last few lines of the conversation go with each message, as its data, so
-// the agent knows what "that one" means.
+// When talking to an agent, it sends with `bus:send:*`: a message is
+// information for the agent, never permission, so an agent still may do only
+// what its own file allows. When asking a model directly (no inbox agent in
+// the app), it calls `llm.stream` and updates the reply live as `llm:chunk`
+// events arrive.
 
 export const manifest = {
   id: "chat",
   name: "Chat",
   description: "Write to the app's agents, such as the assistant or the builder, and read their answers.",
-  version: "1.0.0",
+  version: "1.1.0",
   permissions: ["ui", "bus:send:*", "llm", "plugins:read"],
   services: ["agents", "bus", "llm"],
   // Each tab has its own conversation.
@@ -32,47 +32,137 @@ export const manifest = {
 /** The lines of the conversation it keeps, and how many go with each message. */
 const KEEP = 40;
 const CONTEXT = 8;
+const DIRECT = "llm:direct";
+const STREAM = "stream";
 
 export default function (ctx) {
   const views = ctx.ui.views("chat.html");
-  /** The agents with an inbox: { id, name, description, picked }. */
+  /** The agents with an inbox: { id, name, description }, or the direct model target when there are none. */
   let agents = [];
+  let inboxCount = 0;
   let picked = "";
-  /** { n, who, text, tone, from, to? }: who is "You" or an agent's name; from is "you" or the agent's id, and to the agent a line of yours went to. */
+  /** { n, who, text, tone, from, to? }: who is "You" or an agent/model's name; from is "you" or the target's id. */
   const lines = [];
   let next = 0;
   let sending = false;
-  /** The models to pick from: [{ id, name, picked }]. */
+  /** The models to pick from: [{ id, name, label, picked }]. */
   let models = [];
+  let streamSeq = 0;
+  let activeStream = null;
+  let streamTimer;
 
   const say = (who, text, tone, from, to) => {
-    lines.push({ n: ++next, who, text, tone, from, to });
+    const entry = { n: ++next, who, text, tone, from, to };
+    lines.push(entry);
     lines.splice(0, Math.max(0, lines.length - KEEP));
+    return entry;
   };
   const draw = () => {
     const agent = agents.find((a) => a.id === picked);
-    views.render("chat", "chat", { agents: agents.map((a) => ({ ...a, picked: a.id === picked })), none: !agents.length, models: models.length > 1 ? models : [], about: agent?.description ?? "", lines, sending, name: agent?.name ?? "" });
+    views.render("chat", "chat", {
+      agents: agents.map((a) => ({ ...a, picked: a.id === picked })),
+      none: !agents.length,
+      models: models.length > 1 ? models.map(({ id, label, picked: p }) => ({ id, name: label, picked: p })) : [],
+      about: agent?.description ?? "",
+      lines,
+      sending,
+      name: agent?.name ?? "",
+    });
   };
-  /** The app's language models, for the picker: shown when there is more than one to pick from. */
+  /** The app's language models, for the picker and for direct chat when the app has no inbox agent. */
   const readModels = async () => {
     const list = await ctx.call("llm", "providers").catch(() => []);
     const on = list.find((p) => p.preferred) ?? list.find((p) => p.ready) ?? list[0];
-    models = list.map((p) => ({ id: p.id, name: p.ready ? p.name : `${p.name} (asks for your key)`, picked: p === on }));
+    models = list.map((p) => ({
+      id: p.id,
+      rawName: p.name,
+      label: p.ready ? p.name : `${p.name} (asks for your key)`,
+      picked: p === on,
+    }));
   };
-  /** Looks for agents again; resolves to how many it found. */
+  /** Looks for agents again; resolves to how many inbox agents it found. */
   const look = async () => {
     await readModels();
     const list = await ctx.call("agents", "list").catch(() => []);
-    agents = list.filter((a) => a.inbox).map(({ id, name, description }) => ({ id, name, description }));
+    const inbox = list.filter((a) => a.inbox).map(({ id, name, description }) => ({ id, name, description }));
+    inboxCount = inbox.length;
+    if (inbox.length) {
+      agents = inbox;
+    } else if (models.length) {
+      const current = models.find((m) => m.picked) ?? models[0];
+      agents = [{ id: DIRECT, name: current.rawName, description: "Write directly to the language model." }];
+    } else {
+      agents = [];
+    }
     if (!agents.some((a) => a.id === picked)) picked = agents.find((a) => a.id === "assistant")?.id ?? agents[0]?.id ?? "";
     draw();
-    return agents.length;
+    return inboxCount;
+  };
+
+  ctx.on("llm:chunk", (chunk) => {
+    if (!activeStream || chunk?.streamId !== activeStream.id || chunk.done || !chunk.delta) return;
+    if (!activeStream.line) {
+      activeStream.line = say(activeStream.who, chunk.delta, "accent", DIRECT);
+      draw();
+      return;
+    }
+    activeStream.line.text += chunk.delta;
+    if (!streamTimer) {
+      streamTimer = setTimeout(() => {
+        streamTimer = undefined;
+        if (activeStream) draw();
+      }, 30);
+    }
+  });
+
+  const sendDirect = async (message, target) => {
+    const history = lines
+      .filter((l) => l.to === DIRECT || l.from === DIRECT)
+      .slice(-CONTEXT)
+      .map((l) => ({ role: l.from === "you" ? "user" : "assistant", content: l.text }));
+    while (history.length && history[0].role !== "user") history.shift();
+    say("You", message, "", "you", DIRECT);
+    sending = true;
+    draw();
+    const streamId = `chat-${++streamSeq}`;
+    activeStream = { id: streamId, who: target.name, line: null };
+    try {
+      const reply = await ctx.call("llm", STREAM, {
+        streamId,
+        messages: [...history, { role: "user", content: message }],
+      });
+      clearTimeout(streamTimer);
+      streamTimer = undefined;
+      const line = activeStream?.line;
+      activeStream = null;
+      const finalText = reply.text || "(No answer.)";
+      if (line) {
+        line.text = finalText;
+      } else {
+        say(target.name, finalText, "accent", DIRECT);
+      }
+    } catch (error) {
+      clearTimeout(streamTimer);
+      streamTimer = undefined;
+      const line = activeStream?.line;
+      activeStream = null;
+      const errText = error instanceof Error ? error.message : String(error);
+      if (line) {
+        line.text = errText;
+        line.tone = "danger";
+      } else {
+        say(target.name, errText, "danger", DIRECT);
+      }
+    }
+    sending = false;
+    draw();
   };
 
   const send = async (text) => {
     const message = String(text ?? "").trim().slice(0, 4000);
     const agent = agents.find((a) => a.id === picked);
     if (!message || !agent || sending) return;
+    if (agent.id === DIRECT) return sendDirect(message, agent);
     const conversation = lines.filter((l) => l.to === agent.id || l.from === agent.id).slice(-CONTEXT).map((l) => ({ from: l.from, text: l.text }));
     say("You", message, "", "you", agent.id);
     sending = true;
@@ -110,8 +200,8 @@ export default function (ctx) {
     if (action === "model" && typeof value === "string") {
       // The person's pick, for every app: the one that answers until they pick another.
       await ctx.call("llm", "prefer", value).catch(() => {});
-      await readModels();
-      return draw();
+      await look();
+      return;
     }
     if (action === "send") {
       await look();
