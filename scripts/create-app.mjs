@@ -159,15 +159,17 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   }
   const where = relative(process.cwd(), made.folder) || ".";
   console.log(`Made your app in ${where}/`);
+  // npm 12 fetches nothing from git unless told to; older npm takes the setting and has no use for it.
+  const install = (platform ?? PLATFORM_SPEC).startsWith("github:") ? ["install", "--allow-git=all"] : ["install"];
   if (noInstall) {
-    console.log(`\nNext:\n  cd ${where}\n  npm install\n  npm run dev`);
+    console.log(`\nNext:\n  cd ${where}\n  npm ${install.join(" ")}\n  npm run dev`);
     process.exit(0);
   }
   console.log((platform ?? PLATFORM_SPEC).startsWith("github:") ? "Installing the platform (the first time from GitHub, it builds it, which takes a minute)…" : "Installing the platform…");
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
   // npm.cmd needs a shell on Windows, so only the fixed `npm install` goes through one.
-  if (spawnSync(npm, ["install"], { cwd: made.folder, stdio: "inherit", shell: process.platform === "win32" }).status !== 0) {
-    console.error(`\n\`npm install\` didn't finish. Run it in ${where}/, then \`npm run dev\`.`);
+  if (spawnSync(npm, install, { cwd: made.folder, stdio: "inherit", shell: process.platform === "win32" }).status !== 0) {
+    console.error(`\n\`npm install\` didn't finish. Run \`npm ${install.join(" ")}\` in ${where}/, then \`npm run dev\`.`);
     process.exit(1);
   }
   console.log(`

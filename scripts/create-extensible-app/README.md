@@ -14,4 +14,4 @@ This package is a small wrapper. It runs the platform's own [`scripts/create-app
 
 ## Publishing
 
-The repo's "Publish to npm" workflow ([`publish-npm.yml`](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/.github/workflows/publish-npm.yml)) publishes this package and the platform together, at one version, after checking a project made from the two packed packages. npm trusts that workflow to publish (trusted publishing), so there is no token to keep; only the very first publish of each package needs an `NPM_TOKEN` secret, once. Nothing here is published by hand.
+The repo's "Publish to npm" workflow ([`publish-npm.yml`](https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/.github/workflows/publish-npm.yml)) sends this package and the platform to npm's staging area together, at one version, after checking a project made from the two packed packages; a maintainer then approves them on npmjs.com, which makes them public. npm trusts that workflow (trusted publishing), so there is no token to keep; only the very first run needs an `NPM_TOKEN` secret, once.
