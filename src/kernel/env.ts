@@ -40,7 +40,7 @@ export interface KernelEnv {
    * On a server, the space's members with the names they gave on their accounts, so a page can show who
    * made a change (`by` is a member's id) by name (std/spaces/hub.ts sends them to each device).
    */
-  members?(): Promise<{ id: string; name: string }[]>;
+  members?(): Promise<{ id: string; name: string; role?: "owner" | "editor" | "reader" }[]>;
   /**
    * On a server whose deployment can send email (Cloudflare Email Service on Cloudflare, SMTP on Node), sends
    * one message the email module has checked and written to the outbox. Without it, or when it answers null

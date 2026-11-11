@@ -28,6 +28,7 @@ import { thisDevice } from "./this-device";
 import { askSpace, READS } from "./reflect";
 import { checkTopic, LIVE_HOOK, type LiveSpace } from "./live";
 import type { SyncToDevice } from "../../src/shared/sync";
+import { allowed, type Rules } from "./rules";
 
 export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKernel, space: { live?: LiveSpace } = {}): ServiceProvider => {
   hook("sync:live", LIVE_HOOK);
@@ -90,7 +91,7 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
     soon = setTimeout(async () => {
       root.emit({}, "sync:changed", {});
       const s = await thisDevice.sync?.state();
-      const now = JSON.stringify([s?.member ?? null, s?.members ?? {}]);
+      const now = JSON.stringify([s?.member ?? null, s?.members ?? {}, s?.access ?? null]);
       if (now !== told) {
         told = now;
         root.emit({}, "members:changed", {});
@@ -113,7 +114,21 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
       const title = collections.registry.get(d.collection)?.title ?? d.collection;
       return { ref: d.ref, collection: d.collection, title, id: d.id, ...(label ? { label } : {}), mine: d.mine, why: d.why, at: d.at };
     });
-    return { space: s.space, ...(s.member ? { member: s.member } : {}), connected: s.connected, pending: s.pending, drafts };
+    return { space: s.space, ...(s.member ? { member: s.member } : {}), ...(s.access ? { role: s.access.role, ...(s.access.owner ? { owner: s.access.owner } : {}) } : {}), connected: s.connected, pending: s.pending, drafts };
+  }
+
+  /** What this page's member may do to a collection, or to one record of it, as the space last said (rules.ts): the space decides again on each change. */
+  async function may(collection: unknown, id: unknown) {
+    const all = { add: true, change: true, remove: true };
+    const s = await thisDevice.sync?.state();
+    if (!s?.access || typeof collection !== "string") return all;
+    const { role, rules, authors, owner } = s.access;
+    const mine = typeof id === "string" && !!s.member && authors[`${collection}/${id}`] === s.member;
+    const r = rules[collection] as Rules | undefined;
+    const out = { add: allowed(r, "add", role, false), change: allowed(r, "change", role, mine), remove: allowed(r, "remove", role, mine) };
+    if (out.add && out.change && out.remove) return out;
+    const ask = owner ? `the space's owner, ${owner}` : "the space's owner";
+    return { ...out, why: role === "reader" ? `You can read this space but not change it. Ask ${ask} to make you an editor.` : `Some of this is for whoever added it, or ${ask}.` };
   }
 
   /** The space's members by name, and which one this page is signed in as: from the device's copy, or on the space's server from its accounts. */
@@ -132,10 +147,10 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
     methods: {
       state: {
         args: "()",
-        returns: "{ space: null } or { space, member?, connected, pending, drafts }",
+        returns: "{ space: null } or { space, member?, role?, owner?, connected, pending, drafts }",
         needs: "sync",
         params: [],
-        description: "Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).",
+        description: "Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said) and what they may do (`role`: \"owner\", \"editor\", or \"reader\", who can see the space but not change it; `owner` is the owner's name, to say whom to ask), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).",
       },
       members: {
         args: "()",
@@ -143,6 +158,16 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
         needs: "members",
         params: [],
         description: "The space's members, each with the name on their account, and which of them this page is signed in as (`you`). A change's `by` and data:changed's `by` are a member's id: show the name from here. Outside a space, `space` is null and the list is empty.",
+      },
+      may: {
+        args: "(collection, id?)",
+        returns: "{ add, change, remove, why? }",
+        needs: "members",
+        params: [
+          { name: "collection", schema: { type: "string", description: "The collection's name" } },
+          { name: "id", optional: true, schema: { type: "string", description: "A record's id, to ask about that record: under an \"author\" rule only whoever added it may change it" } },
+        ],
+        description: "Whether the person signed in here may add to a collection, and change or remove a record of it, in this space: from their role (a reader changes nothing) and the collection's `rules` in its plugin's manifest. For showing a form or a button only to those who can use it, with `why` to say when they can't. The space's server decides again on every change. All true outside a space.",
       },
       keep: {
         args: "(ref)",
@@ -202,7 +227,7 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
         description: "Lets a draft go: the record stays as the space has it.",
       },
     },
-    capability: (method) => (method === "model" ? undefined : method === "ask" ? "space-model" : method === "members" ? "members" : method === "reflect" || method === "trace" ? "reflect:read" : method === "live" ? "live" : "sync"),
+    capability: (method) => (method === "model" ? undefined : method === "ask" ? "space-model" : method === "members" || method === "may" ? "members" : method === "reflect" || method === "trace" ? "reflect:read" : method === "live" ? "live" : "sync"),
     call: async (instance, method, args, dispatch) => {
       if (method === "live") {
         const topic = checkTopic(args?.[0]);
@@ -266,6 +291,7 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
       }
       if (method === "state") return state();
       if (method === "members") return members();
+      if (method === "may") return may(args?.[0], args?.[1]);
       if (method === "reflect") {
         const device = thisDevice.sync;
         if (!device) throw new Error("This page isn't in a space: open the debugger at /s/<space>/… to look inside its server");

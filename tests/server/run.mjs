@@ -31,6 +31,7 @@ import { fakeDns } from "./fake-dns.mjs";
 import { feedReaderChecks } from "./feed-reader.mjs";
 import { followChecks } from "./follow.mjs";
 import { fakeModel, spaceModelChecks } from "./space-model.mjs";
+import { roleChecks } from "./roles.mjs";
 
 const results = [];
 // Another site to sign in with, which both hosts are configured to use.
@@ -197,6 +198,10 @@ async function device(base, space, cookie, { claim } = {}) {
       ws.send(JSON.stringify({ t: "sync", op: "hello", since }));
       await settle();
     },
+    /** Sends any sync message, as a device would. */
+    send: (message) => ws.send(JSON.stringify(message)),
+    /** Hears the socket close, with its code. */
+    onClose: (heard) => ws.addEventListener("close", (e) => heard(e.code)),
     push: (changes) =>
       new Promise((answer, fail) => {
         const n = ++id;
@@ -979,7 +984,7 @@ async function memberChecks(base, check, owner) {
   const mine = (await ada.call("/auth/spaces")).body?.spaces ?? [];
   check(
     "members: the owner's invite lets one person join, and then they can open the space",
-    joined.status === 200 && again.status === 404 && members.some((m) => m.name === "Ada" && m.role === "member") && mine.some((s) => s.name === "family" && s.role === "member") && (await opens(base, "family", ada.cookie)),
+    joined.status === 200 && again.status === 404 && members.some((m) => m.name === "Ada" && m.role === "editor") && mine.some((s) => s.name === "family" && s.role === "editor") && (await opens(base, "family", ada.cookie)),
     JSON.stringify({ joined, again: again.status, members, mine }),
   );
 
@@ -1175,6 +1180,14 @@ async function suite(name, make) {
     await followChecks(server.url, check, owner, stranger);
     // A model key a space holds for its members: the same on both hosts.
     await spaceModelChecks(server.url, check, owner, () => person(server.url), vendor, spaces, async () => {
+      await server.stop();
+      server = await host.start();
+      owner.base = stranger.base = server.url;
+      return server.url;
+    });
+
+    // Who may change what in a space: roles and collections' rules, the same on both hosts.
+    await roleChecks(server.url, check, owner, () => person(server.url), { device, client }, async () => {
       await server.stop();
       server = await host.start();
       owner.base = stranger.base = server.url;

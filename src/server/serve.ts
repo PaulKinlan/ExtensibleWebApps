@@ -307,6 +307,10 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
   const door: Accounts = {
     exists: (space) => auth.exists(space),
     member: async (cookie, space) => (await auth.member(new Request("http://localhost/", { headers: { cookie } }), space))?.user.id ?? null,
+    who: async (cookie, space) => {
+      const found = await auth.member(new Request("http://localhost/", { headers: { cookie } }), space);
+      return found ? { id: found.user.id, role: found.role } : null;
+    },
   };
   /** Where a page or file request is addressed: this server's public origin, if it has one. */
   const addressOf = (request: IncomingMessage) => new URL(request.url ?? "/", options.origin ?? `http://${request.headers.host ?? "localhost"}`);
@@ -446,7 +450,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
       const status = decision.door === "refuse" ? decision.status : 404;
       return void raw.end(`HTTP/1.1 ${status} ${STATUS_CODES[status] ?? ""}\r\n\r\n`);
     }
-    const { space: name, member } = decision;
+    const { space: name, member, role } = decision;
     let kernel: Worker;
     try {
       kernel = await space(name);
@@ -474,7 +478,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     socket.onMessage = (text) => {
       try {
         // The kernel learns who this client is from its hello, which only the server may say.
-        port1.postMessage(signed(JSON.parse(text), member));
+        port1.postMessage(signed(JSON.parse(text), member, role));
       } catch {
         socket.close(1007, "JSON only");
       }

@@ -16,6 +16,8 @@ import type { Collections, StoredRecord } from "../../src/kernel/records";
 import { validate } from "../../src/kernel/schema";
 import type { Store } from "../../src/kernel/store";
 import { record as trace } from "../../src/kernel/trace";
+import type { SpacePermissions } from "./permissions";
+import type { Role } from "./rules";
 
 const HEAD = "sync/head.json";
 const CHUNK = 100;
@@ -125,12 +127,15 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
    * Checks and applies one change. The space's head moves on in memory; the push writes the log and
    * head once, when all its changes are in (`record`).
    */
-  async function accept(change: Outgoing, by: string | undefined, dispatch: Dispatch): Promise<{ verdict: Verdict; accepted?: Accepted }> {
+  async function accept(change: Outgoing, by: string | undefined, dispatch: Dispatch, role?: Role): Promise<{ verdict: Verdict; accepted?: Accepted }> {
     const wrong = problem(change);
     if (wrong) return { verdict: { ok: false, error: wrong, ...(await current(change)) } };
     const version = head.versions[key(change.collection, change.id)] ?? 0;
     const before = (await records.record(change.collection, change.id)) as SyncRecord | null;
     if (change.base !== version) return { verdict: { ok: false, stale: true, version, record: before, ...(await madeBy(version)) } };
+    // The member's role and the collection's rules decide first (permissions.ts): what they may not change, they are told who can.
+    const no = await api.permit?.may(change, before, by, role);
+    if (no) return { verdict: { ok: false, error: no, denied: true, version, record: before } };
     const at = new Date().toISOString();
     // Every stored record has string timestamps (collections sort by updatedAt): a device's are kept, missing ones filled in.
     const after: SyncRecord | null =
@@ -161,6 +166,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       announce(accepted.seq, null);
       throw error;
     }
+    api.permit?.did(change.collection, change.id, !before, after === null, by);
     return { verdict: { ok: true, seq: accepted.seq }, accepted };
   }
 
@@ -188,6 +194,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       head.seq = accepted.seq;
       head.versions[key(change.collection, change.id)] = accepted.seq;
       unlogged.set(accepted.seq, accepted.by);
+      api.permit?.did(change.collection, change.id, !change.before, !change.after, accepted.by);
       return accepted;
     };
     const now = headLoaded ? number() : undefined;
@@ -219,6 +226,8 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
   }
 
   const api = {
+    /** Who may change what (permissions.ts): the space's kernel sets this. Without it, every member may change everything. */
+    permit: undefined as Pick<SpacePermissions, "may" | "told" | "reader" | "did"> | undefined,
     /** Members' plugins (plugins.ts): the space's kernel sets this. */
     plugins: undefined as ((host: Host, message: PluginRequest) => unknown) | undefined,
     /** Apps members made and shared (made-apps.ts): the space's kernel sets this. */
@@ -238,17 +247,21 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       for (const other of listening) hosts.send(other, message);
     },
     /** A sync message from a device. */
-    async handle(host: Host, message: SyncToSpace & { member?: string }): Promise<void> {
+    async handle(host: Host, message: SyncToSpace & { member?: string; role?: Role }): Promise<void> {
       if (hosts.mode !== "server") return hosts.send(host, { t: "sync", op: "refused", error: "Only a space's kernel answers sync" });
       await loaded;
+      // The server says what this member may do with each message (src/server/signed.ts). A reader's that would change the space is answered here.
+      const role = message.role;
+      if (role === "reader" && (await api.permit?.reader(host, message))) return;
       if (message.op === "hello") {
         const after = Number.isInteger(message.since) && message.since >= 0 ? message.since : 0;
         // Each member's name, by id, so the device can show who made a change (`by`) by name.
         const members = await names();
+        const access = role && api.permit ? { role, ...(await api.permit.told()) } : {};
         // Ordered with pushes, so a change accepted while this device catches up isn't missed or sent twice.
         await serially(async () => {
           // Only what has gone to every device: anything later comes to this one as it does to them.
-          hosts.send(host, { t: "sync", op: "changes", changes: (await since(after)).filter((c) => c.seq <= sent), seq: sent, ...(host.member ? { member: host.member } : {}), ...(members ? { members } : {}) });
+          hosts.send(host, { t: "sync", op: "changes", changes: (await since(after)).filter((c) => c.seq <= sent), seq: sent, ...(host.member ? { member: host.member } : {}), ...(members ? { members } : {}), ...access });
           listening.add(host);
         });
         return;
@@ -268,7 +281,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
           const accepted: Accepted[] = [];
           for (const change of changes) {
             try {
-              const { verdict, accepted: one } = await accept(change, host.member, dispatch);
+              const { verdict, accepted: one } = await accept(change, host.member, dispatch, role);
               out.push(verdict);
               if (one) accepted.push(one);
             } catch (error) {

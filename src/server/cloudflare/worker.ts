@@ -28,6 +28,7 @@ import isolateSource from "../../../.build/cloudflare/isolate-source.js";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import type { Message } from "../../seams/index.ts";
 import { accounts } from "../auth/accounts.ts";
+import type { Role } from "../auth/roles.ts";
 import { providersFrom } from "../auth/providers.ts";
 import { providerModules } from "../auth/providers/index.ts";
 import { type Decision, frontDoor, unrouted } from "../front-door.ts";
@@ -63,7 +64,7 @@ interface Env {
 }
 
 interface KernelStub {
-  join(client: string, origin: string, send: (text: string) => void, member?: string, host?: PluginHost): Promise<void>;
+  join(client: string, origin: string, send: (text: string) => void, member?: string, host?: PluginHost, role?: string): Promise<void>;
   deliver(client: string, text: string): Promise<void>;
   leave(client: string): Promise<void>;
   route(origin: string, request: RouteRequest, host?: PluginHost): Promise<RouteResponse | null>;
@@ -174,7 +175,7 @@ class PluginHost extends RpcTarget {
   }
 
   /** The space's members, with the names on their accounts (sync.ts tells each device, to show who changed what). */
-  members(): Promise<{ id: string; name: string }[]> {
+  members(): Promise<{ id: string; name: string; role: Role }[]> {
     return this.env.ACCOUNTS.getByName("accounts").members(this.space);
   }
 
@@ -222,6 +223,8 @@ const tellWatchers = (ctx: DurableObjectState, door: string) => {
 
 /** The header the Worker names a space's client's member with, for the space to know them by. */
 const MEMBER = "x-ewa-member";
+/** And the header it says what that member may do with (src/server/signed.ts): set by the Worker alone, like the member. */
+const ROLE = "x-ewa-role";
 
 export class Space extends DurableObject<Env> {
   /** The open clients, by the member each one is. */
@@ -229,7 +232,7 @@ export class Space extends DurableObject<Env> {
   private plugins?: PluginHost;
   private live = createLiveMcpRelay();
 
-  /** Someone left the space, or was removed: their connections close at once. */
+  /** Someone left the space, was removed, or was given another role: their connections close at once (a device connects again by itself). */
   async revoke(user: string): Promise<void> {
     for (const [socket, who] of this.clients) if (who === user) socket.close(4403, "You're no longer in this space");
   }
@@ -327,7 +330,7 @@ export class Space extends DurableObject<Env> {
     // The client's messages wait for the kernel to be ready for them, in order.
     this.plugins ??= new PluginHost(this.ctx, this.env, space);
     await this.remember(space, url.origin);
-    let ready = kernel.join(id, url.origin, (text) => server.send(text), this.clients.get(server) ?? "", this.plugins);
+    let ready = kernel.join(id, url.origin, (text) => server.send(text), this.clients.get(server) ?? "", this.plugins, request.headers.get(ROLE) ?? undefined);
     ready.catch((e) => console.error(`Space ${space}: the kernel didn't start`, e?.stack ?? e));
     server.addEventListener("message", (e) => {
       ready = ready.then(() => kernel.deliver(id, String(e.data))).catch(() => server.close(1011, "The kernel stopped"));
@@ -364,17 +367,17 @@ export class Accounts extends DurableObject<Env> {
   }
 
   /** A space's members, with the names on their accounts. */
-  async members(space: string): Promise<{ id: string; name: string }[]> {
+  async members(space: string): Promise<{ id: string; name: string; role: Role }[]> {
     return this.auth.members(space);
   }
 
   /** The role in a space of the session in a cookie header, if they're in it. */
-  async role(cookie: string, space: string): Promise<"owner" | "member" | null> {
+  async role(cookie: string, space: string): Promise<Role | null> {
     return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.role ?? null;
   }
 
   /** Who the session in a cookie header is in a space, with the name on their account and their role, if they're in it. */
-  async who(cookie: string, space: string): Promise<{ id: string; name: string; role: "owner" | "member" } | null> {
+  async who(cookie: string, space: string): Promise<{ id: string; name: string; role: Role } | null> {
     const found = await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space);
     return found ? { id: found.user.id, name: found.user.name, role: found.role } : null;
   }
@@ -451,7 +454,7 @@ export default {
         cookie: request.headers.get("cookie") ?? "",
         upgrade: request.headers.get("upgrade")?.toLowerCase() === "websocket",
       },
-      { exists: (space) => accounts().exists(space), member: (cookie, space) => accounts().member(cookie, space) },
+      { exists: (space) => accounts().exists(space), member: (cookie, space) => accounts().member(cookie, space), who: (cookie, space) => accounts().who(cookie, space) },
     );
     return answer(request, env, decision);
   },
@@ -483,6 +486,7 @@ async function answer(request: Request, env: Env, decision: Decision): Promise<R
     case "join": {
       const forward = new Request(request);
       forward.headers.set(MEMBER, decision.member);
+      forward.headers.set(ROLE, decision.role);
       return env.SPACE.getByName(decision.space).fetch(forward);
     }
     case "live-bridge":

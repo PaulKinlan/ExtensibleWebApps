@@ -27,7 +27,7 @@ export const MODEL_TIMEOUT_MS = 6 * 60_000;
 /** What a host gives the routes. */
 export interface ModelHost {
   /** Who sent the request, if they are in the space: their id, the name on their account, and their role. */
-  member(request: Request, space: string): Promise<{ id: string; name: string; role: "owner" | "member" } | null>;
+  member(request: Request, space: string): Promise<{ id: string; name: string; role: "owner" | "editor" | "reader" } | null>;
   /** What unlocks the space's key, kept with the accounts and made the first time it is asked for. */
   lock(space: string): Promise<string>;
   /** Asks the space's kernel at its `model` door. */
