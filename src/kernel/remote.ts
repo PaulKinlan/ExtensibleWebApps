@@ -258,7 +258,21 @@ export class RemotePlugins {
     return spawner ? [[plugin.id, spawner]] : [];
   }
 
+  /**
+   * Instances whose place a stand-in holds (the manifest's `standIn`), and the tab each would run in: no worker
+   * yet. Each starts at the first thing the person does in its stand-in (deliver).
+   */
+  private standIns = new Map<string, Host>();
+  /** Instances a stand-in gave way to, starting or running: what the person does meanwhile reaches them once they have started. */
+  private used = new Map<string, Promise<boolean>>();
+
   private startInstance(plugin: Installed, instance: string, host: Host): Promise<boolean> {
+    const standIn = plugin.manifest.standIn;
+    if (standIn && !this.used.has(instance)) {
+      this.standIns.set(instance, host);
+      this.hosts.render(instance, standIn.slot as Slot, `${instance}:${standIn.key}`, stamp({ type: "html", html: standIn.html }, false, plugin.href), plugin.manifest.order, this.perTab(plugin) ? host.tab : undefined);
+      return Promise.resolve(true);
+    }
     record({ kind: "lifecycle", name: "plugin:spawn", plugin: instance, detail: `in tab ${host.tab}` });
     this.hosts.send(host, { t: "spawn", plugin: instance, source: plugin.source, network: plugin.caps.has("network") });
     return new Promise((resolve) => {
@@ -299,9 +313,14 @@ export class RemotePlugins {
   /** Stops every instance of a plugin. */
   stop(id: string): void {
     for (const [instance, remote] of this.live) if (remote.plugin.id === id) this.stopInstance(instance);
+    // And the ones a stand-in still holds the place of.
+    for (const instance of this.standIns.keys()) if (instance.split("@")[0] === id) this.stopInstance(instance);
   }
 
   stopInstance(instance: string, terminate = true): void {
+    // Stopped, it is as it was before it was first used.
+    this.used.delete(instance);
+    if (this.standIns.delete(instance)) return this.hosts.clear(instance);
     const remote = this.live.get(instance);
     if (!remote) return;
     remote.dispose();
@@ -449,7 +468,7 @@ export class RemotePlugins {
     if (!plugin?.enabled || !this.perTab(plugin) || !this.runsHere(plugin) || !this.allowedIn(plugin, host)) return;
     if (!this.hosts.workerHosts.includes(host)) return;
     const instance = `${id}@${host.tab}`;
-    if (this.live.has(instance) || this.waiting.has(instance)) return;
+    if (this.live.has(instance) || this.waiting.has(instance) || this.standIns.has(instance)) return;
     void this.startInstance(plugin, instance, host);
   }
 
@@ -461,6 +480,7 @@ export class RemotePlugins {
   /** A tab closed: its workers went with it. */
   hostLeft(host: Host): void {
     for (const [instance, remote] of this.live) if (remote.host === host) this.stopInstance(instance, false);
+    for (const [instance, at] of this.standIns) if (at === host) this.stopInstance(instance);
   }
 
   /** The spawner tab changed: start the shared plugins again in the new one. */
@@ -474,6 +494,17 @@ export class RemotePlugins {
   }
 
   deliver(instance: string, message: KernelToPlugin, transfer: Transferable[] = []): void {
+    // The first thing done in a stand-in starts its plugin, which then hears it.
+    const host = this.standIns.get(instance);
+    const plugin = this.installed.get(instance.split("@")[0]);
+    if (host && plugin) {
+      this.standIns.delete(instance);
+      // Marked as used first: that is what tells startInstance to start it for real.
+      this.used.set(instance, Promise.resolve(false));
+      this.used.set(instance, this.startInstance(plugin, instance, host));
+    }
+    const starting = this.used.get(instance);
+    if (starting) return void starting.then(() => this.live.get(instance)?.post(message, transfer));
     this.live.get(instance)?.post(message, transfer);
   }
 }

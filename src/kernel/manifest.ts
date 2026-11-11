@@ -67,6 +67,10 @@ function validate(value: unknown): Manifest {
   if (m.theme !== undefined) validateTheme(m.theme, m.permissions as string[]);
   if (m.files !== undefined && (!Array.isArray(m.files) || m.files.length > 20 || m.files.some((f) => typeof f !== "string" || !FILE_PATH.test(f))))
     throw new ManifestError("`files` must be a list of up to 20 file names or paths beside the plugin, such as card.html or card.templates/card.js (the first folder's name has a dot in it)");
+  if (m.standIn !== undefined) {
+    const s = (m.standIn ?? {}) as Record<string, unknown>;
+    if (!(m.permissions as string[]).includes("ui") || !text(s.slot, 64) || !text(s.key, 64) || !text(s.html, 2000)) throw new ManifestError("`standIn` must be { slot, key, html }, and needs the ui permission");
+  }
   if (m.hooks !== undefined) validateHooks(m.hooks, m.id);
   if (m.provides !== undefined) validateProvides(m.provides, m.permissions as string[], m.scope);
   if (m.services !== undefined && (!Array.isArray(m.services) || m.services.length > 30 || m.services.some((s) => typeof s !== "string" || !ID.test(s))))

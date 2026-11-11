@@ -262,7 +262,8 @@ async function fetchLink(href: string, priority?: RequestPriority): Promise<{ hr
   if (!(response instanceof Response && response.ok)) return { href, source: "", why: response instanceof Response ? `it answered ${response.status}` : response.message };
   const source = await response.text();
   if (!isAgentFile(href)) {
-    warmPlugin(href, source);
+    // Not for a plugin whose place a stand-in holds until it is used (its manifest's `standIn`): its files wait with it.
+    if (!source.includes("standIn:")) warmPlugin(href, source);
     return { href, source, why: "" };
   }
   let loop: string;
@@ -880,7 +881,7 @@ const [, folder] = await Promise.all([
     .then(async (root) => (space ? (await root.getDirectoryHandle("spaces", { create: true })).getDirectoryHandle(space, { create: true }) : root))
     .catch(() => undefined),
 ]);
-send({ t: "hello", tab, folder });
+send({ t: "hello", tab, folder, bench: isWorkbench });
 introduced = true;
 for (const message of unsent.splice(0)) send(message);
 // The workbench is an app too: it links the demo plugins in plugins/, which no other page runs.

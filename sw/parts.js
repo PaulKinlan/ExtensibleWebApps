@@ -1,6 +1,7 @@
 // The parts of the platform an app fetches only when it first uses them (a
-// kernel module, the review card, Customize's code, the drawing code: every
-// built file under /assets/), kept ahead of time so that first use works
+// kernel module, the review card, the drawing code: every built file under
+// /assets/, and the panel of a plugin that waits for its first use, as
+// Customize does), kept ahead of time so that first use works
 // offline too. Without this, the service worker keeps only what a visit
 // fetched, and a person who goes offline and then does something new (asks
 // for undo's module, gets their first review card) is told that part isn't
@@ -41,7 +42,7 @@ export async function keepParts(cacheName, wait = WAIT_MS) {
     let all = true;
     for (const file of files) {
       // Only this site's own built files: the list is never a way to make the worker fetch anything else.
-      if (typeof file !== "string" || !/^\/(assets|platform)\/[\w.-]+$/.test(file)) continue;
+      if (typeof file !== "string" || !/^\/(assets|platform|std|elements)\/[\w.-]+$/.test(file)) continue;
       if (await cache.match(file, { ignoreVary: true })) continue;
       const part = await fetch(file).catch(() => undefined);
       if (part?.ok) await cache.put(file, part);

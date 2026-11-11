@@ -418,6 +418,7 @@ for (const name of Object.keys(services)) RESERVED.add(name);
 let started = false;
 let loaded = false;
 hosts.onHello = (host, folder) => {
+  if (host.bench) plugins.drawAll();
   if (!started) {
     started = true;
     store.use(where.folder ?? folder);

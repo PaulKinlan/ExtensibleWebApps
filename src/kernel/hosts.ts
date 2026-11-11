@@ -18,6 +18,8 @@ export interface Host {
   member?: string;
   /** On a server: the kernel's own client that starts plugins in isolates (isolate-host.ts), never a remote one. */
   isolates?: true;
+  /** The workbench, which shows the plugins panel (catalog.ts). */
+  bench?: true;
 }
 
 type Rendered = { slot: Slot; key: string; owner: string; order: number; view: View | null; tab?: string };
@@ -50,7 +52,7 @@ export class Hosts {
     port.onmessage = (e: MessageEvent<HostToKernel>) => {
       const message = e.data;
       if (message.t === "hello") {
-        host = { tab: message.tab, port, ...(typeof message.member === "string" ? { member: message.member } : {}), ...(isolates ? { isolates: true as const } : {}) };
+        host = { tab: message.tab, port, ...(typeof message.member === "string" ? { member: message.member } : {}), ...(isolates ? { isolates: true as const } : {}), ...(message.bench === true ? { bench: true as const } : {}) };
         this.list.push(host);
         this.onHello?.(host, message.folder);
         // Each tab holds a Web Lock named after it for as long as it lives;
