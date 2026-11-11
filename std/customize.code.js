@@ -84,6 +84,12 @@ function finish(code, name, spot) {
   return out;
 }
 
+/** What a member's role in a space lets them do, said where they add things: an owner needs no telling. */
+const ROLE = {
+  reader: (s) => `You're a reader in this space: you can see what it keeps, but not change it or share plugins with it. ${s.owner ? `Its owner, ${s.owner},` : "Its owner"} can make you an editor. What you add here stays on your device.`,
+  editor: (s) => `You're an editor in this space: you can change what it keeps and share plugins with it. ${s.owner ? `${s.owner} owns it, and` : "Its owner"} says who is in it.`,
+};
+
 export default function (ctx) {
   const views = ctx.ui.views("customize.html");
   const call = (method, ...args) => ctx.call("authoring", method, ...args).catch((e) => ({ ok: false, error: String(e?.message ?? e) }));
@@ -205,6 +211,7 @@ export default function (ctx) {
     lastMakerLinked = page.running.some((r) => r.id === "plugin-maker");
     const tabs = { plugins: tab === "plugins", make: tab === "make", layout: tab === "layout" };
     const pressed = Object.fromEntries(Object.entries(tabs).map(([k, v]) => [k, String(v)]));
+    const standing = page.space ? await ctx.call("sync", "role").catch(() => null) : null;
     const base = {
       open,
       reopen,
@@ -216,6 +223,8 @@ export default function (ctx) {
       // Signed in: what the person adds follows them to their other devices (std/follow).
       account: account?.on ? { name: account.name ?? "you", keys: KEYS[account.keys] ?? KEYS.off, keysLocked: account.keys === "locked", error: account.error ?? "", skipped: account.skipped?.length ? `Too big to follow you, so only on this device: ${account.skipped.join(", ")}.` : "" } : null,
       space: page.space,
+      // In a space: what the person may do there, when it isn't everything (std/spaces/permissions.ts).
+      role: standing ? (ROLE[standing.role]?.(standing) ?? "") : "",
       inspect: page.inspect,
       arrange: page.arrange,
       busy,

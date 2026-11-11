@@ -127,7 +127,7 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
     const r = rules[collection] as Rules | undefined;
     const out = { add: allowed(r, "add", role, false), change: allowed(r, "change", role, mine), remove: allowed(r, "remove", role, mine) };
     if (out.add && out.change && out.remove) return out;
-    const ask = owner ? `the space's owner, ${owner}` : "the space's owner";
+    const ask = owner ? `the space's owner, ${owner},` : "the space's owner";
     return { ...out, why: role === "reader" ? `You can read this space but not change it. Ask ${ask} to make you an editor.` : `Some of this is for whoever added it, or ${ask}.` };
   }
 
@@ -219,6 +219,12 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
         params: [{ name: "request", schema: { type: "object", description: "A request as llm.complete takes it ({ messages, system?, tools?, schema?, model?, maxTokens? }), or { models: true } for the models the key can use" } }],
         description: "Asks a language model on the key the space holds for its members: the request goes to the space's server, which asks the vendor with the key and sends back only the answer. The person is first shown whose key pays, once they allow it for good. What /std/llm/space.js uses to be a provider for llm: other plugins ask through llm. Fails outside a space, when the space has no key, or past a member's questions for the day.",
       },
+      role: {
+        args: "()",
+        returns: "{ space: null } or { space, role?, owner? }",
+        // No `params`, as for model().
+        description: "What the person signed in here may do in this space: `role` is \"owner\", \"editor\", or \"reader\" (who sees the space but can't change it), once the space has said, and `owner` the owner's name, to say whom to ask. For saying so before they try. Outside a space, `space` is null. Needs no permission.",
+      },
       dismiss: {
         args: "(ref)",
         returns: "{ ok }",
@@ -227,7 +233,7 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
         description: "Lets a draft go: the record stays as the space has it.",
       },
     },
-    capability: (method) => (method === "model" ? undefined : method === "ask" ? "space-model" : method === "members" || method === "may" ? "members" : method === "reflect" || method === "trace" ? "reflect:read" : method === "live" ? "live" : "sync"),
+    capability: (method) => (method === "model" || method === "role" ? undefined : method === "ask" ? "space-model" : method === "members" || method === "may" ? "members" : method === "reflect" || method === "trace" ? "reflect:read" : method === "live" ? "live" : "sync"),
     call: async (instance, method, args, dispatch) => {
       if (method === "live") {
         const topic = checkTopic(args?.[0]);
@@ -288,6 +294,10 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
           dispatch,
         );
         return (await askModel(name, { request })).answer;
+      }
+      if (method === "role") {
+        const s = await thisDevice.sync?.state();
+        return s ? { space: s.space, ...(s.access ? { role: s.access.role, ...(s.access.owner ? { owner: s.access.owner } : {}) } : {}) } : { space: null };
       }
       if (method === "state") return state();
       if (method === "members") return members();

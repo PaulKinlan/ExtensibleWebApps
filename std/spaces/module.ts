@@ -138,7 +138,7 @@ export default {
         import("./on-device").then(
           ({ startDevice }) => {
             if (stopped) return;
-            on = startDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts, userAdded, reviews, reopen);
+            on = startDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts, userAdded, reviews, reopen, root);
             for (const app of using) on.device.use(app);
           },
           (error) => {

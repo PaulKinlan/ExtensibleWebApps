@@ -1,15 +1,23 @@
 <!--
   Your spaces (spaces.js). It sends { user, spaces, app, invite, status,
-  revision }: each space { name, owner, role, open }, where `open` is the
-  address of the app the person came from, in that space. `invite` is the
-  last invite link made.
+  revision }: each space { name, owner, role, can, open, members }, where
+  `open` is the address of the app the person came from, in that space, `can`
+  says what the person's role lets them do, and `members` is who is in it:
+  { id, name, role, tone, you, change, to, toLabel }, with `change` true where
+  the person (its owner) can give that member the other role (`to`) or remove
+  them. `invite` is the last invite link made, and `inviteAs` what it lets
+  whoever opens it do.
 -->
 <style>
   .spaces { display: grid; gap: var(--space-3); }
   .spaces form { display: flex; flex-direction: row; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
   .spaces input { flex: 1 1 12rem; }
   .spaces ul { display: grid; gap: var(--space-3); padding: 0; list-style: none; }
-  .spaces li { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+  .spaces .space-list > li { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+  .spaces .members { display: grid; gap: var(--space-1); }
+  .spaces .members li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .spaces .members .who { flex: 1 1 8rem; }
+  .spaces .can { color: var(--fg-2); }
   .spaces li .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
   .spaces li .actions a:not(.button) { margin-right: var(--space-2); }
   .spaces .status:empty { display: none; }
@@ -24,6 +32,21 @@
         <template for="s of spaces">
           <li key="{{s.name}}">
             <span><strong>{{s.name}}</strong> ({{s.role}})</span>
+            <template if="s.can"><span class="can">{{s.can}}</span></template>
+            <template if="s.members.length">
+              <ul class="members" aria-label="Who is in {{s.name}}">
+                <template for="m of s.members">
+                  <li key="{{m.id}}">
+                    <span class="who">{{m.name}}<template if="m.you"> (you)</template></span>
+                    <ui-badge tone="{{m.tone}}">{{m.role}}</ui-badge>
+                    <template if="m.change">
+                      <button type="button" data-action="role:{{s.name}}:{{m.id}}:{{m.to}}">{{m.toLabel}}</button>
+                      <button type="button" data-action="remove:{{s.name}}:{{m.id}}">Remove</button>
+                    </template>
+                  </li>
+                </template>
+              </ul>
+            </template>
             <span class="actions">
               <template if="s.open"><a href="{{s.open}}">Open {{app.title}} in it</a></template>
               <a href="/s/{{s.name}}/">Open the site in it</a>
@@ -31,6 +54,7 @@
             <span class="actions">
               <template if="s.owner">
                 <button type="button" data-action="invite:{{s.name}}">Invite someone</button>
+                <button type="button" data-action="invite-reader:{{s.name}}">Invite a reader</button>
                 <a href="/auth/spaces/{{s.name}}/export" class="button">Download a copy</a>
                 <button type="button" data-action="load:{{s.name}}">Load a copy</button>
               </template>
@@ -48,7 +72,7 @@
         <button type="submit">Make a space</button>
       </form>
       <template if="invite">
-        <p class="invite">Send this link to the person you're inviting. It works once, for a week: <input id="invite-url" readonly value="{{invite}}"></p>
+        <p class="invite">Send this link to the person you're inviting. It works once, for a week. {{inviteAs}} <input id="invite-url" readonly value="{{invite}}"></p>
       </template>
       <p class="status" role="status">{{status}}</p>
     </section>

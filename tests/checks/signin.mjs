@@ -57,7 +57,7 @@ export default async function ({ check, context, errors }) {
     await theirs.click('form[data-action="register"] button[type="submit"]');
     await theirs.waitForSelector(".space-list strong", { timeout: 8000 }).catch(() => {});
     const joined = { status: await theirs.locator(".account-view .status").textContent(), spaces: await theirs.locator(".space-list").textContent() };
-    check("a space made on /account/ gets an invite link, and whoever opens it and signs up is in the space", /invite=/.test(link) && /joined grace-home/.test(joined.status ?? "") && /grace-home \(member\)/.test(joined.spaces ?? ""), JSON.stringify({ link, joined }));
+    check("a space made on /account/ gets an invite link, and whoever opens it and signs up is in the space", /invite=/.test(link) && /joined grace-home/.test(joined.status ?? "") && /grace-home \(editor\)/.test(joined.spaces ?? ""), JSON.stringify({ link, joined }));
   } finally {
     await other?.close();
     await own.close();
