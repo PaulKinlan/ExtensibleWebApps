@@ -276,6 +276,14 @@ Needs: `account`.
 
 Signs in with a passkey the browser has for this site (it asks the person which). { status: 401, error } if the server didn't know it.
 
+#### account.space-key
+
+`account.space-key(space, vendor, label?)` → { set, vendor, model, byName, at } or null
+
+Needs: `account`.
+
+Gives a space a model key for its members (src/server/space-model.ts): the person types it into a card the kernel draws, and it goes straight to the server, which keeps it encrypted. No plugin sees it. null if they closed the card.
+
 #### account.start
 
 `account.start(provider, fields?)` → true
@@ -824,6 +832,26 @@ Needs: `debug:read`.
 
 The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.
 
+### device-model
+
+The language model the browser carries itself (Chrome's built-in model): no key, and nothing leaves the device. Most plugins ask through llm instead.
+
+#### device-model.prompt
+
+`device-model.prompt({ system?, turns: [{ role, content }], schema? })` → { text, input, output }
+
+Needs: `device-model`.
+
+Asks the browser's model. input and output are the tokens the request and the answer took, as near as the browser says. While the model is still downloading, the error says how far it has got.
+
+#### device-model.state
+
+`device-model.state()` → { state: "available" | "downloadable" | "downloading" | "unavailable", progress }
+
+Needs: nothing.
+
+Whether this browser has a model of its own, which any plugin may ask (a list of plugins leaves out the ones that need a model the browser hasn't got). downloadable: it can have one, after a download of several GB that the first prompt() starts. progress is how much of a download has arrived, 0 to 1.
+
 ### email
 
 Email: messages a plugin on a space's server sends to the space's members. Each is written down in the space's outbox, then delivered if the deployment can send mail.
@@ -1110,7 +1138,7 @@ The files opened with the plugin's tab, once: they are gone after, and the tab m
 
 ### llm
 
-Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js). The caller never holds a key.
+Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js, the browser's own with std/llm/chrome.js, or a space's with std/llm/space.js). The caller never holds a key.
 
 #### llm.add
 
@@ -1126,7 +1154,7 @@ Adds one of choices() to the person's own plugins for every app they open, once 
 
 Needs: `llm`.
 
-The language models this site offers (its plugin registry's packages that provide:llm), for a plugin to offer the person when providers() is empty. added: the person has it here already; linked: the app links it.
+The language models this site offers (its plugin registry's packages that provide:llm; the browser's built-in one only where the browser has it), for a plugin to offer the person when providers() is empty. added: the person has it here already; linked: the app links it.
 
 #### llm.complete
 
@@ -1188,6 +1216,14 @@ Needs: `apps:make`, and the person's review.
 
 In a space: copies one of the person's own apps (made outside it, on this device) in, as a made app in the space, once they accept one review. It can then be shared with the space's members.
 
+#### maker.dropLink
+
+`maker.dropLink()` → { ok }
+
+Needs: `apps:read`.
+
+Takes the app out of the tab's address without adding it.
+
 #### maker.history
 
 `maker.history(app, file)` → [{ version, at, by, note, removed? }]
@@ -1195,6 +1231,22 @@ In a space: copies one of the person's own apps (made outside it, on this device
 Needs: `apps:read`.
 
 The versions of one file of a made app, oldest first.
+
+#### maker.link
+
+`maker.link(app)` → { ok, url, length, files, via? } or { ok: false, error }
+
+Needs: `apps:read`.
+
+Makes a link that is the app: its files and none of its data, packed into the address, so nothing is kept on the site. Hands it to the system's share sheet, or copies it (via says which; call it right after the person clicks). Whoever opens it gets the app as their own, after a review.
+
+#### maker.linked
+
+`maker.linked()` → { name, title, files, here } or { error }, or null
+
+Needs: `apps:read`.
+
+The app the caller's tab was opened with a link to (link), before anything is added: the name it would get here, its title and its files' names. here is true when the person has this very app already. null when the address carries none.
 
 #### maker.list
 
@@ -1275,6 +1327,14 @@ In a space: shares a made app with its members, once the person accepts. Each se
 Needs: `apps:read`.
 
 In a space: the apps its members shared with it. state is new (not accepted here), changed (a newer version than the one accepted here), same, or clash (an app of that name here that didn't come from the space). space is false outside a space.
+
+#### maker.takeLink
+
+`maker.takeLink()` → the same as save, with app
+
+Needs: `apps:make`, and the person's review.
+
+Adds the app in the tab's link to the person's own apps, once they accept one review that shows every file, as any save. It never replaces an app they have: one of the same name gets the next free name. The link then leaves the address.
 
 #### maker.unshare
 
@@ -1616,6 +1676,14 @@ Saves a JSON value; null removes it. Up to 1 MB in all.
 
 How a page in a space stands with it, and the drafts it kept when someone else changed a record first.
 
+#### sync.ask
+
+`sync.ask(request)` → what llm.complete returns, or { models, tiers } for { models: true }
+
+Needs: `space-model`.
+
+Asks a language model on the key the space holds for its members: the request goes to the space's server, which asks the vendor with the key and sends back only the answer. The person is first shown whose key pays, once they allow it for good. What /std/llm/space.js uses to be a provider for llm: other plugins ask through llm. Fails outside a space, when the space has no key, or past a member's questions for the day.
+
 #### sync.dismiss
 
 `sync.dismiss(ref)` → { ok }
@@ -1647,6 +1715,14 @@ Sends a live message, kept nowhere: from a page in a space, to the space's serve
 Needs: `members`.
 
 The space's members, each with the name on their account, and which of them this page is signed in as (`you`). A change's `by` and data:changed's `by` are a member's id: show the name from here. Outside a space, `space` is null and the list is empty.
+
+#### sync.model
+
+`sync.model()` → { space: null } or { space, set: false } or { space, set, model, vendor, byName, yours, asked, daily, refused? }
+
+Needs: nothing.
+
+Whether the space holds a model key for its members (its owner gives one on their account page): which model it is for, the name of who gave it and pays (`byName`), whether that is you (`yours`), and how many of the day's questions you have asked. Never the key, which stays on the space's server. Outside a space, `space` is null. Needs no permission.
 
 #### sync.reflect
 
@@ -2060,10 +2136,10 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `ui:transform:<plugin>` | Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
-| `account` | Call account.get, account.post, account.register, account.signin, account.start, account.load, account.keys, account.keys:protect, account.keys:unlock, account.keys:remove, account.came. |
+| `account` | Call account.get, account.post, account.space-key, account.register, account.signin, account.start, account.load, account.keys, account.keys:protect, account.keys:unlock, account.keys:remove, account.came. |
 | `agents:run:<agent>` | Call agents.run. |
-| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.unshare. |
-| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.check. |
+| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.takeLink, maker.unshare. |
+| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.link, maker.linked, maker.dropLink, maker.check. |
 | `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.mix, audio.keep, audio.forget, audio.playClip, audio.open, audio.save. |
 | `audio, or audio:kept:<of>` | Call audio.load, audio.kept. |
 | `bus:ask` | Call bus.ask. |
@@ -2076,6 +2152,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `debug:read` | Call debug.recent, debug.app. |
+| `device-model` | Call device-model.prompt. |
 | `email` | Call email.send. |
 | `files:<folder>` | Call files.read, files.write. |
 | `folder:choose` | Call folder.choose, folder.allow, folder.forget. |
@@ -2098,6 +2175,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `share` | Call share.send, share.take. |
+| `space-model` | Call sync.ask. |
 | `sync` | Call sync.state, sync.keep, sync.dismiss. |
 | `transfer` | Call transfer.collections, transfer.export, transfer.import. |
 | `ui` | Call page.matches, page.slots. |
@@ -2135,6 +2213,7 @@ Reserved ids, which no plugin can take:
 - `commands`
 - `data`
 - `debug`
+- `device-model`
 - `email`
 - `files`
 - `folder`
