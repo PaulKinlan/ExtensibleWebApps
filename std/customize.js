@@ -270,6 +270,9 @@ export default function (ctx) {
       // A plugin that needs the browser's own language model (std/llm/chrome.js) is offered only where the browser has one.
       const needsModel = (p) => p.permissions?.includes("device-model");
       if (list.some(needsModel) && ((await ctx.call("device-model", "state").catch(() => null))?.state ?? "unavailable") === "unavailable") list = list.filter((p) => !needsModel(p) || p.added);
+      // And one that needs the model a space holds a key for (std/llm/space.js) only in a space that has one.
+      const needsSpace = (p) => p.permissions?.includes("space-model");
+      if (list.some(needsSpace) && !(page.space && (await ctx.call("sync", "model").catch(() => null))?.set)) list = list.filter((p) => !needsSpace(p) || p.added);
       const ownById = new Map(mine.map((p) => [p.id, p]));
       const rows = list.filter(matches).map((p) => {
         const own = ownById.get(p.id);

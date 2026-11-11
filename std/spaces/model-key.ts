@@ -101,9 +101,11 @@ function start(vendor: Plugin, key: string, fetcher: typeof fetch, gateways: Rec
       }
       // A deployment may reach a vendor through a gateway of its own (MODEL_GATEWAYS): the same path, at its address.
       const to = gateways[host] ? new URL(`${gateways[host].replace(/\/$/, "")}${url.pathname}${url.search}`) : url;
-      const response = await fetcher(to, { method: input.method ?? "GET", headers, body: input.body === undefined ? undefined : String(input.body), redirect: "error", signal: AbortSignal.timeout(TIMEOUT) }).catch((error) => {
+      const response = await fetcher(to, { method: input.method ?? "GET", headers, body: input.body === undefined ? undefined : String(input.body), redirect: "manual", signal: AbortSignal.timeout(TIMEOUT) }).catch((error) => {
         throw new Error(`Couldn't reach ${host}: ${error instanceof Error ? error.message : error}`);
       });
+      // Never followed: the key goes to the vendor's own host and nowhere it points. ("manual", since Cloudflare has no "error".)
+      if (response.type === "opaqueredirect" || (response.status >= 300 && response.status < 400)) throw new Error(`${host} sent the request elsewhere, which a space's key doesn't follow`);
       const text = (await response.text()).slice(0, MAX_ANSWER);
       return { ok: response.ok, status: response.status, headers: Object.fromEntries([...response.headers].map(([k, v]) => [k, hide(v)])), text: hide(text) };
     },

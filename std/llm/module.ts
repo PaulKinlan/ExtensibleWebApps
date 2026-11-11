@@ -44,6 +44,7 @@
 //
 // Streaming answers come next, with the chat plugin that needs them.
 
+import { env } from "../../src/kernel/env";
 import { callService, type ServiceProvider } from "../../src/kernel/remote";
 import { record } from "../../src/kernel/trace";
 import { checkSchema, validate, type Schema } from "../../src/kernel/schema";
@@ -203,6 +204,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       const has = (await (callService(remote.services, plugin, new Set(), "device-model", "state", [], dispatch as { trace?: string }) as Promise<{ state?: string }>).catch(() => undefined))?.state;
       if (!has || has === "unavailable") models = models.filter((p) => !p.permissions.includes("device-model"));
     }
+    // And the model a space holds a key for (std/llm/space.js) only in a space whose owner has given it one.
+    if (models.some((p) => p.permissions.includes("space-model"))) {
+      const has = env().space ? ((await (callService(remote.services, plugin, new Set(), "sync", "model", [], dispatch as { trace?: string }) as Promise<{ set?: boolean }>).catch(() => undefined))?.set ?? false) : false;
+      if (!has) models = models.filter((p) => !p.permissions.includes("space-model"));
+    }
     if (method === "choices") return models.map(({ id, name, description, added, linked }) => ({ id, name, description, added, linked }));
     const model = models.find((p) => p.id === id);
     if (!model) return { ok: false, error: `${String(id)} isn't a language model this site offers` };
@@ -220,7 +226,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   }
 
   const service: ServiceProvider = {
-    description: "Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js, or the browser's own with std/llm/chrome.js). The caller never holds a key.",
+    description: "Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js, the browser's own with std/llm/chrome.js, or a space's with std/llm/space.js). The caller never holds a key.",
     methods: {
       providers: { args: "()", returns: "[{ id, name, model?, ready, preferred? }]", needs: "llm", description: "The providers the caller's app has; ready means it has its key, preferred that the person picked it (prefer)." },
       prefer: {

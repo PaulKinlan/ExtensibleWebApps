@@ -29,7 +29,7 @@ import { askSpace, READS } from "./reflect";
 import { checkTopic, LIVE_HOOK, type LiveSpace } from "./live";
 import type { SyncToDevice } from "../../src/shared/sync";
 
-export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, space: { live?: LiveSpace } = {}): ServiceProvider => {
+export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKernel, space: { live?: LiveSpace } = {}): ServiceProvider => {
   hook("sync:live", LIVE_HOOK);
   hook("sync:trace", {
     mode: "emit",
@@ -181,6 +181,19 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
         params: [{ name: "on", schema: { type: "boolean", description: "true to start hearing the space's trace, false to stop" } }],
         description: "For debuggers: streams the trace of the space's own kernel, on its server, to this device as it happens: the sync:trace hook carries each batch, starting with a few hundred events from before. Stops when no plugin that asked is running. Fails outside a space, or while this page can't reach it.",
       },
+      model: {
+        args: "()",
+        returns: "{ space: null } or { space, set: false } or { space, set, model, vendor, byName, yours, asked, daily, refused? }",
+        params: [],
+        description: "Whether the space holds a model key for its members (its owner gives one on their account page): which model it is for, the name of who gave it and pays (`byName`), whether that is you (`yours`), and how many of the day's questions you have asked. Never the key, which stays on the space's server. Outside a space, `space` is null. Needs no permission.",
+      },
+      ask: {
+        args: "(request)",
+        returns: "what llm.complete returns, or { models, tiers } for { models: true }",
+        needs: "space-model",
+        params: [{ name: "request", schema: { type: "object", description: "A request as llm.complete takes it ({ messages, system?, tools?, schema?, model?, maxTokens? }), or { models: true } for the models the key can use" } }],
+        description: "Asks a language model on the key the space holds for its members: the request goes to the space's server, which asks the vendor with the key and sends back only the answer. The person is first shown whose key pays, once they allow it for good. What /std/llm/space.js uses to be a provider for llm: other plugins ask through llm. Fails outside a space, when the space has no key, or past a member's questions for the day.",
+      },
       dismiss: {
         args: "(ref)",
         returns: "{ ok }",
@@ -189,7 +202,7 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
         description: "Lets a draft go: the record stays as the space has it.",
       },
     },
-    capability: (method) => (method === "members" ? "members" : method === "reflect" || method === "trace" ? "reflect:read" : method === "live" ? "live" : "sync"),
+    capability: (method) => (method === "model" ? undefined : method === "ask" ? "space-model" : method === "members" ? "members" : method === "reflect" || method === "trace" ? "reflect:read" : method === "live" ? "live" : "sync"),
     call: async (instance, method, args, dispatch) => {
       if (method === "live") {
         const topic = checkTopic(args?.[0]);
@@ -218,6 +231,37 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
         if (on && watchers.size > 1) device.send({ t: "sync", op: "trace", on: true });
         if (!on && !watchers.size) device.send({ t: "sync", op: "trace", on: false });
         return { on };
+      }
+      if (method === "model" || method === "ask") {
+        const device = thisDevice.sync;
+        const { space: name, member } = device ? await device.state() : { space: null, member: undefined };
+        if (!name) {
+          if (method === "model") return { space: null };
+          throw new Error("A space's model is for pages in a space: open the app at /s/<space>/…, or add a model of your own from Customize");
+        }
+        const { modelState, askModel } = await import("./model-device");
+        if (method === "model") {
+          const { by, today: _today, vendors: _vendors, ...rest } = await modelState(name);
+          return { space: name, ...rest, ...(rest.set ? { yours: !!member && by === member } : {}) };
+        }
+        const request = args?.[0];
+        if (!request || typeof request !== "object") throw new Error("sync.ask takes a request, as llm.complete does");
+        if ((request as { models?: unknown }).models === true) return askModel(name, { models: true });
+        // Whose key pays, before the first question goes: the person may allow it for good.
+        const has = await modelState(name);
+        if (!has.set) throw new Error("This space has no model key. Its owner can give it one on their account page, or you can add a model of your own from Customize.");
+        const whose = member && has.by === member ? "your key, which you gave this space" : `${has.byName}'s key`;
+        await reviewed(
+          instance,
+          // Allowed for good only for this space and this person's key: a key someone else gives is asked about again.
+          `${name}, on ${member && has.by === member ? "your" : `${has.byName}'s`} key`,
+          `the space ${name}: asks ${has.model} on ${whose}`,
+          "",
+          `What you ask, and what the app sends with it, goes to the space's server and from there to ${has.model}.\n${member && has.by === member ? "You pay" : `${has.byName} pays`} for each question. A member may ask ${has.daily} a day; you have asked ${has.asked} today.`,
+          member && has.by === member ? "You pay for what is asked on this key" : `${has.byName} pays for what you ask`,
+          dispatch,
+        );
+        return (await askModel(name, { request })).answer;
       }
       if (method === "state") return state();
       if (method === "members") return members();

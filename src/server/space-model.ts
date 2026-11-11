@@ -4,7 +4,7 @@
 //   GET    /auth/spaces/<name>/model       whether the space has a key, whose, and for which vendor (members)
 //   POST   /auth/spaces/<name>/model       asks the model, with the space's key (members): { request } or { models: true }
 //   POST   /auth/spaces/<name>/model/key   gives the space a key: { vendor, key } (its owner only)
-//   DELETE /auth/spaces/<name>/model/key   takes it away (its owner only)
+//   DELETE /auth/spaces/<name>/model/key   takes it away (its owner only); so does POST with { remove: true }
 //
 // The key is used by the space's own kernel (std/spaces/model-key.ts), which
 // these reach through its `model` door: the host says who is asking, since
@@ -91,7 +91,8 @@ export async function modelRoute(request: Request, host: ModelHost): Promise<Res
       return json({ error: "JSON only" }, 400);
     }
     if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "JSON only" }, 400);
-    form = key ? { op: "set", vendor: body.vendor, key: body.key } : body.models === true ? { op: "models" } : { op: "complete", request: body.request };
+    // (A page's account service only posts, so { remove: true } takes the key away as DELETE does.)
+    form = key ? (body.remove === true ? { op: "clear" } : { op: "set", vendor: body.vendor, key: body.key }) : body.models === true ? { op: "models" } : { op: "complete", request: body.request };
   }
   const result = await host
     .ask(space, url.origin, {

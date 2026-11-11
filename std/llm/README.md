@@ -136,3 +136,16 @@ It is a small model: it reads a few thousand words at once, and has no tool call
 `chrome.js` asks for an answer of a fixed shape and reads a tool call out of it. The browser's API is
 in pages, not workers, so the plugin asks through the `device-model` service
 ([`std/device-model/module.ts`](../device-model/module.ts)), which asks a tab.
+
+## A model a space pays for
+
+[`space.js`](space.js) is the model a space holds a key for. A space's owner gives the space one key
+on their account page; it stays on the space's server, encrypted, and is never sent to a browser
+([docs/server.md](../../docs/server.md#a-model-key-a-space-holds-for-its-members)). A member who adds
+this plugin in an app opened in the space needs no key: their question goes to the space's server,
+which runs the vendor's own plugin from this folder with the space's key and sends back the answer.
+
+It is a model only in a space that has a key: elsewhere it adds nothing to `llm.providers()`, and
+`llm.choices()` leaves it out. Its name says whose key it is ("Claude, on Ann's key"), the person is
+shown who pays before their first question, and each member has a number of questions a day. It asks
+through `sync.ask` (the `space-model` permission); other plugins ask any model through `llm`.

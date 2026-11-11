@@ -11,6 +11,7 @@
     "llm/gemini",
     "llm/openai",
     "llm/openai-compatible",
+    "llm/space",
     "plugin-editor",
     "plugin-maker",
     "reset",
