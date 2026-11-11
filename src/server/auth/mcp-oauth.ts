@@ -306,7 +306,7 @@ ${sites ? `<div class="buttons">${sites}</div>` : ""}
     const { asked } = checked;
     const user = await accounts.user(request);
     if (!user) return signInPage(asked, params);
-    if (!(await accounts.isMember(asked.resource.space, user.id))) return problem(`You aren't in the space ${asked.resource.space}, so an agent can't use it as you.`, 403);
+    if (!(await accounts.isMember(asked.resource.space, user.id))) return problem(`You aren't in the space ${asked.resource.space}, or you can only read it, so an agent can't use it as you. Its owner can invite you, or make you an editor.`, 403);
     if (!posted) return consent(asked, user, params, url.origin);
     if (params.get("answer") !== "allow") return back(asked.redirect, { error: "access_denied", error_description: "The member didn't connect the agent", state: asked.state, iss: url.origin });
     await sweep();

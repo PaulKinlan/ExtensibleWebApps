@@ -18,6 +18,10 @@
   refuses a change that sets a stamp to anyone but the member who sent it,
   so nobody can sign as someone else.
 
+  reminders.js, also on the space's server, tells everyone when a chore
+  comes due, as a notification on each device they turned notifications on
+  for (on their account page), with the app closed.
+
   Two standard plugins: std/sync.js says whether the page is in step with the
   space and lists the drafts it kept (when two people changed the same thing
   while apart, say both bought the milk), and the debug console.
@@ -38,6 +42,8 @@
   <link rel="plugin" href="chores.js">
   <!-- On the space's server only: refuses a change signed with someone else's member id. -->
   <link rel="plugin" href="stamps.js">
+  <!-- On the space's server only: tells everyone when a chore comes due, with the app closed (Web Push). -->
+  <link rel="plugin" href="reminders.js">
   <!-- A standard plugin: opened in a space (/s/<space>/…), whether this page reaches it, and the drafts it kept. -->
   <link rel="plugin" href="/std/sync.js">
   <!-- A standard plugin: a bug button that shows errors and the trace, to copy into a bug report. -->

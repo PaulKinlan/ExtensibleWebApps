@@ -47,6 +47,7 @@ async function loadKernelRules(root) {
   const entry = [
     'export { readManifest, RESERVED } from "./src/kernel/manifest.ts";',
     'export { PLUGIN_HOOKS } from "./src/kernel/hooks.ts";',
+    'export { checkRules } from "./std/spaces/rules.ts";',
     // Through this bundle, not an import: Node won't strip a .ts file's types inside node_modules, where a project's copy of this script is.
     'export { hookLimits } from "./vite.kernel-modules.ts";',
     'export { capabilities, grants } from "./src/kernel/gate.ts";',

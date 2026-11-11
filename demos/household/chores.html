@@ -1,8 +1,10 @@
 <!--
-  The chores. chores.js sends { chores, form }: each chore is { id, name,
-  often, when, tone, last, today }, already sorted with what's overdue first
-  and worded, so the template only lays it out. "Done" is drawn only for a
-  chore not done today. form is a key that changes after each add.
+  The chores. chores.js sends { chores, form, canAdd, why }: each chore is
+  { id, name, often, when, tone, last, today, canDo, canRemove }, already
+  sorted with what's overdue first and worded, so the template only lays it
+  out. "Done" is drawn only for a chore not done today, and each button only
+  for someone who may press it in this space (`why` says so to a reader).
+  form is a key that changes after each add.
 -->
 <style>
   .chores ul { display: grid; gap: var(--space-2); margin: 0 0 var(--space-3); padding: 0; list-style: none; }
@@ -25,13 +27,15 @@
               <template if="c.last"><span class="last">{{c.last}}</span></template>
             </div>
             <ui-badge tone="{{c.tone}}">{{c.when}}</ui-badge>
-            <template if="!c.today"><button type="button" data-action="done:{{c.id}}">Done</button></template>
-            <button type="button" data-action="remove:{{c.id}}" aria-label="Remove {{c.name}}" title="Remove">✕</button>
+            <template if="c.canDo"><button type="button" data-action="done:{{c.id}}">Done</button></template>
+            <template if="c.canRemove"><button type="button" data-action="remove:{{c.id}}" aria-label="Remove {{c.name}}" title="Remove">✕</button></template>
           </li>
         </template>
       </ul>
     </template>
     <template if="!chores.length"><p><small>No chores. Lucky you.</small></p></template>
+    <template if="why"><p class="why"><small>{{why}}</small></p></template>
+    <template if="canAdd">
     <form data-action="add" key="{{form}}">
       <input name="name" placeholder="A chore" aria-label="Chore" maxlength="80" autocomplete="off" required>
       <select name="every" aria-label="How often">
@@ -43,5 +47,6 @@
       </select>
       <button type="submit">Add</button>
     </form>
+    </template>
   </div>
 </template>

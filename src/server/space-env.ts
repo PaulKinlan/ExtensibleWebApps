@@ -6,7 +6,7 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parentPort, workerData } from "node:worker_threads";
-import { setEnv } from "../kernel/env";
+import { setEnv, type PushAsk, type Pushed } from "../kernel/env";
 import type { Email, Message } from "../seams/index.ts";
 import { nodeFiles } from "../seams/node.ts";
 
@@ -53,6 +53,8 @@ setEnv({
   },
   addresses: () => askServer<string[]>("addresses", []),
   members: () => askServer<{ id: string; name: string }[]>("members", []),
+  // serve.ts sends notifications to members' devices (src/server/auth/push.ts): the accounts keep their subscriptions.
+  push: (note: PushAsk) => askServer<Pushed>("push", { sent: 0, devices: 0, people: 0, reached: 0, problems: ["The server didn't answer"] }, { note }),
   // serve.ts keeps MCP clients' streams open, and asks their door again when told (src/server/mcp.ts).
   changed: (door: string) => parentPort!.postMessage({ t: "changed", door }),
   // serve.ts delivers mail when the deployment has SMTP (src/server/smtp.ts); without it, it stays in the outbox.

@@ -43,6 +43,35 @@ Nothing in the app changes. A plugin reads and writes its collections as before,
 
 To show who that was, ask for the names: `await ctx.call("sync", "members")` gives `{ space, you, members: [{ id, name }] }`, each member with the name on their account and `you` the member this page is signed in as (it needs the `members` permission). The space sends the names when a page connects, and the page keeps them for when it's offline; `members:changed` says when they arrive or change. A plugin that stamps a record with who did something should use `you` rather than a name the person types: the space vouches for it. [`demos/household`](../../demos/household/) works this way.
 
+### Who may change what
+
+Each member of a space has a role, which its owner gives on [`/account/`](/account/): the **owner** and **editors** change what the space keeps, and a **reader** only sees it. An invite is for an editor or a reader, and the owner can change someone's role later. The space's server decides, so a reader's change is refused whatever their browser sends, and they are told who can make them an editor.
+
+A plugin can say more about a collection it keeps, with `rules` beside the schema:
+
+```js
+collections: {
+  chores: { title: "Chores", schema: { /* … */ }, rules: { remove: "author" } },
+}
+```
+
+| Rule | Who it lets | Values |
+| --- | --- | --- |
+| `add` | add a record | `"editors"` (the default: anyone but a reader) or `"owner"` |
+| `change` | change one | `"editors"`, `"author"` (whoever added it) or `"owner"` |
+| `remove` | remove one | `"editors"`, `"author"` or `"owner"` |
+
+The owner can always do all three, and so can the app's own server plugins. The space keeps who added each record itself, so a device can't claim to be the author. Rules that aren't written this way fail `npm run check`, and in a space they lock the collection to its owner until they are fixed, rather than letting everyone in. Only the rules in the app's own files count: nothing a member's device sends can set one.
+
+Outside a space there is one person and no rules. So a view asks before it draws a button, and the answer is yes to everything there:
+
+```js
+const can = await ctx.call("sync", "may", "chores");        // { add, change, remove, why? }
+const mine = await ctx.call("sync", "may", "chores", id);   // for one record, when a rule says "author"
+```
+
+`why` is a sentence for the person when something is refused ("Ask the space's owner, Ann, to make you an editor."). `sync.role()` gives the role alone. A write that isn't allowed is stopped on the device and the person is told why; nothing is kept as a draft. [`demos/household`](../../demos/household/) uses all of this: only whoever added a chore removes it, and a reader sees the lists without their buttons.
+
 To show people whether their copy is in step, link the standard sync plugin and give it a slot:
 
 ```html
@@ -91,11 +120,21 @@ What a server plugin can do that a browser plugin can't:
 | --- | --- | --- |
 | `routes` | Answer public requests at `/s/<space>/<its folder>/<path>` | Anyone may call one, from any site, and the plugin isn't told who. A request wakes the space if it was asleep. The answers are the same as in a browser ([Routes](routes.md)). |
 | `schedule` | Run a job every so often (repeating at most once a second), or once at a given time | Jobs outlive a restart, and one that came due while the space was stopped runs once when it starts. In a browser a job runs only while the kernel does. |
+| `notify` | Show a notification on members' devices, with the app closed on all of them | Sent with Web Push to each device a member turned notifications on for, on their account page. To every member, or `to: [ids]`. A click opens the plugin's app in the space. At most 6 a minute per plugin and 200 a day per person. |
 | `email` | Send a message to up to 10 addresses | Only to the space's members, at an address they confirmed from a link mailed to it. At most 50 a day per plugin. Delivered by Cloudflare Email Service or SMTP, which the site sets up ([Sending email](../server.md#sending-email)). |
 | `hook:intercept:data:beforeWrite:<collection>` | Check every change any member's device sends, and stop it | It hears which member sent it. For a collection it doesn't own, it also needs `data:read:<collection>`. |
 | `network` | Fetch from the internet | Never the server's own network: loopback, private and metadata addresses are refused where the connection is made. |
 
 What it writes reaches every member's device as a change by `plugin:<id>`.
+
+**A reminder with every tab closed** is a job and a notification together:
+
+```js
+// permissions: ["schedule", "notify"]
+ctx.schedule.at("bins", when, () => ctx.call("notify", "show", { title: "The bins go out tonight", tag: "bins" }));
+```
+
+`show` answers `true` if it reached at least one device, and the space's trace says how many members it reached and why not the rest. Each person turns notifications on once for each device, under **Notifications on this device** on `/account/`, and can send themselves a test there. [`demos/household/reminders.js`](../../demos/household/reminders.js) tells everyone when a chore comes due this way, and sets one job for the next due time instead of polling.
 
 **Live messages** are for what shouldn't be kept: a game's moves and
 frames, a cursor, who is here. A page calls `ctx.call("sync", "live",
