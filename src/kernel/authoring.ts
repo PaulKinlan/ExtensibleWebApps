@@ -29,8 +29,12 @@ import type { RemotePlugins, ServiceProvider } from "./remote";
 import { allowed, type Outcome, type Request } from "./review";
 import type { Store } from "./store";
 import { SIGNED_IN } from "./modules";
+import { backupProfile, installedPackageInfo, MAX_BACKUP_BYTES, readPackageMeta, restoreProfile } from "./user-plugin-changes";
 import { EVERYWHERE, folderOf, type UserPlugin, type UserPlugins } from "./user-plugins";
 import { asMove, movable, type Moved } from "./moves";
+
+const storesByRemote = new WeakMap<RemotePlugins, Store>();
+export const storeForRemote = (remote: RemotePlugins): Store | undefined => storesByRemote.get(remote);
 
 type Apps = { linkedBy(tab: string): string[] | undefined; tabsWith?(id: string): string[] };
 
@@ -66,7 +70,9 @@ interface Package {
   id: string;
   name: string;
   description: string;
+  version?: string;
   href: string;
+  integrity?: string;
   permissions: string[];
   provides: string[];
   services: string[];
@@ -148,6 +154,7 @@ export function explain(permission: string): string {
 }
 
 export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): ServiceProvider {
+  storesByRemote.set(remote, saving.store);
   /**
    * The caller's tab, or an error: the editor works on the app open in one tab. A shared plugin, such as
    * an agent (std/agents/builder.agent.md), works on the app that links it, through any tab that has it open.
@@ -216,20 +223,43 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       mine: {
         args: "()",
-        returns: "[{ id, name, description, permissions, places, on, shared, everywhere, agent, error? }]",
+        returns: "[{ id, name, description, version?, integrity?, permissions, places, on, shared, everywhere, agent, updateAvailable, addedPermissions, error? }]",
         needs: "plugins:author",
-        description: "The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. everywhere says which ones they use in every app (kept once, and on or off in all of them). error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).",
+        description: "The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. everywhere says which ones they use in every app (kept once, and on or off in all of them). updateAvailable and addedPermissions say when a registry package has an update and what new permissions it asks for. error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).",
         params: [],
       },
       add: {
-        args: "(url, { everywhere }?)",
+        args: "(url, { everywhere, integrity }?)",
         returns: "{ ok: true, id } or { ok: false, error }",
         needs: "plugins:author",
-        description: "Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn(). With { everywhere: true } it is added for every app the person opens on this device, and the review says so.",
+        description: "Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, verifying its SHA-256 integrity when present and once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn(). With { everywhere: true } it is added for every app the person opens on this device, and the review says so.",
         params: [
           { name: "url", schema: { type: "string", description: "The plugin's .js file on this site: /packages/clock/clock.js" } },
-          { name: "options", schema: { type: "object", description: "{ everywhere: true } to add it for every app, not only this one" } },
+          { name: "options", optional: true, schema: { type: "object", description: "{ everywhere: true, integrity?: 'sha256-...' }" } },
         ],
+      },
+      update: {
+        args: "(id)",
+        returns: "{ ok: true, id, addedPermissions, version } or { ok: false, error }",
+        needs: "plugins:author",
+        reviewed: true,
+        description: "Updates an installed registry plugin to the site's current version after verifying its SHA-256 integrity and showing a review card that highlights any newly added permissions (or the code diff when permissions are unchanged).",
+        params: [{ name: "id", schema: { type: "string", description: "The id of one of the person's own plugins from the registry" } }],
+      },
+      backup: {
+        args: "(options?)",
+        returns: "{ ok: true, format, version, exportedAt, summary, files, file? } or { ok: false, error }",
+        needs: "plugins:author",
+        description: "Exports the person's entire local device OPFS profile (collections, plugins, plugin-data, user plugins, moves, grants and settings, strictly excluding secrets.json and sync session marks). With `{ download: true }` right after a click, downloads the backup as a JSON file.",
+        params: [{ name: "options", optional: true, schema: { type: "object", description: "{ download: true } to save a browser download right after a click" } }],
+      },
+      restore: {
+        args: "(archive?)",
+        returns: "{ ok: true, collections, plugins, files } or { ok: false, cancelled?, error }",
+        needs: "plugins:author",
+        reviewed: true,
+        description: "Restores a local device OPFS profile backup after checking every path and showing a single review card summarizing the collections and plugins in it. Without `archive` (right after a click), opens the file chooser to pick a `.json` backup.",
+        params: [{ name: "archive", optional: true, schema: { type: "object", description: "A backup object from authoring.backup(), or omit right after a click to pick a file" } }],
       },
       turn: {
         args: "(id, on)",
@@ -250,9 +280,9 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       packages: {
         args: "()",
-        returns: "[{ id, name, description, href, permissions, can, added, linked, adds: [{ id, name, href }] }]",
+        returns: "[{ id, name, description, version?, href, integrity?, permissions, can, added, updateAvailable, addedPermissions, linked, adds: [{ id, name, href, integrity? }] }]",
         needs: "plugins:read",
-        description: "The site's plugin registry (/packages/): each package, what its permissions let it do in words (can), whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.",
+        description: "The site's plugin registry (/packages/): each package, its SHA-256 integrity, what its permissions let it do in words (can), whether the person has added it to this app, whether an update is available and what new permissions it requests, whether the app links it already (linked), and what adding it adds, in order.",
         params: [],
       },
       pick: {
@@ -464,7 +494,9 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         // A service one needs that nothing here has, nor any of their plugins here provides: say where to get it.
         const running = new Set(saving.services());
         const lacking = (p: UserPlugin) => (p.services ?? []).filter((s) => !running.has(s) && !list.some((o) => o.provides?.includes(s)));
-        const packages = list.some((p) => lacking(p).length) ? await registry() : [];
+        const packages = list.length ? await registry() : [];
+        const pkgById = new Map(packages.map((pkg) => [pkg.id, pkg]));
+        const meta = list.length ? await readPackageMeta(saving.store) : {};
         const needs = (p: UserPlugin) =>
           lacking(p)
             .map((s) => {
@@ -472,18 +504,32 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
               return `Needs the ${s} service, which nothing here provides${from ? `: add ${from.name} from this site's registry` : ""}.`;
             })
             .join(" ");
-        return marked.map((p) => ({
-          id: p.id ?? p.file,
-          name: p.name ?? p.file,
-          description: p.description ?? "",
-          permissions: p.permissions ?? [],
-          places: Object.values(p.places ?? {}).map((at) => `${at.put}${at.each ? " each" : ""} ${at.at}`),
-          on: p.on,
-          shared: !!p.shared,
-          everywhere: !!p.everywhere,
-          agent: isAgentFile(p.file),
-          ...(p.error ? { error: p.error } : needs(p) ? { error: needs(p) } : {}),
-        }));
+        return Promise.all(
+          marked.map(async (p) => {
+            const folder = folderOf(app, p);
+            const info = p.id ? await installedPackageInfo(saving.store, folder, p, meta) : { integrity: "" };
+            const pkg = p.id ? pkgById.get(p.id) : undefined;
+            const updateAvailable = Boolean(pkg && (pkg.integrity ? info.integrity !== pkg.integrity : pkg.version && info.version && info.version !== pkg.version));
+            const currentPerms = new Set(p.permissions ?? []);
+            const addedPermissions = updateAvailable && pkg ? pkg.permissions.filter((perm) => !currentPerms.has(perm)) : [];
+            return {
+              id: p.id ?? p.file,
+              name: p.name ?? p.file,
+              description: p.description ?? "",
+              ...(info.version ? { version: info.version } : {}),
+              ...(info.integrity ? { integrity: info.integrity } : {}),
+              permissions: p.permissions ?? [],
+              places: Object.values(p.places ?? {}).map((at) => `${at.put}${at.each ? " each" : ""} ${at.at}`),
+              on: p.on,
+              shared: !!p.shared,
+              everywhere: !!p.everywhere,
+              agent: isAgentFile(p.file),
+              updateAvailable,
+              addedPermissions,
+              ...(p.error ? { error: p.error } : needs(p) ? { error: needs(p) } : {}),
+            };
+          }),
+        );
       }
       if (method === "page") {
         const state = (await saving.page(tab, "state", [], dispatch)) as { samples?: { href: string; title: string }[] };
@@ -529,7 +575,16 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       if (method === "packages") {
         const app = saving.appIn(tab);
         const packages = await registry();
-        const have = new Set(app ? (await saving.userAdded.list(app)).map((p) => p.id) : []);
+        const mineList = app ? await saving.userAdded.list(app) : [];
+        const ownById = new Map(mineList.filter((p): p is UserPlugin & { id: string } => !!p.id).map((p) => [p.id, p]));
+        const have = new Set(ownById.keys());
+        const meta = mineList.length ? await readPackageMeta(saving.store) : {};
+        const infoById = new Map<string, { integrity: string; version?: string }>();
+        if (app) {
+          for (const [id, own] of ownById) {
+            infoById.set(id, await installedPackageInfo(saving.store, folderOf(app, own), own, meta));
+          }
+        }
         const running = new Set(saving.services());
         const providerOf = (service: string) => (running.has(service) ? undefined : packages.find((p) => p.provides.includes(service)));
         /** The services a permission may name: the ones running here, and the ones a registry package provides. */
@@ -541,18 +596,73 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           const needs = pkg.services.map(providerOf).filter((p): p is Package => !!p && !have.has(p.id));
           return [...needs.flatMap((p) => withNeeds(p, seen)), pkg];
         };
-        return packages.map((pkg) => ({
-          id: pkg.id,
-          name: pkg.name,
-          description: pkg.description,
-          href: pkg.href,
-          permissions: pkg.permissions,
-          can: pkg.permissions.map((permission) => say(permission, known)),
-          added: have.has(pkg.id),
-          // A standard plugin the app links already runs here: adding a copy of it would clash.
-          linked: (apps.linkedBy(tab) ?? []).includes(pkg.id),
-          adds: withNeeds(pkg).filter((p) => !have.has(p.id)).map((p) => ({ id: p.id, name: p.name, href: p.href })),
-        }));
+        return packages.map((pkg) => {
+          const own = ownById.get(pkg.id);
+          const info = infoById.get(pkg.id);
+          const updateAvailable = Boolean(own && info && (pkg.integrity ? info.integrity !== pkg.integrity : pkg.version && info.version && info.version !== pkg.version));
+          const currentPerms = new Set(own?.permissions ?? []);
+          const addedPermissions = updateAvailable ? pkg.permissions.filter((perm) => !currentPerms.has(perm)) : [];
+          return {
+            id: pkg.id,
+            name: pkg.name,
+            description: pkg.description,
+            ...(pkg.version ? { version: pkg.version } : {}),
+            href: pkg.href,
+            ...(pkg.integrity ? { integrity: pkg.integrity } : {}),
+            permissions: pkg.permissions,
+            can: pkg.permissions.map((permission) => say(permission, known)),
+            added: have.has(pkg.id),
+            updateAvailable,
+            addedPermissions,
+            // A standard plugin the app links already runs here: adding a copy of it would clash.
+            linked: (apps.linkedBy(tab) ?? []).includes(pkg.id),
+            adds: withNeeds(pkg).filter((p) => !have.has(p.id)).map((p) => ({ id: p.id, name: p.name, href: p.href, ...(p.integrity ? { integrity: p.integrity } : {}) })),
+          };
+        });
+      }
+      if (method === "backup") {
+        const [options] = args;
+        const download = !!options && typeof options === "object" && (options as { download?: unknown }).download === true;
+        const archive = await backupProfile(saving.store);
+        if (!download) return archive;
+        const host = remote.hosts.list.find((h) => h.tab === tab) ?? remote.hosts.list[0];
+        if (!host) return { ok: false, error: "No open tab to download the backup in" };
+        const file = `backup-${new Date().toISOString().slice(0, 10)}.json`;
+        await remote.hosts.bridge("transfer", "save", [file, JSON.stringify(archive, null, 2) + "\n", "application/json"], dispatch, host);
+        return { ...archive, file };
+      }
+      if (method === "restore") {
+        let [rawArchive] = args;
+        if (rawArchive === undefined) {
+          const host = remote.hosts.list.find((h) => h.tab === tab) ?? remote.hosts.list[0];
+          if (!host) return { ok: false, error: "No open tab to choose a backup file in" };
+          const picked = (await remote.hosts.bridge("transfer", "pick", [".json,application/json", MAX_BACKUP_BYTES], dispatch, host)) as { name: string; size: number; text?: string } | null;
+          if (!picked) return { ok: false, cancelled: true, error: "No backup file chosen" };
+          if (typeof picked.text !== "string") return { ok: false, error: `${picked.name} exceeds the 20 MB backup limit` };
+          rawArchive = picked.text;
+        }
+        const key = "backup:restore";
+        if (asking.has(key)) return { ok: false, error: "There's already a backup restore review open. Answer that one first." };
+        asking.add(key);
+        const caller = instance.split("@")[0];
+        try {
+          return await restoreProfile(rawArchive, {
+            store: saving.store,
+            userAdded: saving.userAdded,
+            remote,
+            reopen: saving.reopen,
+            move: async (mApp, plugin, place, to) => saving.move(mApp, plugin, place, to),
+            askReview: async (target, before, after, reason) =>
+              allowed(
+                await saving.ask(
+                  { plugin: caller, instance, name: remote.installed.get(caller)?.manifest.name ?? caller, place: "backup:restore", target, before, after, reason, once: true },
+                  dispatch,
+                ),
+              ),
+          });
+        } finally {
+          asking.delete(key);
+        }
       }
       if (method === "unlock" || method === "lock") {
         const [plugin, place] = args;
@@ -587,7 +697,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         await saving.reopen([id, ...also.map((p) => p.id)].some((changed) => all.find((p) => p.id === changed)?.everywhere) ? EVERYWHERE : app);
         return { ok: true, also: also.map((p) => ({ id: p.id, name: p.name ?? p.id })) };
       }
-      if (["save", "remove", "add", "pick", "share", "unshare", "everywhere", "saveComponent", "removeComponent"].includes(method)) {
+      if (["save", "remove", "add", "update", "pick", "share", "unshare", "everywhere", "saveComponent", "removeComponent"].includes(method)) {
         const app = appOf(tab);
         const caller = instance.split("@")[0];
         const mine = await saving.userAdded.list(app);
@@ -636,8 +746,12 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           if (typeof url !== "string") return { ok: false, error: "add(url) takes a plugin's .js file, or an agent's .agent.md file, on this site" };
           // For every app the person opens here, rather than this one: a language model they bring their own key to, say.
           const everywhere = !!options && typeof options === "object" && (options as { everywhere?: unknown }).everywhere === true;
+          const expectedIntegrity =
+            options && typeof options === "object" && typeof (options as { integrity?: unknown }).integrity === "string"
+              ? ((options as { integrity: string }).integrity || undefined)
+              : undefined;
           const folder = everywhere ? EVERYWHERE : app;
-          const fetched = await saving.userAdded.fetch(url);
+          const fetched = await saving.userAdded.fetch(url, expectedIntegrity);
           if (!fetched.ok) return fetched;
           const wrongAdd = await saving.userAdded.problem(folder, fetched.files);
           if (wrongAdd) return { ok: false, error: wrongAdd };
@@ -663,11 +777,83 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
             if (!(await ask(`${review.target}${everywhere ? ", for every app" : ""}`, review.before, fetched.source, `Once it is on, it can: ${words(manifest.permissions)}${reach}`))) return { ok: false, error: "Not added" };
             if ((await current(manifest.id)) !== before) return { ok: false, error: changed };
             // The files the person saw, not the site's files read again.
-            const added = await saving.userAdded.add(folder, fetched.files);
+            const added = await saving.userAdded.add(folder, fetched.files, { href: fetched.href });
             if (!added.ok) return added;
             // Adding a plugin again turns it off: stop the copy that was running.
             await saving.reopen(folder);
             return { ok: true, id: manifest.id };
+          });
+        }
+
+        if (method === "update") {
+          const [id] = args;
+          const own = mine.find((p) => p.id === id);
+          if (!own || typeof id !== "string") return { ok: false, error: `${String(id)} isn't one of your plugins here` };
+          const pkg = (await registry()).find((p) => p.id === id);
+          if (!pkg) return { ok: false, error: `${own.name ?? id} isn't in this site's plugin registry` };
+          const folder = keptIn(id);
+          const fetched = await saving.userAdded.fetch(pkg.href, pkg.integrity);
+          if (!fetched.ok) return fetched;
+          const wrongUpdate = await saving.userAdded.problem(folder, fetched.files);
+          if (wrongUpdate) return { ok: false, error: wrongUpdate };
+          let m;
+          try {
+            m = await saving.userAdded.manifest(fetched.files[0].name, fetched.source);
+          } catch (error) {
+            return { ok: false, error: error instanceof Error ? error.message : String(error) };
+          }
+          if (m.id !== id) return { ok: false, error: `${pkg.href} has manifest id ${m.id}, not ${id}` };
+          const taken = takenCollection(m);
+          if (taken) return { ok: false, error: taken };
+          const sharedUpdate = await sharedAsOther(m.id, fetched.files[0].name);
+          if (sharedUpdate) return { ok: false, error: sharedUpdate };
+          const currentInfo = await installedPackageInfo(saving.store, folder, own);
+          if (currentInfo.integrity === fetched.integrity) return { ok: true, id, addedPermissions: [], version: m.version ?? "", unchanged: true };
+          const currentPerms = new Set(own.permissions ?? []);
+          const addedPermissions = m.permissions.filter((perm) => !currentPerms.has(perm));
+          const manifest = m;
+          const companions = fetched.files.slice(1);
+          const afterTexts = await Promise.all(
+            fetched.files.map(async (f) => `──── ${f.name} ────\n${typeof f.data === "string" ? f.data : await f.data.text()}`),
+          );
+          const afterCombined = companions.length ? afterTexts.join("\n\n") : fetched.source;
+          return once(id, async () => {
+            const stopped = await checked(manifest, fetched.source, "update");
+            if (stopped) return stopped;
+            const before = await current(id);
+            const beforeCombined =
+              companions.length && before !== undefined
+                ? [
+                    `──── ${own.file} ────\n${before}`,
+                    ...(
+                      await Promise.all(
+                        companions.map(async (f) => {
+                          const old = await saving.store.readText(`user/${folder}/${f.name}`);
+                          return old === undefined ? "" : `──── ${f.name} ────\n${old}`;
+                        }),
+                      )
+                    ).filter(Boolean),
+                  ].join("\n\n")
+                : (before ?? "");
+            const target = addedPermissions.length
+              ? `your plugins: updates ${manifest.name} (+${addedPermissions.length} new permission${addedPermissions.length === 1 ? "" : "s"}: ${addedPermissions.join(", ")})`
+              : `your plugins: updates ${manifest.name}${manifest.version ? ` to ${manifest.version}` : ""}`;
+            const reason = addedPermissions.length
+              ? `New permissions requested: ${addedPermissions.map((p) => `${p} (${explain(p)})`).join(" ")} Once updated, all permissions: ${words(manifest.permissions)}`
+              : `No new permissions requested (same permissions as your installed copy). Review the code diff below. Once it is on, it can: ${words(manifest.permissions)}`;
+            if (!(await ask(target, beforeCombined, afterCombined, reason))) return { ok: false, error: "Not updated" };
+            if ((await current(id)) !== before) return { ok: false, error: changed };
+            const wasOn = own.on;
+            await saving.userAdded.remove(folder === EVERYWHERE ? EVERYWHERE : app, id, { quiet: true });
+            const added = await saving.userAdded.add(folder, fetched.files, { href: fetched.href });
+            if (!added.ok) return added;
+            if (wasOn) {
+              const has = new Set(saving.services());
+              await saving.userAdded.onWithNeeds(app, id, (service) => has.has(service), (service, not) => has.has(service) && remote.providers.get(service) !== not);
+              await saving.turnOn([id]);
+            }
+            await saving.reopen(folder);
+            return { ok: true, id: manifest.id, addedPermissions, version: manifest.version ?? "" };
           });
         }
 
