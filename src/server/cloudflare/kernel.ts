@@ -21,7 +21,7 @@ import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { type IsolateHost, remoteIsolates } from "../../seams/remote-isolates.ts";
 import type { RouteRequest, RouteResponse } from "../routes.ts";
 import { exportSpace, importSpace, type SpaceCopy } from "../space-copy.ts";
-import { signed } from "../signed.ts";
+import { answerFor, signed } from "../signed.ts";
 import { roleOf, type Role } from "../auth/roles.ts";
 
 type Send = (text: string) => void | Promise<void>;
@@ -173,7 +173,13 @@ export class SpaceKernel extends DurableObject {
   async deliver(client: string, text: string): Promise<void> {
     const found = this.clients.get(client);
     // The kernel learns who this client is from its hello, which only the supervisor may say.
-    found?.port.postMessage(signed(JSON.parse(text), found.member, found.role));
+    if (!found) return;
+    const message = JSON.parse(text);
+    // A command the member may not run is answered here, with why; what isn't let through never reaches the kernel.
+    const answer = answerFor(message, found.role);
+    if (answer) void found.send(JSON.stringify(answer));
+    const heard = signed(message, found.member, found.role);
+    if (heard !== null) found.port.postMessage(heard);
   }
 
   async leave(client: string): Promise<void> {

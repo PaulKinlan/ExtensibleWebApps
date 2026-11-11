@@ -75,22 +75,42 @@ export async function roleChecks(base, check, owner, person, { device, client },
     JSON.stringify({ kept, refused, after }),
   );
 
-  // Whatever else a reader's client sends that would change the space never reaches its kernel.
-  const raeClient = await client(base, "club", rae.cookie);
+  // The commands a member's client may run on the space's server, by role (src/server/signed.ts): everything else is
+  // answered with why, and never reaches the space's kernel.
   const plugin = 'export const manifest = { id: "sneak", name: "Sneak", permissions: [] };\nexport default () => {};';
-  const added = await raeClient.command("user:add", { app: "demos/contacts", files: [{ name: "sneak.js", data: plugin }] }).catch((e) => String(e));
-  const installed = await raeClient.command("install", "/server-app/ghost.js").catch((e) => String(e));
-  const reads = await raeClient.command("reference");
-  raeClient.close();
-  const ownerClient = await client(base, "club", owner.cookie);
-  const listed = await ownerClient.command("user:list", { app: "demos/contacts" });
-  const ok = await ownerClient.command("user:add", { app: "demos/contacts", files: [{ name: "sneak.js", data: plugin }] });
-  ownerClient.close();
-  check(
-    "roles: a reader's client can't run a command that changes the space (adding a plugin, installing one), but can still read; the owner's can",
-    added === undefined && installed === undefined && !!reads?.data && Array.isArray(listed) && listed.length === 0 && ok?.ok === true,
-    JSON.stringify({ added, installed, reads: !!reads?.data, listed, ok }),
-  );
+  const adds = { app: "demos/contacts", files: [{ name: "sneak.js", data: plugin }] };
+  const READS = ["changes", "fetched", "modules", "reference", "sync", "trace"];
+  const OWNERS = [["user:list", { app: "demos/contacts" }], ["user:add", adds], ["user:on", { app: "demos/contacts", name: "sneak.js" }], ["user:off", { app: "demos/contacts", name: "sneak.js" }], ["user:remove", { app: "demos/contacts", name: "sneak.js" }]];
+  const NEVER = [["install", "/server-app/ghost.js"], ["uninstall", "ledger"], ["route", { method: "GET", path: "/server-app/count" }], ["place:move", {}], ["place:unlock", {}], ["plugins-panel"], ["bench", 1], ["reload-test"], ["game-state"], ["follow", "demos/contacts"], ["launch:arrived", {}], ["outside:call", {}], ["no-such-command"]];
+  const tried = {};
+  for (const [who, person] of [["reader", rae], ["editor", ed], ["owner", owner]]) {
+    const c = await client(base, "club", person.cookie);
+    const run = (name, arg) => c.command(name, arg).catch((e) => String(e));
+    tried[who] = { reads: [], owners: [], never: [] };
+    for (const name of READS) tried[who].reads.push([name, await run(name)]);
+    for (const [name, arg] of OWNERS) tried[who].owners.push([name, await run(name, arg)]);
+    for (const [name, arg] of NEVER) tried[who].never.push([name, await run(name, arg)]);
+    // Starting a part of the kernel again is the owner's too. Last, since it asks every device to say hello again.
+    tried[who].restart = await run("restart-module", "notify");
+    c.close();
+  }
+  const no = (answer, words) => answer?.ok === false && words.test(answer.error ?? "");
+  const allAnswered = (list) => list.every(([name, value]) => (value !== undefined || name === "sync") && !no(value, /./));
+  const everyoneReads = ["reader", "editor", "owner"].every((who) => allAnswered(tried[who].reads));
+  const neverAnyone = ["reader", "editor", "owner"].every((who) => tried[who].never.every(([, value]) => no(value, who === "reader" ? /You can read this space but not change it/ : /A space's server doesn't take this from a member's device.*Make the change in the app/)));
+  const onlyOwner = tried.owner.owners.every(([, value]) => !no(value, /./)) && tried.owner.owners[1][1]?.ok === true && tried.owner.restart?.ok === true && ["reader", "editor"].every((who) => [...tried[who].owners, ["restart-module", tried[who].restart]].every(([, value]) => no(value, /Only the space's owner can do that here.*Ask them/)));
+  check("commands: any member's client may run the commands that only read", everyoneReads, JSON.stringify(Object.fromEntries(Object.entries(tried).map(([who, t]) => [who, t.reads.map(([name, value]) => [name, value === undefined ? "nothing" : no(value, /./) ? value.error : "answered"])]))));
+  check("commands: only the owner's client may start a part of the space's kernel again, or change the plugin files the space keeps; anyone else is told to ask the owner", onlyOwner, JSON.stringify({ reader: tried.reader.owners, editor: tried.editor.owners, owner: tried.owner.owners, restarts: [tried.reader.restart, tried.editor.restart, tried.owner.restart] }).slice(0, 1500));
+  check("commands: nobody's client, not even the owner's, installs a plugin on the space's server or runs any other command, and each is told what to do instead", neverAnyone, JSON.stringify(Object.fromEntries(Object.entries(tried).map(([who, t]) => [who, t.never]))).slice(0, 1500));
+  // And what isn't a command, a sync message or a hello at all is never heard: an app "opening" with plugins of the client's own.
+  const opener = await client(base, "club", ed.cookie);
+  opener.send({ t: "open", app: "/server-app/", plugins: [{ href: `${base}/server-app/sneak.js`, source: plugin }] });
+  opener.send({ t: "report", source: "page", text: "written into the space's trace" });
+  await new Promise((r) => setTimeout(r, 800));
+  const trace = await opener.command("trace");
+  const plugins = (await opener.command("reference"))?.data;
+  opener.close();
+  check("commands: a client can't open an app with plugins of its own on the space's server, or write into its trace", !JSON.stringify(trace ?? "").includes("written into the space's trace") && !JSON.stringify(plugins ?? "").includes('"sneak"'), JSON.stringify(trace ?? "").slice(-300));
 
   // Sharing a plugin with the space is a change too: refused in the shape the device waits for.
   const shareId = 77;

@@ -22,7 +22,7 @@ import { accounts } from "./auth/accounts.ts";
 import { FOLLOW_BODY } from "./auth/follow.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
 import { providerModules } from "./auth/providers/index.ts";
-import { signed } from "./signed.ts";
+import { answerFor, signed } from "./signed.ts";
 import { pushHostsFrom } from "./auth/push.ts";
 import { type Accounts, type Decision, frontDoor, type Knock, SPACE, unrouted } from "./front-door.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "./routes.ts";
@@ -488,7 +488,12 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     socket.onMessage = (text) => {
       try {
         // The kernel learns who this client is from its hello, which only the server may say.
-        port1.postMessage(signed(JSON.parse(text), member, role));
+        const message = JSON.parse(text);
+        // A command the member may not run is answered here, with why; what isn't let through never reaches the kernel.
+        const answer = answerFor(message, role);
+        if (answer) socket.send(JSON.stringify(answer));
+        const heard = signed(message, member, role);
+        if (heard !== null) port1.postMessage(heard);
       } catch {
         socket.close(1007, "JSON only");
       }
