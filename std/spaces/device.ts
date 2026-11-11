@@ -11,7 +11,7 @@
 // Kept in the space's copy, beside its collections:
 //   sync/device.json   the last sequence number seen, each record's version, changes not yet sent, and drafts
 
-import type { Accepted, AppRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, SyncRecord, SyncToDevice, TraceRequest, Verdict } from "../../src/shared/sync";
+import type { Accepted, AppRequest, BlobRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, SpaceRole, SyncRecord, SyncToDevice, TraceRequest, Verdict } from "../../src/shared/sync";
 import type { Hosts } from "../../src/kernel/hosts";
 import type { Change, Collections, StoredRecord } from "../../src/kernel/records";
 import type { Store } from "../../src/kernel/store";
@@ -46,7 +46,9 @@ interface State {
   seq: number;
   /** The space's members' names by id, and which one this device is, as it last said: kept, so a device that's offline still knows them. */
   members?: Record<string, string>;
+  roles?: Record<string, SpaceRole>;
   member?: string;
+  role?: SpaceRole;
   versions: Record<string, number>;
   pending: Record<string, Outgoing>;
   drafts: Draft[];
@@ -57,11 +59,25 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   let state: State = { seq: 0, versions: {}, pending: {}, drafts: [] };
   /** Who this device is signed in as, once the space has said (its answer to hello). */
   let member: string | undefined;
+  let role: SpaceRole | undefined;
   const loaded = store.readJson<unknown>(STATE, null).then((saved) => {
     const s = saved as State | null;
-    if (s && typeof s.seq === "number") state = { seq: s.seq, ...(s.members && typeof s.members === "object" ? { members: { ...s.members } } : {}), ...(typeof s.member === "string" ? { member: s.member } : {}), versions: { ...s.versions }, pending: { ...s.pending }, drafts: Array.isArray(s.drafts) ? s.drafts.map((d, i) => ({ ...d, ref: d.ref ?? `d${i}-${d.at}` })) : [] };
+    if (s && typeof s.seq === "number")
+      state = {
+        seq: s.seq,
+        ...(s.members && typeof s.members === "object" ? { members: { ...s.members } } : {}),
+        ...(s.roles && typeof s.roles === "object" ? { roles: { ...s.roles } } : {}),
+        ...(typeof s.member === "string" ? { member: s.member } : {}),
+        ...(s.role === "owner" || s.role === "member" || s.role === "viewer" ? { role: s.role } : {}),
+        versions: { ...s.versions },
+        pending: { ...s.pending },
+        drafts: Array.isArray(s.drafts) ? s.drafts.map((d, i) => ({ ...d, ref: d.ref ?? `d${i}-${d.at}` })) : [],
+      };
   });
-  void loaded.then(() => (member ??= state.member));
+  void loaded.then(() => {
+    member ??= state.member;
+    role ??= state.role;
+  });
   let saving: Promise<unknown> = Promise.resolve();
   const save = () => {
     changed();
@@ -96,8 +112,16 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   const local = (change: Change) => {
     void loaded.then(() => {
       const k = key(change.collection, change.id);
-      const base = state.pending[k]?.base ?? state.versions[k] ?? 0;
-      state.pending[k] = { collection: change.collection, id: change.id, base, after: (change.after as SyncRecord | undefined) ?? null };
+      const existing = state.pending[k];
+      const base = existing?.base ?? state.versions[k] ?? 0;
+      const before = existing && "before" in existing ? existing.before : ((change.before as SyncRecord | undefined) ?? null);
+      state.pending[k] = {
+        collection: change.collection,
+        id: change.id,
+        base,
+        ...(base > 0 && before ? { before } : {}),
+        after: (change.after as SyncRecord | undefined) ?? null,
+      };
       save();
       push();
     });
@@ -127,7 +151,10 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       if (mine) {
         // Ours, accepted. A newer edit made here since is now based on this version.
         if (pending && JSON.stringify(pending.after) === JSON.stringify(c.after)) delete state.pending[k];
-        else if (pending) pending.base = c.seq;
+        else if (pending) {
+          pending.base = c.seq;
+          pending.before = c.after;
+        }
       } else if (pending) {
         // Someone else's, passed over while this device's own edit waits: who made it is kept, for when the
         // space refuses that edit and its record is put back here.
@@ -180,8 +207,28 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       const newer = pending && JSON.stringify(pending.after) !== JSON.stringify(change.after) ? pending : undefined;
       if (verdict.ok) {
         state.versions[k] = Math.max(state.versions[k] ?? 0, verdict.seq);
-        if (newer) newer.base = verdict.seq;
-        else delete state.pending[k];
+        if (newer) {
+          if (verdict.merged && change.after && newer.after) {
+            // Carry the server's merged fields forward onto the newer local edit.
+            const combined: SyncRecord = { ...verdict.merged, id: change.id };
+            const allKeys = new Set([...Object.keys(change.after), ...Object.keys(newer.after)]);
+            for (const f of allKeys) {
+              if (f === "id" || f === "createdAt" || f === "updatedAt") continue;
+              if (JSON.stringify(change.after[f]) !== JSON.stringify(newer.after[f])) {
+                if (Object.hasOwn(newer.after, f) && newer.after[f] !== undefined) combined[f] = newer.after[f];
+                else delete combined[f];
+              }
+            }
+            combined.updatedAt = newer.after.updatedAt ?? verdict.merged.updatedAt;
+            newer.after = combined;
+          }
+          newer.base = verdict.seq;
+          newer.before = verdict.merged ?? change.after;
+        } else {
+          delete state.pending[k];
+          if (verdict.merged) await take(change.collection, change.id, verdict.merged, verdict.seq, `merged-${id}`);
+          else passedOver.delete(k);
+        }
         continue;
       }
       // Refused as stale, but the space has what this device made (two devices added the same sample, say): nothing is lost.
@@ -224,13 +271,18 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     if (m?.t !== "sync") return;
     if (m.op === "changes") {
       const was = member;
+      const wasRole = role;
       if (typeof m.member === "string") member = m.member;
+      if (m.role === "owner" || m.role === "member" || m.role === "viewer") role = m.role;
       const names = m.members && typeof m.members === "object" && JSON.stringify(m.members) !== JSON.stringify(state.members ?? null);
+      const rolesChanged = m.roles && typeof m.roles === "object" && JSON.stringify(m.roles) !== JSON.stringify(state.roles ?? null);
       if (names) state.members = { ...m.members! };
-      if (names || member !== state.member) {
+      if (rolesChanged) state.roles = { ...m.roles! };
+      if (names || rolesChanged || member !== state.member || role !== state.role) {
         if (member) state.member = member;
+        if (role) state.role = role;
         save();
-      } else if (member !== was) changed();
+      } else if (member !== was || role !== wasRole) changed();
       const applied = await changes(m.changes, m.seq);
       first();
       if (!applied) return void ws.close();
@@ -290,10 +342,10 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     heard,
     caughtUp: caughtUpHeard,
     /**
-     * Sends a request about members' plugins, a debugger's question (reflect.ts) or its asking for the trace
+     * Sends a request about members' plugins, blobs, a debugger's question (reflect.ts) or its asking for the trace
      * (trace.ts), a live message (live.ts), or a request about members' made apps (made-apps.ts), if connected and caught up: whether it went.
      */
-    send(message: PluginRequest | ReflectRequest | LiveToSpace | TraceRequest | AppRequest): boolean {
+    send(message: PluginRequest | ReflectRequest | LiveToSpace | TraceRequest | AppRequest | BlobRequest): boolean {
       if (!socket || socket.readyState !== 1 || !caughtUp) return false;
       socket.send(JSON.stringify(message));
       return true;
@@ -307,7 +359,17 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     /** What this device has, for the page and for checks. */
     async state() {
       await loaded;
-      return { space, ...(member ? { member } : {}), members: { ...(state.members ?? {}) }, seq: state.seq, connected: status.connected, pending: Object.keys(state.pending).length, drafts: state.drafts };
+      return {
+        space,
+        ...(member ? { member } : {}),
+        ...(role ? { role } : {}),
+        members: { ...(state.members ?? {}) },
+        roles: { ...(state.roles ?? {}) },
+        seq: state.seq,
+        connected: status.connected,
+        pending: Object.keys(state.pending).length,
+        drafts: state.drafts,
+      };
     },
     /**
      * Makes a draft the record again, as a change made here: it replaces what the space has now (only

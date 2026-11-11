@@ -25,7 +25,8 @@
 //   GET  /auth/spaces                       the spaces you're in, with your role
 //   POST /auth/spaces            { name }   makes a space, with you as its owner
 //   GET  /auth/spaces/<name>                its members (members only)
-//   POST /auth/spaces/<name>/invite         a one-time invite to it (its owner only)
+//   POST /auth/spaces/<name>/invite { role? } a one-time invite as member or viewer (its owner only)
+//   POST /auth/spaces/<name>/role { user, role } switches someone between member and viewer (its owner only)
 //   POST /auth/invites/accept    { token }  joins the space an invite is for
 //   POST /auth/spaces/<name>/leave { user? } leaves it, or (its owner) removes someone
 //
@@ -93,7 +94,7 @@ interface Challenge {
   session?: string;
 }
 
-export type Role = "owner" | "member";
+export type Role = "owner" | "member" | "viewer";
 
 interface Space {
   name: string;
@@ -386,16 +387,17 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     if (route === "POST /auth/invites/accept") {
       const token = String(body.token ?? "");
       const key = await hash(token);
-      const invite = /^[A-Za-z0-9_-]{20,100}$/.test(token) ? await read<{ space: string; expires: number }>(`invites/${key}.json`) : null;
+      const invite = /^[A-Za-z0-9_-]{20,100}$/.test(token) ? await read<{ space: string; role?: Role; expires: number }>(`invites/${key}.json`) : null;
       const space = invite && invite.expires > Date.now() ? await spaceOf(invite.space) : null;
       if (!space) return json({ error: "That invite has been used or has expired" }, 404);
       // One person, one use: the invite is gone once someone joins with it.
       await files.remove(`invites/${key}.json`);
-      if (!space.members[me]) await join(space, me, "member");
+      const invitedRole: Role = invite?.role === "viewer" ? "viewer" : "member";
+      if (!space.members[me]) await join(space, me, invitedRole);
       return json({ space: { name: space.name, role: space.members[me] } });
     }
 
-    const match = /^\/auth\/spaces\/([^/]+)(\/invite|\/leave)?$/.exec(path);
+    const match = /^\/auth\/spaces\/([^/]+)(\/invite|\/leave|\/role)?$/.exec(path);
     const space = match ? await spaceOf(match[1]) : null;
     // Someone who isn't in a space can't tell it from one that doesn't exist.
     if (!match || !space || !space.members[me]) return match ? json({ error: "No such space" }, 404) : undefined;
@@ -407,9 +409,21 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     }
     if (action === "POST /invite") {
       if (space.members[me] !== "owner") return json({ error: "Only the space's owner can invite people" }, 403);
+      if (body.role !== undefined && body.role !== "member" && body.role !== "viewer") return json({ error: 'Invite role must be "member" or "viewer"' }, 400);
+      const role: Role = body.role === "viewer" ? "viewer" : "member";
       const token = random(24);
-      await write(`invites/${await hash(token)}.json`, { space: space.name, by: me, expires: Date.now() + INVITE_MS });
-      return json({ token, expires: Date.now() + INVITE_MS });
+      await write(`invites/${await hash(token)}.json`, { space: space.name, by: me, role, expires: Date.now() + INVITE_MS });
+      return json({ token, role, expires: Date.now() + INVITE_MS });
+    }
+    if (action === "POST /role") {
+      if (space.members[me] !== "owner") return json({ error: "Only the space's owner can change roles" }, 403);
+      const who = typeof body.user === "string" ? body.user : "";
+      const next = body.role === "member" || body.role === "viewer" ? body.role : null;
+      if (!next) return json({ error: 'Role must be "member" or "viewer"' }, 400);
+      if (!who || !space.members[who]) return json({ error: "They aren't in this space" }, 404);
+      if (space.members[who] === "owner") return json({ error: "A space's owner stays its owner" }, 400);
+      await join(space, who, next);
+      return json({ ok: true, user: who, role: next });
     }
     if (action === "POST /leave") {
       const who = typeof body.user === "string" ? body.user : me;
@@ -425,12 +439,12 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   return {
     credentials,
 
-    /** Whether a request's session is a member of a space, and as what: for a host to ask before a client joins it. */
-    async member(request: Request, name: string): Promise<{ user: User; role: Role } | null> {
+    /** Whether a request's session is a member of a space, and as what: for a host to ask before a client joins or moves it. */
+    async member(request: Request, name: string): Promise<{ user: User; role: "owner" | "member"; spaceRole: Role } | null> {
       const current = await session(request);
       const space = current ? await spaceOf(name) : null;
-      const role = space && current ? space.members[current.user.id] : undefined;
-      return current && role ? { user: current.user, role } : null;
+      const spaceRole = space && current ? space.members[current.user.id] : undefined;
+      return current && spaceRole ? { user: current.user, role: spaceRole === "owner" ? "owner" : "member", spaceRole } : null;
     },
 
     /** The email addresses a space's members gave (User.email): the only ones its server plugins may email. */
@@ -445,12 +459,12 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     /** Which member of a space an agent's key (an `Authorization` header) is for: for a host to ask before an MCP request. */
     agent: (authorization: string | null, name: string, plugin?: string) => keys.member(authorization, name, plugin),
 
-    /** A space's members, each with the name on their account: what a page shows for a change's `by`. */
-    async members(name: string): Promise<{ id: string; name: string }[]> {
+    /** A space's members, each with the name on their account and their role: what a page shows for `by`, and what sync checks for RBAC. */
+    async members(name: string): Promise<{ id: string; name: string; role: Role }[]> {
       const space = await spaceOf(name);
       if (!space) return [];
       const users = await Promise.all(Object.keys(space.members).map((id) => read<User>(`users/${id}.json`)));
-      return users.flatMap((u) => (u ? [{ id: u.id, name: u.name }] : []));
+      return users.flatMap((u) => (u ? [{ id: u.id, name: u.name, role: space.members[u.id] }] : []));
     },
 
     /** Whether a space by this name exists: for a host to ask before waking it for a public route. */

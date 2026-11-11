@@ -1,14 +1,19 @@
 // The `sync` service: how a page in a space (/s/<space>/…) stands with the
-// space, and the drafts it keeps. The spaces module (module.ts) gives it,
-// from this file, as `ctx.call("sync", …)`.
+// space, the drafts it keeps, and content-addressed binary/media blobs shared
+// across the space. The spaces module (module.ts) gives it, from this file, as
+// `ctx.call("sync", …)`.
 //
-// A change the space refused (someone changed the record first) is replaced
-// by the space's record, and the person's version is kept as a draft
-// (device.ts). This service lists the drafts, and lets the
+// A change the space refused (someone changed the same field first, or a viewer
+// tried to write) is replaced by the space's record, and the person's version
+// is kept as a draft (device.ts). This service lists the drafts, and lets the
 // person keep theirs after all, which makes it a new change to the record,
 // or let it go. A plugin calls it for the person, from buttons (std/sync.js).
 // Keeping a draft writes a record without a review, so `sync` is a permission
 // to give only to a plugin that does it when the person asks.
+//
+// `putBlob(data, mediaType)` and `getBlob(hash)` store and fetch SHA-256
+// content-addressed blobs under `sync/blobs/<hash>`, syncing them across space
+// members. Plugins with `sync` or `files` permission may call them.
 //
 // In a kernel that keeps no space, state() says so and there's nothing to do.
 //
@@ -22,14 +27,16 @@
 // It needs `live`. They hear each other with the sync:live hook.
 
 import { env } from "../../src/kernel/env";
+import { check, grants } from "../../src/kernel/gate";
 import type { ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
-import { thisDevice } from "./this-device";
-import { askSpace, READS } from "./reflect";
-import { checkTopic, LIVE_HOOK, type LiveSpace } from "./live";
 import type { SyncToDevice } from "../../src/shared/sync";
+import { clientBlobs, type SpaceBlobs } from "./blobs";
+import { checkTopic, LIVE_HOOK, type LiveSpace } from "./live";
+import { askSpace, READS } from "./reflect";
+import { thisDevice } from "./this-device";
 
-export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, space: { live?: LiveSpace } = {}): ServiceProvider => {
+export default ({ root, store, collections, hook, cleanup, remote }: ModuleKernel, space: { live?: LiveSpace; blobs?: SpaceBlobs } = {}): ServiceProvider => {
   hook("sync:live", LIVE_HOOK);
   hook("sync:trace", {
     mode: "emit",
@@ -38,6 +45,14 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
     args: "{ events: [{ seq, at, kind, name, plugin?, trace?, ms?, detail? }], first?, error? }",
     description: "New events in the trace of the space's own kernel, on its server, for a debugger that asked with sync.trace(true): first is the batch from before it asked (again after each reconnection), and error says the space stopped sending. They name every server plugin and what it did, so listening needs reflect:read.",
   });
+  hook("sync:blobs", {
+    mode: "emit",
+    needs: "sync",
+    args: "{ hash, size, mediaType }",
+    description: "Another member or server plugin stored a content-addressed blob in this space. Read its bytes with sync.getBlob(hash).",
+  });
+  const blobs = clientBlobs(store, () => thisDevice.sync, (blob) => root.emit({ trace: `blob-${blob.hash.slice(0, 12)}` }, "sync:blobs", blob));
+
   /** The devices this service listens to for live messages and the space's trace, once a plugin has used either. */
   const attached = new WeakSet<object>();
   /** The plugins hearing the space's trace on this device: it stops once none of them is running. */
@@ -86,11 +101,12 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
   /** The members as last told, to tell members:changed only when they change. */
   let told = "";
   const heard = () => {
+    blobs.attach(thisDevice.sync);
     clearTimeout(soon);
     soon = setTimeout(async () => {
       root.emit({}, "sync:changed", {});
       const s = await thisDevice.sync?.state();
-      const now = JSON.stringify([s?.member ?? null, s?.members ?? {}]);
+      const now = JSON.stringify([s?.member ?? null, s?.role ?? null, s?.members ?? {}, s?.roles ?? {}]);
       if (now !== told) {
         told = now;
         root.emit({}, "members:changed", {});
@@ -113,7 +129,7 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
       const title = collections.registry.get(d.collection)?.title ?? d.collection;
       return { ref: d.ref, collection: d.collection, title, id: d.id, ...(label ? { label } : {}), mine: d.mine, why: d.why, at: d.at };
     });
-    return { space: s.space, ...(s.member ? { member: s.member } : {}), connected: s.connected, pending: s.pending, drafts };
+    return { space: s.space, ...(s.member ? { member: s.member } : {}), ...(s.role ? { role: s.role } : {}), connected: s.connected, pending: s.pending, drafts };
   }
 
   /** The space's members by name, and which one this page is signed in as: from the device's copy, or on the space's server from its accounts. */
@@ -121,28 +137,33 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
     const device = thisDevice.sync;
     if (device) {
       const s = await device.state();
-      return { space: s.space, ...(s.member ? { you: s.member } : {}), members: Object.entries(s.members).map(([id, name]) => ({ id, name })) };
+      return {
+        space: s.space,
+        ...(s.member ? { you: s.member } : {}),
+        ...(s.role ? { role: s.role } : {}),
+        members: Object.entries(s.members).map(([id, name]) => ({ id, name, ...(s.roles[id] ? { role: s.roles[id] } : {}) })),
+      };
     }
     if (env().kind === "server" && env().members) return { space: true, members: await env().members!() };
     return { space: null, members: [] };
   }
 
   return {
-    description: "How a page in a space stands with it, and the drafts it kept when someone else changed a record first.",
+    description: "How a page in a space stands with it, the drafts it kept when someone else changed a record first, and content-addressed blobs synced across the space.",
     methods: {
       state: {
         args: "()",
-        returns: "{ space: null } or { space, member?, connected, pending, drafts }",
+        returns: "{ space: null } or { space, member?, role?, connected, pending, drafts }",
         needs: "sync",
         params: [],
-        description: "Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).",
+        description: "Whether this page keeps a copy of a space, who it is signed in as there (`member` and `role`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).",
       },
       members: {
         args: "()",
-        returns: "{ space, you?, members: [{ id, name }] }",
+        returns: "{ space, you?, role?, members: [{ id, name, role? }] }",
         needs: "members",
         params: [],
-        description: "The space's members, each with the name on their account, and which of them this page is signed in as (`you`). A change's `by` and data:changed's `by` are a member's id: show the name from here. Outside a space, `space` is null and the list is empty.",
+        description: "The space's members, each with the name on their account (and role when known), and which of them this page is signed in as (`you`). A change's `by` and data:changed's `by` are a member's id: show the name from here. Outside a space, `space` is null and the list is empty.",
       },
       keep: {
         args: "(ref)",
@@ -150,6 +171,23 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
         needs: "sync",
         params: [{ name: "ref", schema: { type: "string", description: "The draft's ref, from state()" } }],
         description: "Makes a draft the record again, with no review, as a new change sent to the space. data:beforeWrite listeners can still stop it.",
+      },
+      putBlob: {
+        args: "(data, mediaType?)",
+        returns: "{ hash, size, mediaType }",
+        needs: "sync",
+        params: [
+          { name: "data", schema: { description: "Binary bytes (Uint8Array, ArrayBuffer or Blob), a data URL, or a UTF-8 string, up to 2 MB" } },
+          { name: "mediaType", optional: true, schema: { type: "string", description: "MIME type, such as image/png or audio/webm" } },
+        ],
+        description: "Stores a content-addressed binary or media blob under sync/blobs/<sha256> (capped at 2 MB per blob and 32 MB per space) and syncs it with the space. Plugins with `sync` or `files` permission may call this.",
+      },
+      getBlob: {
+        args: "(hash)",
+        returns: "{ data, mediaType } or null",
+        needs: "sync",
+        params: [{ name: "hash", schema: { type: "string", description: "The 64-character SHA-256 hex digest returned by putBlob" } }],
+        description: "Reads a content-addressed blob by its SHA-256 hash from local storage or the space, returning `{ data, mediaType }` (`data` is a `Uint8Array`) or `null` if unknown. Plugins with `sync` or `files` permission may call this.",
       },
       reflect: {
         args: "(method, id?)",
@@ -189,8 +227,15 @@ export default ({ root, collections, hook, cleanup, remote }: ModuleKernel, spac
         description: "Lets a draft go: the record stays as the space has it.",
       },
     },
-    capability: (method) => (method === "members" ? "members" : method === "reflect" || method === "trace" ? "reflect:read" : method === "live" ? "live" : "sync"),
+    capability: (method) => (method === "putBlob" || method === "getBlob" ? undefined : method === "members" ? "members" : method === "reflect" || method === "trace" ? "reflect:read" : method === "live" ? "live" : "sync"),
     call: async (instance, method, args, dispatch) => {
+      if (method === "putBlob" || method === "getBlob") {
+        const caps = remote.installed.get(instance.split("@")[0])?.caps ?? new Set<string>();
+        const allowed = grants(caps, "sync") || grants(caps, "files") || [...caps].some((c) => c.startsWith("files:"));
+        if (!allowed && !check(instance, caps, "sync")) throw new Error("Missing capability sync");
+        if (method === "putBlob") return space.blobs ? space.blobs.put(args?.[0], args?.[1]) : blobs.put(args?.[0], args?.[1]);
+        return space.blobs ? space.blobs.get(String(args?.[0] ?? "")) : blobs.get(String(args?.[0] ?? ""));
+      }
       if (method === "live") {
         const topic = checkTopic(args?.[0]);
         if (space.live) {
