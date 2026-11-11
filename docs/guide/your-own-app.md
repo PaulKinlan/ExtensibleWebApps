@@ -12,7 +12,7 @@ cd packing-list
 npm run dev        # http://localhost:5173/
 ```
 
-The first line makes `packing-list/` and installs the platform into it. (`npx github:PaulKinlan/ExtensibleWebApps packing-list` does the same without the small `create-extensible-app` package.) `--name "Packing list"` sets the app's title, and `--no-install` writes the files and installs nothing.
+The first line makes `packing-list/` and installs the platform into it. (`npx --allow-git=all github:PaulKinlan/ExtensibleWebApps packing-list` does the same straight from this repo, without the small `create-extensible-app` package. npm 12 fetches nothing from git unless told to with `--allow-git=all`; older npm needs no flag.) `--name "Packing list"` sets the app's title, and `--no-install` writes the files and installs nothing.
 
 ```
 packing-list/
