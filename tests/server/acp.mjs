@@ -237,6 +237,34 @@ export async function acpChecks(base, check, owner, person, vendor, restart) {
   const took = Date.now() - started;
   release?.();
   check("acp: cancelling a turn answers `cancelled` at once, without waiting for the model", cancelled?.result?.stopReason === "cancelled" && took < 3000, JSON.stringify({ cancelled, took }));
+
+  // Cancelling while a change waits for its review: the card is withdrawn at once, so accepting it late changes nothing.
+  vendor.script = (body) => (toolResult(body) ? { content: [{ type: "text", text: "Done." }] } : { content: [{ type: "tool_use", id: "tu_put3", name: "data_put_library", input: { record: { id: "dune", title: "Dune", author: "Too Late", shelf: "done" }, reason: "A late change" } }], stop_reason: "tool_use" });
+  const asks = ed.asked().length;
+  const cards = phone.reviews().length;
+  const pending = ed.request("session/prompt", { sessionId: session, prompt: [{ type: "text", text: "Change the author." }] });
+  const lateAsk = await until(() => ed.asked()[asks]);
+  const card = await until(() => phone.reviews()[cards]);
+  const cancelAt = Date.now();
+  ed.notify("session/cancel", { sessionId: session });
+  const withdrawn = await pending;
+  const cancelTook = Date.now() - cancelAt;
+  const settled = await until(() => phone.heard.find((m) => m.op === "review" && m.action !== "ask" && m.id === card?.id), 5000);
+  ed.answer(lateAsk?.id, { outcome: { outcome: "selected", optionId: "allow-once" } });
+  await new Promise((r) => setTimeout(r, 500));
+  check(
+    "acp: cancelling a turn that waits on a review answers at once and withdraws the card, so accepting it afterwards changes nothing",
+    withdrawn?.result?.stopReason === "cancelled" && cancelTook < 3000 && !!settled && !phone.changes().some((c) => c.after?.author === "Too Late"),
+    JSON.stringify({ withdrawn, cancelTook, settled }),
+  );
+
+  // A model that numbers its calls afresh in each answer (as Gemini does): the editor still tells the two calls apart.
+  let step = 0;
+  vendor.script = () => (step++ < 2 ? { content: [{ type: "tool_use", id: "call-1", name: "data_list_library", input: {} }], stop_reason: "tool_use" } : { content: [{ type: "text", text: "Looked twice." }] });
+  const seenCalls = ed.updates(session).filter((u) => u.sessionUpdate === "tool_call").length;
+  const twice = await ed.request("session/prompt", { sessionId: session, prompt: [{ type: "text", text: "Look twice." }] });
+  const two = ed.updates(session).filter((u) => u.sessionUpdate === "tool_call").slice(seenCalls).map((u) => u.toolCallId);
+  check("acp: two steps whose calls have the same id from the model are two tool calls to the editor", twice?.result?.stopReason === "end_turn" && two.length === 2 && two[0] !== two[1], JSON.stringify({ twice, two }));
   await ed.close();
 
   // ---- A key that wasn't made for the editor can talk to the agent, but can't answer for the person ----
@@ -294,12 +322,14 @@ export async function acpChecks(base, check, owner, person, vendor, restart) {
   }, 40_000);
   const loaded = await cli.request("session/load", { sessionId: session, cwd: "/", mcpServers: [] });
   const replayed = cli.updates(session);
+  // Each call in the conversation is its own to the editor, the two the model gave the same id included.
+  const replayedCalls = replayed.filter((u) => u.sessionUpdate === "tool_call").map((u) => u.toolCallId);
   vendor.script = (body) => ({ content: [{ type: "text", text: `I remember ${body.messages.length} messages.` }] });
   const more = await cli.request("session/prompt", { sessionId: session, prompt: [{ type: "text", text: "And now?" }] });
   const remembered = Number(/remember (\d+)/.exec(said(cli.updates(session)))?.[1] ?? 0);
   check(
     "acp, through `extensible-app acp`: after the space's server restarted, a conversation is loaded with what was said in it, and goes on from there",
-    back?.result?.protocolVersion === 1 && loaded?.result && replayed.some((u) => u.sessionUpdate === "user_message_chunk" && /What is on the shelf/.test(u.content?.text ?? "")) && replayed.some((u) => u.sessionUpdate === "agent_message_chunk" && /Marked as done/.test(u.content?.text ?? "")) && !JSON.stringify(replayed).includes("Think for a long time") && more?.result?.stopReason === "end_turn" && remembered > 4,
+    back?.result?.protocolVersion === 1 && loaded?.result && replayed.some((u) => u.sessionUpdate === "user_message_chunk" && /What is on the shelf/.test(u.content?.text ?? "")) && replayed.some((u) => u.sessionUpdate === "agent_message_chunk" && /Marked as done/.test(u.content?.text ?? "")) && !JSON.stringify(replayed).includes("Think for a long time") && !JSON.stringify(replayed).includes("Change the author") && replayedCalls.length > 2 && new Set(replayedCalls).size === replayedCalls.length && more?.result?.stopReason === "end_turn" && remembered > 4,
     JSON.stringify({ back, loaded, replayed: replayed.length, more, remembered }),
   );
   const unknown = await cli.request("session/list", {});

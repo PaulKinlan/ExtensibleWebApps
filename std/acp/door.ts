@@ -64,6 +64,10 @@ const MAX_PROMPT = 200_000;
 const ANSWER = 20_000;
 /** Messages kept for a stream that hasn't taken them yet; past this the oldest go. */
 const MAX_QUEUE = 2000;
+/** And the most they may take up together, in characters: past this the oldest go too. */
+const MAX_QUEUE_SIZE = 8_000_000;
+/** How long a turn may take, reviews included: a little under what the host waits (ACP_TURN_MS, src/server/acp.ts), so its answer still gets out. */
+const TURN_MS = 29 * 60_000;
 const MAX_CONNECTIONS = 100;
 const CONNECTION_IDLE_MS = 24 * 3_600_000;
 /** Conversations kept for a space, and for how long after they were last used. */
@@ -93,7 +97,9 @@ interface Connection {
   agent: string;
   member: string;
   /** What waits for the stream, oldest first. */
-  queue: { seq: number; message: unknown }[];
+  queue: { seq: number; message: unknown; size: number }[];
+  /** How much the queue holds, in characters. */
+  size: number;
   /** The stream the editor has open now: a newer one takes over. */
   stream?: string;
   /** Reviews asked in the editor: its request's id, to the review and the turn. */
@@ -118,6 +124,8 @@ interface Turn {
   cancel(): void;
   /** The tool call under way, which a review belongs to. */
   tool?: string;
+  /** The agent it is running as, while it runs: not yet while it waits its place behind another turn. */
+  running?: string;
   /** Reviews already told to the editor. */
   told: Set<string>;
   from: From;
@@ -192,8 +200,10 @@ export function acpDoor(kernel: ModuleKernel) {
   function say(connection: Connection, message: unknown) {
     // Numbers only go up, across a restart too, so a stream that asks "after n" never misses or repeats.
     seq = Math.max(seq + 1, Date.now() * 1000);
-    connection.queue.push({ seq, message });
-    if (connection.queue.length > MAX_QUEUE) connection.queue.splice(0, connection.queue.length - MAX_QUEUE);
+    const size = JSON.stringify(message).length;
+    connection.queue.push({ seq, message, size });
+    connection.size += size;
+    while (connection.queue.length > 1 && (connection.queue.length > MAX_QUEUE || connection.size > MAX_QUEUE_SIZE)) connection.size -= connection.queue.shift()!.size;
     where.changed?.("acp");
   }
   const update = (turn: Turn, body: Record<string, unknown>) => say(turn.connection, { jsonrpc: "2.0", method: "session/update", params: { sessionId: turn.session.id, update: body } });
@@ -215,7 +225,7 @@ export function acpDoor(kernel: ModuleKernel) {
       const oldest = [...connections.entries()].sort((a, b) => a[1].used - b[1].used)[0];
       if (oldest) connections.delete(oldest[0]);
     }
-    const connection: Connection = { agent, member, queue: [], asked: new Map(), used: Date.now() };
+    const connection: Connection = { agent, member, queue: [], size: 0, asked: new Map(), used: Date.now() };
     connections.set(id, connection);
     return connection;
   }
@@ -324,15 +334,32 @@ export function acpDoor(kernel: ModuleKernel) {
   const keep = (session: Session) =>
     store.writeJson(fileOf(session.id), { agent: session.agent, member: session.member, at: new Date().toISOString(), messages: session.messages }).catch((error) => record({ kind: "error", name: "acp:session", detail: says(error) }));
 
-  /** A session's id starts with when it was made, so the oldest are found by name. */
+  /**
+   * Lets go of conversations not used for SESSION_DAYS, and of the least recently used past MAX_SESSIONS. A session's
+   * id starts with when it was made, so only those made long enough ago, or past the count, are opened to see when
+   * they were last used (`at`, which every turn writes). One with a turn under way is never let go.
+   */
   async function prune() {
     const names = (await store.listFiles(SESSIONS).catch(() => [] as string[])).filter((n) => n.endsWith(".json")).sort();
     const cutoff = Date.now() - SESSION_DAYS * 86_400_000;
-    const old = names.filter((n, i) => i < names.length - MAX_SESSIONS || parseInt(n.split("-")[0], 36) < cutoff);
-    for (const name of old) {
+    const busy = (name: string) => !!sessions.get(name.slice(0, -5))?.turn;
+    const usedAt = async (name: string) => Date.parse((await store.readJson<{ at?: string } | null>(`${SESSIONS}/${name}`, null).catch(() => null))?.at ?? "") || 0;
+    const remove = async (name: string) => {
       sessions.delete(name.slice(0, -5));
       await store.removeFile(`${SESSIONS}/${name}`).catch(() => {});
+    };
+    let left = names.length;
+    for (const name of names) {
+      if (parseInt(name.split("-")[0], 36) >= cutoff) break;
+      if (!busy(name) && (await usedAt(name)) < cutoff) {
+        await remove(name);
+        left--;
+      }
     }
+    if (left <= MAX_SESSIONS) return;
+    const rest = (await store.listFiles(SESSIONS).catch(() => [] as string[])).filter((n) => n.endsWith(".json") && !busy(n));
+    const byUse = (await Promise.all(rest.map(async (name) => ({ name, at: await usedAt(name) })))).sort((a, b) => a.at - b.at);
+    for (const { name } of byUse.slice(0, left - MAX_SESSIONS)) await remove(name);
   }
 
   /** Drops the oldest turns once a conversation is longer than the model is sent. */
@@ -420,9 +447,16 @@ export function acpDoor(kernel: ModuleKernel) {
     const trace = `acp-${random().slice(0, 8)}`;
     const dispatch = { trace };
     const as = (service: string, method: string, args: unknown[]) => callService(remote.services, instance, caps, service, method, args, dispatch) as Promise<any>;
-    const kept = session.messages.length;
+    // The conversation as it was: put back whole if the turn doesn't end by itself (trimming may have moved everything).
+    const kept = [...session.messages];
     let byName = new Map<string, Tool>();
     turns.set(trace, turn);
+    // From here a review the agent waits on is this turn's (one turn at a time for an agent): cancelling withdraws it.
+    turn.running = instance;
+    const deadline = setTimeout(() => {
+      update(turn, { sessionUpdate: "agent_message_chunk", content: text(`${agent.config.name} was stopped: this turn took more than ${Math.round(TURN_MS / 60_000)} minutes. Nothing it was still waiting to change was changed. Ask again, in smaller steps.`) });
+      turn.cancel();
+    }, TURN_MS);
     const unwatch = watchReviews(turn, agent, () => byName);
     let runId: string | undefined;
     let steps = 0;
@@ -475,13 +509,17 @@ export function acpDoor(kernel: ModuleKernel) {
         for (const call of calls) {
           const tool = byName.get(call.name);
           // Told even once cancelled, as failed: every tool call the model asked for gets its answer in the conversation.
-          const toolCallId = `${trace}-${call.id}`;
+          // A vendor that gives its calls no ids numbers them afresh in each answer (call-1, call-2), so the step is in the id.
+          const toolCallId = `${trace}-${steps}-${call.id}`;
           update(turn, { sessionUpdate: "tool_call", toolCallId, title: titleOf(tool, call.name), kind: kindOf(tool), status: "pending", rawInput: call.args ?? {} });
           let result: { ok: boolean; value?: unknown; error?: string };
           if (turn.cancelled) result = { ok: false, error: "Cancelled" };
           else {
             turn.tool = toolCallId;
-            result = (await as("agents", "tool", [runId, call.name, call.args ?? {}]).catch((error) => ({ ok: false, error: says(error) }))) as typeof result;
+            // Cancelling withdraws the review the tool may be waiting on (turn.cancel), so the tool answers; the turn
+            // doesn't wait for a tool that takes its time after that.
+            const calling = as("agents", "tool", [runId, call.name, call.args ?? {}]).catch((error) => ({ ok: false, error: says(error) }));
+            result = (await Promise.race([calling, turn.stop.then(() => ({ ok: false, error: "Cancelled" }))])) as typeof result;
             turn.tool = undefined;
           }
           const content = (result.ok ? JSON.stringify(result.value ?? null) : `Error: ${result.error}`).slice(0, ANSWER);
@@ -496,9 +534,11 @@ export function acpDoor(kernel: ModuleKernel) {
       throw error;
     } finally {
       unwatch();
+      clearTimeout(deadline);
+      turn.running = undefined;
       turns.delete(trace);
       // A turn that didn't end by itself leaves nothing half said: the conversation is as it was before it.
-      if (turn.cancelled || ended === "error") session.messages.splice(kept);
+      if (turn.cancelled || ended === "error") session.messages.splice(0, session.messages.length, ...kept);
       if (runId) await as("agents", "end", [runId, { stopReason: turn.cancelled ? "error" : ended, text: turn.cancelled ? "Cancelled from the editor" : last, steps: Math.min(steps, agent.config.limits.steps) }]).catch(() => {});
       // Whatever it still waited on is the turn's alone (one turn at a time for an agent): it goes with it.
       if (turn.cancelled) reviews.cancelInstance(instance);
@@ -523,33 +563,62 @@ export function acpDoor(kernel: ModuleKernel) {
     }
     let cancel!: () => void;
     const stop = new Promise<"cancelled">((done) => (cancel = () => done("cancelled")));
-    const turn: Turn = { session, connection, cancelled: false, stop, cancel: () => ((turn.cancelled = true), cancel()), told: new Set(), from };
+    const turn: Turn = {
+      session,
+      connection,
+      cancelled: false,
+      stop,
+      cancel: () => {
+        if (turn.cancelled) return;
+        turn.cancelled = true;
+        // A card it left waiting is withdrawn now, not when its tool gives up: accepted after this, it would still write.
+        if (turn.running) reviews.cancelInstance(turn.running);
+        cancel();
+      },
+      told: new Set(),
+      from,
+    };
     session.turn = turn;
     const before = lines.get(agent.config.id) ?? Promise.resolve();
-    const going = before
-      .then(() => (turn.cancelled ? "cancelled" : run(turn, agent, prompt)))
+    // The agent's line: this turn runs after the one before it, and the next after this, cancelled or not.
+    const ran = before.then(() => (turn.cancelled ? "cancelled" : run(turn, agent, prompt)));
+    const line = ran.then(
+      () => {},
+      () => {},
+    );
+    lines.set(agent.config.id, line);
+    void line.finally(() => {
+      if (lines.get(agent.config.id) === line) lines.delete(agent.config.id);
+    });
+    // A turn cancelled while it waited its place is answered then, not when the turn ahead of it ends.
+    const waited = Promise.race([before.then(() => "go" as const), stop]).then((first) => (first === "cancelled" && !turn.running ? "cancelled" : ran));
+    return waited
       .then(
         (stopReason) => reply({ result: { stopReason: turn.cancelled ? "cancelled" : stopReason } }),
         (error) => (turn.cancelled ? reply({ result: { stopReason: "cancelled" } }) : reply({ error: { code: error instanceof Refusal ? error.code : -32603, message: says(error) } })),
       )
       .finally(() => {
-        session.turn = undefined;
-        if (lines.get(agent.config.id) === going) lines.delete(agent.config.id);
+        if (session.turn === turn) session.turn = undefined;
       });
-    lines.set(agent.config.id, going);
-    return going;
   }
 
   /** What was said in a conversation, for an editor that takes it up again. */
   function replay(connection: Connection, session: Session) {
     const out = (body: Record<string, unknown>) => say(connection, { jsonrpc: "2.0", method: "session/update", params: { sessionId: session.id, update: body } });
-    for (const m of session.messages) {
+    // A model's own ids for its calls can repeat in a conversation (std/llm/gemini.js numbers them afresh in each
+    // answer), so each call is told by where it is, and a tool's answer goes to the latest call with its id.
+    const latest = new Map<string, string>();
+    session.messages.forEach((m, at) => {
       if (m.role === "user" && typeof m.content === "string") out({ sessionUpdate: "user_message_chunk", content: text(m.content) });
       else if (m.role === "assistant") {
         if (typeof m.content === "string" && m.content) out({ sessionUpdate: "agent_message_chunk", content: text(m.content) });
-        for (const call of (Array.isArray(m.toolCalls) ? m.toolCalls : []) as { id: string; name: string; args?: unknown }[]) out({ sessionUpdate: "tool_call", toolCallId: `${session.id}-${call.id}`, title: call.name, kind: "other", status: "pending", rawInput: call.args ?? {} });
-      } else if (m.role === "tool") out({ sessionUpdate: "tool_call_update", toolCallId: `${session.id}-${String(m.id)}`, status: String(m.content).startsWith("Error: ") ? "failed" : "completed", content: [{ type: "content", content: text(String(m.content)) }] });
-    }
+        for (const call of (Array.isArray(m.toolCalls) ? m.toolCalls : []) as { id: string; name: string; args?: unknown }[]) {
+          const toolCallId = `${session.id}-${at}-${call.id}`;
+          latest.set(call.id, toolCallId);
+          out({ sessionUpdate: "tool_call", toolCallId, title: call.name, kind: "other", status: "pending", rawInput: call.args ?? {} });
+        }
+      } else if (m.role === "tool") out({ sessionUpdate: "tool_call_update", toolCallId: latest.get(String(m.id)) ?? `${session.id}-${at}-${String(m.id)}`, status: String(m.content).startsWith("Error: ") ? "failed" : "completed", content: [{ type: "content", content: text(String(m.content)) }] });
+    });
   }
 
   // ---- The door ----
@@ -587,8 +656,13 @@ export function acpDoor(kernel: ModuleKernel) {
       } else if (!connection.stream) connection.stream = stream;
       else if (connection.stream !== stream) return failed(409, -32000, "A newer stream for this connection took over");
       const after = Number(request.query?.after) || 0;
-      connection.queue = connection.queue.filter((m) => m.seq > after);
-      return json(200, { notices: [...connection.queue] });
+      // Only what the editor itself said it has (the Last-Event-ID a stream opens with) is let go. What the host has
+      // sent since may still be on its way: if that stream drops, the next one asks for it again.
+      if (request.query?.first === "1") {
+        connection.queue = connection.queue.filter((m) => m.seq > after);
+        connection.size = connection.queue.reduce((n, m) => n + m.size, 0);
+      }
+      return json(200, { notices: connection.queue.filter((m) => m.seq > after).map(({ seq, message }) => ({ seq, message })) });
     }
 
     const form = (request.form ?? {}) as { message?: unknown; name?: unknown; answers?: unknown; lock?: unknown; gateways?: unknown };
