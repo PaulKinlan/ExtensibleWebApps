@@ -96,10 +96,10 @@ const until = async (test, ms = 8000) => {
 /**
  * @param {string} base @param {(what: string, ok: unknown, detail?: string) => void} check
  * @param {{ cookie: string, base: string, call: Function }} owner @param {() => any} person makes a new person
- * @param {{ device: Function }} tools the runner's device (speaks sync)
+ * @param {{ device: Function, client: Function }} tools the runner's device (speaks sync) and client (runs commands)
  * @param {Awaited<ReturnType<typeof fakePushService>>} service
  */
-export async function pushChecks(base, check, owner, person, { device }, service) {
+export async function pushChecks(base, check, owner, person, { device, client }, service) {
   await owner.call("/auth/spaces", { name: "bins" });
   const ann = await person().account("Ann");
   const bo = await person().account("Bo");
@@ -151,13 +151,20 @@ export async function pushChecks(base, check, owner, person, { device }, service
   await new Promise((r) => setTimeout(r, 500));
   service.received.length = 0;
 
+  /** What the space's trace says of the notifications it sent: how many devices each reached, and what went wrong. */
+  const said = async () => {
+    const asker = await client(base, "bins", owner.cookie).catch(() => null);
+    const trace = await asker?.command("trace").catch(() => null);
+    asker?.close();
+    return (Array.isArray(trace) ? trace : (trace?.entries ?? [])).filter((e) => e.name === "notify:push").map((e) => e.detail);
+  };
   const all = await nudge({ title: "Bins are out" });
   const got = await Promise.all([phone, laptop, annPhone].map((d) => until(async () => (await d.notes()).find((n) => n.title === "Bins are out"))));
   const sent = service.received.find((r) => r.id === "owner-phone");
   check(
     "push: a server plugin's notification reaches every member's devices with nobody connected, encrypted for each device",
     all?.shown === true && got.every((n) => n && n.body === "From the space's server" && n.url === "/s/bins/server-app/" && n.app === "/s/bins/server-app/" && /nudger:nudge$/.test(n.tag ?? "")) && sent?.headers["content-encoding"] === "aes128gcm" && Number(sent?.headers.ttl) > 0 && !Buffer.from(sent.body).includes("Bins are out"),
-    JSON.stringify({ all, got: got.map((n) => n && { ...n, headers: undefined }), headers: sent?.headers }),
+    JSON.stringify({ all, got: got.map((n) => n && { ...n, headers: undefined }), arrived: service.received.map((r) => r.id), unreadable: (await Promise.all([phone, laptop, annPhone].map((d) => d.notes()))).flat().filter((n) => n.unreadable).map((n) => n.unreadable), trace: await said(), headers: sent?.headers }),
   );
   check("push: each message is signed with the server's key, for that push service", sent && (await signedBy(sent.headers.authorization, key, service.origin)), String(sent?.headers.authorization).slice(0, 80));
 
