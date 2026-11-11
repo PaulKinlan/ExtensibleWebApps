@@ -252,6 +252,14 @@ Needs: `account`.
 
 Asks the person for a copy of a space (a .space.json file, from the server's Download a copy), right after they click, and loads it into `space`. null if they pick nothing.
 
+#### account.notifications
+
+`account.notifications(action?)` → { supported, permission?, here, devices: [{ id, label, created, here }] }
+
+Needs: `account`.
+
+Notifications on this device with every tab closed (Web Push): what a space's server plugins send with notify.show reaches the devices each member turned on here. `here` says whether this browser is one of the person's devices. It fails, saying what to do, where the browser can't, the person said no, or its push service isn't one the site sends to.
+
 #### account.post
 
 `account.post(path, body)` → { status, ...answer }
@@ -1378,11 +1386,11 @@ Asks the person to allow notifications (call it right after a click in the app, 
 
 #### notify.show
 
-`notify.show({ title, body?, tag?, always? })` → true if it was shown
+`notify.show({ title, body?, tag?, always?, to? })` → true if it was shown
 
 Needs: `notify`.
 
-Shows a notification from one tab with the plugin's app open, when nobody is looking at the app (or `always`). False if the person hasn't allowed notifications, or is looking. At most 6 a minute for each plugin.
+Shows a notification from one tab with the plugin's app open, when nobody is looking at the app (or `always`). False if the person hasn't allowed notifications, or is looking. At most 6 a minute for each plugin. From a plugin on a space's server, it is sent to the members' devices instead and arrives with every tab closed: true if it was sent to at least one device (each member turns notifications on for a device on their account page).
 
 #### notify.state
 
@@ -1708,6 +1716,14 @@ Needs: `live`.
 
 Sends a live message, kept nowhere: from a page in a space, to the space's server plugins, which hear it as sync:live with the member and device it came from; from a server plugin, to every device that has said something on the topic (or only `device`), whose plugins hear it as sync:live. For moves and frames of a game played together, cursors, presence. A device may send 60 a second. Fails outside a space, or while the page can't reach it.
 
+#### sync.may
+
+`sync.may(collection, id?)` → { add, change, remove, why? }
+
+Needs: `members`.
+
+Whether the person signed in here may add to a collection, and change or remove a record of it, in this space: from their role (a reader changes nothing) and the collection's `rules` in its plugin's manifest. For showing a form or a button only to those who can use it, with `why` to say when they can't. The space's server decides again on every change. All true outside a space.
+
 #### sync.members
 
 `sync.members()` → { space, you?, members: [{ id, name }] }
@@ -1732,13 +1748,21 @@ Needs: `reflect:read`.
 
 For debuggers: asks the space's own kernel, on its server, what its reflect service says (its server plugins, their permissions, hooks and workers, and the members' devices connected, each with its member). A snapshot also lists `shared`: the plugins members share, which the space keeps but never runs ({ app, id, by?, at }); source reads theirs too. Read only, like reflect. Fails outside a space, or while this page can't reach it.
 
+#### sync.role
+
+`sync.role()` → { space: null } or { space, role?, owner? }
+
+Needs: nothing.
+
+What the person signed in here may do in this space: `role` is "owner", "editor", or "reader" (who sees the space but can't change it), once the space has said, and `owner` the owner's name, to say whom to ask. For saying so before they try. Outside a space, `space` is null. Needs no permission.
+
 #### sync.state
 
-`sync.state()` → { space: null } or { space, member?, connected, pending, drafts }
+`sync.state()` → { space: null } or { space, member?, role?, owner?, connected, pending, drafts }
 
 Needs: `sync`.
 
-Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
+Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said) and what they may do (`role`: "owner", "editor", or "reader", who can see the space but not change it; `owner` is the owner's name, to say whom to ask), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
 
 #### sync.trace
 
@@ -2136,7 +2160,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `ui:transform:<plugin>` | Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
-| `account` | Call account.get, account.post, account.space-key, account.register, account.signin, account.start, account.load, account.keys, account.keys:protect, account.keys:unlock, account.keys:remove, account.came. |
+| `account` | Call account.get, account.post, account.space-key, account.register, account.signin, account.start, account.load, account.keys, account.keys:protect, account.keys:unlock, account.keys:remove, account.notifications, account.came. |
 | `agents:run:<agent>` | Call agents.run. |
 | `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.takeLink, maker.unshare. |
 | `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.link, maker.linked, maker.dropLink, maker.check. |
@@ -2164,7 +2188,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `launch` | Call launch.take. |
 | `live` | Call sync.live. |
 | `llm` | Call llm.providers, llm.prefer, llm.models, llm.choices, llm.add, llm.complete. |
-| `members` | Call sync.members. |
+| `members` | Call sync.members, sync.may. |
 | `network:<host>` | Call net.fetch. |
 | `notify` | Call notify.state, notify.request, notify.show. |
 | `outside` | Call outside.open, outside.close, outside.status. |
@@ -2194,7 +2218,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `order` | Optional. Where the plugin's views go among others in the same slot; lower comes first. |
 | `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
 | `runs` | "browser" (the default): in the browser, on each device. "server": only in a space's kernel on its server, for an app opened in a space (/s/<space>/…), with no app open anywhere; it has no UI, no file system, and no network unless it asks for `network`. "both": in each. See docs/server.md. |
-| `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
+| `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. In a space, `rules` says which members may change it ({ add?, change?, remove? }, each "editors", "owner" or, for change and remove, "author": whoever added the record); the space's server enforces them. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin's view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `theme` | Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only --bg, --bg-2, --surface, --fg, --fg-2, --border, --accent, --accent-fg, --action, --action-fg, --ok, --warn, --danger, --radius-sm, --radius, --radius-lg, --shadow-1, --font, --mono, color-scheme, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md. |
