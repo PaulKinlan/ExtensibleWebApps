@@ -18,13 +18,14 @@
 // best is Argon (or Pro), balanced is Flash, fast is Flash-Lite.
 //
 // This file translates between the platform's request and answer
-// (std/llm/module.ts) and the Gemini API's generateContent.
+// (std/llm/module.ts) and the Gemini API's generateContent and
+// streamGenerateContent, including multimodal user content parts.
 
 export const manifest = {
   id: "llm-gemini",
   name: "Gemini (Google)",
   description: "A language model for this app: Gemini, from Google. Uses your own Gemini API key, which goes only to Google.",
-  version: "1.1.0",
+  version: "1.2.0",
   permissions: ["provide:llm", "network:generativelanguage.googleapis.com", "secret:gemini"],
   services: ["llm"],
   settings: {
@@ -79,12 +80,106 @@ function toContents(messages) {
     else if (m.role === "assistant") {
       if (m.content) push("model", { text: m.content });
       for (const c of m.toolCalls ?? []) push("model", { functionCall: { name: c.name, args: c.args ?? {} } });
+    } else if (Array.isArray(m.content)) {
+      for (const p of m.content) {
+        if (p.type === "text") push("user", { text: p.text });
+        else push("user", { inlineData: { mimeType: p.mediaType, data: p.data } });
+      }
     } else push("user", { text: m.content });
   }
   return out;
 }
 
 const STOP = { STOP: "end", MAX_TOKENS: "length", SAFETY: "refused", RECITATION: "refused", PROHIBITED_CONTENT: "refused", BLOCKLIST: "refused" };
+
+/** Parses Server-Sent Events into `{ event, data }` items. */
+function parseSse(raw) {
+  const events = [];
+  for (const block of raw.split(/\r?\n\r?\n/)) {
+    let event = "";
+    const data = [];
+    for (const line of block.split(/\r?\n/)) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (!data.length) continue;
+    const joined = data.join("\n");
+    if (data.length > 1) {
+      try {
+        JSON.parse(joined);
+        events.push({ event, data: joined });
+        continue;
+      } catch {
+        for (const d of data) events.push({ event, data: d });
+        continue;
+      }
+    }
+    events.push({ event, data: joined });
+  }
+  return events;
+}
+
+/** Sends deltas through llm.chunk, coalescing very long buffered streams so worker message rates stay bounded. */
+const CHUNK = "chunk";
+async function emitChunks(ctx, streamId, deltas) {
+  if (!streamId || !deltas.length) return;
+  const step = deltas.length <= 64 ? 1 : Math.ceil(deltas.length / 64);
+  for (let i = 0; i < deltas.length; i += step) {
+    const delta = step === 1 ? deltas[i] : deltas.slice(i, i + step).join("");
+    if (delta) await ctx.call("llm", CHUNK, streamId, delta);
+  }
+}
+
+function buildBody(request) {
+  const body = { contents: toContents(request.messages) };
+  if (request.system) body.systemInstruction = { parts: [{ text: request.system }] };
+  if (request.tools?.length) body.tools = [{ functionDeclarations: request.tools.map((t) => ({ name: t.name, description: t.description ?? "", parametersJsonSchema: t.parameters ?? { type: "object", properties: {} } })) }];
+  // Gemini 4 caps a non-streaming answer at 32K tokens.
+  const config = { maxOutputTokens: Math.min(request.maxTokens ?? 16000, 32000) };
+  if (request.schema) Object.assign(config, { responseMimeType: "application/json", responseJsonSchema: request.schema });
+  body.generationConfig = config;
+  return body;
+}
+
+function fromPackets(packets, model, request) {
+  const allParts = [];
+  const deltas = [];
+  let finishReason;
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let resolvedModel = model;
+  let hadCandidate = false;
+  for (const data of packets) {
+    if (data.modelVersion) resolvedModel = data.modelVersion;
+    if (data.usageMetadata) {
+      inputTokens = data.usageMetadata.promptTokenCount ?? inputTokens;
+      outputTokens = data.usageMetadata.candidatesTokenCount ?? outputTokens;
+    }
+    const candidate = data.candidates?.[0];
+    if (!candidate) continue;
+    hadCandidate = true;
+    if (candidate.finishReason) finishReason = candidate.finishReason;
+    for (const part of candidate.content?.parts ?? []) {
+      allParts.push(part);
+      if (typeof part.text === "string" && !part.thought && part.text.length) deltas.push(part.text);
+    }
+  }
+  if (!hadCandidate) return { answer: { text: "", stop: "refused", model: resolvedModel, usage: { input: inputTokens, output: 0 } }, deltas: [] };
+  // A call may have no id; its answer goes back by name, so any id will do.
+  const toolCalls = allParts.filter((p) => p.functionCall).map((p, i) => ({ id: p.functionCall.id ?? `call-${i + 1}`, name: p.functionCall.name, args: p.functionCall.args ?? {} }));
+  const text = deltas.join("");
+  const answer = {
+    text,
+    toolCalls,
+    stop: toolCalls.length ? "tool" : (STOP[finishReason] ?? "end"),
+    usage: { input: inputTokens, output: outputTokens },
+    model: resolvedModel,
+    // Gemini's turn as sent: its thought signatures have to go back with a tool call's answer.
+    state: allParts,
+  };
+  if (request.schema && answer.stop === "end") answer.json = JSON.parse(text);
+  return { answer, deltas };
+}
 
 export default function (ctx) {
   const setting = async () => (await ctx.settings.get()).model || manifest.settings.model.default;
@@ -161,38 +256,55 @@ export default function (ctx) {
     try {
       if (!(await ensureKey())) return { error: "No Gemini API key was given", declined: true };
       const model = await resolve(request.model ?? (await setting()));
-      const body = { contents: toContents(request.messages) };
-      if (request.system) body.systemInstruction = { parts: [{ text: request.system }] };
-      if (request.tools?.length) body.tools = [{ functionDeclarations: request.tools.map((t) => ({ name: t.name, description: t.description ?? "", parametersJsonSchema: t.parameters ?? { type: "object", properties: {} } })) }];
-      // Gemini 4 caps a non-streaming answer at 32K tokens.
-      const config = { maxOutputTokens: Math.min(request.maxTokens ?? 16000, 32000) };
-      if (request.schema) Object.assign(config, { responseMimeType: "application/json", responseJsonSchema: request.schema });
-      body.generationConfig = config;
       const used = given;
       const response = await ctx.call("net", "fetch", {
         url: `${API}/v1beta/models/${encodeURIComponent(model)}:generateContent`,
         method: "POST",
         headers: { ...KEY, "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(buildBody(request)),
       });
       const data = JSON.parse(response.text || "{}");
       if (!response.ok) return { error: await failure(response, data, used) };
-      const candidate = data.candidates?.[0];
-      if (!candidate) return { text: "", stop: "refused", model, usage: { input: data.usageMetadata?.promptTokenCount ?? 0, output: 0 } };
-      const parts = candidate.content?.parts ?? [];
-      // A call may have no id; its answer goes back by name, so any id will do.
-      const toolCalls = parts.filter((p) => p.functionCall).map((p, i) => ({ id: p.functionCall.id ?? `call-${i + 1}`, name: p.functionCall.name, args: p.functionCall.args ?? {} }));
-      const text = parts.filter((p) => typeof p.text === "string" && !p.thought).map((p) => p.text).join("");
-      const answer = {
-        text,
-        toolCalls,
-        stop: toolCalls.length ? "tool" : (STOP[candidate.finishReason] ?? "end"),
-        usage: { input: data.usageMetadata?.promptTokenCount ?? 0, output: data.usageMetadata?.candidatesTokenCount ?? 0 },
-        model: data.modelVersion ?? model,
-        // Gemini's turn as sent: its thought signatures have to go back with a tool call's answer.
-        state: parts,
-      };
-      if (request.schema && answer.stop === "end") answer.json = JSON.parse(text);
+      return fromPackets([data], model, request).answer;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ctx.on("llm:stream", async (request) => {
+    if (request.provider !== manifest.id) return undefined;
+    try {
+      if (!(await ensureKey())) return { error: "No Gemini API key was given", declined: true };
+      const model = await resolve(request.model ?? (await setting()));
+      const used = given;
+      const response = await ctx.call("net", "fetch", {
+        url: `${API}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
+        method: "POST",
+        headers: { ...KEY, "content-type": "application/json", accept: "text/event-stream" },
+        body: JSON.stringify(buildBody(request)),
+      });
+      const trimmed = (response.text || "").trim();
+      if (!response.ok) {
+        let parsed = {};
+        try {
+          const raw = trimmed.startsWith("{") || trimmed.startsWith("[") ? JSON.parse(trimmed) : JSON.parse(parseSse(trimmed)[0]?.data || "{}");
+          parsed = Array.isArray(raw) ? (raw[0] ?? {}) : raw;
+        } catch {}
+        return { error: await failure(response, parsed, used) };
+      }
+      let packets = [];
+      if (trimmed.startsWith("[")) packets = JSON.parse(trimmed);
+      else if (trimmed.startsWith("{")) packets = [JSON.parse(trimmed)];
+      else {
+        for (const { data: raw } of parseSse(trimmed)) {
+          if (!raw || raw === "[DONE]") continue;
+          const packet = JSON.parse(raw);
+          if (packet.error) return { error: packet.error.message ?? "Stream error" };
+          packets.push(packet);
+        }
+      }
+      const { answer, deltas } = fromPackets(packets, model, request);
+      await emitChunks(ctx, request.streamId, deltas);
       return answer;
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
