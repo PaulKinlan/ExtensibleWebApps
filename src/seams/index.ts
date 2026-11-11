@@ -127,3 +127,22 @@ export function checkPath(path: string): string {
     throw new Error(`Not a path in the folder: ${JSON.stringify(path)}`);
   return path;
 }
+
+/** A notification a space's server sends its members' devices, and what came of it. */
+export interface PushAsk {
+  title: string;
+  body?: string;
+  tag?: string;
+  always?: boolean;
+  /** The app it is from, as its folder on the site (`demos/household`). */
+  app?: string;
+  /** Members' ids: only these get it. */
+  to?: string[];
+}
+export interface Pushed {
+  sent: number;
+  devices: number;
+  people: number;
+  reached: number;
+  problems: string[];
+}

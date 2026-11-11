@@ -39,6 +39,7 @@ import { spaceMadeApps } from "./made-apps";
 import type { startDevice } from "./on-device";
 import { spacePlugins } from "./plugins";
 import { relayReviews } from "./reviews";
+import type { SpacePermissions } from "./permissions";
 import { spaceReflect } from "./reflect";
 import { liveSpace, type LiveSpace } from "./live";
 import { spaceTrace } from "./trace";
@@ -49,6 +50,8 @@ import service from "./service";
  * Each space's hub that stopped, by the space's store, and the work it still had queued: a hub started
  * again for that space waits for it (a server can keep many spaces, so it isn't one per module).
  */
+/** What the hub and the server's apps ask of permissions.ts, which is fetched only on a server. */
+type Permit = Pick<SpacePermissions, "may" | "told" | "reader" | "did" | "learn">;
 const draining = new WeakMap<object, Promise<unknown>>();
 
 export default {
@@ -62,8 +65,19 @@ export default {
 
     if (hosts.mode === "server") {
       /** The apps opened in the space, whose server plugins it runs: only on a server that runs plugins. */
-      const onServer = where.isolates ? serverApps(remote, store, where.origin, where.site, () => root.emit("internal/learned")) : undefined;
+      // Who may change what (permissions.ts): each member's role, and the rules the app's own plugins give their collections.
+      // Fetched here, on a server: a browser's kernel never decides this, so it never carries the code.
+      const permitting = import("./permissions").then((m) => m.spacePermissions(store, hosts, async () => where.members?.(), (name) => records.registry.get(name)));
+      const permit: Permit = {
+        may: async (...args) => (await permitting).may(...args),
+        told: async () => (await permitting).told(),
+        reader: async (...args) => (await permitting).reader(...args),
+        did: (...args) => void permitting.then((p) => p.did(...args)),
+        learn: (manifest) => void permitting.then((p) => p.learn(manifest)),
+      };
+      const onServer = where.isolates ? serverApps(remote, store, where.origin, where.site, () => root.emit("internal/learned"), (manifest) => permit.learn(manifest)) : undefined;
       const hub = syncHub(root, store, records, hosts, (app) => onServer?.use(app), draining.get(store));
+      hub.permit = permit;
       // A space keeps the plugins its members share with each other, and never runs them.
       const shared = spacePlugins(userAdded, store, hosts, (message) => hub.tell(message));
       hub.plugins = shared.handle;
@@ -95,6 +109,7 @@ export default {
       kernel.space({ server: onServer, model: askModel });
       kernel.door("model", askModel);
       kernel.cleanup(() => {
+        hub.permit = undefined;
         hub.plugins = undefined;
         hub.apps = undefined;
         hub.reviews = undefined;
@@ -125,7 +140,7 @@ export default {
         import("./on-device").then(
           ({ startDevice }) => {
             if (stopped) return;
-            on = startDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts, userAdded, reviews, reopen);
+            on = startDevice(`${where.origin.replace(/^http/, "ws")}/s/${where.space}/kernel`, store, records, hosts, userAdded, reviews, reopen, root);
             for (const app of using) on.device.use(app);
           },
           (error) => {

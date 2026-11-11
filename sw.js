@@ -18,6 +18,7 @@ import routes from "./sw/routes/index.js";
 import { appAt } from "./sw/routes/apps.js";
 import { renderBlocking } from "./sw/render-blocking.js";
 import { onNotificationClick, onNotifyMessage } from "./sw/notifications.js";
+import { onPush, onSubscriptionChange } from "./sw/push.js";
 import { keepParts } from "./sw/parts.js";
 
 const CACHE = "platform-v1";
@@ -26,6 +27,9 @@ self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
 // A click on a notification the worker showed, even after every tab closed (sw/notifications.js).
 self.addEventListener("notificationclick", onNotificationClick);
+// A notification from a space's server, which arrives with every tab closed (sw/push.js).
+self.addEventListener("push", onPush);
+self.addEventListener("pushsubscriptionchange", onSubscriptionChange);
 
 // The first visit loads before this worker starts, so nothing it loaded was kept. The page then
 // sends what it loaded (src/host/service-worker.ts), and it is fetched again and kept, so the

@@ -213,7 +213,7 @@ export interface Manifest {
   /** Where it runs: in the browser (the default), on a space's server, or both. */
   runs?: "browser" | "server" | "both";
   /** Collections this plugin owns: `{ books: { title?, schema } }`, each schema a JSON Schema subset. */
-  collections?: Record<string, { title?: string; schema: unknown }>;
+  collections?: Record<string, { title?: string; schema: unknown; rules?: { add?: string; change?: string; remove?: string } }>;
   /** Settings the person can change; the shell builds the form from these. */
   settings?: Record<string, { type: "string" | "number" | "boolean"; title?: string; description?: string; default?: unknown; enum?: string[] }>;
   /** Places in the app's page where the plugin draws, adds or hides, by name: `{ days: { at: "main > h1", put: "after" } }`. */

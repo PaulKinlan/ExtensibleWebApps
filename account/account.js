@@ -63,7 +63,11 @@ export default async function (ctx) {
       }, "You're signed in.");
     if (action === "register") return run(() => ctx.call("account", "register", String(value?.name ?? "").trim()), "Your account is made, and you're signed in.");
     if (action === "add") return run(() => ctx.call("account", "register"), "Another passkey is added to your account.");
-    if (action === "signout") return run(() => ctx.call("account", "post", "/auth/signout", {}), "You're signed out.");
+    if (action === "signout") return run(async () => {
+        // This browser's notifications are the person's who is leaving: they stop here, so the next person to sign in doesn't see them.
+        await ctx.call("account", "notifications", "off").catch(() => {});
+        return ctx.call("account", "post", "/auth/signout", {});
+      }, "You're signed out.");
   });
 
   // What the link here asked for, once: then the address is the account page's own again. An invite

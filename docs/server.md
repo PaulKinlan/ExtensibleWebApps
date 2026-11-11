@@ -101,10 +101,11 @@ A space holds people and their data (collections and plugins), and any app can o
 
 | Route | What it does |
 | --- | --- |
-| `GET /auth/spaces` | The spaces you're in, with your role (`owner` or `member`). |
+| `GET /auth/spaces` | The spaces you're in, with your role (`owner`, `editor` or `reader`). |
 | `POST /auth/spaces` | `{ name }` makes a space, with you as its owner. A name is lowercase letters, numbers and dashes, and no one else's. |
 | `GET /auth/spaces/<name>` | Its members. To anyone else, it's a space that doesn't exist. |
-| `POST /auth/spaces/<name>/invite` | A one-time invite, for a week (its owner only). `/account/?invite=<token>` accepts it once the person signs in or makes an account. |
+| `POST /auth/spaces/<name>/invite` | A one-time invite, for a week (its owner only), as an editor or, with `{ role: "reader" }`, a reader. `/account/?invite=<token>` accepts it once the person signs in or makes an account. |
+| `POST /auth/spaces/<name>/role` | `{ user, role }` makes a member an `editor` or a `reader` (its owner only; there is one owner, whose role doesn't change). |
 | `POST /auth/invites/accept` | `{ token }` joins the space the invite is for, and uses the invite up. |
 | `POST /auth/spaces/<name>/leave` | Leaves it. Its owner can give `{ user }` to remove someone, and can't leave it. |
 | `GET /auth/spaces/<name>/export` | A copy of the space's folder, as one JSON file, to move it to another host (its owner only). |
@@ -113,6 +114,20 @@ A space holds people and their data (collections and plugins), and any app can o
 Every change under `/auth/` runs one at a time, so a challenge or an invite is used once and a name gets one owner, on both hosts. Someone who leaves a space, or is removed, is disconnected from it at once. Leaving also revokes every agent key that member had for the space ([`agent-keys.ts`](../src/server/auth/agent-keys.ts)): the agents they connected to its MCP server are shut out, any stream one of them has open ends, a signed-in agent can't refresh its key, and joining the space again doesn't bring the keys back. The member makes new ones on `/account/`.
 
 The kernel of a space knows which member each client is: the server adds it to the client's `hello` (a client can't say it itself), and sync records it with every change. Plugins hear it too: a change that came from another device or from the space's server has `by` (the member's id, or `plugin:<id>` for a server plugin) on `data:changed:<collection>`, and a server plugin's `data:beforeWrite:<collection>` hears which member's device sent the change. A device learns which member it is from the space's answer to its hello: `sync.state()` has it as `member`. The same answer names every member, by the name on their account, and the device keeps the names for when it's offline: `sync.members()` gives them to a plugin with the `members` permission, so it can show a `by` as a name.
+
+### Who may change what
+
+A member's role is `owner`, `editor` or `reader` ([`roles.ts`](../src/server/auth/roles.ts); a space made before roles has `member`, which reads as `editor`). The accounts say the role when someone joins a space's kernel, and it holds for that connection: changing a role closes the member's connections, so their devices join again with the new one. Making someone a reader also revokes their agent keys for the space, and a reader can't make one.
+
+A reader is held to reading in two places, neither of which trusts their client:
+
+- **Where the host takes a client's messages** ([`signed.ts`](../src/server/signed.ts), on both hosts). Only what is on its lists reaches the kernel, from anyone: hello and bye, sync messages (the role is stamped on each), and kernel commands by role. Everyone may run the commands that only read; the owner may also run `restart-module`, `reload` and `user:*`; nothing else runs for anyone. A command that isn't allowed is answered by the host as the command would be, `{ ok: false, error }`, with what to do instead ([Security, part 8](security.md#8-on-a-spaces-server-the-same-rules-and-a-few-more)).
+- **Nothing that speaks for a view, from anyone.** A page tells its own kernel about a form's record or a button's event, and the kernel writes as the plugin that drew it. A space's server draws nothing, so `signed.ts` drops those messages from every member's client: otherwise an editor could write as one of the space's plugins, past a collection's rules.
+- **Where the space takes a change** ([`hub.ts`](../std/spaces/hub.ts) asks [`permissions.ts`](../std/spaces/permissions.ts)). A reader's push is refused, change by change, with who to ask. For editors, each collection's `rules` from its plugin's manifest are checked ([`rules.ts`](../std/spaces/rules.ts)): `add`, `change` and `remove`, each `editors`, `owner` or (not for `add`) `author`. The space keeps who added each record of a collection with an `author` rule (`sync/authors.json`) and the rules themselves (`sync/rules.json`), so they hold from the moment it starts again. Only the manifests the server reads from the site count, and only from the plugin a collection belongs to. Rules that can't be read lock the collection to the owner and say so in the trace.
+
+A refused change comes back as `{ ok: false, denied: true, error, record }`: the device puts the record back as the space has it, keeps no draft, and shows the person the error once. The space also tells each device its role, the rules and the authors with its answer to hello, so the device stops such a write before sending it ([`device-guard.ts`](../std/spaces/device-guard.ts)) and a plugin can ask first (`sync.may`, `sync.role`). None of this is in the kernel's core: the permissions are fetched only on a server, and the guard with the rest of a space's device code.
+
+[`tests/server/roles.mjs`](../tests/server/roles.mjs) checks it on both hosts, and [`tests/checks/space-roles.mjs`](../tests/checks/space-roles.mjs) in two browsers with the household demo.
 
 ### Moving a space between hosts
 
@@ -318,6 +333,27 @@ The host delivers what the email module writes to the outbox (`deliver` in the k
 | Node | SMTP, with a small client of its own ([`smtp.ts`](../src/server/smtp.ts)): `smtps://`, or `smtp://` with STARTTLS, and a password | `SMTP_URL` (`smtps://user:password@smtp.example.com:465`) and `EMAIL_FROM` in the environment of `npm run serve`. `smtp://` to localhost may skip TLS, for a local mail catcher. |
 
 Without them, nothing is sent, and no address can be confirmed. Saving an address on `/account/` mails it a link (good for a day, used once, and opening it needs no sign-in: having it is the proof); only then do plugins' messages and **Send me a test message** (`POST /auth/me/email/test`) go to it. The accounts send one person at most five messages a day, links and tests together. The server checks send a member's mail through both: to a test mail server over SMTP on Node, and through wrangler dev's stand-in for Email Service on Cloudflare. `smtpChecks` also send through STARTTLS with a password, a subject that isn't ASCII, and HTML.
+
+### Notifications with every tab closed
+
+A server plugin's `ctx.call("notify", "show", { title, body?, tag?, to? })` is sent with Web Push to the devices of the space's members ([`push.ts`](../src/server/auth/push.ts)), and each device's service worker shows it ([`sw/push.js`](../sw/push.js)). The kernel's environment has `push(note)` for it on both hosts, which asks the accounts, since a device belongs to a person, not a space.
+
+| Route | What it does |
+| --- | --- |
+| `GET /auth/push` | The server's public key, and your devices that get notifications. `?endpoint=` says whether that subscription is one of them (`here`). |
+| `POST /auth/push` | `{ subscription, label? }` adds this device: the browser's push subscription, made for the server's key. At most 10 a person. |
+| `POST /auth/push/remove` | `{ id }` or `{ endpoint }` takes one away. |
+| `POST /auth/push/test` | Sends your own devices a test. |
+
+- **The server makes its own key pair** (VAPID, RFC 8292) the first time it is needed and keeps it with the accounts (`push/vapid.json` in the accounts' files: the Accounts Durable Object on Cloudflare, the accounts' folder on Node). There is no secret to set and nothing in the repository. A push service takes a message for a subscription only from the holder of that key.
+- **Each message is encrypted for the one device** (RFC 8291, `aes128gcm`, with WebCrypto on both hosts), so the push service carries it without being able to read it.
+- **Only the browsers' own push services are sent to:** Chrome's and Edge's, Firefox's, Windows' and Safari's. A subscription names the address the server will post to, and a client chooses it, so any other address is refused when the device subscribes, with words that say so. A deployment can name more origins in `PUSH_HOSTS` (comma-separated, https; `--var` or `vars` on Cloudflare, the environment on Node). A `PUSH_HOSTS` that isn't a list of origins stops the server from starting.
+- **Limits.** A plugin shows at most 6 a minute, and a person is sent at most 200 a day across every space. A device whose push service says its subscription has ended (404 or 410) is forgotten. When a browser replaces its subscription, the service worker gives the account the new one.
+- **A browser is one person's at a time.** Signing out turns notifications off for that browser, and if someone else turns them on in it, the server takes it away from whoever had it (`push/endpoints/`), so one person's spaces never speak to another person at the same browser.
+- **Every push is shown.** Browsers wake a site only to show a notification, so the service worker always shows one, whether or not the app is open.
+- **Readers get them too.** A notification is something read. `to` narrows it to some members' ids, and ids that aren't members of the space are dropped.
+
+[`tests/server/push.mjs`](../tests/server/push.mjs) checks it on both hosts against a push service of its own on the machine (which `PUSH_HOSTS` allows there): what arrives is decrypted with a test device's keys, as a browser would, and its signature checked against the server's key; a job set with `ctx.schedule.at` sends one with no client connected. [`tests/checks/push-closed-tabs.mjs`](../tests/checks/push-closed-tabs.mjs) does it in a browser: the account page turns notifications on, and the service worker shows a chore's reminder from the household demo with every tab of the site closed. A test browser can't reach a vendor's push service, so the check hands the service worker what the server sent the way a push service does (DevTools' `ServiceWorker.deliverPushMessage`), and says whether the browser could make a real subscription.
 
 ## Proof apps
 

@@ -152,6 +152,7 @@
             <div class="section-head">
               <h3>On this page</h3>
               <template if="space"><p class="muted">Yours are on this device until you share one. The space's reach every member turned off, and each person turns them on for themselves.</p></template>
+              <template if="role"><p class="muted" data-part="role">{{role}}</p></template>
               <template if="account">
                 <div class="account" data-part="account">
                   <p class="muted">Signed in as {{account.name}}. The plugins and agents you add, which are on, where you move them and the model you pick follow you to every device you sign in on. {{account.keys}}</p>

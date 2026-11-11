@@ -7,6 +7,15 @@
 // In a space the chores sync like any collection. Two people marking the
 // same chore done while apart is a conflict the space settles: the first
 // change it hears is kept, and the other is a draft on the phone that made it.
+//
+// The collection's `rules` say who in the space may do what: anyone who can
+// change the space adds a chore and marks one done, but only whoever added a
+// chore (or the space's owner) removes it. The space's server enforces that,
+// and a reader, who changes nothing, sees the list without its buttons;
+// sync.may() says which buttons to draw.
+//
+// A chore also carries the time zone of whoever last added it or marked it
+// done, so that reminders.js, on the space's server, knows when its morning is.
 
 export const manifest = {
   id: "chores",
@@ -25,8 +34,10 @@ export const manifest = {
           every: { type: "integer", title: "Every (days)", minimum: 1, maximum: 365 },
           doneOn: { type: "string", title: "Last done", format: "date" },
           doneBy: { type: "string", title: "Done by", maxLength: 40 },
+          zone: { type: "string", title: "Time zone", maxLength: 60 },
         },
       },
+      rules: { remove: "author" },
     },
   },
 };
@@ -52,6 +63,16 @@ export function due(chore, today = new Date()) {
   if (days === 0) return { when: "Due today", tone: "warn", order: 0 };
   return { when: days === 1 ? "Due tomorrow" : `Due in ${days} days`, tone: days <= 2 ? "accent" : "neutral", order: days };
 }
+
+/** This device's time zone ("Europe/London"), which a chore carries so the space's server knows when its morning is (reminders.js). */
+const zone = () => {
+  try {
+    const z = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return z ? { zone: z } : {};
+  } catch {
+    return {};
+  }
+};
 
 const capital = (words) => words.charAt(0).toUpperCase() + words.slice(1);
 
@@ -102,7 +123,11 @@ export default async function (ctx) {
   const view = views.live("chores", "list", async (ctx) => {
     const { name } = await people(ctx);
     const who = (id) => (id ? name(id) : "someone");
-    const chores = (await ctx.call("data", "list", "chores"))
+    const list = await ctx.call("data", "list", "chores");
+    // What this person may do here: asked for each chore only when it depends on who added it.
+    const can = await ctx.call("sync", "may", "chores");
+    const removable = can.remove || !can.change ? null : new Set((await Promise.all(list.map(async (c) => ((await ctx.call("sync", "may", "chores", c.id)).remove ? c.id : null)))).filter(Boolean));
+    const chores = list
       .map((c) => ({ chore: c, due: due(c) }))
       .sort((a, b) => a.due.order - b.due.order || a.chore.name.localeCompare(b.chore.name))
       .map(({ chore: c, due: d }) => ({
@@ -113,8 +138,10 @@ export default async function (ctx) {
         tone: d.tone,
         last: c.doneOn ? `${capital(who(c.doneBy))} did it ${ago(c.doneOn)}` : "",
         today: c.doneOn === iso(new Date()),
+        canDo: can.change && c.doneOn !== iso(new Date()),
+        canRemove: removable ? removable.has(c.id) : can.remove,
       }));
-    return { chores, form: `add-${added}` };
+    return { chores, form: `add-${added}`, canAdd: can.add, why: can.change ? "" : (can.why ?? "") };
   });
 
   ctx.on("members:changed", () => view.refresh());
@@ -131,10 +158,10 @@ export default async function (ctx) {
       const chore = await ctx.call("data", "get", "chores", action.slice(5));
       if (!chore) return;
       const { doneBy, ...rest } = chore;
-      await ctx.call("data", "put", "chores", { ...rest, doneOn: iso(new Date()), ...(me ? { doneBy: me } : {}) });
+      await ctx.call("data", "put", "chores", { ...rest, doneOn: iso(new Date()), ...(me ? { doneBy: me } : {}), ...zone() });
     }
     if (action === "add" && value.name?.trim()) {
-      const saved = await ctx.call("data", "put", "chores", { name: value.name.trim(), every: Number(value.every) || 7 });
+      const saved = await ctx.call("data", "put", "chores", { name: value.name.trim(), every: Number(value.every) || 7, ...zone() });
       // A refused add (a data:beforeWrite listener blocked it, say) keeps what was typed.
       if (!saved.ok) return;
       added++;

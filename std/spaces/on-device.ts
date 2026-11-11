@@ -1,6 +1,7 @@
 // The device's side of a space, in a browser kernel for one (/s/<space>/…): its sync with the
 // space's kernel (device.ts), members' plugins (device-plugins.ts), the reviews the space's server
-// asks (reviews.ts) and the apps members made and shared (device-made-apps.ts). The spaces module
+// asks (reviews.ts), the apps members made and shared (device-made-apps.ts), and what the member may
+// change there (device-guard.ts). The spaces module
 // loads this file only in a kernel for a space, so a kernel that keeps no space doesn't carry it.
 
 import type { Hosts } from "../../src/kernel/hosts";
@@ -9,12 +10,15 @@ import type { Reviews } from "../../src/kernel/review";
 import type { Store } from "../../src/kernel/store";
 import type { UserPlugins } from "../../src/kernel/user-plugins";
 import { syncDevice } from "./device";
+import { deviceGuard } from "./device-guard";
 import { deviceMadeApps } from "./device-made-apps";
 import { devicePlugins } from "./device-plugins";
 import { deviceReviews } from "./reviews";
 
-export function startDevice(url: string, store: Store, records: Collections, hosts: Hosts, userAdded: UserPlugins, reviews: Reviews, reopen: (app: string) => unknown) {
+export function startDevice(url: string, store: Store, records: Collections, hosts: Hosts, userAdded: UserPlugins, reviews: Reviews, reopen: (app: string) => unknown, root: Parameters<typeof deviceGuard>[0]) {
   const device = syncDevice(url, store, records, hosts);
+  // What the member may not change in this space is stopped here, before it shows (device-guard.ts).
+  const stopGuard = deviceGuard(root, hosts, device);
   const shared = devicePlugins(userAdded, store, hosts, device, reopen);
   const stopReviews = deviceReviews(reviews, device);
   const made = deviceMadeApps(device, async () => (await device.state()).members);
@@ -23,6 +27,7 @@ export function startDevice(url: string, store: Store, records: Collections, hos
     shared,
     made,
     stop() {
+      stopGuard();
       stopReviews();
       shared.stop();
       made.stop();

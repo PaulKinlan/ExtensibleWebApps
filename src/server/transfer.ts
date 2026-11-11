@@ -30,7 +30,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 /** What a host gives the routes. */
 export interface TransferHost {
   /** The role of whoever sent the request in the space, or null if they aren't in it (or not signed in). */
-  role(request: Request, space: string): Promise<"owner" | "member" | null>;
+  role(request: Request, space: string): Promise<"owner" | "editor" | "reader" | null>;
   /** Downloads the space's folder. */
   exportSpace(space: string): Promise<SpaceCopy>;
   /** Loads a checked copy into the space, which must be empty, and starts its kernel on it. */
