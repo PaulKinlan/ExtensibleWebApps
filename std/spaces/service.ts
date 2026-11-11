@@ -184,7 +184,7 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
       model: {
         args: "()",
         returns: "{ space: null } or { space, set: false } or { space, set, model, vendor, byName, yours, asked, daily, refused? }",
-        params: [],
+        // No `params`: with them, a method that needs no permission would be a tool every agent is handed (std/tools).
         description: "Whether the space holds a model key for its members (its owner gives one on their account page): which model it is for, the name of who gave it and pays (`byName`), whether that is you (`yours`), and how many of the day's questions you have asked. Never the key, which stays on the space's server. Outside a space, `space` is null. Needs no permission.",
       },
       ask: {
@@ -254,7 +254,8 @@ export default ({ root, collections, hook, cleanup, remote, reviewed }: ModuleKe
         await reviewed(
           instance,
           // Allowed for good only for this space and this person's key: a key someone else gives is asked about again.
-          `${name}, on ${member && has.by === member ? "your" : `${has.byName}'s`} key`,
+          // (Shown as the space's name alone: review.ts shows what follows the #.)
+          `place:space-model:${name}:${has.by}#${name}`,
           `the space ${name}: asks ${has.model} on ${whose}`,
           "",
           `What you ask, and what the app sends with it, goes to the space's server and from there to ${has.model}.\n${member && has.by === member ? "You pay" : `${has.byName} pays`} for each question. A member may ask ${has.daily} a day; you have asked ${has.asked} today.`,

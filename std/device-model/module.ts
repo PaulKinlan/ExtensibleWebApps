@@ -42,7 +42,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     methods: {
       state: {
         args: "()",
-        params: [],
+        // No `params`: with them, a method that needs no permission would be a tool every agent is handed (std/tools).
         returns: '{ state: "available" | "downloadable" | "downloading" | "unavailable", progress }',
         description: "Whether this browser has a model of its own, which any plugin may ask (a list of plugins leaves out the ones that need a model the browser hasn't got). downloadable: it can have one, after a download of several GB that the first prompt() starts. progress is how much of a download has arrived, 0 to 1.",
       },

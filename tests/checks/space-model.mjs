@@ -119,7 +119,7 @@ export default async function ({ check, context, errors }) {
     await ben.page.click(`${ASK} button[type="submit"]`);
     const paying = await seen(ben.page, `${REVIEW} >> text=/asks Claude on Ann's key/`, 15000);
     const pays = await textOf(ben.page, REVIEW);
-    check("space model: before his first question goes, the member is shown whose key pays and how many he may ask", paying && /Ann pays for (each question|what you ask)/.test(pays) && /200 a day/.test(pays) && /Always allow in home, on Ann's key/.test(pays) && vendor.asked.length === sentBefore, pays.slice(0, 400));
+    check("space model: before his first question goes, the member is shown whose key pays and how many he may ask", paying && /Ann pays for (each question|what you ask)/.test(pays) && /200 a day/.test(pays) && /Always allow in home/.test(pays) && vendor.asked.length === sentBefore, pays.slice(0, 400));
     await ben.page.click(`${REVIEW} button:has-text("Always allow")`).catch(() => ben.page.click(`${REVIEW} button:has-text("Accept")`));
     const answered = await seen(ben.page, `${ASK} .answer >> text=/You said: Which book is longest/`, 20000);
     const said = `${await textOf(ben.page, `${ASK} .answer`)} ${await textOf(ben.page, `${ASK} .error`)}`;
