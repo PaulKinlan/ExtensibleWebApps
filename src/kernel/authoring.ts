@@ -144,6 +144,8 @@ export function explain(permission: string): string {
   if (kind === "provide" && verb) return `Answer every call this page's plugins make to the ${[verb, what].filter(Boolean).join(":")} service.`;
   if (permission === "debug:read") return "See everything every plugin does, as the debug console does.";
   if (permission === "live") return "Send and hear live messages with the other people in this space and its server, such as a game's moves.";
+  if (permission === "device-model") return "Ask the language model that is part of your browser. What you ask stays on this device.";
+  if (permission === "space-model") return "Ask a language model on the key this space's owner gave it. You are shown whose key pays first.";
   return `Use ${permission}.`;
 }
 

@@ -14,5 +14,8 @@
   "messages": [
     "sync"
   ],
+  "doors": [
+    "model"
+  ],
   "starts": "space"
 }

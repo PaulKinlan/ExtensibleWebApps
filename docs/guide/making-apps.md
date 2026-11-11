@@ -79,6 +79,26 @@ demos. Both need a click first, since the browser opens its folder picker
 only right after one ([`src/host/bridges/maker.ts`](../../src/host/bridges/maker.ts)),
 and a browser with no `showDirectoryPicker` says so.
 
+## Sharing it as a link
+
+**Share a link** in Your apps (`maker.link(app)`) makes a link that is the
+app: its `app.html` and the plugins, templates, styles and agents beside it,
+compressed into the part of the address after `#`
+([`std/maker/recipe.ts`](../../std/maker/recipe.ts)). It holds none of the
+data anyone put into the app. A browser never sends that part of an address
+to a server, so the site keeps nothing, and there is nothing to take down
+later: whoever has the link has the app as it was when the link was made.
+The link goes to the system's share sheet, or is copied where there is none.
+An app too big for a link (32,000 characters) says so, and to use a folder.
+
+Anyone can open it, signed in or not. The page says what the link holds, its
+title and files (`maker.linked()`), and adds nothing until they press
+**Look at it and add it** and accept one review card that shows every file,
+the same card any save shows (`maker.takeLink()`). Then it is their own app,
+with its own history; changing it changes only their copy. It never replaces
+an app they have: one of the same name arrives as `<name>-2`. A link that was
+cut short on the way says so and asks for it to be sent again.
+
 ## Sharing it with a space
 
 An app made in a space, at `/s/<space>/new/`, is kept in the space's folder on

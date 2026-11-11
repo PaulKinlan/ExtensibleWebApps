@@ -4,6 +4,8 @@
 // click, so the kernel asks the tab the person clicked in. The kernel checks
 // what comes back: which files an app may have, and a review before any save.
 //
+// `linked` reads an app someone shared as a link out of the page's address.
+//
 // In a space, `own` reads the apps the person made outside it (/new/, kept in
 // their own data folder, beside the space's), so one can be copied in.
 
@@ -25,6 +27,19 @@ async function choose(mode: "read" | "readwrite"): Promise<Folder | null> {
 }
 
 export default () => ({
+  /**
+   * The app a link to this page carries (std/maker/recipe.ts), as the part of the address after `#app=`, and
+   * the page's own path, which a link to share is made for. Empty when the address carries none.
+   */
+  linked(): { path: string; packed: string } {
+    const hash = location.hash.startsWith("#app=") ? location.hash.slice(5) : "";
+    return { path: location.pathname, packed: hash.length <= 100_000 ? hash : "" };
+  },
+  /** Takes the app out of the address once it is added or turned down, so a reload doesn't offer it again. */
+  unlink() {
+    if (location.hash.startsWith("#app=")) history.replaceState(history.state, "", location.pathname + location.search);
+  },
+
   /**
    * The person's own made apps (made/apps/ in their data folder, not a space's), from a page in a space: with no
    * name, each app's name and page; with one, the files at the top of its folder, each at most `max` characters.

@@ -26,6 +26,7 @@ import { signed } from "./signed.ts";
 import { type Accounts, type Decision, frontDoor, type Knock, SPACE, unrouted } from "./front-door.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "./routes.ts";
 import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
+import { gatewaysFrom, modelRoute, MODEL_TIMEOUT_MS } from "./space-model.ts";
 import { accept } from "./websocket.ts";
 import { headerRules } from "./header-rules.ts";
 import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse, mcpStream, type Watch } from "./mcp.ts";
@@ -61,6 +62,8 @@ export interface Options {
    * (src/server/network-guard.ts).
    */
   allowPrivate?: string[];
+  /** Vendors' hosts that a space's model key is used through a gateway for (MODEL_GATEWAYS, src/server/space-model.ts), by host. */
+  modelGateways?: Record<string, string>;
   /** How the server sends the mail server plugins send (src/server/smtp.ts); without it, mail stays in each space's outbox. */
   email?: Email;
 }
@@ -226,6 +229,28 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     return true;
   };
 
+  /** A model key a space holds for its members (src/server/space-model.ts). False for any other request. */
+  const model = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    if (!/^\/auth\/spaces\/[^/?]+\/model(\/key)?(\?|$)/.test(request.url ?? "")) return false;
+    const url = `${options.origin?.replace(/\/$/, "") ?? `http://${request.headers.host ?? "localhost"}`}${request.url}`;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
+    const answer = await modelRoute(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), {
+      async member(req, name) {
+        const found = await auth.member(req, name);
+        return found ? { id: found.user.id, name: found.user.name, role: found.role } : null;
+      },
+      lock: (name) => auth.modelLock(name),
+      ask: (name, _origin, route) => ask(name, route, MODEL_TIMEOUT_MS),
+      gateways: options.modelGateways,
+    });
+    if (!answer) return false;
+    response.writeHead(answer.status, Object.fromEntries(answer.headers));
+    response.end(Buffer.from(await answer.arrayBuffer()));
+    return true;
+  };
+
   /** A request under /auth/, as the web's Request, answered with the accounts' Response. */
   const signIn = async (request: IncomingMessage, response: ServerResponse) => {
     const chunks: Buffer[] = [];
@@ -350,7 +375,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
   /** Sends what the door decided for a request that isn't the space's socket. */
   const answer = async (request: IncomingMessage, response: ServerResponse, decision: Decision): Promise<void> => {
     // Moving a space (src/server/transfer.ts) is under /auth/ too; anything else there is the accounts'.
-    if (decision.door === "auth") return void ((await transfer(request, response)) || (await signIn(request, response)));
+    if (decision.door === "auth") return void ((await transfer(request, response)) || (await model(request, response)) || (await signIn(request, response)));
     if (decision.door === "live-mcp") {
       const url = addressOf(request);
       const headers = new Headers();
@@ -494,6 +519,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const i = process.argv.indexOf(`--${name}`);
     return i > 0 ? process.argv[i + 1] : fallback;
   };
+  const allowPrivate = arg("allow-private", process.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean);
   const { url } = await serve({
     port: Number(arg("port", "8787")),
     host: arg("host", "127.0.0.1"),
@@ -502,8 +528,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     kernel: arg("kernel", ".build/server/space.js"),
     providers: providersFrom(process.env, providerModules),
     origin: arg("origin", process.env.PUBLIC_ORIGIN ?? "") || undefined,
-    allowPrivate: arg("allow-private", process.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean),
+    allowPrivate,
     email: smtpFromEnv(process.env),
+    modelGateways: gatewaysFrom(process.env.MODEL_GATEWAYS, allowPrivate),
   });
   console.log(`Serving ${arg("site", "dist")} at ${url}; spaces at ${url.replace("http", "ws")}/s/<space>/kernel, kept in ${arg("spaces", ".spaces")}/`);
 }

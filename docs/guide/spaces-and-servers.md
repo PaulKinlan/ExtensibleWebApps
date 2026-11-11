@@ -122,6 +122,10 @@ Open `http://127.0.0.1:8787/account/`, make an account with a passkey (the brows
 
 To check a server plugin without a browser, copy [`tests/fixtures/server-app/`](../../tests/fixtures/server-app/) and the checks for it in [`tests/server/run.mjs`](../../tests/server/run.mjs), which run against Node and against `wrangler dev` (`npm run test:server`).
 
+## A model for everyone in a space
+
+The people in a space don't each need an API key. On `/account/`, under **A model for a space**, the space's owner can give it one key for Claude, Gemini or OpenAI. The space's server keeps the key encrypted and never sends it to a browser. A member then opens any app in the space, adds **The space's model** where the app asks for a language model (or from Customize), and asks: they are shown whose key pays before their first question, and each member has 200 questions a day. See [A model key a space holds for its members](../server.md#a-model-key-a-space-holds-for-its-members) for where the key is kept.
+
 ## Moving a space to another server
 
 On `/account/`, the owner of a space can **Download a copy** of it and **Load a copy** into an empty space on another server: from the hosted site to `npm run serve` on your own machine, say. Everything in the space goes, and its server plugins start again there by themselves. The people don't: they have accounts on the old server, so invite them again. See [Moving a space between hosts](../server.md#moving-a-space-between-hosts).
