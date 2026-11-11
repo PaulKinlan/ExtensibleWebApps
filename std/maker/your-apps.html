@@ -4,6 +4,8 @@
   models is the language models to pick from when the page has more than one; its picker sends "model" with an id.
   apps: { none, apps: [{ name, title, url, picked }], app: { name, title, url, revision }, files: [{ name, count, open, versions: [{ version, when, by, note, current, removed }] }], folder: { text, tone },
           space: { name, offline, sharedHere, waiting: [{ name, title, by, when, changed, label }], own: [{ name, title }] } (in a space only), sharing: { text, tone } }
+  arrived: { name, title, list, here } is the app this page was opened with a link to ("take-link" adds it after a review, "drop-link" turns it down); damaged says why such a link can't be read.
+  "link" makes a link to the picked app; linking: { text, tone, url } says what happened, with the link to copy by hand when it couldn't be shared or copied.
   "folder" saves the picked app's files to a folder on the person's disk; "open-folder" makes an app from one.
   In a space, "share" and "unshare" share the picked app with its members or stop; "accept" takes one a member shared, after a review; "copy-in" copies in one the person made outside the space.
 -->
@@ -21,6 +23,9 @@
   .yours code { font: var(--text-sm)/1.4 var(--mono); }
   .yours :is(.shared, .own-apps) ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); }
   .yours :is(.shared, .own-apps) li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .yours .row { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .yours .link { font: var(--text-sm)/1.4 var(--mono); width: 100%; padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); color: var(--fg); }
+  .yours .arrived :is(h3, p) { margin: 0; }
   .yours .shared-note { color: var(--fg-2); font-size: var(--text-sm); }
 </style>
 <template id="make">
@@ -62,6 +67,20 @@
     </ui-toolbar>
     <template if="folder"><ui-card tone="{{folder.tone}}"><p role="status">{{folder.text}}</p></ui-card></template>
     <template if="sharing"><ui-card tone="{{sharing.tone}}"><p role="status">{{sharing.text}}</p></ui-card></template>
+    <template if="arrived">
+      <ui-card class="arrived" tone="accent">
+        <h3>Someone shared an app with you: {{arrived.title}}</h3>
+        <template if="!arrived.here"><p>It is {{arrived.list}}, and it comes with none of their data. You'll see all of its code before it is added, and it becomes your own app, called <code>{{arrived.name}}</code>.</p></template>
+        <template if="arrived.here"><p>You have this app already, as <code>{{arrived.name}}</code>.</p></template>
+        <div class="row">
+          <template if="!arrived.here"><button class="primary" data-action="take-link">Look at it and add it</button></template>
+          <template if="arrived.here"><button class="primary" data-action="take-link">Show it</button></template>
+          <button data-action="drop-link">Not now</button>
+        </div>
+      </ui-card>
+    </template>
+    <template if="damaged"><ui-card tone="warn"><p role="alert">{{damaged}}.</p><div class="row"><button data-action="drop-link">Close</button></div></ui-card></template>
+    <template if="linking"><ui-card tone="{{linking.tone}}"><p role="status">{{linking.text}}</p><template if="linking.url"><input class="link" type="text" readonly aria-label="The link to the app" value="{{linking.url}}"></template></ui-card></template>
     <template if="space">
       <template if="space.offline"><p class="shared-note">The space can't be reached just now, so the apps its members shared aren't shown.</p></template>
       <template if="space.waiting.length">
@@ -100,6 +119,7 @@
           <ui-spacer></ui-spacer>
           <button data-action="reload">Reload</button>
           <button data-action="folder" title="Keep a copy of its files on your disk, or take it to another device">Save to a folder</button>
+          <button data-action="link" title="A link that is the app, without any of your data: whoever opens it gets a copy of their own, after a review">Share a link</button>
           <template if="space"><template if="!space.sharedHere"><button data-action="share" title="Each member sees it in their apps, and runs it once they accept its files">Share with the space</button></template><template if="space.sharedHere"><button data-action="share" title="Send the space this version: members accept it first">Share this version</button> <button data-action="unshare">Stop sharing</button></template></template>
           <a href="{{app.url}}">Open {{app.url}}</a>
         </ui-toolbar>
