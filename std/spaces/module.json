@@ -4,6 +4,7 @@
   ],
   "hooks": [
     "members:changed",
+    "sync:blobs",
     "sync:changed",
     "sync:live",
     "sync:trace"

@@ -1,17 +1,20 @@
 <!--
   Your spaces (spaces.js). It sends { user, spaces, app, invite, status,
-  revision }: each space { name, owner, role, open }, where `open` is the
-  address of the app the person came from, in that space. `invite` is the
-  last invite link made.
+  revision }: each space { name, owner, role, open, hasMembers, members },
+  where `open` is the address of the app the person came from, in that space,
+  and `members` lists who is in it with their role (owner, member or viewer).
+  `invite` is the last invite link made.
 -->
 <style>
-  .spaces { display: grid; gap: var(--space-3); }
+  .spaces { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
   .spaces form { display: flex; flex-direction: row; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
   .spaces input { flex: 1 1 12rem; }
-  .spaces ul { display: grid; gap: var(--space-3); padding: 0; list-style: none; }
-  .spaces li { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
-  .spaces li .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .spaces ul { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); padding: 0; list-style: none; }
+  .spaces .space-list > li { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); overflow-wrap: anywhere; }
+  .spaces li .actions { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
   .spaces li .actions a:not(.button) { margin-right: var(--space-2); }
+  .spaces .member-list { gap: var(--space-2); }
+  .spaces .member-row { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--space-2); align-items: center; font-size: var(--text-sm); color: var(--fg-2); }
   .spaces .status:empty { display: none; }
   .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 </style>
@@ -28,9 +31,32 @@
               <template if="s.open"><a href="{{s.open}}">Open {{app.title}} in it</a></template>
               <a href="/s/{{s.name}}/">Open the site in it</a>
             </span>
+            <template if="s.hasMembers">
+              <ul class="member-list">
+                <template for="m of s.members">
+                  <li key="{{m.id}}" class="member-row">
+                    <span>{{m.name}} ({{m.role}})</span>
+                    <template if="m.editable">
+                      <label for="member-role-{{s.name}}-{{m.id}}" class="visually-hidden">Role for {{m.name}} in {{s.name}}</label>
+                      <select id="member-role-{{s.name}}-{{m.id}}" data-action="role:{{s.name}}:{{m.id}}">
+                        <option value="member" selected="{{m.isMember}}">member</option>
+                        <option value="viewer" selected="{{m.isViewer}}">viewer</option>
+                      </select>
+                    </template>
+                  </li>
+                </template>
+              </ul>
+            </template>
             <span class="actions">
               <template if="s.owner">
-                <button type="button" data-action="invite:{{s.name}}">Invite someone</button>
+                <form data-action="invite:{{s.name}}">
+                  <label for="invite-role-{{s.name}}" class="visually-hidden">Role to invite to {{s.name}}</label>
+                  <select id="invite-role-{{s.name}}" name="role">
+                    <option value="member">Member</option>
+                    <option value="viewer">Viewer</option>
+                  </select>
+                  <button type="submit" class="secondary">Invite someone</button>
+                </form>
                 <a href="/auth/spaces/{{s.name}}/export" class="button">Download a copy</a>
                 <button type="button" data-action="load:{{s.name}}">Load a copy</button>
               </template>
