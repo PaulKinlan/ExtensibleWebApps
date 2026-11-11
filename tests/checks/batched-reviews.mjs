@@ -70,8 +70,11 @@ export default (ctx) => {
     const solo = JSON.parse((await pluginLog("batch-importer", "batch-one ")).slice("batch-one ".length));
     check("accepting the single review resolves its write", solo.ok === true, JSON.stringify(solo));
 
+    const importerWrites = () =>
+      a.evaluate(() => window.__host.command("changes").then((list) => list.filter((c) => c.kind === "write" && c.plugin === "batch-importer")));
+
     // Three concurrent writes to the same collection show the grouped banner alongside all three cards.
-    const changesBeforeThree = (await a.evaluate(() => window.__host.command("changes"))).length;
+    const writesBeforeThree = (await importerWrites()).length;
     await a.click(`${controls} button:has-text("Import three")`);
     await a.waitForSelector(`${banner} button:has-text("Accept all 3 in data:batch-items")`, { timeout: 5000 });
     await a.waitForFunction(() => document.querySelectorAll('#review [data-key^="review:"]').length === 3, null, { timeout: 5000 });
@@ -95,8 +98,7 @@ export default (ctx) => {
       JSON.stringify(three),
     );
 
-    const changesAfterThree = (await a.evaluate(() => window.__host.command("changes"))).slice(changesBeforeThree);
-    const loggedAccepts = changesAfterThree.filter((c) => c.kind === "write" && c.plugin === "batch-importer" && c.outcome === "allowed-once");
+    const loggedAccepts = (await importerWrites()).slice(writesBeforeThree).filter((c) => c.outcome === "allowed-once");
     check(
       "batch accept appends each write outcome to the change log and traces review:batch",
       loggedAccepts.length === 3 && (await traceHas(a, (e) => e.name === "review:batch" && e.plugin === "batch-importer" && /allowed-once \(3 in data:batch-items\)/.test(e.detail ?? ""))),
@@ -104,14 +106,13 @@ export default (ctx) => {
     );
 
     // Declining all rejects every pending promise and logs each rejection without writing.
-    const changesBeforeTwo = (await a.evaluate(() => window.__host.command("changes"))).length;
+    const writesBeforeTwo = (await importerWrites()).length;
     await a.click(`${controls} button:has-text("Import two")`);
     await a.waitForSelector(`${banner} button:has-text("Decline all 2")`, { timeout: 5000 });
     await a.click(`${banner} button:has-text("Decline all 2")`);
     const two = JSON.parse((await pluginLog("batch-importer", "batch-two ")).slice("batch-two ".length));
     await a.waitForSelector('#review [data-key]', { state: "detached", timeout: 5000 });
-    const changesAfterTwo = (await a.evaluate(() => window.__host.command("changes"))).slice(changesBeforeTwo);
-    const loggedDeclines = changesAfterTwo.filter((c) => c.kind === "write" && c.plugin === "batch-importer" && c.outcome === "rejected");
+    const loggedDeclines = (await importerWrites()).slice(writesBeforeTwo).filter((c) => c.outcome === "rejected");
     check(
       "clicking “Decline all” rejects every waiting write, leaves the collection unchanged, and logs each rejection",
       two.results.length === 2 && two.results.every((r) => !r.ok && /declined/.test(r.error ?? "")) && two.count === 4 && loggedDeclines.length === 2,
