@@ -229,6 +229,17 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         ],
         description: "Sends something to the server's accounts as the person, and raises account:changed when it works.",
       },
+      "space-key": {
+        args: "(space, vendor, label?)",
+        returns: "{ set, vendor, model, byName, at } or null",
+        needs: "account",
+        params: [
+          { name: "space", schema: { type: "string", description: "A space the person owns" } },
+          { name: "vendor", schema: { type: "string", description: "Whose key it is: a vendor's id from /auth/spaces/<space>/model" } },
+          { name: "label", optional: true, schema: { type: "string", description: "The vendor's name, for the card" } },
+        ],
+        description: "Gives a space a model key for its members (src/server/space-model.ts): the person types it into a card the kernel draws, and it goes straight to the server, which keeps it encrypted. No plugin sees it. null if they closed the card.",
+      },
       register: {
         args: "(name?)",
         returns: "{ status }",
@@ -334,6 +345,26 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         const text = (await hosts.bridge("account", "pick", [], dispatch, host)) as string | null;
         if (text === null) return null;
         const res = await fetch(new URL(`/auth/spaces/${space}/import`, self.location.origin), { method: "POST", headers: { "content-type": "application/json" }, body: text });
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `The server answered ${res.status}`);
+        changed();
+        return { ...data, status: res.status };
+      }
+      if (method === "space-key") {
+        const [space, vendor, label] = args;
+        if (typeof space !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(space)) throw new Error("account.space-key takes a space's name");
+        if (typeof vendor !== "string" || !/^[a-z0-9-]+$/.test(vendor)) throw new Error("account.space-key takes whose key it is");
+        const whose = typeof label === "string" && label ? label.slice(0, 40) : vendor;
+        // Typed into a card the kernel draws in this tab, and sent straight to the server: no plugin ever holds it.
+        const key = await kernel.secrets.ask({
+          heading: `A ${whose} key for ${space}`,
+          text: `Paste a ${whose} API key. It goes to this site's server, which keeps it encrypted and uses it only to ask ${whose} for the members of ${space}. It is never sent back to a browser, yours included. You pay for what the members ask, so make a key just for this where ${whose} lets you, with a spending limit.`,
+          label: "API key",
+          twice: false,
+          tab: host.tab,
+        });
+        if (key === undefined) return null;
+        const res = await fetch(new URL(`/auth/spaces/${space}/model/key`, self.location.origin), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ vendor, key }) });
         const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
         if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `The server answered ${res.status}`);
         changed();

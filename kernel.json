@@ -6,6 +6,7 @@
     "bus",
     "commands",
     "debug",
+    "device-model",
     "email",
     "folder",
     "follow",

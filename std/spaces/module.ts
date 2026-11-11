@@ -33,6 +33,7 @@
 import { env } from "../../src/kernel/env";
 import { record as trace } from "../../src/kernel/trace";
 import type { KernelModule } from "../../src/kernel/modules";
+import type { RouteRequest, RouteResponse } from "../../src/kernel/routes";
 import { syncHub } from "./hub";
 import { spaceMadeApps } from "./made-apps";
 import type { startDevice } from "./on-device";
@@ -87,6 +88,10 @@ export default {
       kernel.message("sync", (host, message) => hub.handle(host, message));
       root.on("internal/left", (host: Parameters<typeof hub.hostLeft>[0]) => hub.hostLeft(host));
       kernel.space({ server: onServer });
+      // A model key the space holds for its members (model-key.ts): the host knocks at this door for a member
+      // it has checked, and the key is unlocked and used here only. Fetched the first time anyone asks.
+      let model: Promise<(request: RouteRequest) => Promise<RouteResponse>> | undefined;
+      kernel.door("model", async (request) => (await (model ??= import("./model-key").then((m) => m.spaceModel(store, where.fetch ?? fetch))))(request));
       kernel.cleanup(() => {
         hub.plugins = undefined;
         hub.apps = undefined;

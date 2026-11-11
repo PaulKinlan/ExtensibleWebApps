@@ -36,6 +36,7 @@ import { mcpAddress, mcpRequest, mcpResponse, mcpStream, type Watch } from "../m
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
 import { transferRoute } from "../transfer.ts";
+import { gatewaysFrom, modelRoute } from "../space-model.ts";
 import { feedReader } from "../feed-reader.ts";
 import { isOwnNetwork, leadsInside } from "./network-guard.ts";
 import { resolverFrom } from "./names.ts";
@@ -55,6 +56,8 @@ interface Env {
   EMAIL_FROM?: string;
   /** Private hosts server plugins may reach anyway, comma-separated, as on Node (network-guard.ts). For tests under wrangler dev. */
   ALLOW_PRIVATE_HOSTS?: string;
+  /** Vendors' hosts a space's model key is used through a gateway for, as JSON (src/server/space-model.ts). */
+  MODEL_GATEWAYS?: string;
   /** The DNS-over-HTTPS resolver that says where a name leads (names.ts), when not Cloudflare's. The server checks name a stand-in. */
   DNS_RESOLVER?: string;
 }
@@ -370,6 +373,17 @@ export class Accounts extends DurableObject<Env> {
     return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.role ?? null;
   }
 
+  /** Who the session in a cookie header is in a space, with the name on their account and their role, if they're in it. */
+  async who(cookie: string, space: string): Promise<{ id: string; name: string; role: "owner" | "member" } | null> {
+    const found = await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space);
+    return found ? { id: found.user.id, name: found.user.name, role: found.role } : null;
+  }
+
+  /** What unlocks the model key a space holds, kept here and not in the space (src/server/space-model.ts). */
+  async modelLock(space: string): Promise<string> {
+    return this.auth.modelLock(space);
+  }
+
   /** Which member of a space the session in a cookie header is, if it's one. */
   async member(cookie: string, space: string): Promise<string | null> {
     return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.user.id ?? null;
@@ -455,7 +469,16 @@ async function answer(request: Request, env: Env, decision: Decision): Promise<R
         exportSpace: (space) => env.SPACE.getByName(space).exportCopy(space),
         importSpace: (space, copy, origin) => env.SPACE.getByName(space).importCopy(space, origin, copy),
       });
-      return moved ?? env.ACCOUNTS.getByName("accounts").fetch(request);
+      if (moved) return moved;
+      // A model key a space holds for its members (src/server/space-model.ts): used in the space's own kernel.
+      const accounts = env.ACCOUNTS.getByName("accounts");
+      const asked = await modelRoute(request, {
+        member: (req, space) => accounts.who(req.headers.get("cookie") ?? "", space),
+        lock: (space) => accounts.modelLock(space),
+        ask: (space, origin, route) => env.SPACE.getByName(space).route(space, origin, route),
+        gateways: gatewaysFrom(env.MODEL_GATEWAYS, [...allowedPrivate(env)]),
+      });
+      return asked ?? accounts.fetch(request);
     }
     case "join": {
       const forward = new Request(request);

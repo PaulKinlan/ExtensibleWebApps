@@ -28,7 +28,8 @@ const fromBase64 = (text: string) => Uint8Array.from(atob(text), (c) => c.charCo
 export async function exportSpace(folder: Files, space: string): Promise<SpaceCopy> {
   const files: Record<string, string> = {};
   for (const path of await folder.list("")) {
-    if (path === "secrets.json") continue;
+    // Nor the model key the space holds (std/spaces/model-key.ts): what unlocks it stays with this host's accounts.
+    if (path === "secrets.json" || path === "model-key.json" || path === "model-use.json") continue;
     const data = await folder.read(path);
     if (data) files[path] = toBase64(data);
   }

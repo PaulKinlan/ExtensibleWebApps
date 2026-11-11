@@ -117,6 +117,7 @@ Most services have moved out of the core into **kernel modules**. A module is a 
     "bus",
     "commands",
     "debug",
+    "device-model",
     "email",
     "folder",
     "game",
@@ -187,6 +188,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `bus` | [`std/bus/module.ts`](../std/bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person, with replies and topics |
 | `commands` | [`std/commands/module.ts`](../std/commands/module.ts) | The `commands` service: commands from any plugin, run from a palette, a key or an agent (the palette is [`std/commands/palette.js`](../std/commands/palette.js)) |
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |
+| `device-model` | [`std/device-model/module.ts`](../std/device-model/module.ts) | The `device-model` service: the language model the browser carries itself (Chrome's Prompt API), asked in a tab through the host's [`device-model` bridge](../src/host/bridges/device-model.ts), since the API isn't in workers. No key, and nothing leaves the device. [`std/llm/chrome.js`](../std/llm/chrome.js) offers it as a model |
 | `email` | [`std/email/module.ts`](../std/email/module.ts) | The `email` service: mail from a space's server to its members, with daily limits |
 | `folder` | [`std/folder/module.ts`](../std/folder/module.ts) | The `folder` service: a folder of files the person works on (a Hugo site), picked on their disk or private in the browser; plugins other than its keeper propose writes, which the person reviews |
 | `follow` | [`std/follow/module.ts`](../std/follow/module.ts) | What a signed-in person added (plugins, agents, which are on, moves, their pick of model) follows them between their devices through their account; their API keys too if they ask, encrypted on the device so the server can't read one (`vault.ts`, fetched only then). Starts only on a device where someone is signed in; see [Servers](server.md#what-follows-a-person-between-devices) |
