@@ -418,7 +418,6 @@ for (const name of Object.keys(services)) RESERVED.add(name);
 let started = false;
 let loaded = false;
 hosts.onHello = (host, folder) => {
-  if (host.bench) plugins.drawAll();
   if (!started) {
     started = true;
     store.use(where.folder ?? folder);
@@ -512,6 +511,12 @@ hosts.onMessage = async (host, message) => {
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
     case "command": {
+      // The workbench asks for its plugins panel, which no app's page shows: it is drawn from now on (catalog.ts).
+      if (message.name === "plugins-panel") {
+        host.bench = true;
+        plugins.drawAll();
+        return hosts.send(host, { t: "command:result", id: message.id, value: true });
+      }
       const value = await command(message.name, message.arg);
       return hosts.send(host, { t: "command:result", id: message.id, value });
     }

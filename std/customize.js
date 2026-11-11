@@ -43,7 +43,7 @@ export const manifest = {
   // Each tab's panel customizes the app open in that tab.
   scope: "tab",
   // The button is the kernel's until someone goes to it: no app pays for this file's panel before then.
-  standIn: { slot: "customize", key: "panel", html: '<ui-panel label="Customize" toggle="panel"><p>Opening…</p></ui-panel>' },
+  standIn: { slot: "customize", key: "panel", html: '<ui-panel label="Customize" toggle="panel" reopen="0"><p>Opening…</p></ui-panel>' },
 };
 
 /** What each place state says to the person. */

@@ -180,13 +180,6 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
     }
   };
 
-  /** A setting changed in the plugins panel (catalog-panel.ts). */
-  const set = (id: string, key: string, value: unknown, d: Dispatch) =>
-    void panel?.then(({ setSetting }) => {
-      setSetting({ remote, coerce, errors, settings: saved.settings, persist, log, settingsFor }, id, key, value, d);
-      draw(id);
-    });
-
   const service: ServiceProvider = {
     description: "The plugin's own settings, from the form the plugins panel builds out of its manifest.",
     methods: {
@@ -239,14 +232,12 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
       booting = false;
       record({ kind: "lifecycle", name: "plugins:loaded", detail: `${builtIn.length} built in, ${stored.length} with the data, ${off.size} off` });
     },
+    /** Something pressed or changed in the plugins panel (catalog-panel.ts, which the panel being there has loaded). */
     event(action: string, value: unknown, trace: string) {
-      const d = { trace };
-      // `set:<id>:<key>`: ids have no colons, but setting keys may.
-      const [verb, id] = action.split(":", 2);
-      if (verb === "toggle") return void remote.setEnabled(id, !remote.installed.get(id)?.enabled);
-      if (verb === "remove") return void remove(id);
-      if (verb === "set") return set(id, action.slice(verb.length + id.length + 2), value, d);
-      if (verb === "forget") return void reviews.forget(id, action.slice(verb.length + id.length + 2), trace);
+      void panel?.then(({ panelEvent }) => {
+        const changed = panelEvent({ remote, coerce, errors, settings: saved.settings, persist, log, settingsFor, remove, reviews }, action, value, trace);
+        if (changed) draw(changed);
+      });
     },
   };
 }

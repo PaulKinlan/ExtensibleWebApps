@@ -263,8 +263,10 @@ export class RemotePlugins {
    * yet. Each starts at the first thing the person does in its stand-in (deliver).
    */
   private standIns = new Map<string, Host>();
-  /** Instances a stand-in gave way to, starting or running: what the person does meanwhile reaches them once they have started. */
-  private used = new Map<string, Promise<boolean>>();
+  /** Instances a stand-in gave way to, starting or running: what the person does reaches each once it has drawn its own view. */
+  private used = new Map<string, Promise<void>>();
+  /** Settles an instance's entry in `used`: it drew, or it stopped. */
+  drew = new Map<string, () => void>();
 
   private startInstance(plugin: Installed, instance: string, host: Host): Promise<boolean> {
     const standIn = plugin.manifest.standIn;
@@ -313,16 +315,17 @@ export class RemotePlugins {
   /** Stops every instance of a plugin. */
   stop(id: string): void {
     for (const [instance, remote] of this.live) if (remote.plugin.id === id) this.stopInstance(instance);
-    // And the ones a stand-in still holds the place of.
-    for (const instance of this.standIns.keys()) if (instance.split("@")[0] === id) this.stopInstance(instance);
+    // And the ones a stand-in holds the place of, or did until a moment ago (their workers aren't there yet).
+    for (const instance of [...this.standIns.keys(), ...this.used.keys()]) if (instance.split("@")[0] === id) this.stopInstance(instance);
   }
 
   stopInstance(instance: string, terminate = true): void {
-    // Stopped, it is as it was before it was first used.
+    // Stopped, it is as it was before it was first used; one still starting takes its stand-in with it.
+    this.drew.get(instance)?.();
+    const held = this.standIns.delete(instance) || this.used.delete(instance);
     this.used.delete(instance);
-    if (this.standIns.delete(instance)) return this.hosts.clear(instance);
     const remote = this.live.get(instance);
-    if (!remote) return;
+    if (!remote) return held ? this.hosts.clear(instance) : undefined;
     remote.dispose();
     this.live.delete(instance);
     this.hosts.clear(instance);
@@ -499,9 +502,10 @@ export class RemotePlugins {
     const plugin = this.installed.get(instance.split("@")[0]);
     if (host && plugin) {
       this.standIns.delete(instance);
-      // Marked as used first: that is what tells startInstance to start it for real.
-      this.used.set(instance, Promise.resolve(false));
-      this.used.set(instance, this.startInstance(plugin, instance, host));
+      // Marked as used first: that is what tells startInstance to start it for real. It hears what was done once it
+      // has drawn its own view, by when it is listening; one that doesn't start hears nothing.
+      this.used.set(instance, new Promise((drew) => this.drew.set(instance, drew)));
+      void this.startInstance(plugin, instance, host).then((ok) => ok || this.drew.get(instance)?.());
     }
     const starting = this.used.get(instance);
     if (starting) return void starting.then(() => this.live.get(instance)?.post(message, transfer));
@@ -661,6 +665,7 @@ export class Remote {
           return;
         }
         this.manager.hosts.render(this.instance, message.slot as Slot, `${this.instance}:${message.key}`, view, message.order ?? this.plugin.manifest.order, this.tab);
+        this.manager.drew.get(this.instance)?.();
         return;
       case "call":
         return this.call(message.id, message.service, message.method, message.args, message.trace);

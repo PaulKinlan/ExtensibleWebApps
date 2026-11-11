@@ -30,5 +30,5 @@ export const MANIFEST_FIELDS: Record<keyof Manifest, string> = {
   files:
     "Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, or paths in a folder beside it like plugin-editor.templates/card.js (up to four folders deep, and the first folder's name has a dot in it, so it can never be another app's folder). They are copied with it when a person adds it to an app.",
   standIn:
-    'Optional, with the ui permission. { slot, key, html }: a view the kernel draws in the plugin\'s place, at the slot and key the plugin will draw its own, until the person first does something in it. The plugin starts then, hears what they did, and draws over it. For a plugin that is a panel behind a button: the button costs nothing until it is opened. `html` is at most 2,000 characters.',
+    'Optional, with the ui permission. { slot, key, html }: a view the kernel draws in the plugin\'s place, at the slot and key the plugin will draw its own, until the person first does something in it. The plugin starts then, draws its own view over it, and hears what they did once it has (so it listens before it first draws). For a plugin that is a panel behind a button: the button costs nothing until it is opened. `html` is at most 2,000 characters.',
 };

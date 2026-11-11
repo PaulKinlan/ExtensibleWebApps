@@ -5,7 +5,7 @@
 import type { Dispatch, Manifest, View } from "../shared/protocol";
 import type { ChangeLog } from "./changes";
 import type { Installed, RemotePlugins } from "./remote";
-import { placeLabel } from "./review";
+import { placeLabel, type Reviews } from "./review";
 import { record } from "./trace";
 
 type Values = Record<string, string | number | boolean>;
@@ -18,10 +18,25 @@ interface Catalog {
   persist(): Promise<void>;
   log: ChangeLog;
   settingsFor(id: string): Values;
+  remove(id: string): Promise<boolean>;
+  reviews: Reviews;
+}
+
+/** What was pressed or changed in the panel. Answers the plugin whose view must be drawn again, if one must. */
+export function panelEvent(catalog: Catalog, action: string, value: unknown, trace: string): string | undefined {
+  // `set:<id>:<key>`: ids have no colons, but setting keys may.
+  const [verb, id] = action.split(":", 2);
+  const rest = action.slice(verb.length + id.length + 2);
+  if (verb === "toggle") void catalog.remote.setEnabled(id, !catalog.remote.installed.get(id)?.enabled);
+  if (verb === "remove") void catalog.remove(id);
+  if (verb === "forget") void catalog.reviews.forget(id, rest, trace);
+  if (verb !== "set") return;
+  setSetting(catalog, id, rest, value, { trace });
+  return id;
 }
 
 /** Keeps a setting the person changed in the panel, and tells the plugin; one the manifest doesn't allow is shown as an error there. */
-export function setSetting({ remote, coerce, errors, settings, persist, log, settingsFor }: Catalog, id: string, key: string, value: unknown, d: Dispatch): void {
+function setSetting({ remote, coerce, errors, settings, persist, log, settingsFor }: Catalog, id: string, key: string, value: unknown, d: Dispatch): void {
   const plugin = remote.installed.get(id);
   if (!plugin) return;
   const result = coerce(plugin.manifest, key, value);

@@ -71,7 +71,7 @@ export interface TraceEvent {
 // host -> kernel
 export type HostToKernel =
   /** `member` is set by a server, never by the client: who in the space's accounts this connection is. */
-  | { t: "hello"; tab: string; folder?: FileSystemDirectoryHandle; member?: string; bench?: boolean }
+  | { t: "hello"; tab: string; folder?: FileSystemDirectoryHandle; member?: string }
   | SyncToSpace
   | { t: "bye"; tab: string }
   | { t: "event"; owner: string; action: string; value?: unknown; trace: string }
@@ -98,6 +98,8 @@ export type HostToKernel =
   | { t: "url"; path: string; query: Record<string, string> };
 
 export type Command =
+  /** The workbench asks for its plugins panel, which the kernel draws only for it. */
+  | "plugins-panel"
   | "bench"
   | "reload-test"
   | "reload"
@@ -223,8 +225,8 @@ export interface Manifest {
   hooks?: Record<string, PluginHook>;
   /**
    * What holds its place until the person first uses it, with the ui permission: `{ slot, key, html }`, the view it
-   * will draw there itself. The kernel draws it, and starts the plugin at the first thing the person does in it
-   * (a panel behind a button costs an app nothing until it is opened).
+   * will draw there itself. The kernel draws it, and starts the plugin at the first thing the person does in it;
+   * the plugin hears that once it has drawn its own view (a panel behind a button costs an app nothing until it is opened).
    */
   standIn?: { slot: string; key: string; html: string };
   /** Services it calls that not every site runs (kernel modules, docs/layers.md): `["llm", "bus"]`. It isn't started without them. */
