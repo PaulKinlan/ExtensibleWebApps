@@ -302,6 +302,21 @@ export async function acpChecks(base, check, owner, person, vendor, restart) {
     mineToo?.result && plain.updates(session).some((u) => u.sessionUpdate === "user_message_chunk") && notTheirs?.error?.code === -32002 && /Start a new one/.test(notTheirs.error.message) && prompted?.error?.code === -32002 && theirs.updates(session).length === 0,
     JSON.stringify({ mineToo, notTheirs, prompted }),
   );
+
+  // ---- Roles: a reader changes nothing in a space, so no agent acts as them from an editor either ----
+
+  const melId = (await owner.call("/auth/spaces/desk")).body?.members?.find((m) => m.name === "Mel")?.id;
+  const melKey = (await mel.call("/auth/keys", { space: "desk", name: "Mel's other editor", editor: "shelf-keeper" })).body?.key;
+  const asEditor = await post(hello, { key: melKey });
+  const demoted = await owner.call("/auth/spaces/desk/role", { user: melId, role: "reader" });
+  const asReader = await post(hello, { key: melKey });
+  const noKey = await mel.call("/auth/keys", { space: "desk", name: "A reader's editor", editor: "shelf-keeper" });
+  check(
+    "acp roles: made a reader, a member's editor keys stop opening the agent, and a reader can't make one",
+    asEditor.status === 200 && demoted.status === 200 && asReader.status === 401 && noKey.status === 403 && /read this space/.test(noKey.body?.error ?? ""),
+    JSON.stringify({ asEditor: asEditor.status, demoted, asReader, noKey }),
+  );
+
   await plain.close();
   phone.close();
 
