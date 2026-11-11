@@ -13,6 +13,9 @@
 // chore (or the space's owner) removes it. The space's server enforces that,
 // and a reader, who changes nothing, sees the list without its buttons;
 // sync.may() says which buttons to draw.
+//
+// A chore also carries the time zone of whoever last added it or marked it
+// done, so that reminders.js, on the space's server, knows when its morning is.
 
 export const manifest = {
   id: "chores",
@@ -31,6 +34,7 @@ export const manifest = {
           every: { type: "integer", title: "Every (days)", minimum: 1, maximum: 365 },
           doneOn: { type: "string", title: "Last done", format: "date" },
           doneBy: { type: "string", title: "Done by", maxLength: 40 },
+          zone: { type: "string", title: "Time zone", maxLength: 60 },
         },
       },
       rules: { remove: "author" },
@@ -59,6 +63,16 @@ export function due(chore, today = new Date()) {
   if (days === 0) return { when: "Due today", tone: "warn", order: 0 };
   return { when: days === 1 ? "Due tomorrow" : `Due in ${days} days`, tone: days <= 2 ? "accent" : "neutral", order: days };
 }
+
+/** This device's time zone ("Europe/London"), which a chore carries so the space's server knows when its morning is (reminders.js). */
+const zone = () => {
+  try {
+    const z = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return z ? { zone: z } : {};
+  } catch {
+    return {};
+  }
+};
 
 const capital = (words) => words.charAt(0).toUpperCase() + words.slice(1);
 
@@ -144,10 +158,10 @@ export default async function (ctx) {
       const chore = await ctx.call("data", "get", "chores", action.slice(5));
       if (!chore) return;
       const { doneBy, ...rest } = chore;
-      await ctx.call("data", "put", "chores", { ...rest, doneOn: iso(new Date()), ...(me ? { doneBy: me } : {}) });
+      await ctx.call("data", "put", "chores", { ...rest, doneOn: iso(new Date()), ...(me ? { doneBy: me } : {}), ...zone() });
     }
     if (action === "add" && value.name?.trim()) {
-      const saved = await ctx.call("data", "put", "chores", { name: value.name.trim(), every: Number(value.every) || 7 });
+      const saved = await ctx.call("data", "put", "chores", { name: value.name.trim(), every: Number(value.every) || 7, ...zone() });
       // A refused add (a data:beforeWrite listener blocked it, say) keeps what was typed.
       if (!saved.ok) return;
       added++;

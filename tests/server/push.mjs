@@ -41,7 +41,7 @@ export async function fakePushService() {
 }
 
 /** A device's subscription, as a browser makes one: where to send, and the keys only the device can read with. */
-async function subscription(service, id) {
+export async function subscription(service, id) {
   const pair = await crypto.subtle.generateKey({ name: "ECDH", namedCurve: "P-256" }, true, ["deriveBits"]);
   const mine = new Uint8Array(await crypto.subtle.exportKey("raw", pair.publicKey));
   const auth = crypto.getRandomValues(new Uint8Array(16));
