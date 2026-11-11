@@ -63,7 +63,7 @@ jobs:
 
       # The same pinned browser as platform-checks.yml: change it there and here together.
       - name: Install
-        run: npm ci && npm i --no-save playwright@1.65.0 && npx playwright install --with-deps chromium
+        run: npm ci && npm i --no-save playwright@1.65.0 && (npx playwright install --with-deps chromium || npx playwright install chromium)
 
       - name: npm test
         shell: bash

@@ -49,7 +49,7 @@ jobs:
       # The same pinned Chromium as the platform checks (platform-checks.yml).
       - name: Install
         continue-on-error: true
-        run: npm ci && npm i --no-save playwright@1.65.0 && npx playwright install --with-deps chromium
+        run: npm ci && npm i --no-save playwright@1.65.0 && (npx playwright install --with-deps chromium || npx playwright install chromium)
 
       - name: Build this branch
         continue-on-error: true
