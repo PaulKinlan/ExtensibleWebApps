@@ -162,6 +162,8 @@ export interface ModuleManifest {
    * where the person is signed in to the site ("account"). Without it, when first used.
    */
   starts?: "always" | "space" | "account";
+  /** "server": what it adds only a space's server can use, so the browser's kernel is built without it. */
+  only?: "server";
 }
 
 /** A module as the build hands it to the kernel: its manifest, and the module itself (a server's kernel) or how to fetch it (the browser's). */

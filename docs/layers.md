@@ -163,6 +163,7 @@ Beside each `module.ts` is `module.json`, which says what the module adds, the w
 | `messages` | The message types it answers (`kernel.message`) |
 | `doors` | The doors it answers on a space's server (`kernel.door`) |
 | `starts` | `"always"` to start with every kernel, `"space"` to start with a kernel that is for a space, or `"account"` to start with a kernel on a device where the person is signed in to the site. Left out, the module starts when it is first used |
+| `only` | `"server"` for a module whose every addition only a space's server can use (a door and nothing else, as `acp`). The browser's kernel is built without it, so it costs an app nothing: no manifest in the kernel's file and no file to fetch. Left out, the module is in every kernel |
 
 In the browser the kernel starts with the manifests only. Each listed service has a stand-in in the kernel's table, and each hook's name is the kernel's, so a plugin that needs the service is accepted and nothing else can take the names. The kernel fetches the module's file and runs it the first time:
 
@@ -184,7 +185,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | Module | File | What it adds |
 | --- | --- | --- |
 | `account` | [`std/account/module.ts`](../std/account/module.ts) | The `account` service: the person's account on the site's server (passkeys, other sites to sign in with, email, spaces, agent keys), for the account app's own plugins ([`account/app.html`](../account/app.html)) and no others |
-| `acp` | [`std/acp/module.ts`](../std/acp/module.ts) | No service: the door `acp`, by which an editor that speaks the Agent Client Protocol talks to one of a space's agents on the space's server (`door.ts`, loaded only there and only when an editor first knocks; in a browser the module is a few lines that answer nothing). See [Editors talking to an app's agents](guide/editors-and-agents.md) |
+| `acp` | [`std/acp/module.ts`](../std/acp/module.ts) | No service: the door `acp`, by which an editor that speaks the Agent Client Protocol talks to one of a space's agents on the space's server (`door.ts`, started when an editor first knocks). Its manifest says `"only": "server"`, so the browser's kernel is built without it. See [Editors talking to an app's agents](guide/editors-and-agents.md) |
 | `agents` | [`std/agents/module.ts`](../std/agents/module.ts) | The `agents` service: counts each agent's runs and tokens, so an agent can't misreport its own use, and tells the app what agents do (`agent:*` hooks). Uses `tools` |
 | `audio` | [`std/audio/module.ts`](../std/audio/module.ts) | The `audio` service: sound for plugins, played by the tab that runs their workers |
 | `bus` | [`std/bus/module.ts`](../std/bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person, with replies and topics |

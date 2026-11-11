@@ -13,9 +13,10 @@
 // apps and, for a key made for the editor, in the editor's own prompt.
 //
 // Only the server's host can knock (src/server/acp.ts), once it has checked a
-// member's agent key. Everything the door does is in door.ts, fetched the
-// first time it is knocked at: a browser's kernel never needs it, and a
-// space no editor talks to doesn't run it.
+// member's agent key. Its manifest says `"only": "server"`, so the browser's
+// kernel is built without this module: an app pays nothing for it, not even
+// its name. Everything the door does is in door.ts, started the first time it
+// is knocked at, so a space no editor talks to doesn't run it.
 //
 // A kernel module (docs/layers.md): a site that lists `acp` in kernel.json has it.
 
