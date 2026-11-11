@@ -9,7 +9,7 @@
 // Customize, a plugin they made is saved, a space sends a shared one.
 
 import { isAgentFile } from "../shared/agent-runner";
-import { FILE_PATH, readManifest } from "./manifest";
+import { FILE_PATH, readManifest, CODE_APART } from "./manifest";
 import type { Store } from "./store";
 import { record } from "./trace";
 import { checkApp, EVERYWHERE, folderOf, type UserPlugin } from "./user-plugins";
@@ -38,7 +38,12 @@ export interface Kept {
 }
 
 export function userPluginChanges({ store, origin, list, setOn, plugin, tell }: Kept) {
-  const manifestOf = async (file: string, text: string) => readManifest((await plugin(file, text)).source);
+  /** A file's manifest. One that keeps its code in another file (`code`) is refused: the review shows one file. */
+  const manifestOf = async (file: string, text: string) => {
+    const m = readManifest((await plugin(file, text)).source);
+    if (m.code) throw new Error(CODE_APART);
+    return m;
+  };
   /**
    * Turns off the person's plugins for an app that need a service `plugin` provided, now it doesn't, and the
    * ones that need theirs in turn. A service running from something else (`elsewhere`: a kernel module, the

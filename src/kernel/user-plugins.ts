@@ -30,7 +30,7 @@
 import { part } from "./part";
 import { isAgentFile } from "../shared/agent-runner";
 import { ownAgent } from "./agents/linked";
-import { readManifest } from "./manifest";
+import { CODE_APART, readManifest } from "./manifest";
 import type { Store } from "./store";
 import { record } from "./trace";
 
@@ -94,6 +94,13 @@ export function userPlugins(store: Store, origin: string, space?: string) {
    */
   const plugin = async (file: string, text: string): Promise<{ source: string; runner?: string }> => (isAgentFile(file) ? ownAgent(origin, file, text) : { source: text });
 
+  /** The manifest of one of the person's files. Theirs are reviewed as one file, so none keeps its code in another (`code`). */
+  const manifestOf = async (file: string, text: string) => {
+    const m = readManifest((await plugin(file, text)).source);
+    if (m.code) throw new Error(CODE_APART);
+    return m;
+  };
+
   /** The plugins kept in one folder: an app's, or the one for every app. */
   async function kept(folder: string): Promise<UserPlugin[]> {
     const on = (await load())[folder] ?? [];
@@ -102,7 +109,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
       if (!file.endsWith(".js") && !isAgentFile(file)) continue;
       const source = (await store.readText(`user/${folder}/${file}`)) ?? "";
       try {
-        const m = readManifest((await plugin(file, source)).source);
+        const m = await manifestOf(file, source);
         out.push({ file, id: m.id, name: m.name, description: m.description, permissions: m.permissions, places: m.places, services: m.services ?? [], provides: Object.keys(m.provides ?? {}), on: on.includes(m.id) });
       } catch (error) {
         out.push({ file, on: false, error: error instanceof Error ? error.message : String(error) });
@@ -201,7 +208,7 @@ export function userPlugins(store: Store, origin: string, space?: string) {
     off: (app: string, id: string) => turn(app, id, false),
 
     /** The manifest of a file the person would add, by its name: a plugin's own, or the one an agent file becomes. */
-    manifest: async (file: string, text: string) => readManifest((await plugin(file, text)).source),
+    manifest: manifestOf,
 
     add: later("add"),
     fetch: later("fetch"),

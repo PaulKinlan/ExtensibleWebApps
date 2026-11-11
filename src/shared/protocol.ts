@@ -129,7 +129,8 @@ export type KernelToHost =
   | { t: "welcome"; tab: string; spawner: boolean; mode: "shared" | "dedicated" | "server" }
   | SyncToDevice
   | { t: "render"; slot: Slot; key: string; owner: string; order: number; view: View | null }
-  | { t: "spawn"; plugin: string; source: string; network: boolean }
+  /** `code`: the address of the file that holds the rest of the plugin's code (its manifest's `code`); the page reads it after `source`, as one file. */
+  | { t: "spawn"; plugin: string; source: string; network: boolean; code?: string }
   | { t: "terminate"; plugin: string }
   | { t: "bridge"; id: number; service: string; method: string; args: unknown[] }
   | { t: "trace"; events: TraceEvent[] }
@@ -232,7 +233,8 @@ export interface Manifest {
   /**
    * A .js file beside the plugin that holds the rest of its code: everything but the manifest. The plugin's own
    * file is then only its manifest, which is all the kernel needs to list it, switch it and draw its stand-in;
-   * the code is fetched when the plugin first starts. Only for a plugin an app links, that runs in the browser.
+   * the code is fetched when the plugin first starts. Only for a plugin the app's author links, that runs in the
+   * browser: never one a person added, whose review shows one file.
    */
   code?: string;
   /** Services it calls that not every site runs (kernel modules, docs/layers.md): `["llm", "bus"]`. It isn't started without them. */

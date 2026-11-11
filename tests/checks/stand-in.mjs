@@ -7,8 +7,9 @@
 // It is one of the app's plugins all the same: listed, and turned off and on like the others.
 //
 // Customize is also only its manifest until then (the manifest's `code`, src/kernel/plugin-code.ts): the rest
-// of it is in customize.code.js beside it, which the kernel fetches when Customize first starts. What shows or
-// copies a plugin's source still gets all of it, and a plugin that isn't an app's own can't do the same.
+// of it is in customize.code.js beside it, which the page reads after the manifest when it starts Customize's
+// worker (src/host/plugin-code.ts). What shows or copies a plugin's source still gets all of it, and a plugin
+// that isn't the app's own can't do the same.
 import { watchErrors } from "../page-errors.mjs";
 
 export default async function ({ check, context, URL, errors }) {
@@ -61,11 +62,19 @@ export default async (ctx) => { const read = await ctx.call('authoring', 'source
     check("a plugin kept as a manifest and a code file is read, and copied, as one whole file", read === "code-probe [true,true,true,false]", read || JSON.stringify(whole));
     await page.evaluate(() => window.__host.command("uninstall", "code-probe")).catch(() => {});
 
-    // Only a plugin an app links has files beside it: one a person adds that names a `code` file doesn't start, and says why.
-    await page.evaluate(() => window.__host.command("install", `export const manifest = { id: 'code-alone', name: 'Alone', permissions: [], code: 'alone.code.js' };`));
-    const refused = await page.waitForFunction(() => window.__host.traces.findLast((e) => e.name === "plugin:code" && e.plugin?.startsWith("code-alone"))?.detail, null, { timeout: 8000 }).then((h) => h.jsonValue(), () => "");
-    check("a plugin that isn't an app's own can't keep its code in another file, and is told what to do", /only a plugin an app links can/.test(refused) && !(await workers()).includes("code-alone"), refused);
-    await page.evaluate(() => window.__host.command("uninstall", "code-alone")).catch(() => {});
+    // Only a plugin the app's author links can do this. One a person adds is reviewed as one file, so a manifest
+    // that names a `code` file is refused, saying what to do: by the kernel, and where a person's plugins are read.
+    const alone = "export const manifest = { id: 'code-alone', name: 'Alone', permissions: [], code: 'alone.code.js' };";
+    const refused = await page.evaluate((source) => window.__host.command("install", source), alone);
+    check("a plugin that isn't the app's own can't keep its code in another file, and is told what to do", refused?.ok === false && /Only a plugin the app itself links/.test(refused.error) && !(await workers()).includes("code-alone"), JSON.stringify(refused));
+    const added = await page.evaluate(async (source) => {
+      const probe = `export const manifest = { id: 'code-add', name: 'Probe', permissions: ['plugins:author'], scope: 'tab' };
+export default async (ctx) => { const said = await ctx.call('authoring', 'save', ${JSON.stringify(source)}).catch((e) => ({ error: String(e.message ?? e) })); ctx.log('code-add ' + JSON.stringify(said)); };`;
+      return window.__host.command("install", probe);
+    }, alone);
+    const said = await page.waitForFunction(() => window.__host.traces.findLast((e) => e.detail?.startsWith("code-add "))?.detail, null, { timeout: 8000 }).then((h) => h.jsonValue(), () => "");
+    check("a person can't save one as their own either: it is refused before any review", /Only a plugin the app itself links/.test(said), said || JSON.stringify(added));
+    await page.evaluate(() => window.__host.command("uninstall", "code-add")).catch(() => {});
   } finally {
     await own.close();
   }

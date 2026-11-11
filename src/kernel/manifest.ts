@@ -43,6 +43,9 @@ export const PUTS = ["before", "after", "prepend", "append", "replace", "hide"] 
  */
 export const FILE_PATH = /^(?:[\w-][\w-]{0,30}\.[\w.-]{1,32}\/(?:[\w-][\w.-]{0,63}\/){0,3})?[\w-][\w.-]{0,63}$/;
 
+/** Said to a plugin with a `code` file that isn't one the app's author linked: a person's own plugin is reviewed as one file. */
+export const CODE_APART = "Only a plugin the app itself links can keep its code in another file (`code`): put the code in the plugin's own file";
+
 export function readManifest(source: string): Manifest {
   const parser = new LiteralParser(source, 0);
   parser.declaration();

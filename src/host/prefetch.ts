@@ -52,26 +52,15 @@ export function warmElements(file: Document | DocumentFragment | Element): void 
   for (const name of elementsIn(markup)) void loadElement(name);
 }
 
-/** `code: "x.code.js"` in a manifest: the rest of the plugin is in that file beside it, fetched when it first starts. */
-const CODE = /\bcode:\s*"([\w.-]+\.js)"/;
+/** A manifest that names a `code` file: the rest of the plugin is in that file beside it, read when it first starts (plugin-code.ts). */
+const CODE = /\bcode["']?\s*:/;
 
 /**
  * Loads a plugin's template files, and through them their elements, while the plugin starts. A plugin that is
  * only its manifest (`code`) is needed for no first view: its code, and what that names, are fetched some
  * seconds on, so they are this visit's and there offline.
  */
-export function warmPlugin(href: string, source: string, whole?: true): void {
-  const code = !whole && CODE.exec(source);
-  if (code)
-    return void setTimeout(
-      () =>
-        fetch(new URL(code[1], new URL(href, location.href)))
-          .then((answer) => answer.text())
-          .then(
-            (text) => warmPlugin(href, text, true),
-            () => {},
-          ),
-      3000,
-    );
+export function warmPlugin(href: string, source: string): void {
+  if (CODE.test(source)) return void setTimeout(() => import("./plugin-code").then((file) => file.warm(href, source), () => {}), 3000);
   for (const src of templatesIn(href, source)) loadFile(src).then(warmElements, () => {});
 }

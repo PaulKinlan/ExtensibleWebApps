@@ -22,7 +22,7 @@ import { made } from "./agents/linked";
 import { capabilities, check, grants } from "./gate";
 import { BEFORE_WRITE, capabilityFor, declaredHooks, defineHook, hookOwners, hooks, kernelPrefix, PLUGIN_HOOKS, type HookSpec } from "./hooks";
 import type { Host, Hosts } from "./hosts";
-import { ManifestError, readManifest } from "./manifest";
+import { CODE_APART, ManifestError, readManifest } from "./manifest";
 import type { Schema } from "./schema";
 import { record } from "./trace";
 import { env } from "./env";
@@ -106,8 +106,6 @@ export interface Installed {
   enabled: boolean;
   /** Where an app's plugin was loaded from; its view templates are files next to it. */
   href?: string;
-  /** Its source with the code its manifest keeps in another file (`code`), once that has been asked for (whole). */
-  whole?: Promise<string>;
 }
 
 export type InstallResult = { ok: true; id: string; started: boolean } | { ok: false; error: string };
@@ -207,6 +205,10 @@ export class RemotePlugins {
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }
+    if (manifest.code && options.origin !== "app") {
+      record({ kind: "error", name: "plugin:refused", detail: CODE_APART });
+      return { ok: false, error: CODE_APART };
+    }
     this.stop(manifest.id);
     const enabled = options.enabled ?? previous?.enabled ?? true;
     this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest), origin: options.origin ?? "data", enabled, href: options.href });
@@ -279,29 +281,9 @@ export class RemotePlugins {
       return Promise.resolve(true);
     }
     record({ kind: "lifecycle", name: "plugin:spawn", plugin: instance, detail: `in tab ${host.tab}` });
-    return this.whole(plugin).then(
-      (source) => this.spawn(plugin, instance, host, source),
-      (error: Error) => {
-        record({ kind: "error", name: "plugin:code", plugin: instance, detail: error.message });
-        this.hosts.send(host, { t: "notice", text: error.message, tone: "error" });
-        // Its stand-in is still drawn, and the next press tries again.
-        this.drew.get(instance)?.();
-        if (standIn && this.used.delete(instance)) this.standIns.set(instance, host);
-        return false;
-      },
-    );
-  }
-
-  /**
-   * A plugin's whole source. For most that is its file. One whose manifest names a `code` file is only its
-   * manifest until it starts: the code is fetched then, and the two are read as one file (plugin-code.ts).
-   */
-  whole(plugin: Installed): Promise<string> {
-    return plugin.manifest.code ? part("the plugin's code", () => import("./plugin-code")).then((m) => m.whole(plugin)) : Promise.resolve(plugin.source);
-  }
-
-  private spawn(plugin: Installed, instance: string, host: Host, source: string): Promise<boolean> {
-    this.hosts.send(host, { t: "spawn", plugin: instance, source, network: plugin.caps.has("network") });
+    // A plugin that is only its manifest (`code`): the page adds the rest, from the file beside it, as it starts the worker.
+    const { code } = plugin.manifest;
+    this.hosts.send(host, { t: "spawn", plugin: instance, source: plugin.source, network: plugin.caps.has("network"), ...(code && { code: new URL(code, plugin.href).href }) });
     return new Promise((resolve) => {
       const waiter: Waiter = { resolve };
       const list = this.waiting.get(instance) ?? [];
@@ -312,9 +294,23 @@ export class RemotePlugins {
         if (!current?.includes(waiter)) return;
         current.splice(current.indexOf(waiter), 1);
         record({ kind: "error", name: "plugin:start-timeout", plugin: instance });
+        // Its stand-in is still drawn (its code didn't arrive, say): the person is told, and the next press tries again.
+        if (standIn && this.used.delete(instance)) {
+          this.drew.get(instance)?.();
+          this.standIns.set(instance, host);
+          this.hosts.send(host, { t: "notice", text: `${plugin.manifest.name} didn't start. Check you are online, then try again.`, tone: "error" });
+        }
         resolve(false);
       }, 5000);
     });
+  }
+
+  /**
+   * A plugin's whole source, for showing or copying it. For most that is its file; one whose manifest names a
+   * `code` file has that read after it (plugin-code.ts).
+   */
+  whole(plugin: Installed): Promise<string> {
+    return plugin.manifest.code ? part("the plugin's code", () => import("./plugin-code")).then((m) => m.whole(plugin)) : Promise.resolve(plugin.source);
   }
 
   /** A tab created the worker for `instance` and passed its port. */
@@ -525,8 +521,8 @@ export class RemotePlugins {
     // The first thing done in a stand-in starts its plugin, which then hears it.
     const host = this.standIns.get(instance);
     const plugin = this.installed.get(instance.split("@")[0]);
-    if (host && plugin) {
-      this.standIns.delete(instance);
+    // (One whose worker did arrive, late, after its stand-in was put back is running: it isn't started twice.)
+    if (host && plugin && this.standIns.delete(instance) && !this.live.has(instance)) {
       // Marked as used first: that is what tells startInstance to start it for real. It hears what was done once it
       // has drawn its own view, by when it is listening; one that doesn't start hears nothing.
       this.used.set(instance, new Promise((drew) => this.drew.set(instance, drew)));

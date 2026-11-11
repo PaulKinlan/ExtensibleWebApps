@@ -34,9 +34,9 @@ export interface BridgeHost {
 
 type Methods = Record<string, (...args: any[]) => unknown>;
 type File = { default: (host: BridgeHost) => Methods };
-const files = import.meta.glob<File>(["./*.ts", "!./index.ts", "!./customize.ts", "!./maker.ts", "!./transfer.ts", "!./folder.ts", "!./notify.ts", "!./share.ts", "!./account.ts", "!./webmcp.ts", "!./device-model.ts", "!./audio.ts"], { eager: true });
+const files = import.meta.glob<File>(["./*.ts", "!./index.ts", "!./customize.ts", "!./maker.ts", "!./transfer.ts", "!./folder.ts", "!./notify.ts", "!./share.ts", "!./account.ts", "!./webmcp.ts", "!./device-model.ts", "!./audio.ts", "!./host.ts"], { eager: true });
 /** Bridges only some pages ever call, and never as they start: each is fetched the first time the kernel asks for it. */
-const later = import.meta.glob<File>(["./customize.ts", "./maker.ts", "./transfer.ts", "./folder.ts", "./notify.ts", "./share.ts", "./account.ts", "./webmcp.ts", "./device-model.ts", "./audio.ts"]);
+const later = import.meta.glob<File>(["./customize.ts", "./maker.ts", "./transfer.ts", "./folder.ts", "./notify.ts", "./share.ts", "./account.ts", "./webmcp.ts", "./device-model.ts", "./audio.ts", "./host.ts"]);
 
 export function bridges(host: BridgeHost) {
   const services = new Map(Object.entries(files).map(([path, file]) => [path.slice(2, -3), file.default(host)]));
