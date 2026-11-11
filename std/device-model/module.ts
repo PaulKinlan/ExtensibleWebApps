@@ -1,7 +1,7 @@
 // The `device-model` service: the language model some browsers carry
 // themselves. Chrome has one behind its Prompt API: it runs on the person's
 // computer, so there is no key to give, nothing to pay, and nothing leaves the
-// device. A plugin needs `device-model`:
+// device. A plugin needs `device-model` to ask it; any plugin may ask whether it is there:
 //
 //   const { state } = await ctx.call("device-model", "state");   // "available", "downloadable", "downloading" or "unavailable"
 //   const { text } = await ctx.call("device-model", "prompt", { system, turns: [{ role: "user", content: "Hello" }] });
@@ -44,8 +44,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         args: "()",
         params: [],
         returns: '{ state: "available" | "downloadable" | "downloading" | "unavailable", progress }',
-        needs: "device-model",
-        description: "Whether this browser has a model of its own. downloadable: it can have one, after a download of several GB that the first prompt() starts. progress is how much of a download has arrived, 0 to 1.",
+        description: "Whether this browser has a model of its own, which any plugin may ask (a list of plugins leaves out the ones that need a model the browser hasn't got). downloadable: it can have one, after a download of several GB that the first prompt() starts. progress is how much of a download has arrived, 0 to 1.",
       },
       prompt: {
         args: "({ system?, turns: [{ role, content }], schema? })",
@@ -68,7 +67,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         description: "Asks the browser's model. input and output are the tokens the request and the answer took, as near as the browser says. While the model is still downloading, the error says how far it has got.",
       },
     },
-    capability: () => "device-model",
+    capability: (method) => (method === "state" ? undefined : "device-model"),
     async call(instance, method, args, dispatch) {
       const host = tabFor(instance, dispatch);
       if (method === "state") {

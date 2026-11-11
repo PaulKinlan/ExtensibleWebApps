@@ -200,7 +200,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     let models = ((await as("plugins:read", "packages", [])) as { id: string; name: string; description: string; href: string; permissions: string[]; added: boolean; linked: boolean }[]).filter((p) => p.permissions.includes("provide:llm"));
     // A model that is the browser's own (std/llm/chrome.js) is offered only where the browser has one.
     if (models.some((p) => p.permissions.includes("device-model"))) {
-      const has = (await (callService(remote.services, plugin, new Set(["device-model"]), "device-model", "state", [], dispatch as { trace?: string }) as Promise<{ state?: string }>).catch(() => undefined))?.state;
+      const has = (await (callService(remote.services, plugin, new Set(), "device-model", "state", [], dispatch as { trace?: string }) as Promise<{ state?: string }>).catch(() => undefined))?.state;
       if (!has || has === "unavailable") models = models.filter((p) => !p.permissions.includes("device-model"));
     }
     if (method === "choices") return models.map(({ id, name, description, added, linked }) => ({ id, name, description, added, linked }));

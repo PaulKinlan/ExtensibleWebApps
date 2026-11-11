@@ -26,6 +26,7 @@ const STAND_IN = (availability) => `(() => {
       calls.push({ create: options.initialPrompts ?? [] });
       if (state !== "available") { options.monitor?.({ addEventListener: (name, heard) => heard({ loaded: 0.4 }) }); return new Promise(() => {}); }
       const system = (options.initialPrompts ?? []).find((p) => p.role === "system")?.content ?? "";
+      if (system.startsWith("far too long")) throw new DOMException("too much to start with", "QuotaExceededError");
       return {
         contextUsage: 100,
         measureContextUsage: async () => 7,
@@ -34,7 +35,7 @@ const STAND_IN = (availability) => `(() => {
           this.contextUsage = 130;
           const asked = turns[turns.length - 1].content;
           if (asked.startsWith("too long")) throw new DOMException("too much", "QuotaExceededError");
-          if (opts?.responseConstraint?.properties?.tool) return JSON.stringify(asked.startsWith("The ") ? { tool: "none", answer: "Done: " + asked.slice(0, 40) } : { tool: opts.responseConstraint.properties.tool.enum[0], args: { city: "Leeds" } });
+          if (opts?.responseConstraint?.properties?.tool) return JSON.stringify(asked.startsWith("The ") ? { tool: "no tool", answer: "Done: " + asked.slice(0, 40) } : { tool: opts.responseConstraint.properties.tool.enum[0], args: { city: "Leeds" } });
           if (opts?.responseConstraint) return JSON.stringify({ count: 3 });
           return "From this computer. Told about " + (system.includes("- People (") ? "People" : "nothing") + ". You asked: " + asked;
         },
@@ -57,12 +58,16 @@ export default async (ctx) => {
 const ASKER = `export const manifest = { id: "model-asker", name: "Model asker", permissions: ["llm"], services: ["llm"] };
 export default async (ctx) => {
   const say = async (what, run) => ctx.log(what + " " + JSON.stringify(await run().catch((e) => ({ error: e.message }))));
-  const tools = [{ name: "weather", description: "The weather in a city.", parameters: { type: "object", properties: { city: { type: "string" } } } }];
+  const tools = [{ name: "none", description: "A tool that happens to be called none.", parameters: { type: "object", properties: {} } }];
+  await say("tool-none", () => ctx.call("llm", "complete", { provider: "llm-chrome", messages: [{ role: "user", content: "Use it" }], tools: tools }).then((a) => a.toolCalls));
+  tools.length = 0;
+  tools.push({ name: "weather", description: "The weather in a city.", parameters: { type: "object", properties: { city: { type: "string" } } } });
   const first = await ctx.call("llm", "complete", { provider: "llm-chrome", messages: [{ role: "user", content: "Weather?" }], tools }).catch((e) => ({ error: e.message }));
   ctx.log("tool-call " + JSON.stringify(first));
   if (!first.error) await say("tool-answer", () => ctx.call("llm", "complete", { provider: "llm-chrome", tools, messages: [{ role: "user", content: "Weather?" }, first.message, { role: "tool", id: first.toolCalls[0].id, name: "weather", content: "Rain" }] }));
   await say("shaped", () => ctx.call("llm", "complete", { provider: "llm-chrome", messages: [{ role: "user", content: "How many?" }], schema: { type: "object", properties: { count: { type: "number" } }, required: ["count"] } }));
   await say("long", () => ctx.call("llm", "complete", { provider: "llm-chrome", messages: [{ role: "user", content: "too long, this one" }] }));
+  await say("long-start", () => ctx.call("llm", "complete", { provider: "llm-chrome", system: "far too long a start", messages: [{ role: "user", content: "Hello" }] }));
   await say("models", () => ctx.call("llm", "models", "llm-chrome"));
 };`;
 
@@ -99,6 +104,9 @@ export default async function ({ check, context, URL, errors }) {
     const t = await open(browser, URL, errors, "device-model (none)");
     const said = await open(browser, URL, errors, "device-model (unavailable)", "unavailable");
     try {
+      await t.page.click("ui-panel .launch");
+      const listed = await t.seen('[data-package="llm-anthropic"]');
+      check("in a browser with no built-in model, Customize doesn't list Chrome's model, among the models it does", listed && !(await t.page.isVisible('[data-package="llm-chrome"]')));
       // Even added by hand and turned on, it lists no model here.
       await t.command("user:add", { files: [{ name: "chrome.js", data: await t.source("std/llm/chrome.js") }] });
       await t.command("user:on", { id: "llm-chrome" });
@@ -130,6 +138,7 @@ export default async function ({ check, context, URL, errors }) {
     };
     try {
       await page.click("ui-panel .launch");
+      check("Customize lists it where the browser has one", await t.seen('[data-package="llm-chrome"]'));
       await page.click('[data-package="ask-the-page"]');
       await accept("adds Ask the page");
       await page.waitForSelector('[data-toggle="ask-the-page"]:has-text("Turn off")', { timeout: 10000 });
@@ -159,12 +168,16 @@ export default async function ({ check, context, URL, errors }) {
       await t.start("model-asker", ASKER);
       const call = await t.log("tool-call");
       check("a request with tools comes back as a tool call, read from an answer of a fixed shape", call?.stop === "tool" && call.toolCalls?.[0]?.name === "weather" && call.toolCalls[0].args.city === "Leeds", JSON.stringify(call));
+      const none = await t.log("tool-none");
+      check("a tool that is itself called none is still called, not taken for an answer", none?.[0]?.name === "none", JSON.stringify(none));
       const after = await t.log("tool-answer");
       check("and the tool's answer goes back for the model to finish", after?.stop === "end" && /^Done: The weather tool answered/.test(after.text ?? ""), JSON.stringify(after));
       const shaped = await t.log("shaped");
       check("an answer of a shape asked for arrives as json", shaped?.json?.count === 3, JSON.stringify(shaped));
       const long = await t.log("long");
       check("more than the model can read is an error that says what to do", /Ask something shorter, or pick a larger model/.test(long?.error ?? ""), JSON.stringify(long));
+      const longStart = await t.log("long-start");
+      check("and so is a conversation too long to even begin", /Ask something shorter, or pick a larger model/.test(longStart?.error ?? ""), JSON.stringify(longStart));
       const models = await t.log("models");
       check("every tier stands for the one model the browser has", models?.tiers?.fast === "chrome-built-in" && models.tiers.best === "chrome-built-in", JSON.stringify(models));
 

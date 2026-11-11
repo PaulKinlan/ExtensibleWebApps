@@ -31,8 +31,8 @@ export const manifest = {
 };
 
 const MODEL = "chrome-built-in";
-/** The tool name that means "no tool: here is the answer". */
-const NONE = "none";
+/** What stands for "no tool: here is the answer". Not a name a tool can have (they have no spaces), so no tool is mistaken for it. */
+const NONE = "no tool";
 
 /** What the model is told about a request's tools, since it has no tool calls of its own. */
 const toolsNote = (tools) =>

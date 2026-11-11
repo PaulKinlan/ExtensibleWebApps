@@ -79,8 +79,9 @@ export default () => ({
     const turns = request.turns.slice();
     const last = turns.pop();
     if (!last) throw new Error("There is nothing to ask");
-    const session = await api().create({ ...EXPECT, initialPrompts: [...(request.system ? [{ role: "system", content: request.system }] : []), ...turns] });
+    let session: any;
     try {
+      session = await api().create({ ...EXPECT, initialPrompts: [...(request.system ? [{ role: "system", content: request.system }] : []), ...turns] });
       const usage = () => Number(session.contextUsage ?? session.inputUsage) || 0;
       const measure = session.measureContextUsage ?? session.measureInputUsage;
       const before = usage();
@@ -93,7 +94,7 @@ export default () => ({
       if (error instanceof DOMException && error.name === "NotSupportedError") throw new Error("Chrome's built-in model can't answer in that language yet. Ask in English, or pick another model.");
       throw error;
     } finally {
-      session.destroy?.();
+      session?.destroy?.();
     }
   },
 });
