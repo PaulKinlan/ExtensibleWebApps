@@ -17,6 +17,11 @@
 // and "Open from a folder" makes an app from one, after a review, so an app
 // can go to another device or into a checkout.
 //
+// "Share a link" makes a link that is the app, its files without any of its
+// data, for anyone to open, signed in or not. A page opened with such a link
+// says what it holds first; the app is added only once the person accepts a
+// review of every file.
+//
 // In a space (/s/<space>/new/) it also lists the apps the space's members
 // shared, each to accept before it runs here (a review of its files), and
 // offers "Share with the space" for the person's own, and to copy in one
@@ -59,6 +64,9 @@ export default function (ctx) {
   let sharing = null;
   /** In a space: the apps the person made outside it, on this device, to copy in. */
   let own = [];
+  /** The app this page was opened with a link to, if any, and what the last link made or taken said. */
+  let arrived = null;
+  let linking = null;
 
   /** The app's language models, for the picker: shown when there is more than one to pick from. */
   const readModels = async () => {
@@ -84,6 +92,9 @@ export default function (ctx) {
       none: !apps.length,
       space: inSpace ? { name: shared.space, offline: !!shared.offline, waiting: waiting.map((a) => ({ ...a, changed: a.state === "changed", when: new Date(a.at).toLocaleString(), label: a.state === "new" ? "Accept" : a.state === "changed" ? "Accept the new version" : "Accept, replacing yours" })), sharedHere: !!mine, own: own.filter((a) => !a.here) } : null,
       sharing,
+      arrived: arrived && !arrived.error ? { ...arrived, list: arrived.files.join(", ") } : null,
+      damaged: arrived?.error ?? "",
+      linking,
       apps: apps.map((a) => ({ ...a, picked: a.name === picked })),
       app: app ? { ...app, revision } : null,
       folder,
@@ -99,6 +110,7 @@ export default function (ctx) {
     apps = await ctx.call("maker", "list").catch(() => []);
     await readModels();
     await loadShared();
+    arrived = await ctx.call("maker", "linked").catch(() => null);
     if (picked && !apps.some((a) => a.name === picked)) picked = "";
     if (!picked && apps.length) picked = apps[0].name;
     await loadFiles();
@@ -196,6 +208,28 @@ export default function (ctx) {
         ? { text: `Opened ${result.app} from the folder${result.skipped?.length ? `, leaving out ${result.skipped.join(", ")}` : ""}.`, tone: "ok" }
         : { text: `Not opened: ${result.error}`, tone: "warn" };
       if (result.ok) picked = result.app;
+      return load();
+    }
+    if (action === "link" && picked) {
+      const result = await ctx.call("maker", "link", picked).catch((error) => ({ ok: false, error: error.message }));
+      linking = !result.ok
+        ? { text: `No link was made: ${result.error}`, tone: "warn" }
+        : {
+            text: `${result.via === "clipboard" ? "The link is copied: paste it to whoever should have the app." : result.via === "share" ? "The link is shared." : "Here is the link: copy it and send it to whoever should have the app."} It holds the app's ${result.files.length} files and none of your data. Anyone who opens it sees every file before it is added.${result.length > 4000 ? " It is a long link, and some chat apps cut long links short: if it won't open for someone, use Save to a folder." : ""}`,
+            tone: "ok",
+            url: result.via ? "" : result.url,
+          };
+      return draw();
+    }
+    if (action === "take-link") {
+      const result = await ctx.call("maker", "takeLink").catch((error) => ({ ok: false, error: error.message }));
+      linking = result.ok ? { text: `Added. It is yours now: changing it changes only your copy.`, tone: "ok", url: "" } : { text: `Not added: ${result.error}`, tone: "warn", url: "" };
+      if (result.ok) picked = result.app;
+      return load();
+    }
+    if (action === "drop-link") {
+      await ctx.call("maker", "dropLink").catch(() => {});
+      linking = null;
       return load();
     }
     if (action === "share" && picked) {

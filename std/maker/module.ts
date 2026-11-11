@@ -23,6 +23,12 @@
 //              once they accept its files (accept, a review like any save);
 //              a later share of it reaches them the same way. copyIn
 //              brings in one the person made outside the space (/new/).
+//   link       makes a link that is the app: its files, and none of its
+//              data, packed into the address (recipe.ts), handed to the
+//              system's share sheet or copied. Nothing is kept on the site.
+//              Whoever opens it, signed in or not, is told what it holds
+//              (linked) and gets it as their own app once they accept one
+//              review that shows every file (takeLink), as with any save.
 //   check      the checks `npm run check` makes (checks.js), and, when the
 //              app is open (the preview on /new/ reloads it), what went
 //              wrong as it ran: plugins that didn't start, errors, refused
@@ -481,6 +487,75 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return { ...(await save(instance, name, files, "Copied from your own apps on this device", dispatch)), ...(skipped.length ? { skipped } : {}) };
   }
 
+  // ---- An app as a link (recipe.ts, fetched when one is made or opened) ----
+  const recipes = () => import("./recipe");
+  /** The app the caller's tab was opened with a link to, unpacked, and the name it would get here: its own, or the next free one. */
+  async function fromLink(instance: string, dispatch: { trace?: string }) {
+    const { packed } = (await hosts.bridge("maker", "linked", [], dispatch, tabOf(instance))) as { path: string; packed: string };
+    if (!packed) return undefined;
+    const recipe = await (await recipes()).unpack(packed);
+    const files = recipe.files.filter((f) => FILE_NAME.test(f.name));
+    if (!files.some((f) => f.name === "app.html")) throw new Error("This link holds no app: it has no app.html. Ask whoever sent it to share it again");
+    if (files.length > MAX_FILES || files.some((f) => f.text.length > MAX_FILE)) throw new Error("The app in this link is bigger than an app here can be, so it can't be added");
+    const wanted = APP_NAME.test(recipe.name) ? recipe.name : "shared-app";
+    const mine = new Set(await store.readJson<string[]>(INDEX, []));
+    // The same app, opened from the same link again: nothing to add.
+    const same = async (name: string) => {
+      const here = await filesOf(name);
+      return here.size === files.length && files.every((f) => here.get(f.name) === f.text);
+    };
+    if (mine.has(wanted) && (await same(wanted))) return { name: wanted, files, here: true };
+    // Never over an app the person has: one of the same name is theirs, and stays as it is.
+    let name = wanted;
+    for (let n = 2; mine.has(name); n++) name = `${wanted.slice(0, 44)}-${n}`;
+    return { name, files, here: false };
+  }
+
+  /** Makes the link for one of the person's apps, and hands it to the share sheet or the clipboard. */
+  async function link(instance: string, name: string, dispatch: { trace?: string }) {
+    const files = await filesOf(name);
+    if (!files.has("app.html")) return { ok: false, error: `There is no app called ${name}` };
+    const host = tabOf(instance);
+    const { MARK, MAX_LINK, pack } = await recipes();
+    const packed = await pack({ v: 1, name, files: [...files].map(([f, text]) => ({ name: f, text })) });
+    const { path } = (await hosts.bridge("maker", "linked", [], dispatch, host)) as { path: string };
+    // The page this was asked from, outside any space: whoever opens the link may not be a member of one.
+    const page = space && path.startsWith(`/s/${space}/`) ? path.slice(`/s/${space}`.length) : path;
+    const url = `${env().origin}${page}#${MARK}${packed}`;
+    if (url.length > MAX_LINK) return { ok: false, error: `${pageParts(files.get("app.html") ?? "").title || name} is too big to fit in a link (${url.length} characters, and a link holds ${MAX_LINK}). Use Save to a folder and send the folder instead.` };
+    const title = pageParts(files.get("app.html") ?? "").title || name;
+    const sent = (await hosts.bridge("share", "send", [{ title, url }], dispatch, host).catch((error: unknown) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }))) as { ok: boolean; via?: string; cancelled?: boolean; error?: string };
+    record({ kind: "lifecycle", name: "maker:link", detail: `${name}: ${url.length} characters${sent.ok ? `, ${sent.via}` : ""}` });
+    // The link comes back too, so the page can show it to copy by hand where neither sharing nor copying is allowed.
+    return { ok: true, url, length: url.length, files: [...files.keys()], ...(sent.ok ? { via: sent.via } : {}) };
+  }
+
+  /** What the link the tab was opened with holds, for the page to say before anything is added. */
+  async function linked(instance: string, dispatch: { trace?: string }) {
+    try {
+      const got = await fromLink(instance, dispatch);
+      if (!got) return null;
+      const title = pageParts(got.files.find((f) => f.name === "app.html")?.text ?? "").title || got.name;
+      return { name: got.name, title: title.slice(0, 80), files: got.files.map((f) => f.name), here: got.here };
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  /** Adds the app in the tab's link to the person's own, once they accept the review every save has; the link then leaves the address. */
+  async function takeLink(instance: string, dispatch: { trace?: string }) {
+    let got: Awaited<ReturnType<typeof fromLink>>;
+    try {
+      got = await fromLink(instance, dispatch);
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+    if (!got) return { ok: false, error: "This page wasn't opened with a link to an app" };
+    const saved = got.here ? { ok: true, url: urlOf(got.name), saved: [] as string[] } : await save(instance, got.name, got.files, "Shared with you as a link", dispatch);
+    if (saved.ok) await hosts.bridge("maker", "unlink", [], dispatch, tabOf(instance)).catch(() => {});
+    return { ...saved, app: got.name };
+  }
+
   /** Stops sharing an app with the space, once the person accepts. Members who accepted it keep their copy. */
   async function unshare(instance: string, name: string, dispatch: { trace?: string }) {
     const seam = sharedApps();
@@ -589,6 +664,35 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         description: "In a space: copies one of the person's own apps (made outside it, on this device) in, as a made app in the space, once they accept one review. It can then be shared with the space's members.",
         params: [app()],
       },
+      link: {
+        args: "(app)",
+        returns: "{ ok, url, length, files, via? } or { ok: false, error }",
+        needs: "apps:read",
+        description: "Makes a link that is the app: its files and none of its data, packed into the address, so nothing is kept on the site. Hands it to the system's share sheet, or copies it (via says which; call it right after the person clicks). Whoever opens it gets the app as their own, after a review.",
+        params: [app()],
+      },
+      linked: {
+        args: "()",
+        returns: "{ name, title, files, here } or { error }, or null",
+        needs: "apps:read",
+        description: "The app the caller's tab was opened with a link to (link), before anything is added: the name it would get here, its title and its files' names. here is true when the person has this very app already. null when the address carries none.",
+        params: [],
+      },
+      takeLink: {
+        args: "()",
+        returns: "the same as save, with app",
+        needs: "apps:make",
+        reviewed: true,
+        description: "Adds the app in the tab's link to the person's own apps, once they accept one review that shows every file, as any save. It never replaces an app they have: one of the same name gets the next free name. The link then leaves the address.",
+        params: [],
+      },
+      dropLink: {
+        args: "()",
+        returns: "{ ok }",
+        needs: "apps:read",
+        description: "Takes the app out of the tab's address without adding it.",
+        params: [],
+      },
       unshare: {
         args: "(app)",
         returns: "{ ok } or { ok: false, error }",
@@ -605,7 +709,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         params: [app()],
       },
     },
-    capability: (method) => (["save", "remove", "restore", "openFolder", "share", "accept", "unshare", "copyIn"].includes(method) ? "apps:make" : "apps:read"),
+    capability: (method) => (["save", "remove", "restore", "openFolder", "share", "accept", "unshare", "copyIn", "takeLink"].includes(method) ? "apps:make" : "apps:read"),
     call: async (instance, method, args, dispatch) => {
       loadChecks().catch(() => {});
       if (method === "list") {
@@ -621,11 +725,15 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       if (method === "openFolder") return openFolder(instance, args[0], dispatch);
       if (method === "shared") return shared();
       if (method === "ownApps") return ownApps(instance, dispatch);
+      if (method === "linked") return linked(instance, dispatch);
+      if (method === "takeLink") return takeLink(instance, dispatch);
+      if (method === "dropLink") return hosts.bridge("maker", "unlink", [], dispatch, tabOf(instance)).then(() => ({ ok: true }));
       const name = checkName(args[0]);
       if (method === "share") return share(instance, name, dispatch);
       if (method === "accept") return accept(instance, name, dispatch);
       if (method === "unshare") return unshare(instance, name, dispatch);
       if (method === "copyIn") return copyIn(instance, name, dispatch);
+      if (method === "link") return link(instance, name, dispatch);
       if (method === "saveToFolder") return saveToFolder(instance, name, dispatch);
       if (method === "read") {
         const text = await read(name, checkFile(args[1]));
