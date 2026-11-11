@@ -3,6 +3,7 @@
 // another once the first view arrives.
 //
 //   a plugin's source  → the template files it names: ctx.ui.views("x.html")
+//   a manifest's `code` → that file, later, and the templates it names
 //   a template file     → the ui-* elements its templates use
 //   an element's file   → the ui-* elements inside its own template (elements.ts)
 //
@@ -51,7 +52,26 @@ export function warmElements(file: Document | DocumentFragment | Element): void 
   for (const name of elementsIn(markup)) void loadElement(name);
 }
 
-/** Loads a plugin's template files, and through them their elements, while the plugin starts. */
-export function warmPlugin(href: string, source: string): void {
+/** `code: "x.code.js"` in a manifest: the rest of the plugin is in that file beside it, fetched when it first starts. */
+const CODE = /\bcode:\s*"([\w.-]+\.js)"/;
+
+/**
+ * Loads a plugin's template files, and through them their elements, while the plugin starts. A plugin that is
+ * only its manifest (`code`) is needed for no first view: its code, and what that names, are fetched some
+ * seconds on, so they are this visit's and there offline.
+ */
+export function warmPlugin(href: string, source: string, whole?: true): void {
+  const code = !whole && CODE.exec(source);
+  if (code)
+    return void setTimeout(
+      () =>
+        fetch(new URL(code[1], new URL(href, location.href)))
+          .then((answer) => answer.text())
+          .then(
+            (text) => warmPlugin(href, text, true),
+            () => {},
+          ),
+      3000,
+    );
   for (const src of templatesIn(href, source)) loadFile(src).then(warmElements, () => {});
 }

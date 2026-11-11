@@ -15,6 +15,7 @@
 // hook's failure policy when it doesn't come. The trace id rides along as
 // Cordis's `thisArg`, so it survives awaits.
 
+import { part } from "./part";
 import type { Dispatch, KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
 import { HTML_MAX } from "../shared/html-max";
 import { made } from "./agents/linked";
@@ -105,6 +106,8 @@ export interface Installed {
   enabled: boolean;
   /** Where an app's plugin was loaded from; its view templates are files next to it. */
   href?: string;
+  /** Its source with the code its manifest keeps in another file (`code`), once that has been asked for (whole). */
+  whole?: Promise<string>;
 }
 
 export type InstallResult = { ok: true; id: string; started: boolean } | { ok: false; error: string };
@@ -276,7 +279,29 @@ export class RemotePlugins {
       return Promise.resolve(true);
     }
     record({ kind: "lifecycle", name: "plugin:spawn", plugin: instance, detail: `in tab ${host.tab}` });
-    this.hosts.send(host, { t: "spawn", plugin: instance, source: plugin.source, network: plugin.caps.has("network") });
+    return this.whole(plugin).then(
+      (source) => this.spawn(plugin, instance, host, source),
+      (error: Error) => {
+        record({ kind: "error", name: "plugin:code", plugin: instance, detail: error.message });
+        this.hosts.send(host, { t: "notice", text: error.message, tone: "error" });
+        // Its stand-in is still drawn, and the next press tries again.
+        this.drew.get(instance)?.();
+        if (standIn && this.used.delete(instance)) this.standIns.set(instance, host);
+        return false;
+      },
+    );
+  }
+
+  /**
+   * A plugin's whole source. For most that is its file. One whose manifest names a `code` file is only its
+   * manifest until it starts: the code is fetched then, and the two are read as one file (plugin-code.ts).
+   */
+  whole(plugin: Installed): Promise<string> {
+    return plugin.manifest.code ? part("the plugin's code", () => import("./plugin-code")).then((m) => m.whole(plugin)) : Promise.resolve(plugin.source);
+  }
+
+  private spawn(plugin: Installed, instance: string, host: Host, source: string): Promise<boolean> {
+    this.hosts.send(host, { t: "spawn", plugin: instance, source, network: plugin.caps.has("network") });
     return new Promise((resolve) => {
       const waiter: Waiter = { resolve };
       const list = this.waiting.get(instance) ?? [];

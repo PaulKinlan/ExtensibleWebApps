@@ -71,6 +71,8 @@ function validate(value: unknown): Manifest {
     const s = (m.standIn ?? {}) as Record<string, unknown>;
     if (!(m.permissions as string[]).includes("ui") || !text(s.slot, 64) || !text(s.key, 64) || !text(s.html, 2000)) throw new ManifestError("`standIn` must be { slot, key, html }, and needs the ui permission");
   }
+  if (m.code !== undefined && (typeof m.code !== "string" || !FILE_PATH.test(m.code) || !m.code.endsWith(".js") || (m.runs ?? "browser") !== "browser"))
+    throw new ManifestError("`code` must name a .js file beside the plugin, and is for a plugin that runs in the browser");
   if (m.hooks !== undefined) validateHooks(m.hooks, m.id);
   if (m.provides !== undefined) validateProvides(m.provides, m.permissions as string[], m.scope);
   if (m.services !== undefined && (!Array.isArray(m.services) || m.services.length > 30 || m.services.some((s) => typeof s !== "string" || !ID.test(s))))
