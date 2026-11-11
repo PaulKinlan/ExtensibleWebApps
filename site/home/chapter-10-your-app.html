@@ -23,7 +23,7 @@
 cd packing-list
 npm run dev</code></pre>
     <p>The first line makes a folder called <code>packing-list</code> holding just your app: <code>app.html</code>, <code>main.js</code> and its template, made from the starter (a list you can add to and tick off), and a <code>package.json</code> that brings in the platform as a dependency. Then open <code>http://localhost:5173/</code>: the app is the whole site. Change <code>main.js</code> and <code>app.html</code>, and run <code>npm run check</code> to find mistakes before you open the page.</p>
-    <p class="note">The command runs the platform's own create script straight from GitHub, so you always get the latest; <code>npx github:PaulKinlan/ExtensibleWebApps packing-list</code> does the same without the npm package. The platform isn't copied in: <code>npm run dev</code> serves it around your files. Working on the platform itself, in a checkout of this repo? <code>npm run new-app -- packing-list</code> makes an app among the demos instead.</p>
+    <p class="note">The command runs the platform's own create script straight from GitHub, so you always get the latest; <code>npx --allow-git=all github:PaulKinlan/ExtensibleWebApps packing-list</code> does the same without the npm package (npm 12 fetches nothing from git without that flag). The platform isn't copied in: <code>npm run dev</code> serves it around your files. Working on the platform itself, in a checkout of this repo? <code>npm run new-app -- packing-list</code> makes an app among the demos instead.</p>
 
     <h3>Put it online by itself</h3>
     <pre><code>npx wrangler login

@@ -48,7 +48,8 @@ export default async function ({ check, context, URL, errors }) {
     const page = has("app.html") ? readFileSync(join(folder, "app.html"), "utf8") : "";
     check("the app is the starter, named, without the demo gallery's card", page.includes("<title>Packing list</title>") && !page.includes('name="gallery') && readFileSync(join(folder, "main.js"), "utf8").includes('id: "packing-list"'));
     check("by default the platform comes from GitHub", makeProject(join(scratch, "from-github")) && JSON.parse(readFileSync(join(scratch, "from-github", "package.json"), "utf8")).dependencies?.[pkg.name] === "github:PaulKinlan/ExtensibleWebApps");
-    check("create-app says what to run next", /npm install\n\s+npm run dev/.test(made.stdout), made.stdout);
+    // From GitHub, the install it names carries the setting npm 12 needs to fetch from git.
+    check("create-app says what to run next", /npm install( --allow-git=all)?\n\s+npm run dev/.test(made.stdout), made.stdout);
     const again = run(folder, "--no-install");
     check("create-app won't write into a folder that has files in it", again.status === 1 && /isn't empty/.test(again.stderr), again.stderr);
     let refused = "";
