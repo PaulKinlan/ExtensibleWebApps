@@ -201,6 +201,13 @@ jobs:
               echo "$name@$VERSION is already on npm: skipped"
               continue
             fi
+            # Staged by a run that then failed: npm would refuse the same version twice, and the other package
+            # would never be sent. If npm won't list what is staged, this finds nothing and the send says why.
+            if [ -z "$DRY_RUN" ] && [ "$PUBLISH" != publish ] && npx --yes "$PUBLISH_NPM" stage list "$name" --json 2>/dev/null | grep -qF "\"$VERSION\""; then
+              echo "$name@$VERSION is already staged: skipped"
+              echo "- \`$name@$VERSION\` was staged by an earlier run, and is not public yet: approve it on [npmjs.com](https://www.npmjs.com/package/$name) under Staged Packages" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
             # --ignore-scripts: it is built already (npm ci), and the checks ran on that build.
             (cd "$folder" && npx --yes "$PUBLISH_NPM" $PUBLISH --access public --provenance --ignore-scripts $DRY_RUN)
             if [ -n "$DRY_RUN" ]; then said=" (dry run: not published)"
