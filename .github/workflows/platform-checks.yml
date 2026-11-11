@@ -41,10 +41,11 @@ jobs:
       # pinned (1.65.0 brings Chromium 158), so a new browser can't fail an unrelated pull request. To move
       # to a newer one, change it here and in regenerate-reference.yml, in a pull
       # request of its own, and fix what the new browser finds. `--with-deps` also asks Ubuntu's mirrors for
-      # extra fonts; when the runner can't reach them, the browser alone is installed, which is all the
-      # checks use.
+      # extra fonts; when the runner can't reach them within two minutes, the browser alone is installed,
+      # which is all the checks use. (Left to itself that attempt takes seven minutes to give up, and the
+      # checks then run out of time.)
       - name: Install
-        run: npm ci && npm i --no-save playwright@1.65.0 && (npx playwright install --with-deps chromium || npx playwright install chromium)
+        run: npm ci && npm i --no-save playwright@1.65.0 && (timeout -k 5 120 npx playwright install --with-deps chromium || npx playwright install chromium)
 
       - name: npm test
         shell: bash
