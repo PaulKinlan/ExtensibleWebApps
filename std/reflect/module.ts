@@ -191,7 +191,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       if (method === "source") {
         const plugin = remote.installed.get(String(args[0]));
         if (!plugin) throw new Error(`No plugin ${String(args[0])} is installed`);
-        return plugin.source;
+        return remote.whole(plugin);
       }
       throw new Error(`reflect.${method} is not a method`);
     },

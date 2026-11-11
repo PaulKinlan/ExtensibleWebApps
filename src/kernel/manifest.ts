@@ -43,6 +43,9 @@ export const PUTS = ["before", "after", "prepend", "append", "replace", "hide"] 
  */
 export const FILE_PATH = /^(?:[\w-][\w-]{0,30}\.[\w.-]{1,32}\/(?:[\w-][\w.-]{0,63}\/){0,3})?[\w-][\w.-]{0,63}$/;
 
+/** Said to a plugin with a `code` file that isn't one the app's author linked: a person's own plugin is reviewed as one file. */
+export const CODE_APART = "Only a plugin the app itself links can keep its code in another file (`code`): put the code in the plugin's own file";
+
 export function readManifest(source: string): Manifest {
   const parser = new LiteralParser(source, 0);
   parser.declaration();
@@ -71,6 +74,8 @@ function validate(value: unknown): Manifest {
     const s = (m.standIn ?? {}) as Record<string, unknown>;
     if (!(m.permissions as string[]).includes("ui") || !text(s.slot, 64) || !text(s.key, 64) || !text(s.html, 2000)) throw new ManifestError("`standIn` must be { slot, key, html }, and needs the ui permission");
   }
+  if (m.code !== undefined && (typeof m.code !== "string" || !FILE_PATH.test(m.code) || !m.code.endsWith(".js") || (m.runs ?? "browser") !== "browser"))
+    throw new ManifestError("`code` must name a .js file beside the plugin, and is for a plugin that runs in the browser");
   if (m.hooks !== undefined) validateHooks(m.hooks, m.id);
   if (m.provides !== undefined) validateProvides(m.provides, m.permissions as string[], m.scope);
   if (m.services !== undefined && (!Array.isArray(m.services) || m.services.length > 30 || m.services.some((s) => typeof s !== "string" || !ID.test(s))))

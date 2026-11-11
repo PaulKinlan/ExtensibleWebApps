@@ -262,10 +262,7 @@ async function fetchLink(href: string, priority?: RequestPriority): Promise<{ hr
   if (!(response instanceof Response && response.ok)) return { href, source: "", why: response instanceof Response ? `it answered ${response.status}` : response.message };
   const source = await response.text();
   if (!isAgentFile(href)) {
-    // Customize's place is held by a stand-in until it is used (its manifest's `standIn`), so its files are needed for
-    // no first view: they are fetched some seconds on, so they are still this visit's, as its code is, and there offline.
-    if (href === CUSTOMIZE) setTimeout(warmPlugin, 3000, href, source);
-    else warmPlugin(href, source);
+    warmPlugin(href, source);
     return { href, source, why: "" };
   }
   let loop: string;
@@ -721,6 +718,8 @@ function drawIn(slot: string, container: HTMLElement, key: string, owner: string
 
 const workers = new Map<string, Worker>();
 
+/** The file that starts plugins whose code is beside their manifest, once one has been asked for. */
+let coded: Promise<typeof import("./plugin-code")> | undefined;
 function spawn(plugin: string, source: string, network: boolean) {
   workers.get(plugin)?.terminate();
   // Two copies of the runtime, served with different content security policies.
@@ -842,9 +841,14 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
       return render(message.slot, message.key, message.owner, message.order, message.view);
     case "spawn":
       // The kernel decides which tab runs which plugin instance.
-      spawn(message.plugin, message.source, message.network);
+      // A plugin that is only its manifest: its code is read after it, and the two start as one file (plugin-code.ts).
+      // One whose code doesn't arrive doesn't start, and the kernel tells the person so (remote.ts).
+      if (message.code) void (coded ??= import("./plugin-code")).then((file) => file.start(message, spawn), () => {});
+      else spawn(message.plugin, message.source, message.network);
       return;
     case "terminate":
+      // (One still waiting for its code doesn't start.)
+      void coded?.then((file) => file.stop(message.plugin), () => {});
       workers.get(message.plugin)?.terminate();
       workers.delete(message.plugin);
       return;

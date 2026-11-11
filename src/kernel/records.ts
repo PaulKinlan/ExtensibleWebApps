@@ -23,7 +23,7 @@ import { BEFORE_WRITE, defineHook, hooks } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import { check, grants } from "./gate";
 import type { RemotePlugins, ServiceProvider } from "./remote";
-import { carryOver } from "./legacy";
+import { part } from "./part";
 import { checkSchema, validate, type Schema } from "./schema";
 import type { Store } from "./store";
 import { record as trace } from "./trace";
@@ -85,7 +85,13 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       data.set(
         name,
         ready
-          .then(() => carryOver(store, name, registry.get(name)?.owner, MAX_BYTES))
+          // Notes the kernel once kept in a file of its own come over the first time (legacy.ts). That code is
+          // fetched only for a folder that still has that file and no collection yet: almost never.
+          .then(async () =>
+            name === "notes" && (await store.readText("collections/notes.json")) === undefined && (await store.readText("notes.json")) !== undefined
+              ? (await part("the part that brings older notes over", () => import("./legacy"))).carryOver(store, name, registry.get(name)?.owner, MAX_BYTES)
+              : undefined,
+          )
           .then(async (old) => {
             if (old) return old;
             const saved = await store.readJson<unknown>(`collections/${name}.json`, {});
