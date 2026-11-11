@@ -42,13 +42,20 @@ const plus = (date, days) => new Date(Date.parse(`${date}T12:00:00Z`) + days * D
 
 /** Eight in the morning of a date in a time zone, as a moment. A zone that isn't one counts as UTC. */
 export function morning(date, zone) {
-  const guess = Date.parse(`${date}T${String(HOUR).padStart(2, "0")}:00:00Z`);
+  const wanted = Date.parse(`${date}T${String(HOUR).padStart(2, "0")}:00:00Z`);
   try {
-    // What the clocks in the zone say at that moment, read as if it were UTC: the difference is the zone's offset.
-    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).formatToParts(guess).map((p) => [p.type, p.value]));
-    return guess - (Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute)) - guess);
+    const clocks = new Intl.DateTimeFormat("en-US", { timeZone: zone, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+    /** How far the zone's clocks are from UTC at a moment: what they say then, read as if it were UTC, less the moment. */
+    const offset = (at) => {
+      const parts = Object.fromEntries(clocks.formatToParts(at).map((p) => [p.type, p.value]));
+      return Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day), Number(parts.hour), Number(parts.minute)) - at;
+    };
+    // The offset at the first guess can be the other side of a clock change from the morning itself: ask again there.
+    let at = wanted - offset(wanted);
+    at = wanted - offset(at);
+    return at;
   } catch {
-    return guess;
+    return wanted;
   }
 }
 

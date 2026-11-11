@@ -132,10 +132,11 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     if (wrong) return { verdict: { ok: false, error: wrong, ...(await current(change)) } };
     const version = head.versions[key(change.collection, change.id)] ?? 0;
     const before = (await records.record(change.collection, change.id)) as SyncRecord | null;
-    if (change.base !== version) return { verdict: { ok: false, stale: true, version, record: before, ...(await madeBy(version)) } };
-    // The member's role and the collection's rules decide first (permissions.ts): what they may not change, they are told who can.
+    // The member's role and the collection's rules decide first (permissions.ts): what they may not change, they are told who can,
+    // even when the change is also out of date, so it isn't kept as a draft they could never send.
     const no = await api.permit?.may(change, before, by, role);
     if (no) return { verdict: { ok: false, error: no, denied: true, version, record: before } };
+    if (change.base !== version) return { verdict: { ok: false, stale: true, version, record: before, ...(await madeBy(version)) } };
     const at = new Date().toISOString();
     // Every stored record has string timestamps (collections sort by updatedAt): a device's are kept, missing ones filled in.
     const after: SyncRecord | null =
@@ -257,9 +258,10 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
         const after = Number.isInteger(message.since) && message.since >= 0 ? message.since : 0;
         // Each member's name, by id, so the device can show who made a change (`by`) by name.
         const members = await names();
-        const access = role && api.permit ? { role, ...(await api.permit.told()) } : {};
         // Ordered with pushes, so a change accepted while this device catches up isn't missed or sent twice.
         await serially(async () => {
+          // Read here, in order with pushes: an author kept by a push just before can't be undone by an older answer.
+          const access = role && api.permit ? { role, ...(await api.permit.told()) } : {};
           // Only what has gone to every device: anything later comes to this one as it does to them.
           hosts.send(host, { t: "sync", op: "changes", changes: (await since(after)).filter((c) => c.seq <= sent), seq: sent, ...(host.member ? { member: host.member } : {}), ...(members ? { members } : {}), ...access });
           listening.add(host);

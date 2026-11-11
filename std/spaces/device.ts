@@ -246,6 +246,8 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       if (names) state.members = { ...m.members! };
       // What this member may do here, when the space says (its answer to hello).
       const told = m.role ? ({ role: m.role, rules: m.rules ?? {}, authors: m.authors ?? {}, ...(m.owner ? { owner: m.owner } : {}) } satisfies Access) : undefined;
+      // What this device added and hasn't sent yet is still this member's (device-guard.ts), until the space says.
+      if (told && state.access && state.member) for (const k of Object.keys(state.pending)) if (state.access.authors[k] === state.member && !(k in told.authors)) told.authors[k] = state.member;
       const access = told && JSON.stringify(told) !== JSON.stringify(state.access ?? null);
       if (access) state.access = told;
       if (names || access || member !== state.member) {

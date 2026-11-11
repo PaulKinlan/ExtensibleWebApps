@@ -19,18 +19,12 @@ function noteOf(event) {
   return { title: `Something new on ${self.location.host}`, url: "/" };
 }
 
-/** Whether the person is looking at the app a note is from, in a tab of this browser: then its own view tells them. */
-async function looking(app) {
-  if (typeof app !== "string" || !app.startsWith("/") || app === "/") return false;
-  const tabs = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
-  return tabs.some((tab) => tab.focused && tab.visibilityState === "visible" && `${new URL(tab.url).pathname}/`.replace(/\/+$/, "/").startsWith(app));
-}
-
 export function onPush(event) {
   const note = noteOf(event);
   event.waitUntil(
     (async () => {
-      if (!note.always && (await looking(note.app))) return;
+      // Every push is shown: a browser lets a site be woken only to show something, and one that shows nothing
+      // gets a notice of the browser's own, or loses its permission.
       await self.registration.showNotification(String(note.title).slice(0, 120), {
         body: typeof note.body === "string" ? note.body.slice(0, 400) : undefined,
         tag: typeof note.tag === "string" ? note.tag : undefined,

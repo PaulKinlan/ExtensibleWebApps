@@ -138,6 +138,17 @@ export async function roleChecks(base, check, owner, person, { device, client },
     JSON.stringify({ edPosts, ownerPosts, edEdits, edDeletes }),
   );
 
+  // A form's record, as a page says it to its own kernel, would be written as the plugin it names, past the rules.
+  // A space's server draws no forms: it never hears one from a member's client.
+  const viewer = await client(base, "club", ed.cookie);
+  viewer.send({ t: "record", id: "r1", owner: "ledger", collection: "notices", fields: { text: "Written as the plugin" }, trace: "x" });
+  viewer.send({ t: "event", owner: "plugins", action: "off:ledger", trace: "x" });
+  await new Promise((r) => setTimeout(r, 1000));
+  const answered = viewer.heard.filter((m) => m.t === "record:result");
+  const sneaked = ownerPhone.changes().filter((c) => c.collection === "notices" && c.after?.text === "Written as the plugin");
+  viewer.close();
+  check("rules: a member's client can't write as one of the space's plugins, past a collection's rules", answered.length === 0 && sneaked.length === 0, JSON.stringify({ answered, sneaked }));
+
   const muddled = await edPhone.push([{ collection: "muddle", id: "m1", base: 0, after: { id: "m1", text: "?" } }]);
   const ownerMuddle = await ownerPhone.push([{ collection: "muddle", id: "m1", base: 0, after: { id: "m1", text: "!" } }]);
   check(

@@ -29,6 +29,7 @@
 // Kept on the accounts' files seam, so the same on Node and Cloudflare:
 //   push/vapid.json                       the server's key pair
 //   push/devices/<user>/<id>.json         each device's subscription
+//   push/endpoints/<id>.json              whose each device is: a browser is one person's at a time
 //   push/sent/<user>.json                 how many were sent to a person today
 
 import type { Files } from "../../seams/index.ts";
@@ -41,9 +42,9 @@ export interface PushNote {
   tag?: string;
   /** Where a click on it goes: a path on this site. */
   url: string;
-  /** The app it is from (its folder's path), so a tab with it open is brought forward, and one being looked at isn't interrupted. */
+  /** The app it is from (its folder's path), so a click brings a tab with it open forward. */
   app?: string;
-  /** Shown even while the person is looking at the app. */
+  /** As the plugin asked. A device shows every push it gets, looking or not: browsers require it of a site they wake. */
   always?: boolean;
 }
 
@@ -197,6 +198,12 @@ export function push(files: Files, user: (request: Request) => Promise<{ id: str
   const devicesOf = async (id: string): Promise<Device[]> => (await Promise.all((await files.list(`push/devices/${id}/`)).map((path) => read<Device>(path)))).filter((d): d is Device => !!d?.endpoint).sort((a, b) => a.created - b.created);
   const idOf = async (endpoint: string) => b64url(await crypto.subtle.digest("SHA-256", utf8(endpoint))).slice(0, 22);
 
+  /** Takes a person's device away, with the note of whose it is. */
+  const forget = async (owner: string, id: string) => {
+    await files.remove(`push/devices/${owner}/${id}.json`);
+    if ((await read<{ user: string }>(`push/endpoints/${id}.json`))?.user === owner) await files.remove(`push/endpoints/${id}.json`);
+  };
+
   /** Sends one device a note. "gone" when the push service says the subscription has ended, which takes the device away. */
   async function deliver(owner: string, device: Device, note: PushNote, origin: string): Promise<"sent" | "gone" | string> {
     const endpoint = known(device.endpoint);
@@ -212,7 +219,7 @@ export function push(files: Files, user: (request: Request) => Promise<{ id: str
         body,
       });
       if (answer.status === 404 || answer.status === 410) {
-        await files.remove(`push/devices/${owner}/${device.id}.json`);
+        await forget(owner, device.id);
         return "gone";
       }
       return answer.status >= 200 && answer.status < 300 ? "sent" : `its push service answered ${answer.status}`;
@@ -289,16 +296,26 @@ export function push(files: Files, user: (request: Request) => Promise<{ id: str
           return json({ error: `This browser's push service (${host}) isn't one this site sends to. Whoever runs the site can allow it with the PUSH_HOSTS setting.` }, 400);
         }
         const id = await idOf(s.endpoint);
-        const existing = await devicesOf(me.id);
-        if (!existing.some((d) => d.id === id) && existing.length >= MAX_DEVICES) return json({ error: `You get notifications on ${MAX_DEVICES} devices already. Take one away first.` }, 400);
         const label = String(body.label ?? "").replace(/[^\x20-\x7e]/g, "").trim().slice(0, 60) || "A browser";
-        await write(`push/devices/${me.id}/${id}.json`, { id, endpoint: s.endpoint, keys: { p256dh, auth }, label, created: existing.find((d) => d.id === id)?.created ?? Date.now() } satisfies Device);
+        // One at a time, so two devices added at once can't both be the tenth. (The answer's list is read after: making the server's key waits its turn too.)
+        const full = await serial(async () => {
+          const existing = await devicesOf(me.id);
+          if (!existing.some((d) => d.id === id) && existing.length >= MAX_DEVICES) return true;
+          // A browser is one person's at a time: if someone else signed in here had it, it stops being theirs, so what
+          // their spaces say isn't shown to whoever uses the browser now.
+          const had = await read<{ user: string }>(`push/endpoints/${id}.json`);
+          if (had?.user && had.user !== me.id) await files.remove(`push/devices/${had.user}/${id}.json`);
+          await write(`push/endpoints/${id}.json`, { user: me.id });
+          await write(`push/devices/${me.id}/${id}.json`, { id, endpoint: String(s.endpoint), keys: { p256dh: String(p256dh), auth: String(auth) }, label, created: existing.find((d) => d.id === id)?.created ?? Date.now() } satisfies Device);
+          return false;
+        });
+        if (full) return json({ error: `You get notifications on ${MAX_DEVICES} devices already. Take one away first.` }, 400);
         return json({ ok: true, id, ...(await listed()) });
       }
       if (url.pathname === "/auth/push/remove") {
         const id = typeof body.id === "string" && B64.test(body.id) ? body.id : typeof body.endpoint === "string" ? await idOf(body.endpoint) : "";
         if (!id || !(await read<Device>(`push/devices/${me.id}/${id}.json`))) return json({ error: "You have no such device" }, 404);
-        await files.remove(`push/devices/${me.id}/${id}.json`);
+        await forget(me.id, id);
         return json({ ok: true, ...(await listed()) });
       }
       // A test, to see one arrives: only to the person's own devices.

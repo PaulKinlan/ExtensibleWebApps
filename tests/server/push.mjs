@@ -144,6 +144,14 @@ export async function pushChecks(base, check, owner, person, { device, client },
     JSON.stringify([added, again, here, notHere]),
   );
 
+  // The same browser, after Bo signs in on it and turns notifications on: it stops being Ann's.
+  const shared = await subscription(service, "shared-browser");
+  await ann.call("/auth/push", { subscription: shared.json, label: "Shared" });
+  const taken = await bo.call("/auth/push", { subscription: shared.json, label: "Shared" });
+  const annHas = (await ann.call("/auth/push")).body?.devices?.map((d) => d.label) ?? [];
+  check("push: a browser is one person's at a time: when someone else turns notifications on in it, it stops being the first person's", taken.status === 200 && taken.body?.devices?.length === 1 && annHas.join() === "Ann's phone", JSON.stringify({ taken, annHas }));
+  await bo.call("/auth/push/remove", { endpoint: shared.json.endpoint });
+
   // The space reads the app's plugins once a device says the app is open in it; then every device goes away.
   const opener = await device(base, "bins", owner.cookie);
   await opener.hello(0);

@@ -33,7 +33,13 @@ export function deviceGuard(root: { on(name: string, listener: (...args: any[]) 
     if (!access) return undefined;
     const doing = !change.before ? "add" : change.after ? "change" : "remove";
     const mine = !!member && access.authors[`${change.collection}/${change.id}`] === member;
-    if (allowed(access.rules[change.collection] as Rules | undefined, doing, access.role, mine)) return undefined;
+    if (allowed(access.rules[change.collection] as Rules | undefined, doing, access.role, mine)) {
+      // What this person adds is theirs from now, before the space has heard of it: offline, they can still change or remove it
+      // under an "author" rule. The space says who added it once it takes the change.
+      const rules = access.rules[change.collection] as Rules | undefined;
+      if (doing === "add" && member && (rules?.change === "author" || rules?.remove === "author")) access.authors[`${change.collection}/${change.id}`] = member;
+      return undefined;
+    }
     const ask = access.owner ? `the space's owner, ${access.owner},` : "the space's owner";
     const why = access.role === "reader" ? `You can read this space but not change it. Ask ${ask} to make you an editor.` : doing === "add" ? `Only ${ask} can add to this.` : `Only whoever added this, or ${ask}, can ${doing} it.`;
     // Said on the page too, since not every view shows why a write failed: in the tab the person pressed in when the

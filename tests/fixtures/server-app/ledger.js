@@ -1,13 +1,15 @@
 // The browser's side of the roles checks (tests/server/roles.mjs): two
 // collections with rules, which the space's server reads from this manifest
-// and enforces. It never runs there.
+// and enforces. It runs there too (and does nothing), so the checks can try
+// to write as it from a member's client, which the server never lets through.
 
 export const manifest = {
   id: "ledger",
   name: "Ledger",
   description: "Entries only their author changes, and a notice board only the owner posts to.",
   version: "1.0.0",
-  permissions: ["ui"],
+  runs: "both",
+  permissions: [],
   collections: {
     "ledger-entries": {
       title: "Ledger",
