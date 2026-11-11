@@ -122,6 +122,8 @@ export function net(secrets: Secrets, capsOf: (plugin: string) => Set<string>): 
       const headers = new Headers();
       const used: string[] = [];
       const redact: string[] = [];
+      let usesManaged = false;
+      let managedCap: number | undefined;
       for (const [name, value] of Object.entries((input.headers && typeof input.headers === "object" ? input.headers : {}) as Record<string, unknown>)) {
         if (FORBIDDEN.test(name)) throw new Error(`net.fetch can't set the ${name} header`);
         if (typeof value === "string") headers.set(name, value);
@@ -129,7 +131,15 @@ export function net(secrets: Secrets, capsOf: (plugin: string) => Set<string>): 
           const wanted = (value as { secret: string }).secret;
           const prefix = typeof (value as { prefix?: unknown }).prefix === "string" ? (value as { prefix: string }).prefix.slice(0, 20) : "";
           if (!grants(capsOf(plugin), `secret:${wanted}`)) throw new Error(`Using the secret ${wanted} needs secret:${wanted}`);
-          const secret = secrets.get(wanted);
+          let secret: { value: string; hosts: string[] } | undefined = secrets.get(wanted);
+          if (!secret) {
+            const dep = await secrets.managed(wanted, plugin);
+            if (dep) {
+              secret = dep;
+              usesManaged = true;
+              if (dep.dailyCap !== undefined) managedCap = managedCap === undefined ? dep.dailyCap : Math.min(managedCap, dep.dailyCap);
+            }
+          }
           if (!secret) throw new Error(`The person hasn't given the secret ${wanted} yet; ask with secrets.request`);
           if (!secret.hosts.includes(host)) throw new Error(`The secret ${wanted} is only for ${secret.hosts.join(", ")}, not ${host}`);
           headers.set(name, prefix + secret.value);
@@ -139,6 +149,7 @@ export function net(secrets: Secrets, capsOf: (plugin: string) => Set<string>): 
       }
       const body = input.body === undefined || input.body === null ? undefined : String(input.body);
       if (body && body.length > MAX) throw new Error("The request body is over 4 MB");
+      if (usesManaged) await secrets.countManaged(plugin, dispatch.trace, managedCap);
       const started = performance.now();
       const fetcher = where.fetch ?? fetch;
       const response = await fetcher(url, { method: verb, headers, body, credentials: "omit", redirect: "error", signal: AbortSignal.timeout(TIMEOUT) }).catch((error) => {
