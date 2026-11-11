@@ -166,7 +166,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   console.log((platform ?? PLATFORM_SPEC).startsWith("github:") ? "Installing the platform (the first time from GitHub, it builds it, which takes a minute)…" : "Installing the platform…");
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
   // npm.cmd needs a shell on Windows, so only the fixed `npm install` goes through one.
-  if (spawnSync(npm, ["install"], { cwd: made.folder, stdio: "inherit", shell: process.platform === "win32" }).status !== 0) {
+  // npm 12 fetches nothing from git unless told to; older npm takes the setting and has no use for it.
+  const install = (platform ?? PLATFORM_SPEC).startsWith("github:") ? ["install", "--allow-git=all"] : ["install"];
+  if (spawnSync(npm, install, { cwd: made.folder, stdio: "inherit", shell: process.platform === "win32" }).status !== 0) {
     console.error(`\n\`npm install\` didn't finish. Run it in ${where}/, then \`npm run dev\`.`);
     process.exit(1);
   }
