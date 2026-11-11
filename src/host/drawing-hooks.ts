@@ -23,6 +23,9 @@ export interface DrawScope {
 export type CanvasHost = Pick<ViewHost, "owner" | "tab" | "send" | "canvases"> & { theme(): CanvasTheme };
 
 export interface Drawing {
+  /** The page's theme as a canvas needs it, and a watch on it (canvas-theme.ts): part of drawing.ts, since only canvases use them. */
+  canvasTheme(): CanvasTheme;
+  watchCanvasTheme(changed: (theme: CanvasTheme) => void): void;
   copySvg(el: Element, scope: DrawScope): Element | null;
   canvasStandIn(el: Element, scope: DrawScope): Element;
   placeCanvases(root: ParentNode, host: CanvasHost): void;
@@ -30,9 +33,15 @@ export interface Drawing {
 }
 
 export let drawing: Drawing | undefined;
-export const useDrawing = (loaded: Drawing) => void (drawing = loaded);
+const waiting: ((loaded: Drawing) => void)[] = [];
+export const useDrawing = (loaded: Drawing) => {
+  drawing = loaded;
+  for (const run of waiting.splice(0)) run(loaded);
+};
+/** Runs `run` with drawing.ts once it has loaded (at once, if it has): for what only matters when a view draws. */
+export const whenDrawing = (run: (loaded: Drawing) => void) => void (drawing ? run(drawing) : waiting.push(run));
 
 /** Makes the canvases in a drawn HTML view or template live (views/html.ts, views/template.ts). */
-export function placeCanvases(root: ParentNode, host: Omit<CanvasHost, "theme">, theme: () => CanvasTheme): void {
-  if (drawing && root.querySelector("canvas[data-canvas-id]")) drawing.placeCanvases(root, { ...host, theme });
+export function placeCanvases(root: ParentNode, host: Omit<CanvasHost, "theme">): void {
+  if (drawing && root.querySelector("canvas[data-canvas-id]")) drawing.placeCanvases(root, { ...host, theme: drawing.canvasTheme });
 }

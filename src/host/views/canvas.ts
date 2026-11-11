@@ -5,12 +5,11 @@
 // before the first view that has a canvas (../drawing-gate.ts); a template can
 // hold the same thing as <canvas id="…" width height pointer>.
 
-import { canvasTheme } from "../canvas-theme";
 import { drawing } from "../drawing-hooks";
 import type { ViewHost, ViewOf } from "./index";
 
 export default (view: ViewOf<"canvas">, host: ViewHost): HTMLElement => {
-  if (drawing) return drawing.liveCanvas(view, { ...host, theme: canvasTheme });
+  if (drawing) return drawing.liveCanvas(view, { ...host, theme: drawing.canvasTheme });
   const note = document.createElement("span");
   note.className = "muted";
   note.textContent = "Canvases couldn't load.";

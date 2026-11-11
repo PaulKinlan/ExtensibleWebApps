@@ -20,16 +20,22 @@ const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 export default async function ({ check, context, URL: site }) {
   const { modules } = JSON.parse(readFileSync(join(ROOT, "kernel.json"), "utf8"));
 
-  // The build: one file per module, and none of them inside the kernel's.
+  // The build: one file per module, and none of them inside the kernel's. The exception is a module whose
+  // manifest says it starts with every kernel: every app runs it, so it is part of the kernel's own file, where it
+  // costs no first visit a request made only after the kernel arrived (scripts/first-draw.mjs).
   const assets = join(ROOT, "dist", "assets");
   const built = existsSync(assets) ? readdirSync(assets) : [];
   const kernelFile = built.find((f) => /^browser-[\w-]+\.js$/.test(f));
   const kernel = kernelFile ? readFileSync(join(assets, kernelFile), "utf8") : "";
-  const noFile = modules.filter((name) => !built.some((f) => f.startsWith(`kernel-${name}-`)));
-  check("the build makes each kernel module a file of its own", !!kernelFile && !noFile.length, `no file for: ${noFile.join(", ")}`);
+  const always = modules.filter((name) => moduleManifest(name, ROOT).starts === "always");
+  const onDemand = modules.filter((name) => !always.includes(name));
+  const noFile = onDemand.filter((name) => !built.some((f) => f.startsWith(`kernel-${name}-`)));
+  check("the build makes each kernel module that starts when used a file of its own", !!kernelFile && !noFile.length, `no file for: ${noFile.join(", ")}`);
   // Each module's file is fetched by name from the kernel, never copied into it: the kernel only names the file.
-  const named = modules.filter((name) => !new RegExp(`import\\("\\./kernel-${name}-[\\w-]+\\.js"\\)`).test(kernel));
-  check("the kernel's own file only names each module's file, to fetch when it is used", !named.length, `not fetched on demand: ${named.join(", ")}`);
+  const named = onDemand.filter((name) => !new RegExp(`import\\("\\./kernel-${name}-[\\w-]+\\.js"\\)`).test(kernel));
+  check("the kernel's own file only names each of those modules' files, to fetch when it is used", !named.length, `not fetched on demand: ${named.join(", ")}`);
+  const apart = always.filter((name) => built.some((f) => f.startsWith(`kernel-${name}-`)));
+  check("a module that starts with every kernel is in the kernel's own file, not a request after it", !!kernelFile && !apart.length, `a file of their own: ${apart.join(", ")}`);
 
   // A manifest the build doesn't understand stops it.
   const root = mkdtempSync(join(tmpdir(), "module-json-"));
@@ -77,8 +83,8 @@ export default async function ({ check, context, URL: site }) {
     };
     await settled();
     const atStart = await running();
-    // history starts with every kernel (its manifest says so), as its own file: undo holds every write from the first.
-    check("history starts with every kernel, from a file of its own", atStart.includes("history") && built.some((f) => f.startsWith("kernel-history-")), `running at the start: ${atStart.join(", ") || "none"}`);
+    // history starts with every kernel (its manifest says so): undo holds every write from the first.
+    check("history starts with every kernel", atStart.includes("history"), `running at the start: ${atStart.join(", ") || "none"}`);
     // So a plugin that asks for history later, in an app whose plugins never listed it, can undo a write made before it asked.
     const log = (id, prefix) => page.waitForFunction(([i, p]) => window.__host.traces.findLast((e) => e.plugin === i && e.detail?.startsWith(p)), [id, prefix], { timeout: 5000 }).then((h) => h.jsonValue()).then((e) => e.detail).catch((e) => `no answer: ${e.message.split("\n")[0]}`);
     await page.evaluate((source) => window.__host.command("install", source), `export const manifest = { id: 'early-writer', name: 'Early writer', permissions: [], collections: { 'early-notes': { title: 'Early notes', schema: { type: 'object', properties: { title: { type: 'string' } } } } } };

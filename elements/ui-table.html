@@ -47,4 +47,6 @@
     .error { color: var(--danger); font-size: var(--text-sm); padding: var(--space-4); margin: 0; }
   </style>
 </template>
+<!-- What the script imports, named here so the host asks for it along with the script (src/host/elements.ts). -->
+<link rel="modulepreload" href="bound-element.js">
 <script type="module" src="ui-table.js"></script>

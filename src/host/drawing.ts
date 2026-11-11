@@ -12,6 +12,8 @@
 // the plugin as in the rest of the view.
 
 import { SVG_ATTRIBUTES, SVG_TAGS, SVG_URL_ATTRIBUTES } from "../shared/svg";
+// The page's theme for canvases is part of this file too: nothing reads it until a view has a canvas.
+export { canvasTheme, watchCanvasTheme } from "./canvas-theme";
 import type { CanvasHost, DrawScope } from "./drawing-hooks";
 
 const SVG_NS = "http://www.w3.org/2000/svg";

@@ -37,6 +37,7 @@ const CORE = [
   "records.ts",
   "reference.ts",
   "remote.ts",
+  "review-card.ts",
   "review.ts",
   "routes.ts",
   "schema.ts",
@@ -67,9 +68,12 @@ const SERVICES = [
 const ON_DEMAND = [
   "agents/file.ts",
   "authoring.ts",
+  "diff.ts",
   "manifest-fields.ts",
+  "net.ts",
   "panel-commands.ts",
   "reference.ts",
+  "review-card.ts",
   "secrets-card.ts",
   "user-plugin-changes.ts",
 ];
