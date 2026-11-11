@@ -34,6 +34,9 @@ export default async function ({ check, context, URL, errors }) {
     frames(csp).includes("'self'") && frames(csp).length > 1 && frames(csp).every((source) => source === "'self'" || loopback.test(source)) && frames(PAGE_CSP).join(" ") === frames(csp).join(" "),
     `${frames(csp).join(" ")} | ${frames(PAGE_CSP).join(" ")}`,
   );
+  // Forms: a page here, or an app made in the browser, posts a form only to this site.
+  const forms = (s) => /(?:^|;\s*)form-action ([^;]*)/.exec(s)?.[1].trim();
+  check("the page policy lets a page post a form only to this site, and an app made in the browser gets the same", forms(csp) === "'self'" && forms(PAGE_CSP) === "'self'", `${forms(csp)} | ${forms(PAGE_CSP)}`);
   // Who may frame a page here: the site itself, and the named sites whose posts embed the demos. Never everyone.
   const ancestors = /(?:^|;\s*)frame-ancestors ([^;]*)/.exec(csp)?.[1].trim().split(/\s+/) ?? [];
   check(
