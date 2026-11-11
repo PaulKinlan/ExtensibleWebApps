@@ -44,17 +44,15 @@ const hasTitle = (page, title, timeout = 15000) =>
 
 const syncState = (page) => page.evaluate(() => window.__host.command("sync"));
 
-const waitSettled = (page, timeout = 40000) =>
-  page
-    .waitForFunction(
-      async () => {
-        const s = await window.__host.command("sync");
-        return s.connected && s.pending === 0;
-      },
-      null,
-      { timeout, polling: 300 },
-    )
-    .then(() => true, () => false);
+async function waitSettled(page, timeout = 40000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const s = await syncState(page).catch(() => null);
+    if (s?.connected && s.pending === 0) return true;
+    await page.waitForTimeout(200);
+  }
+  return false;
+}
 
 /** Runs a one-shot helper plugin in `page` and returns the JSON object it logged with `prefix`. */
 let helperSeq = 0;
@@ -222,8 +220,8 @@ export default async function ({ check, context, errors }) {
 
     // Ann also invites Cam as a read-only `viewer` using the role selector on /account/.
     await ann.page.goto(`${server.url}/account/`);
-    await ann.page.waitForSelector("#invite-role-studio", { timeout: 8000 });
-    await ann.page.selectOption("#invite-role-studio", "viewer");
+    await ann.page.waitForSelector('form[data-action="invite:studio"] select[name="role"]', { timeout: 8000 });
+    await ann.page.selectOption('form[data-action="invite:studio"] select[name="role"]', "viewer");
     await ann.page.click('.space-list button:has-text("Invite someone")');
     await ann.page.waitForFunction(() => /viewer invite/.test(document.querySelector(".spaces .status")?.textContent ?? ""), null, { timeout: 8000 });
     const viewerInvite = await ann.page.inputValue(".invite input");
@@ -332,14 +330,12 @@ export default async function ({ check, context, errors }) {
     await waitSettled(cam.page);
     await cam.page.fill(`${FORM} input[name="title"]`, "Viewer Attempt");
     await cam.page.click(`${FORM} button[type="submit"]`);
-    await cam.page.waitForFunction(
-      async () => {
-        const s = await window.__host.command("sync");
-        return s.drafts?.some((d) => d.mine?.title === "Viewer Attempt");
-      },
-      null,
-      { timeout: 10000 },
-    );
+    const draftDeadline = Date.now() + 10000;
+    while (Date.now() < draftDeadline) {
+      const s = await syncState(cam.page).catch(() => null);
+      if (s?.drafts?.some((d) => d.mine?.title === "Viewer Attempt")) break;
+      await cam.page.waitForTimeout(200);
+    }
     const camSync = await syncState(cam.page);
     const viewerDraft = camSync.drafts.find((d) => d.mine?.title === "Viewer Attempt");
     const leakedToAnn = await hasTitle(ann.page, "Viewer Attempt", 1000);
@@ -443,7 +439,13 @@ export default async function ({ check, context, errors }) {
       JSON.stringify({ putResult, getOnBen, viewerBlobCheck, deniedBlobCheck }),
     );
 
-    // 7. Role switching (`POST /auth/spaces/<name>/role`): non-owners get 403, owner promotes Cam to member and Cam can push.
+    // 7. Role switching (`/auth/spaces/<name>/role`) & MCP agent-key RBAC:
+    //    viewers cannot mint agent keys; non-owners get 403 on role switch; promoting viewer -> member enables writes & keys; demoting revokes keys.
+    const viewerKeyAttempt = await fetch(`${server.url}/auth/keys`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: server.url, cookie: camCookieHeader },
+      body: JSON.stringify({ space: "studio", name: "Viewer MCP" }),
+    });
     const benCookies = await ben.context.cookies(server.url);
     const benCookieHeader = benCookies.map((c) => `${c.name}=${c.value}`).join("; ");
     const camMe = await fetch(`${server.url}/auth/me`, { headers: { cookie: camCookieHeader } }).then((r) => r.json());
@@ -460,14 +462,39 @@ export default async function ({ check, context, errors }) {
       headers: { "content-type": "application/json", origin: server.url, cookie: annCookieHeader },
       body: JSON.stringify({ user: camId, role: "member" }),
     });
-    // Now Cam (promoted to member) adds a book and Ann receives it!
+    // Now Cam (promoted to member) can mint an agent key and push changes!
+    const memberKeyMint = await fetch(`${server.url}/auth/keys`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: server.url, cookie: camCookieHeader },
+      body: JSON.stringify({ space: "studio", name: "Member MCP" }),
+    });
     await cam.page.fill(`${FORM} input[name="title"]`, "Cam Is Member Now");
     await cam.page.click(`${FORM} button[type="submit"]`);
     const camBookReachedAnn = await hasTitle(ann.page, "Cam Is Member Now", 15000);
+    // Demoting Cam back to viewer revokes Cam's space agent keys.
+    const annDemotesCam = await fetch(`${server.url}/auth/spaces/studio/role`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: server.url, cookie: annCookieHeader },
+      body: JSON.stringify({ user: camId, role: "viewer" }),
+    });
+    const camKeysAfterDemote = await fetch(`${server.url}/auth/keys`, { headers: { cookie: camCookieHeader } }).then((r) => r.json());
     check(
-      "space RBAC: only the space's owner can switch a member's role via /auth/spaces/<name>/role, and promoting a viewer to member immediately allows writes",
-      benTriesRole.status === 403 && annPromotesCam.status === 200 && camBookReachedAnn,
-      JSON.stringify({ benStatus: benTriesRole.status, annStatus: annPromotesCam.status, camBookReachedAnn }),
+      "space RBAC: viewers cannot mint MCP keys, only owners switch roles via /auth/spaces/<name>/role, promoting enables writes, and demoting back to viewer revokes space keys",
+      viewerKeyAttempt.status === 403 &&
+        benTriesRole.status === 403 &&
+        annPromotesCam.status === 200 &&
+        memberKeyMint.status === 200 &&
+        camBookReachedAnn &&
+        annDemotesCam.status === 200 &&
+        (camKeysAfterDemote?.keys ?? []).length === 0,
+      JSON.stringify({
+        viewerKeyStatus: viewerKeyAttempt.status,
+        benStatus: benTriesRole.status,
+        annStatus: annPromotesCam.status,
+        memberKeyStatus: memberKeyMint.status,
+        camBookReachedAnn,
+        keysLeft: camKeysAfterDemote?.keys?.length,
+      }),
     );
   } finally {
     for (const d of devices) await d.close().catch(() => {});

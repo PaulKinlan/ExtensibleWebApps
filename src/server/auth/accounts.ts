@@ -337,10 +337,15 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   /** A space's record, if the name is a space's. */
   const spaceOf = (name: string) => (SPACE_NAME.test(name) ? read<Space>(`spaces/${name}.json`) : Promise.resolve(null));
 
-  const keys = agentKeys(files, { isMember: async (name, user) => !!(await spaceOf(name))?.members[user], ended: (name) => hooks.keys?.(name) });
+  /** Only owners and members (never read-only viewers) may connect MCP agents to a space. */
+  const canUseAgents = async (name: string, user: string) => {
+    const role = (await spaceOf(name))?.members[user];
+    return role === "owner" || role === "member";
+  };
+  const keys = agentKeys(files, { isMember: canUseAgents, ended: (name) => hooks.keys?.(name) });
   const mcpSignIn = mcpOAuth(files, {
     user: async (request) => (await session(request))?.user ?? null,
-    isMember: async (name, user) => !!(await spaceOf(name))?.members[user],
+    isMember: canUseAgents,
     keys,
     serial,
     providers: () => providers.map((p) => ({ id: p.id, name: p.name, ...(isFlow(p) && p.ask ? { ask: p.ask } : {}) })),
@@ -423,6 +428,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       if (!who || !space.members[who]) return json({ error: "They aren't in this space" }, 404);
       if (space.members[who] === "owner") return json({ error: "A space's owner stays its owner" }, 400);
       await join(space, who, next);
+      if (next === "viewer") await keys.revokeSpace(who, space.name);
       return json({ ok: true, user: who, role: next });
     }
     if (action === "POST /leave") {
