@@ -4,7 +4,7 @@
 // time something asks for it. So that this also works with no network, the build lists every such file
 // (/platform/parts.json) and the service worker keeps them all, a few seconds after a visit begins. Here an app
 // that uses almost none of them is opened once, then again with the network taken away, and the whole kernel is asked for.
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { watchErrors } from "../page-errors.mjs";
 
 const DIST = new globalThis.URL("../../dist/", import.meta.url);
@@ -13,14 +13,16 @@ export default async function ({ check, context, URL, errors }) {
   // ---- The list the build writes ----
   const listFile = new globalThis.URL("platform/parts.json", DIST);
   const listed = existsSync(listFile) ? JSON.parse(readFileSync(listFile, "utf8")).files : [];
-  const built = readdirSync(new globalThis.URL("assets/", DIST)).filter((f) => /\.(js|css)$/.test(f)).map((f) => `/assets/${f}`);
-  // dist/ may also hold files kept from earlier deploys (scripts/keep-assets.mjs), which the list leaves out: every listed file is there.
+  // dist/ may also hold files kept from earlier deploys (scripts/keep-assets.mjs), which the list leaves out, so what
+  // must be listed comes from kernel.json, not from the folder: every module that starts when used, and every listed file is there.
   const missing = listed.filter((file) => !existsSync(new globalThis.URL(`.${file}`, DIST)));
-  const modules = built.filter((f) => /\/kernel-[a-z-]+-/.test(f));
+  const root = new globalThis.URL("../../", import.meta.url);
+  const modules = JSON.parse(readFileSync(new globalThis.URL("kernel.json", root), "utf8")).modules.filter((name) => JSON.parse(readFileSync(new globalThis.URL(`std/${name}/module.json`, root), "utf8")).starts !== "always");
+  const unlisted = modules.filter((name) => !listed.some((f) => f.startsWith(`/assets/kernel-${name}-`)));
   check(
     "the build lists every part an app may fetch later: each kernel module, and the parts of the core and the page that load on demand",
-    listed.length > 20 && !missing.length && modules.length > 10 && modules.every((f) => listed.includes(f)) && listed.some((f) => /\/review-card-/.test(f)) && listed.includes("/platform/drawing.js"),
-    `${listed.length} listed, missing: ${missing.join(", ") || "none"}`,
+    listed.length > 20 && !missing.length && modules.length > 10 && !unlisted.length && listed.some((f) => /\/review-card-/.test(f)) && listed.some((f) => /\/drawing-/.test(f)),
+    `${listed.length} listed, missing: ${missing.join(", ") || "none"}, modules not listed: ${unlisted.join(", ") || "none"}`,
   );
 
   // ---- A visit keeps them, and they work offline ----

@@ -268,10 +268,11 @@ export default defineConfig({
   build: {
     target: "es2022",
     // The host is the one entry: /platform/host.js, which every page loads. Pages themselves are copied as written.
-    // SVG and canvas in views (/platform/drawing.js) is a second entry, loaded by the host only when a view has one (src/host/drawing-gate.ts).
+    // SVG and canvas in views is a file the host loads only when a view has one (src/host/drawing-gate.ts), named for
+    // its content. /platform/drawing.js, the fixed address it had, is still built (src/host/drawing-stable.ts) for pages opened before a deploy.
     // What the host and the parts it fetches later both use (the router's helpers, Vite's own loader) stays inside
     // host.js (manualChunks): as files of their own they were three requests every page made after host.js had
     // arrived and before it could run, a round trip on every first visit for 1.4 KB (scripts/first-draw.mjs).
-    rollupOptions: { input: { host: "src/host/main.ts", drawing: "src/host/drawing.ts" }, preserveEntrySignatures: "exports-only", output: { entryFileNames: "platform/[name].js", manualChunks: (id) => (/\/src\/host\/(main|router|audio-stats|names)\.ts$|vite\/preload-helper/.test(id) ? "host" : undefined) } },
+    rollupOptions: { input: { host: "src/host/main.ts", drawing: "src/host/drawing-stable.ts" }, preserveEntrySignatures: "exports-only", output: { entryFileNames: "platform/[name].js", manualChunks: (id) => (/\/src\/host\/(main|router|audio-stats|names)\.ts$|vite\/preload-helper/.test(id) ? "host" : undefined) } },
   },
 });

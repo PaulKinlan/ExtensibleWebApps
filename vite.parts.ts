@@ -11,8 +11,8 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin } from "vite";
 
-/** What is listed: every built script and stylesheet under assets/, and the page's script that draws SVG and canvas. */
-const PART = /^(assets\/[\w.-]+\.(js|css)|platform\/drawing\.js)$/;
+/** What is listed: every built script and stylesheet under assets/. */
+const PART = /^assets\/[\w.-]+\.(js|css)$/;
 
 export function onDemandParts(): Plugin {
   let outDir = "dist";

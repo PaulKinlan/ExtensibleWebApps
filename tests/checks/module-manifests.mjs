@@ -24,7 +24,10 @@ export default async function ({ check, context, URL: site }) {
   // manifest says it starts with every kernel: every app runs it, so it is part of the kernel's own file, where it
   // costs no first visit a request made only after the kernel arrived (scripts/first-draw.mjs).
   const assets = join(ROOT, "dist", "assets");
-  const built = existsSync(assets) ? readdirSync(assets) : [];
+  // This build's files, from the list the build writes (vite.parts.ts): dist/assets/ may also hold files kept from
+  // earlier deploys for pages still open (scripts/keep-assets.mjs), an older kernel or module file among them.
+  const parts = join(ROOT, "dist", "platform", "parts.json");
+  const built = existsSync(parts) ? JSON.parse(readFileSync(parts, "utf8")).files.filter((f) => f.startsWith("/assets/")).map((f) => f.slice("/assets/".length)) : existsSync(assets) ? readdirSync(assets) : [];
   const kernelFile = built.find((f) => /^browser-[\w-]+\.js$/.test(f));
   const kernel = kernelFile ? readFileSync(join(assets, kernelFile), "utf8") : "";
   const always = modules.filter((name) => moduleManifest(name, ROOT).starts === "always");

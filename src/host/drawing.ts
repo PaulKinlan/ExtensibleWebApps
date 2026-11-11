@@ -1,5 +1,5 @@
 // SVG and canvas in views, loaded only when a view has one (drawing-gate.ts),
-// as its own file, /platform/drawing.js. It imports nothing the host has: what
+// as its own file (/assets/drawing-<hash>.js). It imports nothing the host has: what
 // it needs from the sanitiser and the canvas code is lent to it.
 //
 // copySvg copies an <svg> from a plugin's HTML into the page, keeping only what
