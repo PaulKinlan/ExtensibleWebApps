@@ -2,12 +2,15 @@
 // ui-form) asks for a collection on behalf of the plugin whose view it sits
 // in; the kernel checks that plugin's rights, sends the records, and sends
 // them again whenever the collection changes. Saves and deletes go back the
-// same way. The elements ask with DOM events (see elements/bound-element.js),
+// same way. When a schema field carries `x-ref`, the referenced collection is
+// bound with the same plugin's rights too, falling back cleanly when it can't
+// be read. The elements ask with DOM events (see elements/bound-element.js),
 // answered by answerElements() at the end of this file.
 
 import type { HostToKernel, KernelToHost } from "../shared/protocol";
 
 export type Bound = Extract<KernelToHost, { t: "bound" }>;
+export type BoundWithRefs = Bound & { refs?: Record<string, Record<string, unknown>[] | null> };
 export type RecordResult = Extract<KernelToHost, { t: "record:result" }>;
 
 let send: (message: HostToKernel) => void = () => {};
@@ -51,13 +54,83 @@ export function ownerOf(el: Element): string | undefined {
   return undefined;
 }
 
-export function bind(owner: string, collection: string, listener: (message: Bound) => void): () => void {
+/** Collects every collection name referenced by `x-ref` anywhere in `schema`. */
+function collectRefs(schema: unknown, out = new Set<string>()): Set<string> {
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) return out;
+  const s = schema as Record<string, unknown>;
+  const ref = s["x-ref"] as { collection?: unknown } | undefined;
+  if (ref && typeof ref === "object" && typeof ref.collection === "string" && ref.collection) out.add(ref.collection);
+  if (s.properties && typeof s.properties === "object") {
+    for (const child of Object.values(s.properties as Record<string, unknown>)) collectRefs(child, out);
+  }
+  if (s.items) collectRefs(s.items, out);
+  return out;
+}
+
+function bindOne(owner: string, collection: string, listener: (message: Bound) => void): () => void {
   const id = `b${++next}`;
   listeners.set(id, listener);
   send({ t: "bind", id, owner, collection });
   return () => {
     listeners.delete(id);
     send({ t: "unbind", id });
+  };
+}
+
+export function bind(owner: string, collection: string, listener: (message: BoundWithRefs) => void): () => void {
+  let active = true;
+  let main: Bound | undefined;
+  const refUnbinds = new Map<string, () => void>();
+  const refs: Record<string, Record<string, unknown>[] | null> = {};
+  const pending = new Set<string>();
+  let wanted = new Set<string>();
+
+  const emit = () => {
+    if (!active || !main || pending.size) return;
+    listener(wanted.size ? { ...main, refs: { ...refs } } : main);
+  };
+
+  const unbindMain = bindOne(owner, collection, (msg) => {
+    if (!active) return;
+    if (msg.error) {
+      main = msg;
+      listener(msg);
+      return;
+    }
+    main = { ...main, ...msg };
+    if (msg.schema) {
+      wanted = collectRefs(msg.schema);
+      for (const [col, off] of [...refUnbinds]) {
+        if (!wanted.has(col)) {
+          off();
+          refUnbinds.delete(col);
+          pending.delete(col);
+          delete refs[col];
+        }
+      }
+      for (const col of wanted) {
+        if (col === collection || refUnbinds.has(col)) continue;
+        pending.add(col);
+        refUnbinds.set(
+          col,
+          bindOne(owner, col, (refMsg) => {
+            if (!active) return;
+            refs[col] = refMsg.error ? null : (refMsg.records ?? []);
+            pending.delete(col);
+            emit();
+          }),
+        );
+      }
+    }
+    if (wanted.has(collection)) refs[collection] = main.records ?? [];
+    emit();
+  });
+
+  return () => {
+    active = false;
+    unbindMain();
+    for (const off of refUnbinds.values()) off();
+    refUnbinds.clear();
   };
 }
 
@@ -82,7 +155,7 @@ export function answerElements(root: Document): void {
   root.addEventListener("ui-bind", (e) => {
     const { detail } = e as Asked;
     const owner = ownerOf(e.target as Element);
-    if (owner) detail.unbind = bind(owner, String(detail.collection), detail.listener as (message: Bound) => void);
+    if (owner) detail.unbind = bind(owner, String(detail.collection), detail.listener as (message: BoundWithRefs) => void);
   });
   root.addEventListener("ui-save", (e) => {
     const { detail } = e as Asked;

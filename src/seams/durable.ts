@@ -1,10 +1,10 @@
-// The files seam on a Durable Object's SQLite database (Cloudflare). Each
-// space's kernel runs as a Durable Object of its own (src/server/cloudflare/),
-// so this is that space's folder: one row per file. SQLite in a Durable
-// Object is synchronous and every call here is one statement, so a write is
-// whole or not there at all.
+// The files and records seams on a Durable Object's SQLite database
+// (Cloudflare). Each space's kernel runs as a Durable Object of its own
+// (src/server/cloudflare/), so this is that space's folder and change log.
+// SQLite in a Durable Object is synchronous, so each method runs without
+// another caller stepping in between its statements.
 
-import { checkPath, type Files } from "./index.ts";
+import { checkPath, type Change, type Files, type Records, type Stored } from "./index.ts";
 
 /** The part of a Durable Object's `ctx.storage.sql` this uses. */
 export interface Sql {
@@ -45,6 +45,59 @@ export function durableFiles(sql: Sql): Files {
         .toArray()
         .map((r) => String(r.path))
         .filter((p) => p.startsWith(prefix));
+    },
+  };
+}
+
+/** Records and their change log on a Durable Object's SQLite database. */
+export function durableRecords(sql: Sql): Records {
+  sql.exec("CREATE TABLE IF NOT EXISTS records (collection TEXT NOT NULL, id TEXT NOT NULL, version INTEGER NOT NULL, value TEXT NOT NULL, PRIMARY KEY (collection, id))");
+  sql.exec("CREATE TABLE IF NOT EXISTS changes (seq INTEGER PRIMARY KEY AUTOINCREMENT, collection TEXT NOT NULL, id TEXT NOT NULL, before TEXT, after TEXT)");
+  const row = (r?: Record<string, unknown>): Stored | null => (r ? { id: String(r.id), version: Number(r.version), value: JSON.parse(String(r.value)) } : null);
+  return {
+    async get(collection, id) {
+      const [r] = sql.exec("SELECT id, version, value FROM records WHERE collection = ? AND id = ?", collection, id).toArray();
+      return row(r);
+    },
+    async list(collection) {
+      return sql
+        .exec("SELECT id, version, value FROM records WHERE collection = ? ORDER BY id", collection)
+        .toArray()
+        .map((r) => row(r)!);
+    },
+    async put(collection, id, value, base) {
+      const [existing] = sql.exec("SELECT id, version, value FROM records WHERE collection = ? AND id = ?", collection, id).toArray();
+      const current = row(existing);
+      if (base !== undefined && base !== (current?.version ?? 0)) return { ok: false as const, stale: true as const, current };
+      const after = JSON.stringify(value);
+      sql.exec("INSERT INTO changes (collection, id, before, after) VALUES (?, ?, ?, ?)", collection, id, current ? JSON.stringify(current.value) : null, after);
+      const [inserted] = sql.exec("SELECT last_insert_rowid() AS seq").toArray();
+      const seq = Number(inserted.seq);
+      sql.exec("INSERT INTO records (collection, id, version, value) VALUES (?, ?, ?, ?) ON CONFLICT (collection, id) DO UPDATE SET version = excluded.version, value = excluded.value", collection, id, seq, after);
+      return { ok: true as const, seq };
+    },
+    async remove(collection, id, base) {
+      const [existing] = sql.exec("SELECT id, version, value FROM records WHERE collection = ? AND id = ?", collection, id).toArray();
+      const current = row(existing);
+      if (!current) return { ok: false as const, stale: false as const, missing: true as const };
+      if (base !== undefined && base !== current.version) return { ok: false as const, stale: true as const, current };
+      sql.exec("INSERT INTO changes (collection, id, before, after) VALUES (?, ?, ?, ?)", collection, id, JSON.stringify(current.value), null);
+      const [inserted] = sql.exec("SELECT last_insert_rowid() AS seq").toArray();
+      const seq = Number(inserted.seq);
+      sql.exec("DELETE FROM records WHERE collection = ? AND id = ?", collection, id);
+      return { ok: true as const, seq };
+    },
+    async changes(since, limit = 500) {
+      return sql
+        .exec("SELECT seq, collection, id, before, after FROM changes WHERE seq > ? ORDER BY seq LIMIT ?", since, limit)
+        .toArray()
+        .map((r): Change => ({
+          seq: Number(r.seq),
+          collection: String(r.collection),
+          id: String(r.id),
+          ...(r.before !== null && r.before !== undefined ? { before: JSON.parse(String(r.before)) } : {}),
+          ...(r.after !== null && r.after !== undefined ? { after: JSON.parse(String(r.after)) } : {}),
+        }));
     },
   };
 }

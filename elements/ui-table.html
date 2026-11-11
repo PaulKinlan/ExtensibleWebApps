@@ -2,7 +2,8 @@
   ui-table: a sortable table of a collection's records, kept up to date.
   Attributes: collection, columns="title,author", sort="title|-title", empty,
   row-action (the first column becomes a button that sends it with the
-  record's id), deletable (adds a Delete button).
+  record's id), deletable (adds a Delete button), filterable (adds a search
+  box), page-size (paginates rows with Previous and Next buttons).
 
   The behaviour is in ui-table.js, linked below. The template holds the style;
   the script builds the table into the shadow root after it.
@@ -22,6 +23,11 @@
       border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); }
     /* Unseen until the view's other bound elements have drawn too (bound-element.js), so none jumps as another fills in. */
     :host(:state(waiting)) { visibility: hidden; }
+    .toolbar { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+    input[type="search"] { font: inherit; font-size: var(--text-md); color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); height: var(--control, 38px); padding: 0 var(--space-3); flex: 1 1 auto; min-width: 0; max-width: 100%; transition: border-color var(--duration, 140ms) var(--ease, ease), box-shadow var(--duration, 140ms) var(--ease, ease); }
+    input[type="search"]::placeholder { color: color-mix(in srgb, var(--fg-2) 75%, transparent); }
+    input[type="search"]:not(:focus):hover { border-color: color-mix(in srgb, var(--fg) 28%, var(--border)); }
+    input[type="search"]:focus-visible { outline: 2px solid transparent; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
     table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
     th, td { text-align: left; padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); vertical-align: middle; }
     tbody tr:last-child td { border-bottom: 0; }
@@ -39,6 +45,12 @@
     button.remove { font: inherit; font-size: var(--text-sm); font-weight: 500; height: var(--control-sm, 30px); padding: 0 var(--space-3); border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--fg-2); cursor: pointer; transition: color var(--duration, 140ms), background var(--duration, 140ms), border-color var(--duration, 140ms); }
     button.remove:hover { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); border-color: color-mix(in srgb, var(--danger) 25%, transparent); }
     td:has(> button.remove) { text-align: right; width: 1%; }
+    .pager { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border); }
+    .page-count { font-size: var(--text-sm); color: var(--fg-2); font-variant-numeric: tabular-nums; }
+    .pager-actions { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+    button.pager-btn { font: inherit; font-size: var(--text-sm); font-weight: 500; display: inline-flex; align-items: center; justify-content: center; height: var(--control, 38px); padding: 0 var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--fg); cursor: pointer; white-space: nowrap; transition: background var(--duration, 140ms) var(--ease, ease), border-color var(--duration, 140ms) var(--ease, ease); }
+    button.pager-btn:hover:not(:disabled) { background: var(--bg-2); border-color: color-mix(in srgb, var(--fg) 22%, var(--border)); }
+    button.pager-btn:disabled { opacity: .5; cursor: default; }
     /* After the resets above, so `all: unset` doesn't remove the focus ring. */
     button:focus-visible { outline: 3px solid var(--ring, color-mix(in srgb, var(--accent) 70%, transparent)); outline-offset: 1px; border-radius: var(--radius-sm); }
     /* On a phone, rows stay one line each and the table scrolls sideways, rather than names folding into columns of words. */

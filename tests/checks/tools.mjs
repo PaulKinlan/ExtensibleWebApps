@@ -69,7 +69,7 @@ export default async (ctx) => {
     // A narrower wildcard offers the collections it matches, not every collection.
     await plugin(`export const manifest = { id: 'wild-tools', name: 'Wild tools', permissions: ['data:read:gad*'] };
 export default async (ctx) => { ctx.log('wild-names ' + (await ctx.call('tools', 'list')).map((t) => t.name).filter((n) => n.startsWith('data_')).sort().join(',')); };`);
-    check("a narrower wildcard offers only the collections it matches", (await pluginLog("wild-tools", "wild-names").catch(() => "")) === "wild-names data_collections,data_get_gadgets,data_list_gadgets");
+    check("a narrower wildcard offers only the collections it matches", (await pluginLog("wild-tools", "wild-names").catch(() => "")) === "wild-names data_collections,data_get_gadgets,data_list_gadgets,data_query_gadgets");
   } finally {
     for (const id of ["toolbox", "shelves", "bare-tools", "wild-tools"]) await a.evaluate((id) => window.__host.command("uninstall", id), id).catch(() => {});
   }
