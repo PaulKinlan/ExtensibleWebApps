@@ -112,6 +112,7 @@ Most services have moved out of the core into **kernel modules**. A module is a 
     "account",
     "agents",
     "audio",
+    "browser-model",
     "bus",
     "commands",
     "debug",
@@ -182,6 +183,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | `account` | [`std/account/module.ts`](../std/account/module.ts) | The `account` service: the person's account on the site's server (passkeys, other sites to sign in with, email, spaces, agent keys), for the account app's own plugins ([`account/app.html`](../account/app.html)) and no others |
 | `agents` | [`std/agents/module.ts`](../std/agents/module.ts) | The `agents` service: counts each agent's runs and tokens, so an agent can't misreport its own use, and tells the app what agents do (`agent:*` hooks). Uses `tools` |
 | `audio` | [`std/audio/module.ts`](../std/audio/module.ts) | The `audio` service: sound for plugins, played by the tab that runs their workers |
+| `browser-model` | [`std/browser-model/module.ts`](../std/browser-model/module.ts) | The `browser-model` service: the language model the browser carries itself (Chrome's Prompt API), asked in a tab through the host's [`browser-model` bridge](../src/host/bridges/browser-model.ts), since the API isn't in workers. No key, and nothing leaves the device. [`std/llm/chrome.js`](../std/llm/chrome.js) offers it as a model |
 | `bus` | [`std/bus/module.ts`](../std/bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person, with replies and topics |
 | `commands` | [`std/commands/module.ts`](../std/commands/module.ts) | The `commands` service: commands from any plugin, run from a palette, a key or an agent (the palette is [`std/commands/palette.js`](../std/commands/palette.js)) |
 | `debug` | [`std/debug/module.ts`](../std/debug/module.ts) | The `debug` service (the trace, for developer tools such as the debug console), and the `bench` and `reload-test` commands the tests run |

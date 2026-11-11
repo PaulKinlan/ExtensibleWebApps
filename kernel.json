@@ -3,6 +3,7 @@
     "account",
     "agents",
     "audio",
+    "browser-model",
     "bus",
     "commands",
     "debug",

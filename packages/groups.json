@@ -1,7 +1,7 @@
 {
   "about": "The sub-heading each plugin the registry offers sits under, on /packages/ and in Customize (index.json's `group`). Every offered plugin needs one; npm run packages fails on a plugin with none, or a name here that isn't offered.",
   "groups": {
-    "Language models": ["llm-anthropic", "llm-gemini", "llm-openai", "llm-openai-compatible"],
+    "Language models": ["llm-anthropic", "llm-chrome", "llm-gemini", "llm-openai", "llm-openai-compatible"],
     "Examples": ["clock", "world-clock"],
     "Building plugins": ["ask-the-page", "plugin-editor", "plugin-maker"],
     "Your data": ["import-export", "sync-status", "undo"],

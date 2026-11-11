@@ -12,12 +12,13 @@ vendor's models. Link one or more from an app's `app.html`:
 | [`anthropic.js`](anthropic.js) | Claude: best is Opus, balanced Sonnet, fast Haiku | An Anthropic API key, sent only to api.anthropic.com |
 | [`openai.js`](openai.js) | OpenAI, through the Responses API: best is Astra, balanced Sol, fast Luna | An OpenAI API key, sent only to api.openai.com |
 | [`gemini.js`](gemini.js) | Gemini: best is Argon (or Pro), balanced Flash, fast Flash-Lite | A Gemini API key, sent only to generativelanguage.googleapis.com |
+| [`chrome.js`](chrome.js) | Chrome's built-in model, on the person's own computer: one small model, whatever tier is asked for | None. Only where the browser has the model; elsewhere it lists nothing and isn't offered |
 | [`openai-compatible.js`](openai-compatible.js) | Ollama on this computer as written; copy it for any other OpenAI-style API | None for Ollama |
 
 ## A person adding one
 
 A person can add a model to any app, without its developer linking one. The site's plugin registry
-(`/packages/`) offers these four, so they're in Customize's Add a plugin. And a plugin that needs a
+(`/packages/`) offers these, so they're in Customize's Add a plugin. And a plugin that needs a
 model can offer them itself: `llm.choices()` lists the registry's packages that ask for
 `provide:llm`, and `llm.add(id)` adds the one the person picks as their own plugin, once they
 accept its review card, and turns it on. It is added for every app they open on this device, not
@@ -121,3 +122,17 @@ It listens to three hooks:
 For another service that speaks OpenAI's Chat Completions API, copy `openai-compatible.js`, give it
 its own id, and change its address and network permission. Ollama in a browser needs
 `OLLAMA_ORIGINS` set to this site's address so the page may reach it.
+
+## A model with no key
+
+[`chrome.js`](chrome.js) is the model Chrome carries itself (its Prompt API). It runs on the person's
+computer, so there is no key card, nothing to pay, and nothing they ask leaves the device. It is a
+model only where the browser has one (a recent Chrome on a computer with enough memory and disk
+space): elsewhere it adds nothing to `llm.providers()`, and `llm.choices()` leaves it out. Where the
+browser can have the model but hasn't fetched it yet, the first question starts the download and the
+answer says how far it has got.
+
+It is a small model: it reads a few thousand words at once, and has no tool calls of its own, so
+`chrome.js` asks for an answer of a fixed shape and reads a tool call out of it. The browser's API is
+in pages, not workers, so the plugin asks through the `browser-model` service
+([`std/browser-model/module.ts`](../browser-model/module.ts)), which asks a tab.
