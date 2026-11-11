@@ -26,9 +26,10 @@ export function needsDrawing(view: View): boolean {
 
 /** Loads drawing.ts once. If it can't load, an <svg> or <canvas> is dropped like any element the host doesn't know. */
 export function loadDrawing(): Promise<void> {
-  // Built as its own file, /platform/drawing.js, next to the host (vite.config.ts); in development, the source itself.
-  const src = new URL(import.meta.env.DEV ? "./drawing.ts" : "./drawing.js", import.meta.url).href;
-  loading ??= (import(/* @vite-ignore */ src) as Promise<typeof import("./drawing")>).then(
+  // Built as its own file, named for its content like every other part (/assets/drawing-<hash>.js), so a host and
+  // the drawing code it loads are always from the same build: at one fixed address, the service worker could hand
+  // a new host the copy it kept from the build before.
+  loading ??= import("./drawing").then(
     (m) => {
       useDrawing(m);
       settled = true;

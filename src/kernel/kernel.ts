@@ -18,7 +18,6 @@ import { makeRoutes, type RouteRequest, type RouteResponse } from "./routes";
 import { catalog } from "./catalog";
 import { changeLog } from "./changes";
 import { allowed, reviews as makeReviews } from "./review";
-import { net } from "./net";
 import { grants } from "./gate";
 import { readManifest, RESERVED } from "./manifest";
 import { collections } from "./records";
@@ -123,7 +122,8 @@ const later = (name: string, make: () => Promise<ServiceProvider>): ServiceProvi
 const remote = new RemotePlugins(root, hosts, services);
 const secrets = makeSecrets(store, hosts, (instance) => remote.installed.get(base(instance))?.manifest.name ?? base(instance));
 services.secrets = secrets.service;
-services.net = net(secrets, (instance) => remote.installed.get(base(instance))?.caps ?? new Set());
+// net.fetch is fetched the first time a plugin makes a request through it (net.ts): most apps never do.
+services.net = later("net", async () => (await import("./net")).net(secrets, (instance) => remote.installed.get(base(instance))?.caps ?? new Set()));
 const plugins = catalog(remote, store, hosts, log, reviews);
 remote.onDispose = (instance) => {
   reviews.cancelInstance(instance);

@@ -18,6 +18,7 @@ import routes from "./sw/routes/index.js";
 import { appAt } from "./sw/routes/apps.js";
 import { renderBlocking } from "./sw/render-blocking.js";
 import { onNotificationClick, onNotifyMessage } from "./sw/notifications.js";
+import { keepParts } from "./sw/parts.js";
 
 const CACHE = "platform-v1";
 
@@ -45,11 +46,16 @@ self.addEventListener("message", (event) => {
   if (event.data?.t !== "sw:warm" || !Array.isArray(event.data.urls)) return;
   const urls = event.data.urls.filter((u) => typeof u === "string" && new URL(u, location.href).origin === location.origin).slice(0, 200);
   event.waitUntil(Promise.all(urls.map((u) => cached(new Request(u), event).catch(() => {}))));
+  // And, a little later, the parts no visit has used yet, so each works offline the first time too (sw/parts.js).
+  // (Not while developing on this machine, where the network answers first and files change under the worker.)
+  if (!LOCAL) event.waitUntil(keepParts(CACHE));
 });
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;
+  // A visit begins: once the page has had time to draw, the parts a newer deploy brought are kept too (sw/parts.js).
+  if (event.request.mode === "navigate" && cacheFirst(event.request)) event.waitUntil(keepParts(CACHE));
   // A page it serves waits for the host before its first paint (sw/render-blocking.js).
   event.respondWith(event.request.mode === "navigate" ? answer(event, url).then(renderBlocking) : answer(event, url).then((response) => leftBehind(event, url, response)));
 });

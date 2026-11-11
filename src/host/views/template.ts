@@ -2,7 +2,6 @@
 // its data (templates.ts) and then sanitised like any HTML view. The file's
 // <style>, if it has one, is scoped to this plugin's views (plugin-styles.ts).
 
-import { canvasTheme } from "../canvas-theme";
 import { placeCanvases } from "../drawing-hooks";
 import { sanitizeFragment } from "../sanitize";
 import { installPluginStyle } from "../plugin-styles";
@@ -18,6 +17,6 @@ export default (view: ViewOf<"template">, host: ViewHost): HTMLElement => {
   el.className = "html-view";
   el.append(sanitizeFragment(fillFragment(file, view.id, view.data), owner, { remote: view.remote === true, base: view.src }));
   // A <canvas id> in the template is one the plugin draws on (../drawing.ts).
-  placeCanvases(el, host, canvasTheme);
+  placeCanvases(el, host);
   return el;
 };

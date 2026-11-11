@@ -58,6 +58,13 @@ async function define(name: string): Promise<void> {
   // The elements its own template uses load alongside it, not after it is first drawn.
   for (const inner of template?.content.querySelectorAll("*") ?? []) if (inner.localName.startsWith("ui-") && inner.localName !== name && !customElements.get(inner.localName)) void loadElement(inner.localName);
 
+  // The files its script imports, which the element's file can name with <link rel="modulepreload">: asked for
+  // with the script, not once the script has arrived and been read (elements/ui-form.html names bound-element.js).
+  for (const link of file.querySelectorAll<HTMLLinkElement>('link[rel="modulepreload"][href]')) {
+    const href = new URL(link.getAttribute("href")!, url);
+    if (href.origin === location.origin) document.head.append(Object.assign(document.createElement("link"), { rel: "modulepreload", href: href.href }));
+  }
+
   let element: ElementClass;
   if (script?.hasAttribute("src")) {
     element = (await import(/* @vite-ignore */ new URL(script.getAttribute("src")!, url).href)).default;

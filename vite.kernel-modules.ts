@@ -121,8 +121,9 @@ export function moduleManifests(root = process.cwd()): Record<string, ModuleMani
 }
 
 /**
- * `split`: each module is a file of its own that the kernel fetches when it is first used (the browser's kernel).
- * Without it the modules are part of the kernel's own file (a server's kernel, which starts them all).
+ * `split`: each module is a file of its own that the kernel fetches when it is first used (the browser's kernel),
+ * but for the ones whose manifests say they start with every kernel, which are part of the kernel's own file.
+ * Without it every module is part of the kernel's own file (a server's kernel, which starts them all).
  */
 export function kernelModules({ split = false }: { split?: boolean } = {}): Plugin {
   return {
@@ -136,9 +137,13 @@ export function kernelModules({ split = false }: { split?: boolean } = {}): Plug
       const manifests = moduleManifests(root);
       for (const name of names) this.addWatchFile(resolve(root, "std", name, "module.json"));
       const path = (name: string) => JSON.stringify(resolve(root, "std", name, "module.ts"));
-      const imports = split ? [] : names.map((name, i) => `import m${i} from ${path(name)};`);
+      // A module that starts with every kernel is part of the kernel's own file even when the rest are split:
+      // a file of its own would save no app a byte, and cost every first visit a request that can only be
+      // made once the kernel has arrived (scripts/first-draw.mjs shows the round trip).
+      const within = (name: string) => !split || manifests[name].starts === "always";
+      const imports = names.map((name, i) => (within(name) ? `import m${i} from ${path(name)};` : "")).filter(Boolean);
       const entry = (name: string, i: number) =>
-        `{ name: ${JSON.stringify(name)}, manifest: ${JSON.stringify(manifests[name])}, ${split ? `load: () => import(${path(name)}).then((m) => m.default)` : `module: m${i}`} }`;
+        `{ name: ${JSON.stringify(name)}, manifest: ${JSON.stringify(manifests[name])}, ${within(name) ? `module: m${i}` : `load: () => import(${path(name)}).then((m) => m.default)`} }`;
       // What a project wrote after the mark, if this copy of the kernel is a project's. The mark is read at
       // run time (never folded away by the build), so the text after it can change in the built file.
       const stamped = `const mark = ${JSON.stringify(STAMP)};\nconst own = mark.slice(${STAMP.length});\nconst site = own ? JSON.parse(atob(own)) : undefined;`;

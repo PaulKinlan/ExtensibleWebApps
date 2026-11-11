@@ -41,6 +41,7 @@
     "packages": "node scripts/packages.mjs",
     "gallery": "node scripts/gallery.mjs",
     "sizes": "node scripts/sizes.mjs",
+    "first-draw": "node --no-warnings scripts/first-draw.mjs",
     "prepare": "npm run build && npm run build:server"
   },
   "dependencies": {
