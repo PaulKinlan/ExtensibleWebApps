@@ -5,8 +5,8 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "lib": ["ES2022"],
-    "types": ["@cloudflare/workers-types"]
+    "types": ["@cloudflare/workers-types/experimental"]
   },
-  "include": ["src/server/cloudflare/worker.ts", "src/seams/durable.ts", "src/server/auth/*.ts"],
+  "include": ["src/server/cloudflare/worker.ts", "src/server/cloudflare/cloudflare-types.d.ts", "src/seams/durable.ts", "src/server/auth/*.ts"],
   "exclude": []
 }
