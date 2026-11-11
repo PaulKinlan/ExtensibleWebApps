@@ -100,6 +100,9 @@ const until = async (test, ms = 8000) => {
  * @param {Awaited<ReturnType<typeof fakePushService>>} service
  */
 export async function pushChecks(base, check, owner, person, { device, client }, service) {
+  // The push service is the same for each host's run: nothing of the last one's is left in it.
+  service.ended.clear();
+  service.received.length = 0;
   await owner.call("/auth/spaces", { name: "bins" });
   const ann = await person().account("Ann");
   const bo = await person().account("Bo");
