@@ -14,12 +14,24 @@
 // the app's tab forward, or opens the app again. The browser's part is a
 // bridge (src/host/bridges/notify.ts), since asking lives in pages.
 //
+// On a space's server there is no tab, and that is the point: a plugin that
+// runs there (`runs: "server"`) shows a notification with every tab closed.
+// show() there sends it with Web Push to the devices the space's members
+// turned notifications on for, on their account pages (src/server/auth/push.ts),
+// and each device's service worker shows it (sw/push.js): to every member, or
+// only those in `to`. A click opens the plugin's app in the space. A job set
+// with ctx.schedule is how a reminder fires at its time with nobody there:
+//
+//   ctx.schedule.at("bins", when, () => ctx.call("notify", "show", { title: "Bins go out tonight" }));
+//
 // A kernel module (docs/layers.md): a site that lists `notify` in kernel.json has it, as `ctx.call("notify", …)`.
 
 import type { Host } from "../../src/kernel/hosts";
 import { service, type ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
 import type { Dispatch } from "../../src/shared/protocol";
+import { env } from "../../src/kernel/env";
+import { record } from "../../src/kernel/trace";
 
 const MAX_TITLE = 120;
 const MAX_BODY = 400;
@@ -27,7 +39,20 @@ const MAX_BODY = 400;
 const PER_MINUTE = 6;
 
 const make = (kernel: ModuleKernel): ServiceProvider => {
-  const { hosts, apps } = kernel;
+  const { hosts, apps, remote } = kernel;
+  const where = env();
+  const onServer = hosts.mode === "server";
+  /** On a server: sends a note to members' devices, and says in the trace what came of it. */
+  const push = async (plugin: string, note: Record<string, unknown>, title: string) => {
+    if (!where.push) throw new Error("This server can't send notifications to members' devices");
+    // The app the plugin is from, as its folder on the site: where a click on the notification goes.
+    const href = remote.installed.get(plugin)?.href;
+    const app = href?.startsWith(`${where.origin}/`) ? href.slice(where.origin.length + 1).replace(/\/[^/]*$/, "") : undefined;
+    const to = Array.isArray(note.to) ? note.to.filter((id): id is string => typeof id === "string").slice(0, 200) : undefined;
+    const result = await where.push({ title: title.slice(0, MAX_TITLE), body: typeof note.body === "string" ? note.body.slice(0, MAX_BODY) : undefined, tag: typeof note.tag === "string" ? `${plugin}:${note.tag.slice(0, 60)}` : undefined, always: note.always === true, ...(app ? { app } : {}), ...(to ? { to } : {}) });
+    record({ kind: result.problems.length ? "error" : "note", name: "notify:push", plugin, detail: `sent to ${result.sent} of ${result.devices} devices, reaching ${result.reached} of ${result.people} members${result.devices ? "" : ": none of them has turned notifications on, which each does on their account page"}${result.problems.length ? `; ${[...new Set(result.problems)].join("; ")}` : ""}` });
+    return result.sent > 0;
+  };
   /** When each plugin's notifications in the last minute were shown. */
   const shown = new Map<string, number[]>();
 
@@ -44,7 +69,6 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     return tabs.find((h) => h.tab === from) ?? tabs[0];
   };
   const needTab = (host: Host | undefined) => {
-    if (hosts.mode === "server") throw new Error("There are no notifications on a space's server");
     if (!host) throw new Error("No tab has this plugin's app open");
     return host;
   };
@@ -55,7 +79,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       state: { args: "()", params: [], returns: "\"granted\", \"denied\", \"default\" or \"unsupported\"", needs: "notify", description: "Whether the person allowed this site's notifications: \"default\" means they haven't been asked yet." },
       request: { args: "()", params: [], returns: "\"granted\", \"denied\", \"default\" or \"unsupported\"", needs: "notify", description: "Asks the person to allow notifications (call it right after a click in the app, from a button they pressed for it). The browser remembers the answer." },
       show: {
-        args: "({ title, body?, tag?, always? })",
+        args: "({ title, body?, tag?, always?, to? })",
         params: [
           {
             name: "note",
@@ -66,6 +90,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
                 body: { type: "string", description: "A sentence more" },
                 tag: { type: "string", description: "A notification with the same tag replaces this one" },
                 always: { type: "boolean", description: "Show it even while the person is looking at the app" },
+                to: { type: "array", description: "On a space's server: the ids of the members to tell (sync.members() has them). Left out, every member is told" },
               },
               required: ["title"],
             },
@@ -73,19 +98,31 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         ],
         returns: "true if it was shown",
         needs: "notify",
-        description: `Shows a notification from one tab with the plugin's app open, when nobody is looking at the app (or \`always\`). False if the person hasn't allowed notifications, or is looking. At most ${PER_MINUTE} a minute for each plugin.`,
+        description: `Shows a notification from one tab with the plugin's app open, when nobody is looking at the app (or \`always\`). False if the person hasn't allowed notifications, or is looking. At most ${PER_MINUTE} a minute for each plugin. From a plugin on a space's server, it is sent to the members' devices instead and arrives with every tab closed: true if it was sent to at least one device (each member turns notifications on for a device on their account page).`,
       },
     },
     capability: () => "notify",
     async call(instance, method, args, dispatch) {
       switch (method) {
         case "state":
+          // A server shows nothing itself: it can send to members' devices, or it can't.
+          if (onServer) return where.push ? "granted" : "unsupported";
           return hosts.bridge("notify", "state", [], dispatch, needTab(tabFor(instance, dispatch)));
         case "request":
+          if (onServer) return where.push ? "granted" : "unsupported";
           return hosts.bridge("notify", "request", [], dispatch, needTab(tabFor(instance, dispatch)));
         case "show": {
           const note = (args[0] ?? {}) as Record<string, unknown>;
           if (typeof note.title !== "string" || !note.title.trim()) throw new Error("notify.show needs a title");
+          if (onServer) {
+            const plugin = instance.split("@")[0];
+            const now = Date.now();
+            const recent = (shown.get(plugin) ?? []).filter((at) => now - at < 60_000);
+            if (recent.length >= PER_MINUTE) return false;
+            recent.push(now);
+            shown.set(plugin, recent);
+            return push(plugin, note, note.title);
+          }
           const tabs = tabsOf(instance);
           const host = needTab(tabs[0]);
           if (!note.always) {

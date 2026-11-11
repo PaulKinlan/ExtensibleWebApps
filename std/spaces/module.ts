@@ -67,7 +67,7 @@ export default {
       /** The apps opened in the space, whose server plugins it runs: only on a server that runs plugins. */
       // Who may change what (permissions.ts): each member's role, and the rules the app's own plugins give their collections.
       // Fetched here, on a server: a browser's kernel never decides this, so it never carries the code.
-      const permitting = import("./permissions").then((m) => m.spacePermissions(store, hosts, async () => where.members?.(), (name) => records.registry.get(name)?.title ?? name));
+      const permitting = import("./permissions").then((m) => m.spacePermissions(store, hosts, async () => where.members?.(), (name) => records.registry.get(name)));
       const permit: Permit = {
         may: async (...args) => (await permitting).may(...args),
         told: async () => (await permitting).told(),

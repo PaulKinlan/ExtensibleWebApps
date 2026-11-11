@@ -43,7 +43,8 @@ type Kept = Rules | { broken: string };
 
 export const READER = "You can read this space but not change it";
 
-export function spacePermissions(store: Store, hosts: Hosts, members: () => Promise<Member[] | undefined>, titleOf: (collection: string) => string) {
+export function spacePermissions(store: Store, hosts: Hosts, members: () => Promise<Member[] | undefined>, collectionOf: (collection: string) => { title: string; owner: string } | undefined) {
+  const titleOf = (collection: string) => collectionOf(collection)?.title ?? collection;
   let rules: Record<string, Kept> = {};
   let authors: Record<string, string> = {};
   const loaded = Promise.all([store.readJson<unknown>(RULES, {}), store.readJson<unknown>(AUTHORS, {})]).then(([r, a]) => {
@@ -78,6 +79,9 @@ export function spacePermissions(store: Store, hosts: Hosts, members: () => Prom
     learn(manifest: Manifest) {
       let changed = false;
       for (const [name, spec] of Object.entries(manifest.collections ?? {})) {
+        // Only the plugin a collection belongs to gives it rules: another that names the same collection doesn't get it (records.ts), or a say.
+        const owner = collectionOf(name)?.owner;
+        if (owner && owner !== manifest.id) continue;
         const written = (spec as { rules?: unknown }).rules;
         let now: Kept | undefined;
         if (written !== undefined) {

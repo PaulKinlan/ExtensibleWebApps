@@ -4,7 +4,8 @@
 // space kernel. Everything that differs between hosts is in here or in the
 // seams (src/seams/), so kernel.ts never reaches for `self` or `navigator`.
 
-import type { Email, Files, Isolates } from "../seams/index.ts";
+import type { Email, Files, Isolates, PushAsk, Pushed } from "../seams/index.ts";
+export type { PushAsk, Pushed } from "../seams/index.ts";
 import type { RouteRequest, RouteResponse } from "./routes";
 
 export interface KernelEnv {
@@ -47,6 +48,12 @@ export interface KernelEnv {
    * (the deployment hasn't set mail up), mail stays in the outbox.
    */
   deliver?(message: Parameters<Email["send"]>[0]): Promise<Awaited<ReturnType<Email["send"]>> | null>;
+  /**
+   * On a server, sends a notification to the space's members' devices with Web Push, so it arrives with every
+   * tab closed (std/notify/module.ts asks; src/server/auth/push.ts sends): to every member, or those in `to`.
+   * A click on it opens `app` in the space. Answers how many devices it was sent to, and what went wrong.
+   */
+  push?(note: PushAsk): Promise<Pushed>;
   /**
    * On a host that can put a space to sleep (Cloudflare), asks to be woken at `at` (ms since 1970), or
    * not at all when undefined, for the earliest job plugins scheduled (std/schedule/module.ts).

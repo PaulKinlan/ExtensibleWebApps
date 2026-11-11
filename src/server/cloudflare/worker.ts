@@ -29,6 +29,8 @@ import { durableFiles, type Sql } from "../../seams/durable.ts";
 import type { Message } from "../../seams/index.ts";
 import { accounts } from "../auth/accounts.ts";
 import type { Role } from "../auth/roles.ts";
+import { pushHostsFrom } from "../auth/push.ts";
+import type { PushAsk, Pushed } from "../../seams/index.ts";
 import { providersFrom } from "../auth/providers.ts";
 import { providerModules } from "../auth/providers/index.ts";
 import { type Decision, frontDoor, unrouted } from "../front-door.ts";
@@ -61,6 +63,8 @@ interface Env {
   MODEL_GATEWAYS?: string;
   /** The DNS-over-HTTPS resolver that says where a name leads (names.ts), when not Cloudflare's. The server checks name a stand-in. */
   DNS_RESOLVER?: string;
+  /** More push services notifications may be sent to, as origins separated by commas (src/server/auth/push.ts). */
+  PUSH_HOSTS?: string;
 }
 
 interface KernelStub {
@@ -172,6 +176,11 @@ class PluginHost extends RpcTarget {
   /** Sends a message a server plugin sent, which the email module checked and wrote to the outbox. */
   deliver(message: Message): Promise<Delivery> {
     return send(this.env, message);
+  }
+
+  /** A server plugin's notification, for the members' devices: the accounts keep their subscriptions and send it (src/server/auth/push.ts). */
+  push(note: PushAsk, origin: string): Promise<Pushed> {
+    return this.env.ACCOUNTS.getByName("accounts").notify(this.space, note, origin);
   }
 
   /** The space's members, with the names on their accounts (sync.ts tells each device, to show who changed what). */
@@ -350,6 +359,8 @@ export class Accounts extends DurableObject<Env> {
     left: (space, user) => this.env.SPACE.getByName(space).revoke(user),
     keys: (space) => this.env.SPACE.getByName(space).keysChanged(),
     mail: (message) => send(this.env, message),
+    // More push services to send notifications to, if the deployment names any (PUSH_HOSTS).
+    push: { hosts: pushHostsFrom(this.env.PUSH_HOSTS) },
   });
 
   async fetch(request: Request): Promise<Response> {
@@ -364,6 +375,11 @@ export class Accounts extends DurableObject<Env> {
   /** The email addresses a space's members gave: the only ones its server plugins may email. */
   async addresses(space: string): Promise<string[]> {
     return this.auth.addresses(space);
+  }
+
+  /** Sends a space's notification to its members' devices (src/server/auth/push.ts). */
+  async notify(space: string, note: PushAsk, origin: string): Promise<Pushed> {
+    return this.auth.notify(space, note, origin);
   }
 
   /** A space's members, with the names on their accounts. */

@@ -37,6 +37,9 @@
 //   GET  /auth/keys, POST /auth/keys { space, name }, POST /auth/keys/revoke { id }
 // or that an MCP client gets by signing in with OAuth (mcp-oauth.ts): /auth/mcp/* and /.well-known/oauth-*.
 //
+// And the devices a person gets notifications on with every tab closed (push.ts):
+//   GET  /auth/push, POST /auth/push { subscription }, POST /auth/push/remove { id }, POST /auth/push/test
+//
 // A host lets a client join a space's kernel only if `member()` says it's in it.
 //
 // A session is a random token in an HttpOnly cookie; the server keeps only its
@@ -48,6 +51,7 @@ import { agentKeys } from "./agent-keys.ts";
 import { follow } from "./follow.ts";
 import { mcpOAuth } from "./mcp-oauth.ts";
 import { isFlow, type OAuthProvider, type Provider } from "./providers.ts";
+import { push, type PushOptions } from "./push.ts";
 import { roleOf, type Role } from "./roles.ts";
 import { ALGORITHMS, b64url, unb64url, type CredentialJSON, type PublicKey, verifyAssertion, verifyRegistration } from "./webauthn.ts";
 
@@ -152,6 +156,8 @@ export interface Hooks {
   left?(space: string, user: string): void | Promise<void>;
   /** An agent key for a space stopped working (revoked, renewed, or its member left): end what it still has open (src/server/mcp.ts). */
   keys?(space: string): void | Promise<void>;
+  /** How notifications are sent to members' devices (push.ts): more push services the deployment allows, and how to reach them. */
+  push?: PushOptions;
   /** Sends a message, as the host sends a space's email; null when the host has no mail set up. */
   mail?(message: Parameters<Email["send"]>[0]): Promise<Awaited<ReturnType<Email["send"]>> | null>;
 }
@@ -357,6 +363,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   });
 
   const following = follow(files, async (request) => (await session(request))?.user ?? null, serial);
+  const pushing = push(files, async (request) => (await session(request))?.user ?? null, serial, hooks.push);
 
   const join = async (space: Space, user: string, role: Role) => {
     space.members[user] = role;
@@ -482,6 +489,20 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     },
 
     /**
+     * Sends a notification from a space's server plugin to its members' devices, with every tab closed (push.ts):
+     * to every member, or only those in `to`. A click on it opens `app` (an app's folder) in the space. Answers how
+     * many devices it reached and what went wrong, for the plugin to say.
+     */
+    async notify(name: string, note: { title: string; body?: string; tag?: string; always?: boolean; app?: string; to?: string[] }, origin: string) {
+      const space = await spaceOf(name);
+      if (!space) throw new Error("No such space");
+      const members = Object.keys(space.members);
+      const to = Array.isArray(note.to) ? members.filter((id) => note.to!.includes(id)) : members;
+      const app = typeof note.app === "string" && /^[\w.~-]+(\/[\w.~-]+)*$/.test(note.app) && !note.app.split("/").includes("..") ? `/s/${name}/${note.app}/` : `/s/${name}/`;
+      return pushing.sendTo(to, { title: note.title, body: note.body, tag: note.tag ? `${name}:${note.tag}` : undefined, always: note.always, url: app, app }, origin);
+    },
+
+    /**
      * What unlocks the model key a space holds for its members (src/server/space-model.ts): 32 random bytes,
      * made the first time it is asked for and kept here, apart from the space's folder, where the key is
      * kept encrypted. So neither store alone holds a key that can be read.
@@ -513,6 +534,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       // What a person added, following them from device to device (follow.ts).
       const followed = await following.handle(request, url);
       if (followed) return followed;
+      if (request.method === "GET" && url.pathname === "/auth/push") return pushing.handle(request, url);
 
       if (route === "GET /auth/me") {
         const current = await session(request);
@@ -538,6 +560,8 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         return json({ error: "JSON only" }, 400);
       }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "A JSON object, please" }, 400);
+      // The devices a person gets notifications on (push.ts), which takes its own turns with the accounts' other changes.
+      if (url.pathname.startsWith("/auth/push")) return pushing.handle(request, url, body);
       return serial(() => change(request, url, body));
     },
 

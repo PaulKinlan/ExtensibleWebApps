@@ -5,7 +5,7 @@
 // sends, with words that say whom to ask; and a collection's rules in its
 // plugin's manifest ("only whoever added it changes it") hold for editors.
 //
-// The app is tests/fixtures/server-app/, whose ledger.js keeps `entries`
+// The app is tests/fixtures/server-app/, whose ledger.js keeps `ledger-entries`
 // (change and remove: "author"), `notices` (add and remove: "owner") and
 // `muddle`, whose rules can't be read.
 
@@ -57,7 +57,7 @@ export async function roleChecks(base, check, owner, person, { device, client },
   const told = (d) => d.heard.find((m) => m.op === "changes");
   check(
     "roles: the space tells each device what its member may do, the rules of each collection, and the owner's name",
-    told(raePhone)?.role === "reader" && told(edPhone)?.role === "editor" && told(edPhone)?.rules?.entries?.change === "author" && told(edPhone)?.rules?.notices?.add === "owner" && told(edPhone)?.owner === "Owner",
+    told(raePhone)?.role === "reader" && told(edPhone)?.role === "editor" && told(edPhone)?.rules?.["ledger-entries"]?.change === "author" && told(edPhone)?.rules?.notices?.add === "owner" && told(edPhone)?.owner === "Owner",
     JSON.stringify([told(raePhone), told(edPhone)]),
   );
 
@@ -116,12 +116,12 @@ export async function roleChecks(base, check, owner, person, { device, client },
   check("roles: a reader can't make an agent's key for the space, and is told to ask for another role; an editor can", key.status === 403 && /make you an editor/.test(key.body?.error ?? "") && edKey.status === 200 && typeof edKey.body?.key === "string", JSON.stringify([key, edKey.status]));
 
   // Rules: only whoever added an entry changes or removes it; the owner may always.
-  const mineE = await edPhone.push([{ collection: "entries", id: "e1", base: 0, after: { id: "e1", text: "Ed's" } }]);
-  const owners = await ownerPhone.push([{ collection: "entries", id: "o1", base: 0, after: { id: "o1", text: "Owner's" } }]);
-  const edOnOwners = await edPhone.push([{ collection: "entries", id: "o1", base: owners?.[0]?.seq, after: { id: "o1", text: "Ed was here" } }]);
-  const edRemoves = await edPhone.push([{ collection: "entries", id: "o1", base: owners?.[0]?.seq, after: null }]);
-  const edOnOwn = await edPhone.push([{ collection: "entries", id: "e1", base: mineE?.[0]?.seq, after: { id: "e1", text: "Ed's, edited" } }]);
-  const ownerOnEds = await ownerPhone.push([{ collection: "entries", id: "e1", base: edOnOwn?.[0]?.seq, after: { id: "e1", text: "Tidied by the owner" } }]);
+  const mineE = await edPhone.push([{ collection: "ledger-entries", id: "e1", base: 0, after: { id: "e1", text: "Ed's" } }]);
+  const owners = await ownerPhone.push([{ collection: "ledger-entries", id: "o1", base: 0, after: { id: "o1", text: "Owner's" } }]);
+  const edOnOwners = await edPhone.push([{ collection: "ledger-entries", id: "o1", base: owners?.[0]?.seq, after: { id: "o1", text: "Ed was here" } }]);
+  const edRemoves = await edPhone.push([{ collection: "ledger-entries", id: "o1", base: owners?.[0]?.seq, after: null }]);
+  const edOnOwn = await edPhone.push([{ collection: "ledger-entries", id: "e1", base: mineE?.[0]?.seq, after: { id: "e1", text: "Ed's, edited" } }]);
+  const ownerOnEds = await ownerPhone.push([{ collection: "ledger-entries", id: "e1", base: edOnOwn?.[0]?.seq, after: { id: "e1", text: "Tidied by the owner" } }]);
   check(
     'rules: under "author", an editor changes and removes only what they added, is told who can change the rest, and the owner changes anything',
     mineE?.[0]?.ok && owners?.[0]?.ok && edOnOwners?.[0]?.denied === true && /Owner added this, so only Owner or the space's owner, Owner, can change it\./.test(edOnOwners[0].error ?? "") && edOnOwners[0].record?.text === "Owner's" && edRemoves?.[0]?.denied === true && /can remove it/.test(edRemoves[0].error ?? "") && edOnOwn?.[0]?.ok && ownerOnEds?.[0]?.ok,
@@ -170,8 +170,8 @@ export async function roleChecks(base, check, owner, person, { device, client },
   base = await restart();
   const later = await device(base, "club", rae.cookie);
   await later.hello(0);
-  const head = later.changes().findLast((c) => c.collection === "entries" && c.id === "o1")?.seq;
-  const stillRefused = await later.push([{ collection: "entries", id: "o1", base: head, after: { id: "o1", text: "Rae was here" } }]);
+  const head = later.changes().findLast((c) => c.collection === "ledger-entries" && c.id === "o1")?.seq;
+  const stillRefused = await later.push([{ collection: "ledger-entries", id: "o1", base: head, after: { id: "o1", text: "Rae was here" } }]);
   const stillOwners = await later.push([{ collection: "notices", id: "n2", base: 0, after: { id: "n2", text: "Hello" } }]);
   later.close();
   check("rules: after the server starts again, the rules and who added each record still hold", stillRefused?.[0]?.denied === true && /Owner added this/.test(stillRefused[0].error ?? "") && stillOwners?.[0]?.denied === true, JSON.stringify({ head, stillRefused, stillOwners }));

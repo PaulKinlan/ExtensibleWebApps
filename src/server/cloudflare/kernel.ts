@@ -15,7 +15,7 @@
 // are read.
 
 import { DurableObject } from "cloudflare:workers";
-import { setEnv } from "../../kernel/env";
+import { setEnv, type PushAsk, type Pushed } from "../../kernel/env";
 import type { Files, Message } from "../../seams/index.ts";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { type IsolateHost, remoteIsolates } from "../../seams/remote-isolates.ts";
@@ -36,6 +36,8 @@ export interface SpaceHost extends IsolateHost {
   members(): Promise<{ id: string; name: string; role?: Role }[]>;
   /** Sends a message through Cloudflare Email Service; null when the deployment hasn't set it up. */
   deliver(message: Message): Promise<{ ok: true; id: string } | { ok: false; error: string } | null>;
+  /** Sends a notification to the members' devices (src/server/auth/push.ts), as the space served at `origin`. */
+  push(note: PushAsk, origin: string): Promise<Pushed>;
   /** Sets the space's alarm for the earliest scheduled job, or clears it. */
   wake(at: number | undefined): Promise<void>;
   /** What a door answers may have changed (the door `mcp`): the Worker's open streams for the space ask it again. */
@@ -105,6 +107,7 @@ export class SpaceKernel extends DurableObject {
           addresses: () => host.addresses(),
           members: () => host.members(),
           deliver: (message: Message) => host.deliver(message),
+          push: (note: PushAsk) => host.push(note, origin),
           changed: (door: string) => void host.changed(door).catch(() => {}),
         }),
         onError: (report) => {

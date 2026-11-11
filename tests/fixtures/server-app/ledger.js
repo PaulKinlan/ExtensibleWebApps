@@ -9,8 +9,8 @@ export const manifest = {
   version: "1.0.0",
   permissions: ["ui"],
   collections: {
-    entries: {
-      title: "Entries",
+    "ledger-entries": {
+      title: "Ledger",
       schema: { type: "object", required: ["text"], properties: { text: { type: "string", maxLength: 200 } } },
       rules: { change: "author", remove: "author" },
     },

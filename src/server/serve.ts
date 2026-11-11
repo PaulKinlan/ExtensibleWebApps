@@ -23,6 +23,7 @@ import { FOLLOW_BODY } from "./auth/follow.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
 import { providerModules } from "./auth/providers/index.ts";
 import { signed } from "./signed.ts";
+import { pushHostsFrom } from "./auth/push.ts";
 import { type Accounts, type Decision, frontDoor, type Knock, SPACE, unrouted } from "./front-door.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "./routes.ts";
 import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
@@ -64,6 +65,8 @@ export interface Options {
   allowPrivate?: string[];
   /** Vendors' hosts that a space's model key is used through a gateway for (MODEL_GATEWAYS, src/server/space-model.ts), by host. */
   modelGateways?: Record<string, string>;
+  /** More push services notifications may be sent to (PUSH_HOSTS, src/server/auth/push.ts), as origins. */
+  pushHosts?: string[];
   /** How the server sends the mail server plugins send (src/server/smtp.ts); without it, mail stays in each space's outbox. */
   email?: Email;
 }
@@ -84,6 +87,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     // A key ended: the streams its space has open check theirs again.
     keys: (space) => woken(space),
     mail: async (message) => (options.email ? options.email.send(message) : null),
+    push: { hosts: options.pushHosts },
   });
 
   /** The MCP streams open for each space (src/server/mcp.ts mcpStream): each one's way to be told to ask its door again, or that nothing can tell it any more. */
@@ -128,6 +132,12 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
             void options.email.send(m.message).then(
               (value) => worker.postMessage({ t: m.t, id: m.id, value }),
               (error) => worker.postMessage({ t: m.t, id: m.id, value: { ok: false, error: String(error?.message ?? error) } }),
+            );
+          // A server plugin's notification, for members' devices (src/server/auth/push.ts).
+          if (m?.t === "push")
+            void auth.notify(name, m.note, url).then(
+              (value) => worker.postMessage({ t: m.t, id: m.id, value }),
+              (error) => worker.postMessage({ t: m.t, id: m.id, value: { sent: 0, devices: 0, people: 0, reached: 0, problems: [String(error?.message ?? error)] } }),
             );
           if (m?.t === "addresses" || m?.t === "members") {
             const asked: Promise<unknown> = m.t === "addresses" ? auth.addresses(name) : auth.members(name);
@@ -535,6 +545,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     allowPrivate,
     email: smtpFromEnv(process.env),
     modelGateways: gatewaysFrom(process.env.MODEL_GATEWAYS, allowPrivate),
+    pushHosts: pushHostsFrom(process.env.PUSH_HOSTS),
   });
   console.log(`Serving ${arg("site", "dist")} at ${url}; spaces at ${url.replace("http", "ws")}/s/<space>/kernel, kept in ${arg("spaces", ".spaces")}/`);
 }
