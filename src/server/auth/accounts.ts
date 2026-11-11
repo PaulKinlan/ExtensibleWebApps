@@ -453,6 +453,23 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       return users.flatMap((u) => (u ? [{ id: u.id, name: u.name }] : []));
     },
 
+    /**
+     * What unlocks the model key a space holds for its members (src/server/space-model.ts): 32 random bytes,
+     * made the first time it is asked for and kept here, apart from the space's folder, where the key is
+     * kept encrypted. So neither store alone holds a key that can be read.
+     */
+    modelLock(name: string): Promise<string> {
+      return serial(async () => {
+        if (!(await spaceOf(name))) throw new Error("No such space");
+        const path = `space-locks/${name}.json`;
+        const found = await read<{ lock: string }>(path);
+        if (found?.lock) return found.lock;
+        const lock = random(32);
+        await write(path, { lock });
+        return lock;
+      });
+    },
+
     /** Whether a space by this name exists: for a host to ask before waking it for a public route. */
     async exists(name: string): Promise<boolean> {
       return (await spaceOf(name)) !== null;
