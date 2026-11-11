@@ -10,6 +10,7 @@
 //
 //   extensible-app dev [--port 5173] [--host 127.0.0.1]   serves the app at http://localhost:5173/
 //   extensible-app check [--json]                         the app's mistakes, without a browser
+//   extensible-app test [files...] [--json]               checks the app and runs its tests in memory
 //   extensible-app deploy [--name n] [--replace] [--keep-from address] [--no-deploy] [--dev]
 //                                                         the app on a Cloudflare Worker of its own, at /
 //
@@ -39,15 +40,16 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SITE_PAGES } from "./deploy-app.mjs";
 import { browserKernel, cloudflareKernel, nodeKernel, projectKernel } from "./project-kernel.mjs";
+import { writeProjectTypes } from "./types.mjs";
 
 /** This package: the platform. */
 export const PLATFORM = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 /** A project's own files at its top that aren't the app's, and so aren't served. */
-const NOT_SERVED = ["node_modules", "package.json", "package-lock.json", "kernel.json"];
+const NOT_SERVED = ["node_modules", "package.json", "package-lock.json", "kernel.json", "jsconfig.json", "tsconfig.json", "app.test.mjs", "tests"];
 
-/** Whether a file or folder of the project is served, at any depth: nothing starting with a dot (.env, .git), no node_modules. */
-const servable = (name) => !name.startsWith(".") && name !== "node_modules";
+/** Whether a file or folder of the project is served, at any depth: nothing starting with a dot (.env, .git), no node_modules, no test files. */
+const servable = (name) => !name.startsWith(".") && name !== "node_modules" && !/\.test\.[cm]?js$/.test(name);
 
 /** The project's identity, which its Worker carries (EXTENSIBLE_APP), so a deploy only replaces a Worker of the same project. */
 function projectName(project) {
@@ -169,6 +171,7 @@ export async function dev(project, { port = 5173, host = "127.0.0.1", platform =
     linkSite(site, entries, project, writtenFiles(project, entries, kernel, { platform }));
   };
   lay();
+  writeProjectTypes(project, { platform });
   // A file or folder added anywhere in the project is served as soon as it's there.
   let timer;
   const watcher = watch(project, { recursive: true }, (_, file) => {
@@ -198,13 +201,22 @@ export async function dev(project, { port = 5173, host = "127.0.0.1", platform =
 }
 
 /** The app's mistakes, as `npm run check` finds them in the repo's demos (scripts/check.mjs). */
-export async function check(project) {
+export async function check(project, { platform = PLATFORM } = {}) {
   const { checkApps } = await import("./check.mjs");
   // An address from the root (/main.js) is the project's file when it has one, else the platform's.
   const [app] = await checkApps([project], { root: project });
+  if (existsSync(join(project, "package.json")) && resolve(project) !== resolve(platform)) {
+    writeProjectTypes(project, { platform });
+  }
   // It names files from the platform's folder; here they're named from the project's.
   const named = (file) => (file ? relative(project, resolve(PLATFORM, file)).split("\\").join("/") : file);
   return { ...app, app: ".", problems: app.problems.map((p) => ({ ...p, file: named(p.file) })) };
+}
+
+/** Checks the project statically and runs its in-memory tests (scripts/test-app.mjs). */
+export async function test(project, files = [], options = {}) {
+  const { runAppTests } = await import("./test-app.mjs");
+  return runAppTests(project, { files, ...options });
 }
 
 /**
@@ -254,6 +266,7 @@ const run = (command, args, cwd) => {
 const USAGE = `Usage, in your project's folder:
   extensible-app dev [--port 5173] [--host 127.0.0.1]
   extensible-app check [--json]
+  extensible-app test [files...] [--json]
   extensible-app deploy [--name worker-name] [--replace] [--keep-from address] [--no-deploy] [--dev]`;
 
 // npm runs it through a link in node_modules/.bin, so compare the file the link points at.
@@ -289,6 +302,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
         for (const p of app.problems) console.log(`    ${p.level.padEnd(7)} ${p.file}${p.line ? `:${p.line}` : ""}  ${p.message}`);
       }
       process.exitCode = failed ? 1 : 0;
+    } else if (command === "test") {
+      const json = flag("--json");
+      if (args.some((a) => a.startsWith("--"))) throw Object.assign(new Error(USAGE), { code: 2 });
+      const result = await test(project, args, { json });
+      process.exitCode = result.ok ? 0 : 1;
     } else if (command === "deploy") {
       const name = option("--name");
       const replace = flag("--replace");
