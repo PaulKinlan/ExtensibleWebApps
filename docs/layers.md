@@ -112,6 +112,7 @@ Most services have moved out of the core into **kernel modules**. A module is a 
 {
   "modules": [
     "account",
+    "acp",
     "agents",
     "audio",
     "bus",
@@ -183,6 +184,7 @@ A module keeps the promise any Cordis plugin keeps. Everything it adds goes thro
 | Module | File | What it adds |
 | --- | --- | --- |
 | `account` | [`std/account/module.ts`](../std/account/module.ts) | The `account` service: the person's account on the site's server (passkeys, other sites to sign in with, email, spaces, agent keys), for the account app's own plugins ([`account/app.html`](../account/app.html)) and no others |
+| `acp` | [`std/acp/module.ts`](../std/acp/module.ts) | No service: the door `acp`, by which an editor that speaks the Agent Client Protocol talks to one of a space's agents on the space's server (`door.ts`, loaded only there and only when an editor first knocks; in a browser the module is a few lines that answer nothing). See [Editors talking to an app's agents](guide/editors-and-agents.md) |
 | `agents` | [`std/agents/module.ts`](../std/agents/module.ts) | The `agents` service: counts each agent's runs and tokens, so an agent can't misreport its own use, and tells the app what agents do (`agent:*` hooks). Uses `tools` |
 | `audio` | [`std/audio/module.ts`](../std/audio/module.ts) | The `audio` service: sound for plugins, played by the tab that runs their workers |
 | `bus` | [`std/bus/module.ts`](../std/bus/module.ts) | The `bus` service: inboxes between agents, plugins and the person, with replies and topics |

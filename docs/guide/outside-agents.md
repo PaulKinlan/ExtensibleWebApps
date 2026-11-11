@@ -1,6 +1,6 @@
 # Outside agents: WebMCP and MCP
 
-The [agents](agents.md) an app links live inside it. Many agents don't: the assistant built into a browser, Claude Code on someone's laptop, or any other MCP client. This page shows how an app lets them in. They get the same tools an agent inside the app gets ([tools for language models](tools.md)), and the same permission checks and reviews.
+The [agents](agents.md) an app links live inside it. Many agents don't: the assistant built into a browser, Claude Code on someone's laptop, or any other MCP client. This page shows how an app lets them in. They get the same tools an agent inside the app gets ([tools for language models](tools.md)), and the same permission checks and reviews. (The other way round, an editor talking to an agent that lives in the app, is [Editors talking to an app's agents](editors-and-agents.md).)
 
 ## Opening the door
 

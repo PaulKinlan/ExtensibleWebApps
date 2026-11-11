@@ -102,8 +102,13 @@ export interface SpaceSeam {
   sharing?: Sharing;
   /** In a browser kernel for a space: the apps its members made and shared with it, for the maker module. */
   madeApps?: MadeAppsSeam;
-  /** On a space's server: its apps' server plugins starting, so a request for a route one adds waits for them. */
-  server?: { starting(): boolean; settled(): Promise<unknown>; finishedAt(): number };
+  /** On a space's server: its apps' server plugins starting, so a request for a route one adds waits for them; and the apps opened in the space (`list`). */
+  server?: { starting(): boolean; settled(): Promise<unknown>; finishedAt(): number; list?(): Promise<string[]> };
+  /**
+   * On a space's server: asks the model the space holds a key for (std/spaces/model-key.ts), as its `model` door
+   * does, for a module that was itself let in by the host with what unlocks the key (std/acp).
+   */
+  model?(request: RouteRequest): Promise<RouteResponse>;
 }
 
 /** Where a module's messages and space seam go in the core (loadModules). */

@@ -19,6 +19,7 @@ import { providersFrom } from "../../src/server/auth/providers.ts";
 import { providerModules } from "../../src/server/auth/providers/index.ts";
 import { smtpMailer } from "../../src/server/smtp.ts";
 import { fakeSmtp } from "./fake-smtp.mjs";
+import { acpChecks } from "./acp.mjs";
 import { authenticator } from "./authenticator.mjs";
 import { blueskyChecks } from "./bluesky.mjs";
 import { mcpChecks } from "./mcp.mjs";
@@ -1175,6 +1176,13 @@ async function suite(name, make) {
     await followChecks(server.url, check, owner, stranger);
     // A model key a space holds for its members: the same on both hosts.
     await spaceModelChecks(server.url, check, owner, () => person(server.url), vendor, spaces, async () => {
+      await server.stop();
+      server = await host.start();
+      owner.base = stranger.base = server.url;
+      return server.url;
+    });
+    // An editor talking to one of a space's agents over ACP, with the model the space holds a key for.
+    await acpChecks(server.url, check, owner, () => person(server.url), vendor, async () => {
       await server.stop();
       server = await host.start();
       owner.base = stranger.base = server.url;

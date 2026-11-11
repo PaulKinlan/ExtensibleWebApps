@@ -7,6 +7,7 @@
 //
 //   GET  /auth/keys                          your keys: id, name, space, when made and last used (never the key)
 //   POST /auth/keys            { space, name } makes one; the answer is the only time the key is shown
+//                              (with `editor: <agent id>`, one for an editor that talks to that agent: src/server/acp.ts)
 //   POST /auth/keys/revoke     { id }          ends one
 //
 // A key made on /account/ lasts until it's revoked. A key an MCP client got by
@@ -26,7 +27,10 @@ export interface AgentKey {
   space: string;
   created: number;
   used?: number;
-  /** For a key an MCP client got by signing in (mcp-oauth.ts): the one door it may use, and the client it was given to. */
+  /**
+   * The one door it may use: for a key an MCP client got by signing in (mcp-oauth.ts), that plugin's, with the
+   * client it was given to; for a key made for an editor, `acp/<agent>` (src/server/acp.ts).
+   */
   plugin?: string;
   client?: string;
   /** When it stops working, for a key that doesn't last until it's revoked (an MCP client's: it renews it). */
@@ -129,7 +133,7 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
      * The member an `Authorization: Bearer <key>` header is for, if the key is for this space (and, for a key
      * limited to one door, this plugin's) and they're still in it.
      */
-    async member(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string; expires?: number } | null> {
+    async member(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string; expires?: number; only?: string } | null> {
       const token = /^Bearer\s+(\S+)$/i.exec(authorization ?? "")?.[1];
       if (!token || !KEY.test(token)) return null;
       const h = await hash(token);
@@ -139,7 +143,8 @@ export function agentKeys(files: Files, accounts: KeyAccounts) {
       // check that was under way when it changed (the "last used" below), and must not count.
       if ((await indexOf(kept.user))[kept.id] !== h) return null;
       if (!kept.used || Date.now() - kept.used > USED_EVERY_MS) await files.write(`agent-keys/${h}.json`, JSON.stringify({ ...kept, used: Date.now() }));
-      return { user: kept.user, key: kept.id, ...(kept.expires ? { expires: kept.expires } : {}) };
+      // `only`: the one door the key was made for, so a host can tell a key made for it from one that reaches every door.
+      return { user: kept.user, key: kept.id, ...(kept.expires ? { expires: kept.expires } : {}), ...(kept.plugin ? { only: kept.plugin } : {}) };
     },
   };
 }
