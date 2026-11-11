@@ -3,10 +3,12 @@
 // the places they let plugins into (`place:ask`, `place:move`, `place:unlock`, `place:lock`). An app opens
 // without any of this, so it is a file of its own, fetched the first time one of them is run (kernel.ts).
 
+import { storeForRemote } from "./authoring";
 import { asMove, type MovesStore } from "./moves";
 import type { SpaceSeam } from "./modules";
 import type { RemotePlugins, ServiceProvider } from "./remote";
 import { allowed, type Reviews } from "./review";
+import { backupProfile, restoreProfile } from "./user-plugin-changes";
 import { EVERYWHERE, checkApp, type UserPlugins } from "./user-plugins";
 
 export function panelCommands({
@@ -33,6 +35,42 @@ export function panelCommands({
 
   /** One command, by name: answers what the page hears back. */
   return async function customize(name: string, arg: unknown): Promise<unknown> {
+    if (name === "user:backup") {
+      await services.authoring?.load?.();
+      const store = storeForRemote(remote);
+      if (!store) return { ok: false, error: "Store is unavailable" };
+      return backupProfile(store);
+    }
+    if (name === "user:restore") {
+      await services.authoring?.load?.();
+      const store = storeForRemote(remote);
+      if (!store) return { ok: false, error: "Store is unavailable" };
+      const raw = arg && typeof arg === "object" && !Array.isArray(arg) && "archive" in (arg as Record<string, unknown>) ? (arg as { archive: unknown }).archive : arg;
+      return restoreProfile(raw, {
+        store,
+        userAdded,
+        remote,
+        reopen,
+        move: async (mApp, plugin, place, to) => {
+          await moved.set(mApp, plugin, place, to);
+        },
+        syncGrants: async (nextGrants) => {
+          for (const plugin of new Set([...remote.installed.keys(), ...Object.keys(nextGrants)])) {
+            const currentGrants = reviews.grantsFor(plugin);
+            const wanted = new Set(nextGrants[plugin] ?? []);
+            for (const g of currentGrants) if (!wanted.has(g)) await reviews.forget(plugin, g);
+            for (const g of wanted) if (!currentGrants.includes(g)) await reviews.grant(plugin, g);
+          }
+        },
+        askReview: async (target, before, after, reason) =>
+          allowed(
+            await reviews.ask(
+              { plugin: "customize", instance: "customize", name: "Customize", place: "backup:restore", target, before, after, reason, once: true },
+              {},
+            ),
+          ),
+      });
+    }
     const a = (arg ?? {}) as Record<string, unknown>;
     const app = checkApp(a.app);
     const id = typeof a.id === "string" ? a.id : typeof a.plugin === "string" ? a.plugin : "";
@@ -49,7 +87,10 @@ export function panelCommands({
         return { ok: await (name === "user:share" ? sharing.share(app, id) : sharing.unshare(app, id)) };
       }
       case "user:add": {
-        const added = typeof a.url === "string" ? await userAdded.addFromUrl(app, a.url) : await userAdded.add(app, a.files as { name: string; data: Blob | string }[]);
+        const added =
+          typeof a.url === "string"
+            ? await userAdded.addFromUrl(app, a.url, typeof a.integrity === "string" ? a.integrity : undefined)
+            : await userAdded.add(app, a.files as { name: string; data: Blob | string }[]);
         // Adding a plugin again turns it off: stop the copy that was running.
         await reopen(app);
         return added;

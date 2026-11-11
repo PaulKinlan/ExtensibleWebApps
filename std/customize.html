@@ -174,6 +174,8 @@
                       <template if="p.fromAccount"><span class="pill" data-from-account="{{p.id}}">From your account</span></template>
                       <template if="p.on"><span class="pill on">On</span></template>
                       <template if="p.off"><span class="pill off">Off</span></template>
+                      <template if="p.newPermsLabel"><ui-badge tone="warn" data-update-badge="{{p.id}}">{{p.newPermsLabel}}</ui-badge></template>
+                      <template if="p.updateOnly"><ui-badge tone="accent" data-update-badge="{{p.id}}">Update available</ui-badge></template>
                     </div>
                     <template if="p.description"><p class="muted">{{p.description}}</p></template>
                     <template if="p.error"><p class="error">{{p.error}}</p></template>
@@ -197,6 +199,7 @@
                     </template>
                   </div>
                   <div class="entry-actions">
+                    <template if="p.updateAvailable"><button type="button" data-action="update" data-value="{{p.id}}" data-update="{{p.id}}" disabled="{{busy}}">Update</button></template>
                     <template if="p.on"><button type="button" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn off</button></template>
                     <template if="p.off"><button type="button" class="primary" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn on</button></template>
                     <template if="p.reach"><button type="button" data-action="reach" data-value="{{p.id}}" data-reach="{{p.id}}" title="{{p.reachTitle}}">{{p.reach}}</button></template>
@@ -224,7 +227,7 @@
                     <template for="p of g.packages">
                       <div role="listitem" key="{{p.id}}" class="entry package">
                         <div class="entry-main">
-                          <div class="head"><strong>{{p.name}}</strong><template if="p.state"><span class="pill {{p.stateClass}}">{{p.state}}</span></template></div>
+                          <div class="head"><strong>{{p.name}}</strong><template if="p.state"><span class="pill {{p.stateClass}}">{{p.state}}</span></template><template if="p.newPermsLabel"><ui-badge tone="warn" data-package-badge="{{p.id}}">{{p.newPermsLabel}}</ui-badge></template></div>
                           <p class="muted">{{p.description}}</p>
                           <template if="p.can.length">
                             <details class="can">
@@ -237,6 +240,7 @@
                         </div>
                         <div class="entry-actions">
                           <template if="p.add"><button type="button" data-action="package" data-value="{{p.id}}" data-package="{{p.id}}" disabled="{{p.disabled}}">Add</button></template>
+                          <template if="p.updateAvailable"><button type="button" data-action="update" data-value="{{p.id}}" data-package-update="{{p.id}}" disabled="{{p.disabled}}">Update</button></template>
                           <template if="p.turnOn"><button type="button" class="primary" data-action="turn" data-value="{{p.id}}" data-toggle="{{p.id}}">Turn on</button></template>
                         </div>
                       </div>
@@ -291,6 +295,17 @@
               <button type="submit" disabled="{{busy}}">Add from address</button>
             </form>
           </details>
+
+          <section class="section" data-part="backup">
+            <div class="section-head">
+              <h3>Backup on this device</h3>
+              <p class="muted">Save a copy of your records, plugins and layout moves on this device, or bring a copy back after a review. Your API keys stay on this device and are never put in a backup.</p>
+            </div>
+            <div class="row">
+              <button type="button" data-action="backup" data-backup disabled="{{busy}}">Export backup</button>
+              <button type="button" class="secondary" data-action="restore" data-restore disabled="{{busy}}">Restore backup</button>
+            </div>
+          </section>
         </template>
       </template>
 
