@@ -39,6 +39,58 @@ export interface SpaceHost extends IsolateHost {
   wake(at: number | undefined): Promise<void>;
   /** What a door answers may have changed (the door `mcp`): the Worker's open streams for the space ask it again. */
   changed(door: string): Promise<void>;
+  /** Deployment-managed secrets (when the supervisor exposes them). */
+  deploymentSecrets?(name: string): Promise<{ value: string; hosts: string[] } | undefined> | { value: string; hosts: string[] } | undefined;
+}
+
+const SECRET_NAME = /^[a-z][a-z0-9-]{0,40}$/;
+const SECRET_HOST = /^(?:[a-z0-9-]+\.)*[a-z0-9-]+(?::\d{1,5})?$/;
+
+function parseHosts(raw: unknown): string[] {
+  let list: unknown[] = [];
+  if (Array.isArray(raw)) list = raw;
+  else if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) list = parsed;
+      } catch {}
+    } else list = trimmed.split(",");
+  }
+  return list.filter((h): h is string => typeof h === "string").map((h) => h.trim().toLowerCase()).filter((h) => SECRET_HOST.test(h));
+}
+
+function deploymentSecretFromEnv(vars: Record<string, unknown>, name: string): { value: string; hosts: string[]; dailyCap?: number } | undefined {
+  if (!SECRET_NAME.test(name)) return undefined;
+  const defaultCap = typeof vars.DEPLOYMENT_SECRET_DAILY_CAP === "string" && /^\d+$/.test(vars.DEPLOYMENT_SECRET_DAILY_CAP) ? Number(vars.DEPLOYMENT_SECRET_DAILY_CAP) : undefined;
+  let map: unknown = vars.DEPLOYMENT_SECRETS;
+  if (typeof map === "string") {
+    try {
+      map = JSON.parse(map);
+    } catch {
+      map = undefined;
+    }
+  }
+  if (map && typeof map === "object" && !Array.isArray(map) && Object.hasOwn(map, name)) {
+    const entry = (map as Record<string, unknown>)[name] as { value?: unknown; hosts?: unknown; dailyCap?: unknown } | undefined;
+    if (entry && typeof entry === "object" && typeof entry.value === "string" && entry.value) {
+      const hosts = parseHosts(entry.hosts);
+      if (hosts.length) {
+        const cap = typeof entry.dailyCap === "number" && Number.isFinite(entry.dailyCap) && entry.dailyCap >= 0 ? Math.floor(entry.dailyCap) : defaultCap;
+        return { value: entry.value, hosts, ...(cap !== undefined && { dailyCap: cap }) };
+      }
+    }
+  }
+  const key = name.toUpperCase().replace(/-/g, "_");
+  const value = vars[`EWA_SECRET_${key}`] ?? vars[`EWA_SECRET_${name}`];
+  const rawHosts = vars[`EWA_SECRET_${key}_HOSTS`] ?? vars[`EWA_SECRET_${name}_HOSTS`];
+  if (typeof value !== "string" || !value) return undefined;
+  const hosts = parseHosts(rawHosts);
+  if (!hosts.length) return undefined;
+  const rawCap = vars[`EWA_SECRET_${key}_DAILY_CAP`] ?? vars[`EWA_SECRET_${name}_DAILY_CAP`];
+  const cap = typeof rawCap === "string" && /^\d+$/.test(rawCap) ? Number(rawCap) : defaultCap;
+  return { value, hosts, ...(cap !== undefined && { dailyCap: cap }) };
 }
 
 /**
@@ -97,6 +149,8 @@ export class SpaceKernel extends DurableObject {
         connect: (a) => void (accept = a),
         serve: (answer) => void (answerRoute = answer),
         boot: (start) => void (boot = start),
+        deploymentSecrets: (name: string) =>
+          host?.deploymentSecrets ? host.deploymentSecrets(name) : deploymentSecretFromEnv(((this as unknown as { env?: Record<string, unknown> }).env ?? {}), name),
         ...(host && { wake: (at: number | undefined) => void host.wake(at).catch((error) => console.error("Couldn't set the space's alarm:", error)) }),
         ...(host && {
           isolates: remoteIsolates(host, (name, error) => console.error(`Plugin ${name}:`, error)),

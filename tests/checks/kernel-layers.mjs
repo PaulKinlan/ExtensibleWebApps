@@ -37,6 +37,7 @@ const CORE = [
   "records.ts",
   "reference.ts",
   "remote.ts",
+  "review-batch.ts",
   "review.ts",
   "routes.ts",
   "schema.ts",
@@ -70,6 +71,7 @@ const ON_DEMAND = [
   "manifest-fields.ts",
   "panel-commands.ts",
   "reference.ts",
+  "review-batch.ts",
   "secrets-card.ts",
   "user-plugin-changes.ts",
 ];
