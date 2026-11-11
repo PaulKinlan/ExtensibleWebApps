@@ -1,0 +1,14 @@
+{
+  "name": "extensible-web-apps",
+  "description": "The skill for writing plugins for Extensible Web Apps.",
+  "owner": {
+    "name": "Paul Kinlan"
+  },
+  "plugins": [
+    {
+      "name": "extensible-web-apps",
+      "source": "./",
+      "description": "Write plugins for Extensible Web Apps, checked before they are handed over."
+    }
+  ]
+}

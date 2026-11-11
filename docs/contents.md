@@ -27,6 +27,7 @@
   1. [How the Markdown editor is built](guide/markdown-editor.md)
   1. [Games and sound](guide/games-and-audio.md)
   1. [An app of your own](guide/your-own-app.md)
+  1. [Asking an agent to write a plugin](guide/asking-an-agent.md)
 - Reference
   - [API reference](api.md)
   - [Permissions](permissions.md)

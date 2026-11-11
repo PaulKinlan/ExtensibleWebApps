@@ -15,6 +15,7 @@
 //   app.html       the app's page, from the starter: a list you can add to and tick off
 //   main.js        its plugin, and main.html, its template
 //   README.md, .gitignore
+//   .claude/skills/extensible-plugin/   a skill for Claude Code: how to write a plugin here, and check it
 //
 // and runs `npm install` in it. Then:
 //
@@ -51,6 +52,9 @@ const escapeHtml = (text) => text.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<"
 
 const GITIGNORE = ["node_modules", ".extensible"].join("\n") + "\n";
 
+/** The skill a project gets, for someone who asks Claude Code for a plugin: where it is in the platform, and in a project. */
+export const SKILL = ".claude/skills/extensible-plugin";
+
 /**
  * The ids no plugin may have, read from the platform's source as the kernel has them: RESERVED in
  * src/kernel/manifest.ts, each service in src/kernel/services/, and each kernel module kernel.json lists.
@@ -85,6 +89,10 @@ export function makeProject(target, { name, platform = PLATFORM_SPEC } = {}) {
     const named = file.endsWith(".js") ? JSON.stringify(title).slice(1, -1) : escapeHtml(title);
     writeFileSync(path, readFileSync(path, "utf8").replace(/my-app/g, () => id).replace(/My app/g, () => named));
   }
+
+  // The skill, as it is in this copy of the platform, so it says what this version of the platform does. In a
+  // folder that starts with a dot, so it is never served with the app.
+  cpSync(join(ROOT, SKILL), join(folder, SKILL), { recursive: true });
 
   // The starter's card for this repo's demo gallery means nothing in a project of its own.
   const page = join(folder, "app.html");
@@ -122,6 +130,8 @@ npm run dev       # http://localhost:5173/
 npm run check     # find mistakes without opening a browser
 npm run deploy    # on a Cloudflare Worker of its own (run \`npx wrangler login\` once first)
 \`\`\`
+
+To add to it, ask an agent: \`${SKILL}/\` is a skill that tells Claude Code how to write a plugin for this app and check it, so "add a plugin that …" is enough. Other agents can read its \`SKILL.md\` as instructions.
 
 The platform is a dependency (\`${platformPkg.name}\` in package.json), not a copy. Its guide is at https://extensibleweb.app/docs/guide/, and this kind of project is explained in https://extensibleweb.app/docs/guide/your-own-app.
 `,
