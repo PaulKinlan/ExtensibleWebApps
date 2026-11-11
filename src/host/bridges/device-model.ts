@@ -1,5 +1,5 @@
-// browser-model: the language model some browsers carry themselves (Chrome's
-// Prompt API, `LanguageModel`), for std/browser-model/module.ts. The API lives
+// device-model: the language model some browsers carry themselves (Chrome's
+// Prompt API, `LanguageModel`), for std/device-model/module.ts. The API lives
 // in pages and not in workers, where the kernel and every plugin run, so the
 // kernel asks a tab. Nothing leaves the device, and there is no key.
 //

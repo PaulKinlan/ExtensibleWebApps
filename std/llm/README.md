@@ -134,5 +134,5 @@ answer says how far it has got.
 
 It is a small model: it reads a few thousand words at once, and has no tool calls of its own, so
 `chrome.js` asks for an answer of a fixed shape and reads a tool call out of it. The browser's API is
-in pages, not workers, so the plugin asks through the `browser-model` service
-([`std/browser-model/module.ts`](../browser-model/module.ts)), which asks a tab.
+in pages, not workers, so the plugin asks through the `device-model` service
+([`std/device-model/module.ts`](../device-model/module.ts)), which asks a tab.

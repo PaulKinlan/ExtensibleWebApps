@@ -17,7 +17,7 @@
 // arguments, or the answer) and reads the tool call out of it.
 //
 // The browser's API is in pages, not workers, so this file asks through the
-// `browser-model` service (std/browser-model/module.ts), which asks a tab.
+// `device-model` service (std/device-model/module.ts), which asks a tab.
 // This file translates between the platform's request and answer
 // (std/llm/module.ts) and that service.
 
@@ -26,8 +26,8 @@ export const manifest = {
   name: "Chrome's built-in model",
   description: "A language model for this app that is part of Chrome and runs on your own computer. No key, nothing to pay, and what you ask stays on this device. Only in Chrome on a computer that has its built-in model.",
   version: "1.0.0",
-  permissions: ["provide:llm", "browser-model"],
-  services: ["llm", "browser-model"],
+  permissions: ["provide:llm", "device-model"],
+  services: ["llm", "device-model"],
 };
 
 const MODEL = "chrome-built-in";
@@ -58,7 +58,7 @@ function toTurns(messages) {
 
 export default function (ctx) {
   /** Whether the browser has a model, or can download one. Asked each time: a download finishes, a tab moves to another browser profile. */
-  const state = async () => (await ctx.call("browser-model", "state").catch(() => ({ state: "unavailable" }))).state;
+  const state = async () => (await ctx.call("device-model", "state").catch(() => ({ state: "unavailable" }))).state;
   let calls = 0;
 
   ctx.on("llm:providers", async (value) => {
@@ -78,7 +78,7 @@ export default function (ctx) {
       const tools = request.tools ?? [];
       const system = [request.system, tools.length ? toolsNote(tools) : ""].filter(Boolean).join("\n\n");
       const schema = tools.length ? toolsSchema(tools, request.schema) : request.schema;
-      const reply = await ctx.call("browser-model", "prompt", { ...(system ? { system } : {}), turns: toTurns(request.messages), ...(schema ? { schema } : {}) });
+      const reply = await ctx.call("device-model", "prompt", { ...(system ? { system } : {}), turns: toTurns(request.messages), ...(schema ? { schema } : {}) });
       const answer = { text: reply.text, toolCalls: [], stop: "end", usage: { input: reply.input, output: reply.output }, model: MODEL };
       if (tools.length) {
         let said;

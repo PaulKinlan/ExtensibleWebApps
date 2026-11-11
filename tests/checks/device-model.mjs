@@ -1,5 +1,5 @@
 // A model with no key: Chrome's built-in model (std/llm/chrome.js, through
-// std/browser-model/module.ts and the page's bridge to the Prompt API).
+// std/device-model/module.ts and the page's bridge to the Prompt API).
 //
 // The Chromium the tests run has the API but no model to download, so both
 // halves put a stand-in in the page before it loads. One says the browser
@@ -96,8 +96,8 @@ export default async function ({ check, context, URL, errors }) {
 
   // ---- A browser with no built-in model: the provider is absent ----
   {
-    const t = await open(browser, URL, errors, "browser-model (none)");
-    const said = await open(browser, URL, errors, "browser-model (unavailable)", "unavailable");
+    const t = await open(browser, URL, errors, "device-model (none)");
+    const said = await open(browser, URL, errors, "device-model (unavailable)", "unavailable");
     try {
       // Even added by hand and turned on, it lists no model here.
       await t.command("user:add", { files: [{ name: "chrome.js", data: await t.source("std/llm/chrome.js") }] });
@@ -120,7 +120,7 @@ export default async function ({ check, context, URL, errors }) {
 
   // ---- A browser that has it: a person with no key gets an answer ----
   {
-    const t = await open(browser, URL, errors, "browser-model", "available");
+    const t = await open(browser, URL, errors, "device-model", "available");
     const { page } = t;
     const review = '[data-key^="review:"]';
     const accept = async (what) => {

@@ -199,9 +199,9 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const as = (right: string, name: string, args: unknown[]) => callService(remote.services, plugin, new Set([right]), "authoring", name, args, dispatch as { trace?: string }) as Promise<any>;
     let models = ((await as("plugins:read", "packages", [])) as { id: string; name: string; description: string; href: string; permissions: string[]; added: boolean; linked: boolean }[]).filter((p) => p.permissions.includes("provide:llm"));
     // A model that is the browser's own (std/llm/chrome.js) is offered only where the browser has one.
-    if (models.some((p) => p.permissions.includes("browser-model"))) {
-      const has = (await (callService(remote.services, plugin, new Set(["browser-model"]), "browser-model", "state", [], dispatch as { trace?: string }) as Promise<{ state?: string }>).catch(() => undefined))?.state;
-      if (!has || has === "unavailable") models = models.filter((p) => !p.permissions.includes("browser-model"));
+    if (models.some((p) => p.permissions.includes("device-model"))) {
+      const has = (await (callService(remote.services, plugin, new Set(["device-model"]), "device-model", "state", [], dispatch as { trace?: string }) as Promise<{ state?: string }>).catch(() => undefined))?.state;
+      if (!has || has === "unavailable") models = models.filter((p) => !p.permissions.includes("device-model"));
     }
     if (method === "choices") return models.map(({ id, name, description, added, linked }) => ({ id, name, description, added, linked }));
     const model = models.find((p) => p.id === id);

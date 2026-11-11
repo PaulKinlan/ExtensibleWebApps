@@ -38,7 +38,7 @@ Some folders here also hold a `module.ts`: a **kernel module**, trusted code tha
 | [`game/module.ts`](game/module.ts) | The `game` service: a game loop whose rules are plugins, a hook for each step of every tick |
 | [`follow/module.ts`](follow/module.ts) | What a signed-in person added (plugins, agents, which are on, moves, their pick of model) follows them between their devices; their API keys too if they ask, encrypted on the device ([`follow/vault.ts`](follow/vault.ts)). Starts only where someone is signed in |
 | [`history/module.ts`](history/module.ts) | The `history` service behind [`undo.js`](undo.js): undo and redo across every plugin's writes |
-| [`browser-model/module.ts`](browser-model/module.ts) | The `browser-model` service: the language model the browser carries itself (Chrome's built-in model), asked in a tab; [`llm/chrome.js`](llm/chrome.js) puts it behind `llm` |
+| [`device-model/module.ts`](device-model/module.ts) | The `device-model` service: the language model the browser carries itself (Chrome's built-in model), asked in a tab; [`llm/chrome.js`](llm/chrome.js) puts it behind `llm` |
 | [`llm/module.ts`](llm/module.ts) | The `llm` service: one way for any plugin to ask a model; the vendor plugins in [`llm/`](llm/) answer behind it |
 | [`maker/module.ts`](maker/module.ts) | The `maker` service: apps a person makes in the browser, kept in their data folder and served at `/apps/<name>/` by the service worker ([`sw/routes/made.js`](../sw/routes/made.js)); saves after one review of every file, each file's versions, and checks as written and as it runs |
 | [`notify/module.ts`](notify/module.ts) | The `notify` service: the operating system's notifications, for telling the person something while they are away from the app |
