@@ -17,7 +17,7 @@
 // Kept in the space's folder:
 //   server/apps.json   the apps opened in the space
 
-import { fromAgentFile, isAgentFile, isOutsideFile } from "../../src/kernel/agents/file";
+import { isAgentFile } from "../../src/shared/agent-runner";
 import { readManifest } from "../../src/kernel/manifest";
 import type { RemotePlugins } from "../../src/kernel/remote";
 import type { Store } from "../../src/kernel/store";
@@ -116,6 +116,7 @@ export function serverApps(
       let manifest: ReturnType<typeof readManifest>;
       try {
         if (isAgentFile(href)) {
+          const { fromAgentFile, isOutsideFile } = await import("../../src/kernel/agents/file");
           // An app's own agent runs in the browser; only an outside agent file opens a door here.
           if (!isOutsideFile(source)) {
             loadedPlugins.add(href);

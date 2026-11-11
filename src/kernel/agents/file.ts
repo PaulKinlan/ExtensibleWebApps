@@ -50,9 +50,9 @@
 
 import { grants } from "../gate";
 import { DEFAULT_RUNNER, isAgentFile, runnerName } from "../../shared/agent-runner";
-import { made } from "./linked";
+import { made, type AgentConfig } from "./linked";
 
-export { isAgentFile };
+export { isAgentFile, type AgentConfig };
 
 export class AgentFileError extends Error {}
 
@@ -75,32 +75,6 @@ export async function ownAgent(origin: string, text: string): Promise<{ source: 
     throw error;
   });
   return { source: fromAgentFile(text, runner), runner };
-}
-
-/** What the runner needs to know about its agent, fixed in its source. */
-export interface AgentConfig {
-  id: string;
-  name: string;
-  model?: string;
-  instructions: string;
-  hooks: string[];
-  commands: string[];
-  /** Whether it has an inbox on the bus (`- message: true`), and the bus topics it wakes on. */
-  inbox: boolean;
-  topics: string[];
-  /** Hooks it is asked about before the action happens, and may block (`- check: <hook>`). */
-  checks: string[];
-  /** For a hook or check with `when`: a regular expression its value, as JSON, must match to wake the agent. */
-  when: Record<string, string>;
-  /** What happens to an action it couldn't check: in time, within its limits, or with an answer. */
-  ifUnsure: "allow" | "block";
-  /**
-   * Who its changes are made as. `person`: in a run the person asked for (a message from a plugin, not
-   * another agent, or a command), once they let it on a card, its changes are logged as theirs, made
-   * through it. They are still reviewed, and it still may do only what its own permissions allow.
-   */
-  actsAs: "self" | "person";
-  limits: { runsPerHour: number; tokensPerDay: number; steps: number };
 }
 
 /** Paul's defaults (2026-11-07): 30 runs an hour and 200,000 tokens a day; 12 model turns a run. */

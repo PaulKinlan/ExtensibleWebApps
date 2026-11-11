@@ -113,6 +113,10 @@ type Waiter = { resolve: (ok: boolean) => void };
 
 const ms = (since: number) => Math.round((performance.now() - since) * 100) / 100;
 
+/** Maximum calls and renders a single plugin instance may send per second before excess messages are refused. */
+export const RATE_LIMIT = 500;
+const LOG_LIMIT = 100;
+
 export class RemotePlugins {
   readonly installed = new Map<string, Installed>();
   /** Services plugins provide (provided.ts): which plugin provides each. */
@@ -476,6 +480,12 @@ export class RemotePlugins {
   deliver(instance: string, message: KernelToPlugin, transfer: Transferable[] = []): void {
     this.live.get(instance)?.post(message, transfer);
   }
+
+  /** Checks whether a running instance's worker answers on its port within `timeoutMs`; traces `plugin:unresponsive` when it doesn't. */
+  ping(instance: string, timeoutMs = 2000): Promise<boolean> {
+    const remote = this.live.get(instance);
+    return remote ? remote.ping(timeoutMs) : Promise.resolve(false);
+  }
 }
 
 /**
@@ -520,6 +530,11 @@ export class Remote {
   private pending = new Map<number, { resolve: (v: unknown) => void; timer: ReturnType<typeof setTimeout> }>();
   private nextId = 0;
   private disposed = false;
+  private readyDone = false;
+  private windowStart = -1000;
+  private sentInWindow = 0;
+  private logsInWindow = 0;
+  private rateTraced = false;
   private markReady!: () => void;
   /** Messages other than `ready` wait for the plugin's Cordis context to exist. */
   private ready = new Promise<void>((resolve) => (this.markReady = resolve));
@@ -573,8 +588,45 @@ export class Remote {
     if (!this.disposed) this.port.postMessage(message, transfer);
   }
 
+  ping(timeoutMs = 2000): Promise<boolean> {
+    if (this.disposed) return Promise.resolve(false);
+    const id = ++this.nextId;
+    return new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        record({ kind: "error", name: "plugin:unresponsive", plugin: this.instance, detail: `did not answer within ${timeoutMs} ms` });
+        resolve(false);
+      }, timeoutMs);
+      this.pending.set(id, {
+        timer,
+        resolve: (value) => resolve(!(value && typeof value === "object" && "failed" in value)),
+      });
+      this.post({ t: "hook", id, listener: 0, name: "kernel:ping", args: [] });
+    });
+  }
+
+  private tickWindow(): void {
+    const now = performance.now();
+    if (now - this.windowStart >= 1000) {
+      this.windowStart = now;
+      this.sentInWindow = 0;
+      this.logsInWindow = 0;
+      this.rateTraced = false;
+    }
+  }
+
+  private throttled(trace?: string): boolean {
+    this.tickWindow();
+    if (++this.sentInWindow <= RATE_LIMIT) return false;
+    if (!this.rateTraced) {
+      this.rateTraced = true;
+      record({ kind: "denied", name: "plugin:rate-limit", plugin: this.instance, trace, detail: `exceeded ${RATE_LIMIT} calls/renders per second` });
+    }
+    return true;
+  }
+
   private async receive(message: PluginToKernel): Promise<void> {
-    if (message.t !== "ready" && message.t !== "failed") await this.ready;
+    if (!this.readyDone && message.t !== "ready" && message.t !== "failed") await this.ready;
     if (this.disposed) return;
     switch (message.t) {
       case "ready": {
@@ -593,6 +645,7 @@ export class Remote {
           },
         });
         await this.fiber;
+        this.readyDone = true;
         this.markReady();
         record({ kind: "lifecycle", name: "plugin:ready", plugin: this.instance, detail: `in tab ${this.host.tab}` });
         this.manager.settle(this.instance, true);
@@ -620,7 +673,8 @@ export class Remote {
         waiting.resolve(message.ok ? message.value : { failed: message.error });
         return;
       }
-      case "render":
+      case "render": {
+        if (this.throttled(message.trace)) return;
         if (!check(this.instance, this.caps, "ui")) return;
         let view: View | null;
         try {
@@ -631,9 +685,16 @@ export class Remote {
         }
         this.manager.hosts.render(this.instance, message.slot as Slot, `${this.instance}:${message.key}`, view, message.order ?? this.plugin.manifest.order, this.tab);
         return;
+      }
       case "call":
+        if (this.throttled(message.trace)) {
+          this.post({ t: "result", id: message.id, ok: false, error: `Rate limit exceeded: at most ${RATE_LIMIT} calls or renders per second` });
+          return;
+        }
         return this.call(message.id, message.service, message.method, message.args, message.trace);
       case "log":
+        this.tickWindow();
+        if (++this.logsInWindow > LOG_LIMIT) return;
         record({ kind: message.level === "error" ? "error" : "note", name: "plugin:log", plugin: this.instance, trace: message.trace, detail: message.text });
         return;
     }
