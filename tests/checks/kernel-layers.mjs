@@ -14,6 +14,7 @@ const CORE = [
   "authoring.ts",
   "browser-env.ts",
   "browser.ts",
+  "catalog-panel.ts",
   "catalog.ts",
   "changes.ts",
   "diff.ts",
@@ -68,6 +69,7 @@ const SERVICES = [
 const ON_DEMAND = [
   "agents/file.ts",
   "authoring.ts",
+  "catalog-panel.ts",
   "diff.ts",
   "manifest-fields.ts",
   "net.ts",

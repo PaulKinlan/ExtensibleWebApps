@@ -98,6 +98,8 @@ export type HostToKernel =
   | { t: "url"; path: string; query: Record<string, string> };
 
 export type Command =
+  /** The workbench asks for its plugins panel, which the kernel draws only for it. */
+  | "plugins-panel"
   | "bench"
   | "reload-test"
   | "reload"
@@ -221,6 +223,12 @@ export interface Manifest {
   theme?: Record<string, string>;
   /** Hooks it defines, by key: `{ open: { mode: "emit", args: "{ id }" } }` is the hook `<id>:open`, which only it can run. */
   hooks?: Record<string, PluginHook>;
+  /**
+   * What holds its place until the person first uses it, with the ui permission: `{ slot, key, html }`, the view it
+   * will draw there itself. The kernel draws it, and starts the plugin at the first thing the person does in it;
+   * the plugin hears that once it has drawn its own view (a panel behind a button costs an app nothing until it is opened).
+   */
+  standIn?: { slot: string; key: string; html: string };
   /** Services it calls that not every site runs (kernel modules, docs/layers.md): `["llm", "bus"]`. It isn't started without them. */
   services?: string[];
   /** Services it provides, by name, with the `provide:<name>` permission: `{ mail: { description, methods: { send: { args?, returns?, description, needs? } } } }` (src/kernel/provided.ts). */

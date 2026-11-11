@@ -176,6 +176,7 @@ const MODES: Record<Mode, string> = {
 };
 
 export const COMMANDS: Record<Command, string> = {
+  "plugins-panel": "Asks for the workbench's plugins panel, which the kernel draws only in pages that asked.",
   bench: "(n) Times a hook round trip to a plugin worker against one answered in the kernel.",
   "reload-test": "(n) Reloads word-count n times and counts listeners and workers before and after.",
   reload: "(id) Restarts a plugin's workers.",

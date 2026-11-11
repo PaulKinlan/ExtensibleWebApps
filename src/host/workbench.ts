@@ -5,6 +5,8 @@
 import type { Command, TraceEvent } from "../shared/protocol";
 
 export function workbench(command: (name: Command, arg?: unknown) => Promise<unknown>) {
+  // The plugins panel is this page's alone: the kernel draws it once asked (src/kernel/catalog.ts).
+  void command("plugins-panel");
   const traceList = document.getElementById("trace")!;
   const result = document.getElementById("result")!;
 

@@ -72,6 +72,10 @@ export default async function ({ check, context, URL, errors }) {
       reference.ok && reference.length > 5000 && started.length < 5 && !running.length && !failed.length,
       JSON.stringify({ reference, notRunning: running, failed }).slice(0, 400),
     );
+    // Customize waits for its first use too (its manifest's `standIn`): its panel's files were fetched some seconds into the first visit, and it opens.
+    await next.click('slot[name="customize"] ui-panel .launch');
+    const customize = await next.waitForSelector('slot[name="customize"] .customize .tabs', { timeout: 10000 }).then(() => true, () => false);
+    check("offline, Customize opens for the first time: its panel's files were kept too", customize);
     await own.setOffline(false);
     await own.close();
   } finally {

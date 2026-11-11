@@ -69,7 +69,7 @@ jobs:
           node-version: 22
 
       - name: Install
-        run: npm ci && npm i --no-save playwright@1.65.0 && npx playwright install --with-deps chromium
+        run: npm ci && npm i --no-save playwright@1.65.0 && (timeout -k 5 120 npx playwright install --with-deps chromium || npx playwright install chromium)
 
       - name: Run npm run reference
         run: npm run reference
