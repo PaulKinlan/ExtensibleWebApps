@@ -64,7 +64,7 @@ self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate" && cacheFirst(event.request)) event.waitUntil(keepParts(CACHE));
   // A page it serves waits for the host before its first paint (sw/render-blocking.js).
   // It goes without its preload hints, and the worker asks for the files they named itself (`ahead`, below).
-  event.respondWith(event.request.mode === "navigate" ? answer(event, url).then((response) => renderBlocking(response, (files) => ahead(files, url, event))) : answer(event, url).then((response) => leftBehind(event, url, response)));
+  event.respondWith(event.request.mode === "navigate" ? answer(event, url).then((response) => renderBlocking(response, (files, base) => ahead(files, new URL(base ?? "", url), event))) : answer(event, url).then((response) => leftBehind(event, url, response)));
 });
 
 /** A built platform script: its content's hash is in its name, so each deploy has its own (public/_headers). */
@@ -148,7 +148,7 @@ const AHEAD_MS = 5000;
  * Asks for the files a page's preload hints named (sw/preload-hints.js), as the page is answered: the page comes
  * from here without the hints, and its own requests for those files, which begin once its script runs, are
  * answered with these. Not when the page came from what was kept: its files are kept too, and are answered at once.
- * @param {string[]} files as the page named them @param {URL} page @param {FetchEvent} event
+ * @param {string[]} files as the page named them @param {URL} page what the page's addresses are read against: its <base>, or its own address @param {FetchEvent} event
  */
 function ahead(files, page, event) {
   if (keptPages.has(event)) return;
@@ -208,11 +208,13 @@ async function cached(request, event) {
       const page = request.mode === "navigate";
       // The page this visit is answered with came from what was kept (an app's folder is answered with its app.html).
       if (page || path.endsWith("/app.html")) keptPages.add(event);
-      // A built file never changes at its address, so there is no newer copy to fetch. The rest are fetched again
+      // A built file never changes at its address, so there is no newer copy to fetch: one the server said is
+      // immutable, that is. (A project with a kernel.json of its own serves its kernel at the built address with
+      // "must-revalidate", scripts/extensible-app.mjs, and that one is asked for again.) The rest are fetched again
       // once the page has had time to draw: a visit answered from what was kept is bound by this device's
       // processor, not its network, and thirty fetches and thirty files stored again were competing with the
       // page's own start. The page itself is asked for at once, so a deploy is seen as early as it was.
-      if (!path.startsWith(BUILT)) event.waitUntil((page ? fresh() : new Promise((resolve) => setTimeout(resolve, REFRESH_MS)).then(fresh)).catch(() => {}));
+      if (!(path.startsWith(BUILT) && /\bimmutable\b/.test(kept.headers.get("Cache-Control") ?? ""))) event.waitUntil((page ? fresh() : new Promise((resolve) => setTimeout(resolve, REFRESH_MS)).then(fresh)).catch(() => {}));
       return kept;
     }
   }

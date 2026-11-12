@@ -16,6 +16,10 @@
 //
 // It runs on the workbench, the one page that shows every plugin's views, with the kernel in a worker of the
 // page's own (?kernel=dedicated), whose heap the browser's debugger can read.
+//
+// Routes are the one thing that plugin can't add: only a plugin an app links may (remote.ts), and this one is
+// installed from its source. So the Reading list's own plugin, which answers two routes, is reloaded a hundred
+// times too, on its own page, and the kernel's counts compared the same way.
 import { watchErrors } from "../page-errors.mjs";
 
 const RELOADS = 100;
@@ -35,7 +39,7 @@ const PROBE = `export const manifest = {
   id: "leak-probe",
   name: "Leak probe",
   version: "1.0.0",
-  permissions: ["ui", "storage", "routes", "schedule", "provide:leak-echo", "hook:listen:data:changed:leak-notes"],
+  permissions: ["ui", "storage", "schedule", "provide:leak-echo", "hook:listen:data:changed:leak-notes"],
   services: ["commands", "schedule"],
   collections: { "leak-notes": { title: "Leak notes", schema: { type: "object", properties: { text: { type: "string", title: "Text" } } } } },
   hooks: { tick: { mode: "emit", description: "Nothing." } },
@@ -46,7 +50,6 @@ export default async function (ctx) {
   ctx.on("leak-probe:tick", () => {});
   ctx.on("leak-probe:tick", () => {});
   ctx.commands.add({ id: "leak-probe-hello", title: "Say hello" }, () => "hello");
-  ctx.routes.add("GET", "leak-probe", () => ({ body: "ok" }));
   ctx.schedule.every("leak-beat", 3_600_000, () => {});
   ctx.provide("leak-echo", { say: (text) => text });
   ctx.ui.onEvent(() => {});
@@ -108,7 +111,7 @@ export default async function ({ check, context, URL, errors }) {
     let seen = await upAfter(0);
     const started = seen > 0;
     const shown = await page.waitForSelector('[data-key="leak-probe:probe"] ui-card', { state: "attached", timeout: 8000 }).then(() => true, () => false);
-    check("a plugin that adds one of everything (listeners, a hook, a service, a command, a route, a job, views) starts, and its views are on the page", installed?.ok !== false && started && shown, JSON.stringify(installed));
+    check("a plugin that adds one of everything (listeners, a hook, a service, a command, a job, views) starts, and its views are on the page", installed?.ok !== false && started && shown, JSON.stringify(installed));
     if (!started) return;
 
     /** Everything counted, after a collection in the kernel and the page. */
@@ -174,6 +177,56 @@ export default async function ({ check, context, URL, errors }) {
       `kernel ${kb(before.kernelHeap ?? 0)} → ${kb(after.kernelHeap ?? 0)}, page ${kb(before.pageHeap)} → ${kb(after.pageHeap)}`,
     );
     await page.evaluate(() => window.__host.command("uninstall", "leak-probe")).catch(() => {});
+    await page.close();
+
+    // ---- A plugin an app links, with routes ----
+    const app = await own.newPage();
+    watchErrors(app, errors, "hot-reload-leak");
+    await app.goto(`${URL}demos/reading-list/app.html?kernel=dedicated`);
+    await app.waitForSelector('[data-key^="library:"]', { state: "attached", timeout: 15000 });
+    /** The trace's number for the last time the library's worker was ready. */
+    const readyAfter = async (since) => {
+      for (let waited = 0; waited < 10000; waited += 20) {
+        const seq = await app.evaluate(() => window.__host.traces.findLast((e) => e.name === "plugin:ready" && e.plugin?.startsWith("library"))?.seq ?? 0);
+        if (seq > since) return seq;
+        await app.waitForTimeout(20);
+      }
+      return 0;
+    };
+    let ready = await readyAfter(0);
+    const again = async (n) => {
+      let lost = 0;
+      for (let i = 0; i < n; i++) {
+        const seq = (await app.evaluate(() => window.__host.command("reload", "library"))) ? await readyAfter(ready) : 0;
+        if (seq) ready = seq;
+        else lost++;
+      }
+      return lost;
+    };
+    /** The kernel's counts once the library's routes are there again (they are added as its code runs, after its worker is ready). */
+    const routed = async () => {
+      for (let waited = 0; waited < 5000; waited += 50) {
+        const counts = await app.evaluate(() => window.__host.command("counts"));
+        if (Object.keys(counts ?? {}).filter((key) => key.startsWith("cordis.hooks.route:")).length >= 2) return counts;
+        await app.waitForTimeout(50);
+      }
+      return app.evaluate(() => window.__host.command("counts"));
+    };
+    const lostWarm = await again(WARM_UP);
+    await app.waitForTimeout(300);
+    const was = await routed();
+    const lost = await again(RELOADS);
+    await app.waitForTimeout(300);
+    const now = await routed();
+    const routes = Object.keys(was ?? {}).filter((key) => key.startsWith("cordis.hooks.route:"));
+    const more = Object.keys(now ?? {})
+      .filter((key) => (now[key] ?? 0) > (was?.[key] ?? 0))
+      .map((key) => `${key}: ${was?.[key] ?? 0} → ${now[key]}`);
+    check(
+      `a plugin an app links, which answers routes, is reloaded ${RELOADS} times too: its routes are there before and after, once each, and nothing the kernel counts grew`,
+      lostWarm === 0 && lost === 0 && routes.length >= 2 && routes.every((key) => was[key] === 1 && now[key] === 1) && !more.length,
+      more.length ? `left behind: ${more.slice(0, 12).join("; ")}` : `${routes.length} routes (${routes.map((key) => key.slice(19)).join(", ")}); ${lostWarm + lost} reloads didn't come back`,
+    );
   } finally {
     await browser.close();
   }

@@ -11,6 +11,7 @@
 //   - a page the service worker answers from what it kept comes without them, since there they only add work
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { hintsFor, withHints, withoutHints } from "../../sw/preload-hints.js";
+import { renderBlocking } from "../../sw/render-blocking.js";
 import { watchErrors } from "../page-errors.mjs";
 
 const ROOT = new globalThis.URL("../../", import.meta.url);
@@ -72,6 +73,19 @@ export default async function ({ check, context, URL, errors }) {
   check(
     "making the hints twice changes nothing, taking them out gives the page back, a page with a <base> names its files from the root, and a page that isn't an app is left as it was",
     (await withHints(made, "/app/app.html", read, known)) === made && withoutHints(made) === files["/app/app.html"] && based.includes('href="/app/notes.js" data-preload') && (await withHints(plain, "/about.html", read, known)) === plain,
+  );
+
+  // ---- What the service worker does with a page's hints ----
+  // It takes them out and is told what they named, with the page's <base>: a page served at an address inside the
+  // app (/app/note/42, with a <base> naming the app's folder) names its files from there, not from its own address.
+  const inner = made.replace("<head>", '<head>\n  <base href="/app/">');
+  let told;
+  const served = await (await renderBlocking(new Response(inner, { headers: { "Content-Type": "text/html" } }), (named, base) => (told = { named, base }))).text();
+  const asked = (told?.named ?? []).map((file) => new globalThis.URL(file, new globalThis.URL(told.base ?? "", "https://site.example/app/note/42")).pathname);
+  check(
+    "a page the service worker serves loses its hints, and the worker is told the files they named, read against the page's <base>",
+    !HINT.test(served) && served.includes('blocking="render"') && told?.base === "/app/" && asked.includes("/app/notes.js") && asked.includes("/app/notes.html") && asked.includes("/elements/ui-card.html") && !asked.some((path) => path.startsWith("/app/note/")),
+    JSON.stringify({ base: told?.base, asked: asked.slice(0, 6) }),
   );
 
   // ---- In a browser: nothing hinted goes unused ----

@@ -19,15 +19,16 @@ const HOST = /<script\b(?![^>]*\bblocking=)([^>]*\bsrc=["']?\/platform\/host\.js
  * file; and on a visit answered from what was kept, thirty requests as the page arrives only get in the way of the
  * host's script and the kernel's (measured: a fifth slower on an app with five plugins).
  * @param {Response} response
- * @param {(files: string[]) => void} [hinted] told the addresses the hints named, as the page wrote them, so the
- * worker can ask for them itself (sw.js)
+ * @param {(files: string[], base?: string) => void} [hinted] told the addresses the hints named, as the page wrote
+ * them, and the page's <base> if it has one, so the worker can ask for them itself (sw.js)
  */
 export async function renderBlocking(response, hinted) {
   if (!response.ok || !(response.headers.get("Content-Type") ?? "").includes("text/html")) return response;
   const page = await response.clone().text();
   if (!HOST.test(page)) return response;
   const html = withoutHints(page);
-  if (html !== page) hinted?.(hintedFiles(page));
+  // (A page served at an address inside the app, /demos/reading-list/book/42, names its files from its <base>.)
+  if (html !== page) hinted?.(hintedFiles(page), /<base\b[^>]*\bhref=["']?([^"'\s>]+)/i.exec(page)?.[1]);
   const headers = new Headers(response.headers);
   // The body is decoded here.
   headers.delete("Content-Encoding");

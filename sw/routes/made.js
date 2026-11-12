@@ -51,7 +51,8 @@ async function warm(html, folder, app, within, env) {
   try {
     const known = await site("/platform/preload.json");
     // Reading each file to find the next is what fetches and keeps it; a script, which isn't read, is asked for here.
-    for (const { href, as } of await hintsFor(html, `${folder}app.html`, mine, known ? JSON.parse(known) : {})) if (as === "module") void site(href);
+    // All of them waited for, so the worker stays up until each is kept (`site` never rejects).
+    await Promise.all((await hintsFor(html, `${folder}app.html`, mine, known ? JSON.parse(known) : {})).filter(({ as }) => as === "module").map(({ href }) => site(href)));
   } catch {
     // A head start only: the page asks for each file itself.
   }
