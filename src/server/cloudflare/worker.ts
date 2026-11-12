@@ -36,6 +36,7 @@ import { providerModules } from "../auth/providers/index.ts";
 import { type Decision, frontDoor, unrouted } from "../front-door.ts";
 import { createLiveMcpRelay } from "../live-mcp.ts";
 import { mcpAddress, mcpRequest, mcpResponse, mcpStream, type Watch } from "../mcp.ts";
+import { acpAddress, acpRequest, acpResponse, acpStream, editorKey } from "../acp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
 import { transferRoute } from "../transfer.ts";
@@ -299,6 +300,7 @@ export class Space extends DurableObject<Env> {
   /** An agent key for the space ended: the Worker's open streams check theirs again. */
   async keysChanged(): Promise<void> {
     tellWatchers(this.ctx, "mcp");
+    tellWatchers(this.ctx, "acp");
   }
 
   /** A watcher went: its end is closed too. (Nothing is kept for one but the socket itself.) */
@@ -409,7 +411,7 @@ export class Accounts extends DurableObject<Env> {
   }
 
   /** Which member of a space an agent's key (an Authorization header) is for, if it's one (src/server/mcp.ts). */
-  async agent(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string; expires?: number } | null> {
+  async agent(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string; expires?: number; only?: string } | null> {
     return this.auth.agent(authorization, space, plugin);
   }
 }
@@ -446,6 +448,44 @@ async function mcp(request: Request, env: Env): Promise<Response | undefined> {
     return mcpStream(asked, (knock) => space.route(at.space, url.origin, knock), watch, { key: () => accounts.agent(authorization, at.space, at.plugin) });
   }
   return mcpResponse(await space.route(at.space, url.origin, asked));
+}
+
+/** How the Worker watches one of a space's doors (WATCH): told each time the space's object says the door may answer differently. */
+const watchDoor =
+  (space: DurableObjectStub<Space>, door: string): Watch =>
+  async (wake, lost) => {
+    const opened = await space.fetch(new Request(`https://space/watch/${door}`, { headers: { upgrade: "websocket" } }));
+    const socket = opened.webSocket;
+    if (!socket) throw new Error("The space didn't let its door be watched");
+    socket.accept();
+    socket.addEventListener("message", () => wake());
+    socket.addEventListener("close", () => lost());
+    socket.addEventListener("error", () => lost());
+    return () => {
+      try {
+        socket.close(1000, "The stream ended");
+      } catch {}
+    };
+  };
+
+/** An editor talking to one of a space's agents (src/server/acp.ts); undefined when the address isn't one. */
+async function acp(request: Request, env: Env): Promise<Response | undefined> {
+  const url = new URL(request.url);
+  const at = acpAddress(url);
+  if (!at) return undefined;
+  const accounts = env.ACCOUNTS.getByName("accounts");
+  const authorization = request.headers.get("authorization");
+  const asked = await acpRequest(request, at, {
+    member: (key, space, only) => accounts.agent(key, space, only),
+    name: async (space, user) => (await accounts.members(space)).find((m) => m.id === user)?.name,
+    lock: (space) => accounts.modelLock(space),
+    gateways: gatewaysFrom(env.MODEL_GATEWAYS, [...allowedPrivate(env)]),
+  });
+  if (asked instanceof Response) return asked;
+  const space = env.SPACE.getByName(at.space);
+  // The editor's stream stays open in the Worker, as an MCP client's does: the space's object isn't held open for it.
+  if (asked.method === "GET") return acpStream(asked, (knock) => space.route(at.space, url.origin, knock), watchDoor(space, "acp"), () => accounts.agent(authorization, at.space, editorKey(at.agent)));
+  return acpResponse(await space.route(at.space, url.origin, asked));
 }
 
 /** A request to /s/<space>/<path> that one of the space's server plugins answers; undefined when none does. */
@@ -509,7 +549,7 @@ async function answer(request: Request, env: Env, decision: Decision): Promise<R
     case "live-mcp":
       return env.SPACE.getByName(`_live:${decision.channel}`).fetch(request);
     case "route":
-      return (await mcp(request, env)) ?? (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
+      return (await mcp(request, env)) ?? (await acp(request, env)) ?? (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
     case "feed":
       return feedReader(request, async (url, signal) => {
         // A host written as a private address is refused here, and so is a name that leads to one (names.ts), as on Node.

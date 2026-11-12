@@ -6,7 +6,9 @@
 import { readFileSync } from "node:fs";
 
 export default async function ({ check, a }) {
-  const { modules } = JSON.parse(readFileSync(new URL("../../kernel.json", import.meta.url), "utf8"));
+  // A module that is only for a server (`"only": "server"` in its manifest) isn't in a browser's kernel to restart.
+  const manifest = (name) => JSON.parse(readFileSync(new URL(`../../std/${name}/module.json`, import.meta.url), "utf8"));
+  const modules = JSON.parse(readFileSync(new URL("../../kernel.json", import.meta.url), "utf8")).modules.filter((name) => manifest(name).only !== "server");
   // What the modules add, as the kernel describes itself: its services, hooks and reserved names.
   const shape = async () => {
     const { data } = await a.evaluate(() => window.__host.command("reference"));

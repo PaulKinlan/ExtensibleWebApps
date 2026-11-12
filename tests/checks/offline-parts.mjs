@@ -17,7 +17,11 @@ export default async function ({ check, context, URL, errors }) {
   // must be listed comes from kernel.json, not from the folder: every module that starts when used, and every listed file is there.
   const missing = listed.filter((file) => !existsSync(new globalThis.URL(`.${file}`, DIST)));
   const root = new globalThis.URL("../../", import.meta.url);
-  const modules = JSON.parse(readFileSync(new globalThis.URL("kernel.json", root), "utf8")).modules.filter((name) => JSON.parse(readFileSync(new globalThis.URL(`std/${name}/module.json`, root), "utf8")).starts !== "always");
+  const modules = JSON.parse(readFileSync(new globalThis.URL("kernel.json", root), "utf8")).modules.filter((name) => {
+    // Not one that is part of the kernel's own file, nor one only a server's kernel has.
+    const manifest = JSON.parse(readFileSync(new globalThis.URL(`std/${name}/module.json`, root), "utf8"));
+    return manifest.starts !== "always" && manifest.only !== "server";
+  });
   const unlisted = modules.filter((name) => !listed.some((f) => f.startsWith(`/assets/kernel-${name}-`)));
   check(
     "the build lists every part an app may fetch later: each kernel module, and the parts of the core and the page that load on demand",

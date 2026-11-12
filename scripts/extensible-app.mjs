@@ -12,6 +12,8 @@
 //   extensible-app check [--json]                         the app's mistakes, without a browser
 //   extensible-app deploy [--name n] [--replace] [--keep-from address] [--no-deploy] [--dev]
 //                                                         the app on a Cloudflare Worker of its own, at /
+//   extensible-app acp <address>                          for an editor: talks to an agent in a space
+//                                                         (scripts/acp-bridge.mjs; needs no project)
 //
 // What it serves is one site: the platform's built files (dist/ of this
 // package, without this repo's own pages: the front page, the demos, the docs)
@@ -283,7 +285,9 @@ const run = (command, args, cwd) => {
 const USAGE = `Usage, in your project's folder:
   extensible-app dev [--port 5173] [--host 127.0.0.1]
   extensible-app check [--json]
-  extensible-app deploy [--name worker-name] [--replace] [--keep-from address] [--no-deploy] [--dev]`;
+  extensible-app deploy [--name worker-name] [--replace] [--keep-from address] [--no-deploy] [--dev]
+Anywhere, for an editor (it starts this itself):
+  extensible-app acp <address of an agent in a space>   with its key in EXTENSIBLE_APP_KEY`;
 
 // npm runs it through a link in node_modules/.bin, so compare the file the link points at.
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
@@ -301,7 +305,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   };
   const project = process.cwd();
   try {
-    if (command === "dev") {
+    if (command === "acp") {
+      // An editor's way to an agent in a space (scripts/acp-bridge.mjs): needs no project, and nothing built.
+      await (await import("./acp-bridge.mjs")).main(args);
+    } else if (command === "dev") {
       const port = Number(option("--port") ?? 5173);
       const host = option("--host") ?? "127.0.0.1";
       if (args.length) throw Object.assign(new Error(USAGE), { code: 2 });

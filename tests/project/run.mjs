@@ -117,6 +117,26 @@ try {
   const lost = named.filter((path) => !inProject(`node_modules/extensible-web-apps/${path}`));
   check("the project has the skill for writing plugins, with its example, and every doc the skill names is in the installed platform", /^---\nname: extensible-plugin\n/.test(skill) && inProject(".claude/skills/extensible-plugin/example/reading.js") && named.length > 3 && !lost.length, `${named.length} named; missing: ${lost.join(", ")}`);
 
+  // ---- The command an editor starts (scripts/acp-bridge.mjs), from the package ----
+  // With no key it still answers the editor: `initialize` gets an error that says where to make one, and nothing is asked of the network.
+  const editor = spawnSync(process.execPath, [join(project, "node_modules/extensible-web-apps/scripts/extensible-app.mjs"), "acp", "https://example.com/s/home/acp/assistant"], {
+    cwd: scratch,
+    encoding: "utf8",
+    input: `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: 1 } })}\n`,
+    env: { ...process.env, EXTENSIBLE_APP_KEY: "" },
+    timeout: 30_000,
+  });
+  const said = (() => {
+    try {
+      return JSON.parse(editor.stdout.trim().split("\n")[0]);
+    } catch {
+      return null;
+    }
+  })();
+  check("extensible-app acp runs from the package: with no key it tells the editor where to make one", editor.status === 0 && said?.id === 1 && /needs a key/.test(said?.error?.message ?? "") && /account/.test(said.error.message), `${editor.status} ${editor.stdout} ${editor.stderr}`);
+  const noAddress = spawnSync(process.execPath, [join(project, "node_modules/extensible-web-apps/scripts/extensible-app.mjs"), "acp"], { cwd: scratch, encoding: "utf8", timeout: 30_000 });
+  check("extensible-app acp with no address says how to use it", noAddress.status === 2 && /extensible-app acp <address>/.test(noAddress.stderr), `${noAddress.status} ${noAddress.stderr}`);
+
   // ---- 2. npm run check ----
   const checked = npm(["run", "check"], project);
   check("npm run check passes the new project", checked.status === 0 && /app\.html \(packing-list/.test(checked.out), checked.out);

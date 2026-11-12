@@ -101,11 +101,13 @@ export default {
       kernel.cleanup(relayReviews(reviews, hub, (host, message) => hosts.send(host, message)));
       kernel.message("sync", (host, message) => hub.handle(host, message));
       root.on("internal/left", (host: Parameters<typeof hub.hostLeft>[0]) => hub.hostLeft(host));
-      kernel.space({ server: onServer });
       // A model key the space holds for its members (model-key.ts): the host knocks at this door for a member
       // it has checked, and the key is unlocked and used here only. Fetched the first time anyone asks.
       let model: Promise<(request: RouteRequest) => Promise<RouteResponse>> | undefined;
-      kernel.door("model", async (request) => (await (model ??= import("./model-key").then((m) => m.spaceModel(store, where.fetch ?? fetch))))(request));
+      const askModel = async (request: RouteRequest) => (await (model ??= import("./model-key").then((m) => m.spaceModel(store, where.fetch ?? fetch))))(request);
+      // (Lent too, for a module the host let in with what unlocks the key: an agent an editor talks to, std/acp.)
+      kernel.space({ server: onServer, model: askModel });
+      kernel.door("model", askModel);
       kernel.cleanup(() => {
         hub.permit = undefined;
         hub.plugins = undefined;
