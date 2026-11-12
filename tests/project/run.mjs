@@ -90,8 +90,8 @@ try {
   const files = listed.status === 0 ? json(listed.stdout).flatMap((p) => p.files.map((f) => f.path)) : [];
   const has = (path) => files.includes(path);
   check(
-    "the platform's package has what a project runs (the built site, both server kernels, the commands, the starter) and none of this site's own built pages or tests",
-    has("dist/platform/host.js") && has("dist/sw.js") && has(".build/server/serve.js") && has(".build/server/space.js") && has(".build/cloudflare/kernel-source.js") && has("scripts/extensible-app.mjs") && has("scripts/project-kernel.mjs") && has("starter/app.html") && has("kernel.json") && has("vite.kernel-modules.ts") && has("wrangler.jsonc") && has("LICENSE") &&
+    "the platform's package has what a project runs (the built site, both server kernels, the commands, the starter, the skill for writing plugins and the docs it sends an agent to) and none of this site's own built pages or tests",
+    has("dist/platform/host.js") && has("dist/sw.js") && has(".build/server/serve.js") && has(".build/server/space.js") && has(".build/cloudflare/kernel-source.js") && has("scripts/extensible-app.mjs") && has("scripts/project-kernel.mjs") && has("starter/app.html") && has(".claude/skills/extensible-plugin/SKILL.md") && has(".claude/skills/extensible-plugin/example/app.html") && has("docs/guide/writing-a-plugin.md") && has("docs/api.md") && has("DESIGN.md") && has("kernel.json") && has("vite.kernel-modules.ts") && has("wrangler.jsonc") && has("LICENSE") &&
       !files.some((f) => f.startsWith("dist/demos/") || f.startsWith("tests/") || f.startsWith("node_modules/") || f.startsWith(".github/") || f === "dist/index.html"),
     `${files.length} files; ${listed.out.slice(-300)}`,
   );
@@ -110,6 +110,12 @@ try {
   const byVersion = spawnSync(process.execPath, [join(project, "node_modules/extensible-web-apps/scripts/create-app.mjs"), "from-npm", "--no-install"], { cwd: scratch, encoding: "utf8" });
   const fromNpm = existsSync(join(scratch, "from-npm/package.json")) ? JSON.parse(readFileSync(join(scratch, "from-npm/package.json"), "utf8")) : {};
   check("a platform that came from npm makes projects that depend on its own version", byVersion.status === 0 && fromNpm.dependencies?.["extensible-web-apps"] === `^${VERSION}`, `${byVersion.stderr} ${JSON.stringify(fromNpm.dependencies)}`);
+
+  // The skill for writing plugins comes with the project, from the package, and the docs it names are where it says.
+  const skill = inProject(".claude/skills/extensible-plugin/SKILL.md") ? readFileSync(join(project, ".claude/skills/extensible-plugin/SKILL.md"), "utf8") : "";
+  const named = [...new Set([...skill.matchAll(/`PLATFORM\/([\w./-]+\.md)`/g)].map((m) => m[1]))];
+  const lost = named.filter((path) => !inProject(`node_modules/extensible-web-apps/${path}`));
+  check("the project has the skill for writing plugins, with its example, and every doc the skill names is in the installed platform", /^---\nname: extensible-plugin\n/.test(skill) && inProject(".claude/skills/extensible-plugin/example/reading.js") && named.length > 3 && !lost.length, `${named.length} named; missing: ${lost.join(", ")}`);
 
   // ---- 2. npm run check ----
   const checked = npm(["run", "check"], project);

@@ -22,11 +22,12 @@ packing-list/
   main.html      that plugin's template
   README.md
   .gitignore     node_modules/ and .extensible/
+  .claude/skills/extensible-plugin/   a skill that tells Claude Code how to write a plugin here
 ```
 
 A `kernel.json` beside them is optional: [Its own kernel.json](#its-own-kerneljson), below.
 
-That is the whole project. Add plugins beside `main.js` (or in a folder, such as `plugins/`) and link each from `app.html` with a `<link rel="plugin">`. [How an app works](how-an-app-works.md) and [Writing a plugin](writing-a-plugin.md) take it from there; every page of this guide applies to a project as it does to the demos here.
+That is the whole project. Add plugins beside `main.js` (or in a folder, such as `plugins/`) and link each from `app.html` with a `<link rel="plugin">`. Or ask an agent to: the project comes with a skill that tells Claude Code how ([Asking an agent to write a plugin](asking-an-agent.md)). [How an app works](how-an-app-works.md) and [Writing a plugin](writing-a-plugin.md) take it from there; every page of this guide applies to a project as it does to the demos here.
 
 ## Its commands
 

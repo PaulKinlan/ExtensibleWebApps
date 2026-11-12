@@ -16,6 +16,8 @@ Instructions for AI agents (and people) building apps and plugins on this platfo
 
 Start with `npm run new-app -- my-app`: it copies [`starter/`](starter/), a list you can add to and tick off, to `demos/my-app/`. With no checkout, `npm create extensible-app my-app` makes a project of your own instead: the same starter at the top of `my-app/`, the platform as a dependency, and `npm run dev`, `check` and `deploy` serving it at `/` ([An app of your own](docs/guide/your-own-app.md)). [`demos/habits/`](demos/habits/) is the smallest complete demo, and [the guide](docs/guide/writing-a-plugin.md) walks through it.
 
+To write one plugin for an app, the short version of this file is the skill in [`.claude/skills/extensible-plugin/`](.claude/skills/extensible-plugin/SKILL.md), which Claude Code loads by itself here and in every project made with `npm create extensible-app`: [Asking an agent to write a plugin](docs/guide/asking-an-agent.md). When you change how plugins are written, change the skill in the same pull request.
+
 ## Rules the kernel enforces
 
 1. `export const manifest = { … }` is the module's **first statement** and a **plain literal**: no spreads, calls, template strings or computed values.
