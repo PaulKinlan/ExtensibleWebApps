@@ -1,0 +1,32 @@
+<!--
+  The list of books. reading.js sends { books }, each { id, title, by, done }.
+
+  The <style> is this plugin's own: the host scopes it to these views. It
+  only lays things out, and every size and colour in it is a design token.
+-->
+<style>
+  .books { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
+  .book { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+  .book label { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-2); overflow-wrap: anywhere; }
+  .book small { color: var(--fg-2); }
+  .book[data-done] label { color: var(--fg-2); text-decoration: line-through; }
+</style>
+<template id="books">
+  <template if="books.length">
+    <ul class="books">
+      <template for="book of books">
+        <!-- key lets an update move a row; data-done is there only when book.done is true -->
+        <li class="book" key="{{book.id}}" data-done="{{book.done}}">
+          <label><input type="checkbox" checked="{{book.done}}" data-action="done:{{book.id}}"> {{book.title}} <small>{{book.by}}</small></label>
+          <button data-action="remove:{{book.id}}" aria-label="Remove {{book.title}}">Remove</button>
+        </li>
+      </template>
+    </ul>
+  </template>
+  <template if="!books.length"><ui-empty heading="No books yet"><p>Add the first one below.</p></ui-empty></template>
+  <ui-card>
+    <h2>Add a book</h2>
+    <!-- Built from the collection's schema; it saves by itself, with the schema's checks. -->
+    <ui-form collection="reading-books" fields="title,author" submit="Add book"></ui-form>
+  </ui-card>
+</template>

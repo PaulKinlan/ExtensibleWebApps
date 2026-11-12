@@ -27,6 +27,7 @@ How to build apps on this platform, from the first page to sharing data between 
 23. [Installing, offline, and opening files](installing-and-files.md): every app installs and opens offline with no work; an app installed from the browser as where a kind of file opens; and the policy every page is sent with (Trusted Types, no inline scripts, Permissions-Policy).
 24. [Games and sound](games-and-audio.md): a game loop whose rules are plugins (systems on `game:update` and `game:rules`, drawn smoothly on a canvas in a worker), clips rendered through effects that are plugins, the `<ui-waveform>` element, and the app maker building on both.
 25. [An app of your own](your-own-app.md): a project that is one app, its files at the top and the platform as a dependency, made with `npm create extensible-app`; served at `/` by `npm run dev`, and deployed at `/` by `npm run deploy`.
+26. [Asking an agent to write a plugin](asking-an-agent.md): the skill that comes with the platform and with every new project, which tells Claude Code how to write a plugin here and check it; installing it anywhere; and the checks that keep it true to the platform.
 
 Look things up in the [API reference](../api.md), which the kernel prints about itself, so it always matches the code. Every app in [`demos/`](../../demos/) is written to be read; each file starts with a comment saying what it shows.
 

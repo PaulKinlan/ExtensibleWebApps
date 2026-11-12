@@ -1,0 +1,19 @@
+{
+  "name": "extensible-web-apps",
+  "displayName": "Extensible Web Apps",
+  "description": "Write plugins for Extensible Web Apps: the manifest and its permissions, HTML template views, collections, places and commands, checked before they are handed over.",
+  "author": {
+    "name": "Paul Kinlan",
+    "url": "https://extensibleweb.app/"
+  },
+  "homepage": "https://extensibleweb.app/docs/guide/asking-an-agent",
+  "repository": "https://github.com/PaulKinlan/ExtensibleWebApps",
+  "license": "Apache-2.0",
+  "keywords": [
+    "extensible-web-apps",
+    "malleable-software",
+    "plugins",
+    "web-apps"
+  ],
+  "skills": ["./.claude/skills/"]
+}
