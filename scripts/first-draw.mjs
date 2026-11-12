@@ -193,6 +193,18 @@ for (const folder of ["platform", "assets"])
   for (const file of readdirSync(join(DIST, folder)).filter((f) => /\.(js|css)$/.test(f)))
     platform[`${folder}/${file.replace(/-[\w-]{8}\.(js|css)$/, ".$1")}`] = kb(gzipped(join(DIST, folder, file)));
 
+/**
+ * How many requests deep the first view was: the files' arrival times at the server, in groups that each began at
+ * least most of a round trip after the one before. Files asked for together are one step however many they are;
+ * a file that had to be read before the next could be asked for is another.
+ */
+const depthOf = (first) => {
+  const times = (first?.files ?? []).map(([at]) => at).sort((a, b) => a - b);
+  let depth = 0;
+  let began = -Infinity;
+  for (const at of times) if (at - began > RTT * 0.6) (depth++, (began = at));
+  return depth || undefined;
+};
 const report = { rttMs: RTT, platform, apps: results };
 if (jsonOut) writeFileSync(jsonOut, JSON.stringify(report, null, 1));
 
@@ -202,16 +214,16 @@ const lines = [];
 const base = against && existsSync(against) ? JSON.parse(readFileSync(against, "utf8")) : undefined;
 const warnings = [];
 const delta = (now, was, unit) => (was === undefined || was === null || now === was ? "" : ` (${now > was ? "+" : "−"}${Math.round(Math.abs(now - was) * 10) / 10} ${unit})`);
-lines.push(`### What each app pays before its first view`, "", `Each response is held back ${RTT} ms (one round trip), so the times count the requests that had to follow one another.${base ? " Changes are against main." : ""}`, "");
-lines.push("| App | Files | KB gzipped | First view, first visit | First view, next visit | Kernel modules started |", "| --- | ---: | ---: | ---: | ---: | --- |");
+lines.push(`### What each app pays before its first view`, "", `Each response is held back ${RTT} ms (one round trip), so the times count the requests that had to follow one another, and "requests deep" is how many times one had to wait for another.${base ? " Changes are against main." : ""}`, "");
+lines.push("| App | Files | Requests deep | KB gzipped | First view, first visit | First view, next visit | Kernel modules started |", "| --- | ---: | ---: | ---: | ---: | ---: | --- |");
 for (const [name, r] of Object.entries(results)) {
   if (r.failed) {
-    lines.push(`| ${name} | | | ${r.failed} | | |`);
+    lines.push(`| ${name} | | | | ${r.failed} | | |`);
     warnings.push(`${name}: ${r.failed}`);
     continue;
   }
   const was = base?.apps?.[name];
-  lines.push(`| ${name} | ${r.first.requests}${delta(r.first.requests, was?.first?.requests, "")} | ${r.first.kb}${delta(r.first.kb, was?.first?.kb, "KB")} | ${r.first.ms} ms${delta(r.first.ms, was?.first?.ms, "ms")} | ${r.again.ms} ms${delta(r.again.ms, was?.again?.ms, "ms")} | ${r.modules.join(", ")} |`);
+  lines.push(`| ${name} | ${r.first.requests}${delta(r.first.requests, was?.first?.requests, "")} | ${depthOf(r.first)}${delta(depthOf(r.first), depthOf(was?.first), "")} | ${r.first.kb}${delta(r.first.kb, was?.first?.kb, "KB")} | ${r.first.ms} ms${delta(r.first.ms, was?.first?.ms, "ms")} | ${r.again.ms} ms${delta(r.again.ms, was?.again?.ms, "ms")} | ${r.modules.join(", ")} |`);
   if (was?.first) {
     // A round trip more is a request that now waits on another: the pattern to look for.
     if (r.first.ms > was.first.ms + RTT * 0.8) warnings.push(`${name}'s first view takes ${r.first.ms} ms on a first visit, up from ${was.first.ms} ms on main: a request now waits on another`);

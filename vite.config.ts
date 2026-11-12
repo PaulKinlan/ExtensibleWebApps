@@ -8,6 +8,7 @@ import { createLiveMcpRelay } from "./src/server/live-mcp";
 import { accept } from "./src/server/websocket";
 import { kernelModules } from "./vite.kernel-modules";
 import { onDemandParts } from "./vite.parts";
+import { preloadHints } from "./vite.preload";
 import { siteHeaders } from "./vite.site-headers";
 import { defineConfig, type Plugin } from "vite";
 
@@ -257,7 +258,7 @@ function liveMcpDev(): Plugin {
 
 export default defineConfig({
   // The kernel's modules: in the worker build, and in development, where Vite serves the kernel through this pipeline.
-  plugins: [kernelModules({ split: true }), workerPolicy(), siteHeaders(), liveMcpDev(), asWritten(), notFoundPage(), onDemandParts()],
+  plugins: [kernelModules({ split: true }), workerPolicy(), siteHeaders(), liveMcpDev(), asWritten(), notFoundPage(), onDemandParts(), preloadHints()],
   // The kernel is a worker: its modules are the ones kernel.json lists, each a file of its own it fetches when first used.
   worker: {
     format: "es",

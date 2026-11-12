@@ -6,7 +6,7 @@
 // function. An agent file read before then is an error, never passed through as if it were a plugin.
 
 import { part } from "../part";
-import { isAgentFile } from "../../shared/agent-runner";
+import { isAgentFile } from "../../shared/agent-file";
 import type { AgentConfig } from "./file";
 
 /** Sources the kernel made from agent files, with what each one runs as: only these may call the agent methods. */

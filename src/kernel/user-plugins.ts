@@ -28,7 +28,7 @@
 // person changes something.
 
 import { part } from "./part";
-import { isAgentFile } from "../shared/agent-runner";
+import { isAgentFile } from "../shared/agent-file";
 import { ownAgent } from "./agents/linked";
 import { CODE_APART, readManifest } from "./manifest";
 import type { Store } from "./store";

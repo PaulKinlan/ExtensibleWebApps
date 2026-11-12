@@ -8,7 +8,7 @@
 // part is fetched the first time something changes: the person opens
 // Customize, a plugin they made is saved, a space sends a shared one.
 
-import { isAgentFile } from "../shared/agent-runner";
+import { isAgentFile } from "../shared/agent-file";
 import { FILE_PATH, readManifest, CODE_APART } from "./manifest";
 import type { Store } from "./store";
 import { record } from "./trace";

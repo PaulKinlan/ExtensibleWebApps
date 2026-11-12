@@ -17,6 +17,7 @@
 // 42) gets the app's page, with a <base> naming its folder.
 
 import { APP_NAME, FILE_NAME, PAGE_CSP, PERMISSIONS_POLICY, pageProblems } from "../made-page.js";
+import { hintsFor } from "../preload-hints.js";
 
 const TYPES = { js: "text/javascript", html: "text/html", css: "text/css", md: "text/markdown" };
 
@@ -31,16 +32,41 @@ async function read(app, file, within) {
   }
 }
 
+/**
+ * Starts fetching, and so keeping, the platform's files a made app's first view needs (sw/preload-hints.js): the
+ * elements its templates use, their scripts, the kernel modules its plugins name. The build writes these into the
+ * site's own app pages as preload hints; a made app's page is served here, where the worker can ask for them
+ * itself as it answers the page, without changing a line of it. The app's own files are on this device already,
+ * so only an element or a module this device has never used is a round trip saved, and the page never waits.
+ * @param {string} html @param {string} folder the app's address @param {string} app @param {string[]} within
+ * @param {{ fetch?(r: Request | string): Promise<Response> } | undefined} env
+ */
+async function warm(html, folder, app, within, env) {
+  if (typeof env?.fetch !== "function") return;
+  const site = (/** @type {string} */ path) => env.fetch(new Request(new URL(path, self.location.href))).then((r) => (r.ok ? r.text() : undefined), () => undefined);
+  const mine = (/** @type {string} */ path) => {
+    const name = path.startsWith(folder) ? path.slice(folder.length) : "";
+    return name && FILE_NAME.test(name) ? read(app, name, within).then((file) => file?.text()) : site(path);
+  };
+  try {
+    const known = await site("/platform/preload.json");
+    // Reading each file to find the next is what fetches and keeps it; a script, which isn't read, is asked for here.
+    for (const { href, as } of await hintsFor(html, `${folder}app.html`, mine, known ? JSON.parse(known) : {})) if (as === "module") void site(href);
+  } catch {
+    // A head start only: the page asks for each file itself.
+  }
+}
+
 const text = (body, status) => new Response(body, { status, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
 
 export default {
   name: "made",
   prefix: "/apps/",
   /**
-   * @param {Pick<Request, "method" | "mode">} request @param {URL} url @param {unknown} [_env]
+   * @param {Pick<Request, "method" | "mode">} request @param {URL} url @param {{ fetch?(r: Request | string): Promise<Response>; wait?(work: Promise<unknown>): void }} [env]
    * @param {string[]} [within] the folder the data is in: an app made in a space is kept under spaces/<space>/
    */
-  async handle(request, url, _env, within = []) {
+  async handle(request, url, env, within = []) {
     if (request.method !== "GET" && request.method !== "HEAD") return undefined;
     const [, , app, ...rest] = decodeURIComponent(url.pathname).split("/");
     if (!app || !APP_NAME.test(app)) return undefined;
@@ -53,6 +79,8 @@ export default {
       const problems = pageProblems(html);
       if (problems.length) return text(`This app's page breaks the rules for made apps, so it isn't shown:\n\n${problems.map((p) => `line ${p.line}: ${p.message}`).join("\n")}`, 500);
       const folder = `${inSpace}/apps/${app}/`;
+      const warming = warm(html, folder, app, within, env);
+      if (typeof env?.wait === "function") env.wait(warming);
       const based = html.replace(/<head\b[^>]*>/i, (head) => `${head}\n  <base href="${folder}">`);
       return new Response(based.includes(`<base href="${folder}">`) ? based : `<base href="${folder}">${html}`, {
         headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Content-Security-Policy": PAGE_CSP, "Permissions-Policy": PERMISSIONS_POLICY, "X-Content-Type-Options": "nosniff" },

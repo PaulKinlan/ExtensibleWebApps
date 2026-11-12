@@ -39,6 +39,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { SITE_PAGES } from "./deploy-app.mjs";
 import { browserKernel, cloudflareKernel, nodeKernel, projectKernel } from "./project-kernel.mjs";
+import { withHints } from "../sw/preload-hints.js";
 
 /** This package: the platform. */
 export const PLATFORM = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -122,6 +123,36 @@ export function writtenFiles(project, entries, kernel, { platform = PLATFORM } =
 }
 
 /**
+ * `written` with the app's page given its preload hints (sw/preload-hints.js), as the platform's build gives its
+ * own apps: the files the first view needs, named in the page, so a browser asks for them as the page arrives.
+ * Made from the project's files as they are now, so the project's own app.html is never changed. Both the page
+ * at /app.html and the front page, when that is the app's page, get them.
+ * @param {string} project @param {Record<string, string>} entries @param {Record<string, string>} written @param {{ platform?: string }} [options]
+ * @returns {Promise<Record<string, string>>}
+ */
+export async function withPreloadHints(project, entries, written, { platform = PLATFORM } = {}) {
+  const dist = platformSite(platform);
+  const facts = join(dist, "platform", "preload.json");
+  // A platform built before there were hints: the pages are served as they are.
+  if (!existsSync(facts)) return written;
+  const read = async (path) => {
+    const [, top, ...rest] = decodeURIComponent(path).split("/");
+    const address = [top, ...rest].join("/");
+    if (address in written) return written[address];
+    // Only what the site serves: the platform's files, and the project's own that aren't hidden.
+    if (!entries[top] || ![top, ...rest].every(servable)) return undefined;
+    const file = join(entries[top], ...rest);
+    return existsSync(file) && lstatSync(file).isFile() ? readFileSync(file, "utf8") : undefined;
+  };
+  const known = JSON.parse(readFileSync(facts, "utf8"));
+  const out = { ...written };
+  const page = readFileSync(join(project, "app.html"), "utf8");
+  out["app.html"] = await withHints(page, "/app.html", read, known);
+  if (entries["index.html"] === join(project, "app.html")) out["index.html"] = atRoot(await withHints(page, "/index.html", read, known));
+  return out;
+}
+
+/**
  * Makes `dir` the site again: a link to each of the platform's entries, and the project's folders as folders
  * holding a link to each file that's served, so a change to a file shows at once and nothing unservable
  * (plugins/.env) is reachable. Where a file can't be linked (Windows, without the right to), it is copied,
@@ -164,11 +195,11 @@ export async function dev(project, { port = 5173, host = "127.0.0.1", platform =
   const site = join(dir, "site");
   // The project's own kernel.json, if it has one: read once, as a kernel reads its settings when it starts.
   const kernel = projectKernel(project, { platform });
-  const lay = () => {
+  const lay = async () => {
     const entries = siteEntries(project, { platform });
-    linkSite(site, entries, project, writtenFiles(project, entries, kernel, { platform }));
+    linkSite(site, entries, project, await withPreloadHints(project, entries, writtenFiles(project, entries, kernel, { platform }), { platform }));
   };
-  lay();
+  await lay();
   // A file or folder added anywhere in the project is served as soon as it's there.
   let timer;
   const watcher = watch(project, { recursive: true }, (_, file) => {
@@ -177,11 +208,9 @@ export async function dev(project, { port = 5173, host = "127.0.0.1", platform =
     if (String(file) === "kernel.json" && !quiet) console.error("kernel.json changed: stop this and run it again to use it.");
     clearTimeout(timer);
     timer = setTimeout(() => {
-      try {
-        lay();
-      } catch (error) {
+      lay().catch((error) => {
         if (!quiet) console.error(error.message);
-      }
+      });
     }, 100);
   });
   const { serve } = await import(pathToFileURL(join(platform, ".build", "server", "serve.js")).href);
@@ -297,6 +326,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
       const local = flag("--dev");
       if (args.length) throw Object.assign(new Error(USAGE), { code: 2 });
       const laid = layoutProject(project, { name });
+      // The app's page with its preload hints, as `dev` serves it.
+      for (const [address, text] of Object.entries(await withPreloadHints(project, siteEntries(project), {}))) writeFileSync(join(laid.site, address), text);
       const config = relative(project, laid.config);
       console.log(`Wrote ${relative(project, laid.target)}/ for the Worker "${laid.worker}"`);
       if (local) run("npx", ["wrangler", "dev", "-c", config], project);
