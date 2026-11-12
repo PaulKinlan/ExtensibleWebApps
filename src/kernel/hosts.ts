@@ -18,6 +18,8 @@ export interface Host {
   member?: string;
   /** On a server: the kernel's own client that starts plugins in isolates (isolate-host.ts), never a remote one. */
   isolates?: true;
+  /** The workbench, which shows the plugins panel (catalog.ts): it says so with its `plugins-panel` command. */
+  bench?: true;
 }
 
 type Rendered = { slot: Slot; key: string; owner: string; order: number; view: View | null; tab?: string };

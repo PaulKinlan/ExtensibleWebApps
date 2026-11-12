@@ -18,7 +18,6 @@ import { makeRoutes, type RouteRequest, type RouteResponse } from "./routes";
 import { catalog } from "./catalog";
 import { changeLog } from "./changes";
 import { allowed, reviews as makeReviews } from "./review";
-import { net } from "./net";
 import { grants } from "./gate";
 import { readManifest, RESERVED } from "./manifest";
 import { collections } from "./records";
@@ -123,7 +122,8 @@ const later = (name: string, make: () => Promise<ServiceProvider>): ServiceProvi
 const remote = new RemotePlugins(root, hosts, services);
 const secrets = makeSecrets(store, hosts, (instance) => remote.installed.get(base(instance))?.manifest.name ?? base(instance));
 services.secrets = secrets.service;
-services.net = net(secrets, (instance) => remote.installed.get(base(instance))?.caps ?? new Set());
+// net.fetch is fetched the first time a plugin makes a request through it (net.ts): most apps never do.
+services.net = later("net", async () => (await import("./net")).net(secrets, (instance) => remote.installed.get(base(instance))?.caps ?? new Set()));
 const plugins = catalog(remote, store, hosts, log, reviews);
 remote.onDispose = (instance) => {
   reviews.cancelInstance(instance);
@@ -192,6 +192,15 @@ services.authoring = later("authoring", async () =>
   }),
 );
 
+/** A link's manifest (an agent file's is the one the kernel makes for it), or undefined for one that can't be read: opening it says why. */
+const manifestOf = (link: { href: string; source: string; runner?: string }) => {
+  try {
+    return readManifest(asPlugin(link.href, link.source, link.runner));
+  } catch {
+    return undefined;
+  }
+};
+
 /**
  * Opens an app in a tab: the plugins its app.html links, and the person's own plugins for it that are
  * on. The tab hears each plugin's places, and which locked places the person let it into.
@@ -202,6 +211,16 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
   await kernelModules.ready;
   await space()?.ready?.();
   if (!hosts.list.includes(host)) return;
+  /** The kernel modules some links' plugins say they use (their manifests' `services`) that aren't running yet, each starting. */
+  const starting = (list: { href: string; source: string; runner?: string }[]) =>
+    Promise.all(
+      [...new Set(list.flatMap((link) => manifestOf(link)?.services ?? []))]
+        .filter((name) => Object.hasOwn(services, name) && services[name].load)
+        .map((name) => services[name].load?.().catch(() => undefined)),
+    );
+  // The app's own plugins' modules are fetched while what the person added to the app is read, not after: on a
+  // visit answered from this device, those two waits one after the other were a sixth of the time to the first view.
+  void starting(links);
   let mine: { href: string; source: string; everywhere?: boolean }[] = [];
   let ids = new Set<string>();
   let moves: Awaited<ReturnType<typeof moved.get>> = {};
@@ -212,10 +231,10 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
       if (checkApp(app) === EVERYWHERE) throw 0;
       // In a space, the space hears which app is open, so the plugins of it that run on the server start there.
       space()?.use?.(app);
-      mine = await userAdded.links(app);
-      ids = await userAdded.ids(app);
-      moves = await moved.get(app);
-      components = (await userAdded.components(app)).map(({ tag, html }) => ({ tag, html }));
+      // Four reads of the data folder, side by side.
+      let added: { tag: string; html: string }[];
+      [mine, ids, moves, added] = await Promise.all([userAdded.links(app), userAdded.ids(app), moved.get(app), userAdded.components(app)]);
+      components = added.map(({ tag, html }) => ({ tag, html }));
     }
   } catch {
     app = undefined;
@@ -230,13 +249,7 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
   openApps.set(host.tab, { app, links });
   // A person's plugin with the id of one the app links replaces it in this app: the app's copy isn't started.
   // (Turning theirs off, or removing it, brings the app's back.)
-  const idOf = (link: { href: string; source: string; runner?: string }) => {
-    try {
-      return readManifest(asPlugin(link.href, link.source, link.runner)).id;
-    } catch {
-      return undefined;
-    }
-  };
+  const idOf = (link: { href: string; source: string; runner?: string }) => manifestOf(link)?.id;
   // One the person uses in every app gives way to the app's own plugin of that id: the app runs as its author wrote it.
   const own = new Set(links.map(idOf));
   mine = mine.filter((link) => !link.everywhere || !own.has(idOf(link)));
@@ -257,18 +270,8 @@ async function openApp(host: (typeof hosts.list)[number], links: { href: string;
   }
   // Every kernel module the app's plugins say they use (their manifests' `services`) is running before the first
   // plugin starts: a module that keeps what happens (history's undo list) misses nothing an earlier plugin did.
-  const wanted = new Set(linked.flatMap((link) => {
-    try {
-      return readManifest(asPlugin(link.href, link.source, link.runner)).services ?? [];
-    } catch {
-      return [];
-    }
-  }));
-  const starting = [...wanted].filter((name) => Object.hasOwn(services, name) && services[name].load);
-  if (starting.length) {
-    await Promise.all(starting.map((name) => services[name].load?.().catch(() => undefined)));
-    if (!hosts.list.includes(host)) return void openApps.delete(host.tab);
-  }
+  await starting(linked);
+  if (!hosts.list.includes(host)) return void openApps.delete(host.tab);
   const describe = (o: Opened): Opened => {
     if (!o.id) return o;
     const installed = remote.installed.get(o.id);
@@ -511,7 +514,15 @@ hosts.onMessage = async (host, message) => {
     case "report":
       return record({ kind: "error", name: `page:${String(message.source).slice(0, 40)}`, detail: `tab ${host.tab}: ${String(message.text).slice(0, 2000)}` });
     case "command": {
-      const value = await command(message.name, message.arg);
+      // The workbench asks for its plugins panel, which no app's page shows: it is drawn from now on (catalog.ts).
+      if (message.name === "plugins-panel") {
+        host.bench = true;
+        plugins.drawAll();
+        return hosts.send(host, { t: "command:result", id: message.id, value: true });
+      }
+      // A command that fails (its part of the kernel couldn't be fetched: part.ts) still answers, saying why, as the
+      // panel's commands do: a page that asked is never left waiting.
+      const value = await command(message.name, message.arg).catch((error: unknown) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
       return hosts.send(host, { t: "command:result", id: message.id, value });
     }
     default: {
@@ -543,8 +554,8 @@ async function command(name: string, arg: unknown): Promise<unknown> {
   if (name === "trace") return recent();
   if (name === "route") return routes.answer(arg);
   if (name === "changes") return log.list();
-  // The panel's commands answer { ok: false, error } rather than throw, so the page always hears back.
-  if (name.startsWith("user:") || name.startsWith("place:")) return customize(name, arg).catch((error) => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+  // (One that fails is answered { ok: false, error } where commands are answered, like any other, so the page always hears back.)
+  if (name.startsWith("user:") || name.startsWith("place:")) return customize(name, arg);
   if (name === "reference") {
     const { reference, toMarkdown } = await describing();
     const data = reference(services, remote);

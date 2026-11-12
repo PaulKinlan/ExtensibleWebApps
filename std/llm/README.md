@@ -1,7 +1,7 @@
 # Language models
 
 Each file here is a plugin that answers the platform's `llm` service with one
-vendor's or the browser's own models. Link one or more from an app's `app.html`:
+vendor's models. Link one or more from an app's `app.html`:
 
 ```html
 <link rel="plugin" href="/std/llm/anthropic.js">
@@ -12,13 +12,13 @@ vendor's or the browser's own models. Link one or more from an app's `app.html`:
 | [`anthropic.js`](anthropic.js) | Claude: best is Opus, balanced Sonnet, fast Haiku | An Anthropic API key, sent only to api.anthropic.com |
 | [`openai.js`](openai.js) | OpenAI, through the Responses API: best is Astra, balanced Sol, fast Luna | An OpenAI API key, sent only to api.openai.com |
 | [`gemini.js`](gemini.js) | Gemini: best is Argon (or Pro), balanced Flash, fast Flash-Lite | A Gemini API key, sent only to generativelanguage.googleapis.com |
+| [`chrome.js`](chrome.js) | Chrome's built-in model, on the person's own computer: one small model, whatever tier is asked for | None. Only where the browser has the model; elsewhere it lists nothing and isn't offered |
 | [`openai-compatible.js`](openai-compatible.js) | Ollama on this computer as written; copy it for any other OpenAI-style API | None for Ollama |
-| [`browser.js`](browser.js) | Browser AI (On-device), through the browser's built-in `LanguageModel` Prompt API | None; runs locally when the browser has a model ready |
 
 ## A person adding one
 
 A person can add a model to any app, without its developer linking one. The site's plugin registry
-(`/packages/`) offers these providers, so they're in Customize's Add a plugin. And a plugin that needs a
+(`/packages/`) offers these, so they're in Customize's Add a plugin. And a plugin that needs a
 model can offer them itself: `llm.choices()` lists the registry's packages that ask for
 `provide:llm`, and `llm.add(id)` adds the one the person picks as their own plugin, once they
 accept its review card, and turns it on. It is added for every app they open on this device, not
@@ -40,11 +40,9 @@ is for that app until the person presses **Use in every app** on its row.
 ## Which provider answers
 
 A request that names a `provider` gets that one. Without one, the person's pick answers, else the
-first that is `ready`. `browser.js` reports `ready: true` only when the browser's on-device
-`LanguageModel.availability()` is `"available"` (or `"readily"`), so linking it beside cloud
-providers never hijacks requests in browsers without an on-device model. When none is ready, each
-asks in turn: **Not now** on one model's key card moves to the next, so nobody has to give a key
-to the first model listed to reach the one they have a key for.
+first that has its key. When none has a key, each asks for it in turn: **Not now** on one model's
+key card moves to the next, so nobody has to give a key to the first model listed to reach the one
+they have a key for.
 
 The pick is `llm.prefer(id)`, kept for the person on this device for every app, and
 `llm.providers()` marks it `preferred`. A plugin where a person writes to a model can offer it as
@@ -54,11 +52,11 @@ has more than one model.
 ```js
 const providers = await ctx.call("llm", "providers"); // [{ id, name, model?, ready, preferred? }]
 await ctx.call("llm", "prefer", providers[1].id);     // it answers from now on, in every app
-await ctx.call("llm", "prefer");                      // back to the first that is ready
+await ctx.call("llm", "prefer");                      // back to the first that has its key
 ```
 
-A provider plugin that the person gives no key (or an unavailable on-device model) answers
-`{ error, declined: true }`, which is what lets the next one ask.
+A provider plugin that the person gives no key answers `{ error, declined: true }` to
+`llm:complete`, which is what lets the next one ask.
 
 ## Which model
 
@@ -155,3 +153,30 @@ and `services: ["llm"]`. It listens to hooks:
 For another service that speaks OpenAI's Chat Completions API, copy `openai-compatible.js`, give it
 its own id, and change its address and network permission. Ollama in a browser needs
 `OLLAMA_ORIGINS` set to this site's address so the page may reach it.
+
+## A model with no key
+
+[`chrome.js`](chrome.js) is the model Chrome carries itself (its Prompt API). It runs on the person's
+computer, so there is no key card, nothing to pay, and nothing they ask leaves the device. It is a
+model only where the browser has one (a recent Chrome on a computer with enough memory and disk
+space): elsewhere it adds nothing to `llm.providers()`, and `llm.choices()` leaves it out. Where the
+browser can have the model but hasn't fetched it yet, the first question starts the download and the
+answer says how far it has got.
+
+It is a small model: it reads a few thousand words at once, and has no tool calls of its own, so
+`chrome.js` asks for an answer of a fixed shape and reads a tool call out of it. The browser's API is
+in pages, not workers, so the plugin asks through the `device-model` service
+([`std/device-model/module.ts`](../device-model/module.ts)), which asks a tab.
+
+## A model a space pays for
+
+[`space.js`](space.js) is the model a space holds a key for. A space's owner gives the space one key
+on their account page; it stays on the space's server, encrypted, and is never sent to a browser
+([docs/server.md](../../docs/server.md#a-model-key-a-space-holds-for-its-members)). A member who adds
+this plugin in an app opened in the space needs no key: their question goes to the space's server,
+which runs the vendor's own plugin from this folder with the space's key and sends back the answer.
+
+It is a model only in a space that has a key: elsewhere it adds nothing to `llm.providers()`, and
+`llm.choices()` leaves it out. Its name says whose key it is ("Claude, on Ann's key"), the person is
+shown who pays before their first question, and each member has a number of questions a day. It asks
+through `sync.ask` (the `space-model` permission); other plugins ask any model through `llm`.

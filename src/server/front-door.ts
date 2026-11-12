@@ -17,6 +17,7 @@
 
 import { FEED_READER } from "./feed-reader.ts";
 import { spaceRoute } from "./routes.ts";
+import type { Role } from "./auth/roles.ts";
 
 /** A space's name, as the accounts make them. */
 export const SPACE = /^[a-z0-9][a-z0-9-]{0,62}$/;
@@ -29,6 +30,8 @@ export interface Accounts {
   exists(space: string): Promise<boolean>;
   /** Which member of a space the session in a cookie header is, or null if it's no member's. */
   member(cookie: string, space: string): Promise<string | null>;
+  /** The same, with what they may do there (src/server/auth/accounts.ts). A host that leaves it out lets every member change the space. */
+  who?(cookie: string, space: string): Promise<{ id: string; role: Role } | null>;
 }
 
 /** The parts of a request the door reads. */
@@ -45,7 +48,7 @@ export interface Knock {
 
 export type Decision =
   | { door: "auth" }
-  | { door: "join"; space: string; member: string }
+  | { door: "join"; space: string; member: string; role: Role }
   | { door: "route"; space: string; path: string }
   | { door: "live-bridge"; channel: string }
   | { door: "live-mcp"; channel: string; token?: string }
@@ -98,9 +101,9 @@ export async function frontDoor(knock: Knock, accounts: Accounts): Promise<Decis
     // client must come from this site's own pages.
     if (!sameOrigin(knock.origin, knock.url)) return refuse(403, "Not from this site");
     // Only the space's members may join it.
-    const member = await accounts.member(knock.cookie, space).catch(() => null);
-    if (!member) return refuse(403, "Only the space's members may join it");
-    return { door: "join", space, member };
+    const who = await (accounts.who ? accounts.who(knock.cookie, space) : accounts.member(knock.cookie, space).then((id) => (id ? { id, role: "editor" as Role } : null))).catch(() => null);
+    if (!who) return refuse(403, "Only the space's members may join it");
+    return { door: "join", space, member: who.id, role: who.role };
   }
 
   const at = spaceRoute(knock.url);

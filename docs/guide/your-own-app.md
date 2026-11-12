@@ -12,7 +12,7 @@ cd packing-list
 npm run dev        # http://localhost:5173/
 ```
 
-The first line makes `packing-list/` and installs the platform into it. (`npx github:PaulKinlan/ExtensibleWebApps packing-list` does the same without the small `create-extensible-app` package.) `--name "Packing list"` sets the app's title, and `--no-install` writes the files and installs nothing.
+The first line makes `packing-list/` and installs the platform into it. (`npx --allow-git=all github:PaulKinlan/ExtensibleWebApps packing-list` does the same straight from this repo, without the small `create-extensible-app` package. npm 12 fetches nothing from git unless told to with `--allow-git=all`; older npm needs no flag.) `--name "Packing list"` sets the app's title, and `--no-install` writes the files and installs nothing.
 
 ```
 packing-list/
@@ -22,11 +22,12 @@ packing-list/
   main.html      that plugin's template
   README.md
   .gitignore     node_modules/ and .extensible/
+  .claude/skills/extensible-plugin/   a skill that tells Claude Code how to write a plugin here
 ```
 
 A `kernel.json` beside them is optional: [Its own kernel.json](#its-own-kerneljson), below.
 
-That is the whole project. Add plugins beside `main.js` (or in a folder, such as `plugins/`) and link each from `app.html` with a `<link rel="plugin">`. [How an app works](how-an-app-works.md) and [Writing a plugin](writing-a-plugin.md) take it from there; every page of this guide applies to a project as it does to the demos here.
+That is the whole project. Add plugins beside `main.js` (or in a folder, such as `plugins/`) and link each from `app.html` with a `<link rel="plugin">`. Or ask an agent to: the project comes with a skill that tells Claude Code how ([Asking an agent to write a plugin](asking-an-agent.md)). [How an app works](how-an-app-works.md) and [Writing a plugin](writing-a-plugin.md) take it from there; every page of this guide applies to a project as it does to the demos here.
 
 ## Its commands
 

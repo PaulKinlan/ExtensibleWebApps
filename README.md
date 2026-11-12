@@ -11,6 +11,7 @@ A platform for malleable web apps: a small kernel, and everything else is a plug
 | If you want to… | Read |
 | --- | --- |
 | Build an app or a plugin | The [developer guide](docs/guide/README.md), or [`AGENTS.md`](AGENTS.md) for the short version |
+| Have Claude Code write a plugin for you | [Asking an agent to write a plugin](docs/guide/asking-an-agent.md): the skill in [`.claude/skills/extensible-plugin/`](.claude/skills/extensible-plugin/SKILL.md) |
 | See what writing an app looks like | [`demos/`](demos/), starting with [`demos/README.md`](demos/README.md), and the homepage in [`site/home/`](site/home/README.md) |
 | Look up an API | [`docs/api.md`](docs/api.md), generated from the running kernel |
 | Understand how the kernel works | [`docs/kernel.md`](docs/kernel.md) and [`docs/architecture.md`](docs/architecture.md) |
@@ -140,7 +141,7 @@ npm test           # build, then every check in Chromium, and the measurements (
 npm run reference  # print docs/api.md from the running kernel (only main commits it: CI rewrites it after each merge)
 npm run check      # find mistakes in every app in demos/ (or the folders you name) without a browser; --json for tools
 npm run new-app -- my-app   # copy starter/ to demos/my-app/, a small app to begin from
-npm create extensible-app my-app   # no checkout needed (or npx github:PaulKinlan/ExtensibleWebApps my-app): a project of your own, my-app/, with the app's files at the top and the platform as a dependency; served at / (docs/guide/your-own-app.md)
+npm create extensible-app my-app   # no checkout needed (or npx --allow-git=all github:PaulKinlan/ExtensibleWebApps my-app): a project of your own, my-app/, with the app's files at the top and the platform as a dependency; served at / (docs/guide/your-own-app.md)
 npm run deploy:app -- demos/my-app   # deploy just that app as its own Cloudflare Worker (docs/guide/deploying-an-app.md)
 npm run serve      # the site and its spaces on this machine, at http://127.0.0.1:8787 (sign in at /account/)
 npm run test:server  # the server checks, on Node and wrangler dev

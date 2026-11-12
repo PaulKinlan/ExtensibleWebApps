@@ -44,7 +44,9 @@ export default async function (ctx) {
     const waiting = s.pending ? `${s.pending} ${s.pending === 1 ? "change" : "changes"} to send` : "";
     const status = s.connected ? (waiting ? `Sending ${waiting} to ${s.space}…` : `In step with ${s.space}`) : `Can't reach ${s.space} now: working on this device${waiting ? `, ${waiting} when it's back` : ""}`;
     const drafts = s.drafts.map((d) => ({ ref: d.ref, text: d.label ? `“${d.label}” in ${d.title}` : `a record in ${d.title}`, why: d.why.replace(/^\w/, (c) => c.toLowerCase()), when: when(d.at) }));
-    return { space: true, status, drafts, problem };
+    // A reader is told before they type, not only when the space refuses what they typed.
+    const can = s.role === "reader" ? `You can see what ${s.space} keeps, but not change it. ${s.owner ? `Its owner, ${s.owner},` : "Its owner"} can make you an editor.` : "";
+    return { space: true, status, can, drafts, problem };
   });
 
   ctx.on("sync:changed", () => {

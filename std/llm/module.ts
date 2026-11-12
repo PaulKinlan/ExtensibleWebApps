@@ -1,7 +1,7 @@
 // The `llm` service: one way for any plugin to ask a language model, whoever
 // makes the model. The platform fixes the interface; vendor and on-device
 // plugins plug in behind it (std/llm/anthropic.js, std/llm/openai.js,
-// std/llm/gemini.js, std/llm/openai-compatible.js, std/llm/browser.js).
+// std/llm/gemini.js, std/llm/openai-compatible.js, std/llm/chrome.js, std/llm/space.js).
 //
 //   const answer = await ctx.call("llm", "complete", {
 //     system: "You answer in one sentence.",
@@ -58,6 +58,7 @@
 //              model's reasoning before a tool call), which some vendors need
 //              back; pass it on unchanged.
 
+import { env } from "../../src/kernel/env";
 import { callService, type ServiceProvider } from "../../src/kernel/remote";
 import { record } from "../../src/kernel/trace";
 import { checkSchema, validate, type Schema } from "../../src/kernel/schema";
@@ -285,7 +286,17 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
    */
   async function offered(plugin: string, dispatch: unknown, method: "choices" | "add", id?: unknown) {
     const as = (right: string, name: string, args: unknown[]) => callService(remote.services, plugin, new Set([right]), "authoring", name, args, dispatch as { trace?: string }) as Promise<any>;
-    const models = ((await as("plugins:read", "packages", [])) as { id: string; name: string; description: string; href: string; permissions: string[]; added: boolean; linked: boolean }[]).filter((p) => p.permissions.includes("provide:llm"));
+    let models = ((await as("plugins:read", "packages", [])) as { id: string; name: string; description: string; href: string; permissions: string[]; added: boolean; linked: boolean }[]).filter((p) => p.permissions.includes("provide:llm"));
+    // A model that is the browser's own (std/llm/chrome.js) is offered only where the browser has one.
+    if (models.some((p) => p.permissions.includes("device-model"))) {
+      const has = (await (callService(remote.services, plugin, new Set(), "device-model", "state", [], dispatch as { trace?: string }) as Promise<{ state?: string }>).catch(() => undefined))?.state;
+      if (!has || has === "unavailable") models = models.filter((p) => !p.permissions.includes("device-model"));
+    }
+    // And the model a space holds a key for (std/llm/space.js) only in a space whose owner has given it one.
+    if (models.some((p) => p.permissions.includes("space-model"))) {
+      const has = env().space ? ((await (callService(remote.services, plugin, new Set(), "sync", "model", [], dispatch as { trace?: string }) as Promise<{ set?: boolean }>).catch(() => undefined))?.set ?? false) : false;
+      if (!has) models = models.filter((p) => !p.permissions.includes("space-model"));
+    }
     if (method === "choices") return models.map(({ id, name, description, added, linked }) => ({ id, name, description, added, linked }));
     const model = models.find((p) => p.id === id);
     if (!model) return { ok: false, error: `${String(id)} isn't a language model this site offers` };
@@ -303,7 +314,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   }
 
   const service: ServiceProvider = {
-    description: "Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js, std/llm/browser.js). The caller never holds a key.",
+    description: "Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js, the browser's own with std/llm/chrome.js, or a space's with std/llm/space.js). The caller never holds a key.",
     methods: {
       providers: { args: "()", returns: "[{ id, name, model?, ready, preferred? }]", needs: "llm", description: "The providers the caller's app has; ready means it can answer right now, preferred that the person picked it (prefer)." },
       prefer: {
@@ -322,7 +333,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         args: "()",
         returns: "[{ id, name, description, added, linked }]",
         needs: "llm",
-        description: "The language models this site offers (its plugin registry's packages that provide:llm), for a plugin to offer the person when providers() is empty. added: the person has it here already; linked: the app links it.",
+        description: "The language models this site offers (its plugin registry's packages that provide:llm; the browser's built-in one only where the browser has it), for a plugin to offer the person when providers() is empty. added: the person has it here already; linked: the app links it.",
       },
       add: {
         args: "(id)",

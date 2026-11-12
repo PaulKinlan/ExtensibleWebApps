@@ -14,6 +14,11 @@
 // the modules it uses. A module with no manifest, or a manifest with a key or
 // value the kernel doesn't know, stops the build.
 //
+// A module whose manifest says `"only": "server"` adds something only a
+// space's server can use (a door). The browser's kernel is built without it:
+// not its manifest, not a file to fetch. So such a module costs an app
+// nothing, not even its name.
+//
 // kernel.json may also set the limits on hooks plugins define (`hooks`: see
 // PLUGIN_HOOKS in src/kernel/hooks.ts), exported as `hookLimits`. A key the
 // kernel doesn't know, or a value that isn't a whole number above 0, stops
@@ -89,6 +94,7 @@ export interface ModuleManifest {
   messages?: string[];
   doors?: string[];
   starts?: "always" | "space" | "account";
+  only?: "server";
 }
 
 /** A module's manifest, checked: only the keys above, each a list of names (and `starts` one of its values). */
@@ -100,7 +106,9 @@ export function moduleManifest(name: string, root = process.cwd()): ModuleManife
   for (const [key, value] of Object.entries(json)) {
     if (key === "starts") {
       if (!STARTS.includes(value as string)) throw new Error(`std/${name}/module.json: starts must be ${STARTS.map((s) => JSON.stringify(s)).join(" or ")}`);
-    } else if (!(ADDS as readonly string[]).includes(key)) throw new Error(`std/${name}/module.json: ${JSON.stringify(key)} isn't a setting (it may have ${[...ADDS, "starts"].join(", ")})`);
+    } else if (key === "only") {
+      if (value !== "server") throw new Error(`std/${name}/module.json: only must be "server" (a module the browser's kernel is built without), or left out`);
+    } else if (!(ADDS as readonly string[]).includes(key)) throw new Error(`std/${name}/module.json: ${JSON.stringify(key)} isn't a setting (it may have ${[...ADDS, "starts", "only"].join(", ")})`);
     else if (!Array.isArray(value) || value.some((v) => typeof v !== "string" || !v) || new Set(value).size !== value.length) throw new Error(`std/${name}/module.json: ${key} must be a list of names, each once`);
   }
   return json as ModuleManifest;
@@ -121,8 +129,10 @@ export function moduleManifests(root = process.cwd()): Record<string, ModuleMani
 }
 
 /**
- * `split`: each module is a file of its own that the kernel fetches when it is first used (the browser's kernel).
- * Without it the modules are part of the kernel's own file (a server's kernel, which starts them all).
+ * `split`: each module is a file of its own that the kernel fetches when it is first used (the browser's kernel),
+ * but for the ones whose manifests say they start with every kernel, which are part of the kernel's own file.
+ * A module that is only for a server (`"only": "server"`) is left out of that kernel altogether.
+ * Without it every module is part of the kernel's own file (a server's kernel, which starts them all).
  */
 export function kernelModules({ split = false }: { split?: boolean } = {}): Plugin {
   return {
@@ -132,13 +142,19 @@ export function kernelModules({ split = false }: { split?: boolean } = {}): Plug
       if (id !== `\0${ID}`) return;
       const root = process.cwd();
       this.addWatchFile(resolve(root, "kernel.json"));
-      const names = listedModules(root);
+      const listed = listedModules(root);
       const manifests = moduleManifests(root);
-      for (const name of names) this.addWatchFile(resolve(root, "std", name, "module.json"));
+      // The browser's kernel has no module that is only for a server.
+      const names = listed.filter((name) => !split || manifests[name].only !== "server");
+      for (const name of listed) this.addWatchFile(resolve(root, "std", name, "module.json"));
       const path = (name: string) => JSON.stringify(resolve(root, "std", name, "module.ts"));
-      const imports = split ? [] : names.map((name, i) => `import m${i} from ${path(name)};`);
+      // A module that starts with every kernel is part of the kernel's own file even when the rest are split:
+      // a file of its own would save no app a byte, and cost every first visit a request that can only be
+      // made once the kernel has arrived (scripts/first-draw.mjs shows the round trip).
+      const within = (name: string) => !split || manifests[name].starts === "always";
+      const imports = names.map((name, i) => (within(name) ? `import m${i} from ${path(name)};` : "")).filter(Boolean);
       const entry = (name: string, i: number) =>
-        `{ name: ${JSON.stringify(name)}, manifest: ${JSON.stringify(manifests[name])}, ${split ? `load: () => import(${path(name)}).then((m) => m.default)` : `module: m${i}`} }`;
+        `{ name: ${JSON.stringify(name)}, manifest: ${JSON.stringify(manifests[name])}, ${within(name) ? `module: m${i}` : `load: () => import(${path(name)}).then((m) => m.default)`} }`;
       // What a project wrote after the mark, if this copy of the kernel is a project's. The mark is read at
       // run time (never folded away by the build), so the text after it can change in the built file.
       const stamped = `const mark = ${JSON.stringify(STAMP)};\nconst own = mark.slice(${STAMP.length});\nconst site = own ? JSON.parse(atob(own)) : undefined;`;

@@ -21,7 +21,7 @@
 // plugins (a security reviewer) may stop it with { block: reason }, which
 // the caller gets back as the error, or let it through to the review.
 
-import { isAgentFile } from "../shared/agent-runner";
+import { isAgentFile } from "../shared/agent-file";
 import { COMPONENT_NAMES } from "../shared/html-allowed";
 import { readManifest } from "./manifest";
 import type { Dispatch } from "../shared/protocol";
@@ -113,6 +113,8 @@ export function copyOf(code: string, href: string | undefined): { id: string; na
   let manifest = code.slice(start);
   manifest = manifest.replace(field("id"), (_m, k, q) => `${k}id${k}: ${q}${id}${q}`);
   manifest = manifest.replace(field("name"), (_m, k, q) => `${k}name${k}: ${q}${name}${q}`);
+  // A copy is one file: `code` was given whole (remote.whole), so the copy's manifest doesn't name the other file.
+  if (original.code) manifest = manifest.replace(new RegExp(`${field("code").source}\\s*,?`), "");
   let copy = code.slice(0, start) + manifest;
   if (href) {
     const folder = new URL(".", href).pathname;
@@ -150,6 +152,8 @@ export function explain(permission: string): string {
   if (kind === "provide" && verb) return `Answer every call this page's plugins make to the ${[verb, what].filter(Boolean).join(":")} service.`;
   if (permission === "debug:read") return "See everything every plugin does, as the debug console does.";
   if (permission === "live") return "Send and hear live messages with the other people in this space and its server, such as a game's moves.";
+  if (permission === "device-model") return "Ask the language model that is part of your browser. What you ask stays on this device.";
+  if (permission === "space-model") return "Ask a language model on the key this space's owner gave it. You are shown whose key pays first.";
   return `Use ${permission}.`;
 }
 
@@ -444,14 +448,14 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         if (typeof id !== "string" || !(apps.linkedBy(tab) ?? []).includes(id)) throw new Error(`${String(id)} isn't a plugin in this app`);
         const plugin = remote.installed.get(id);
         if (!plugin) throw new Error(`${id} hasn't loaded yet`);
-        return { id, name: plugin.manifest.name, code: plugin.source };
+        return { id, name: plugin.manifest.name, code: await remote.whole(plugin) };
       }
       if (method === "copy") {
         const [id] = args;
         if (typeof id !== "string" || !(apps.linkedBy(tab) ?? []).includes(id)) throw new Error(`${String(id)} isn't a plugin in this app`);
         const plugin = remote.installed.get(id);
         if (!plugin) throw new Error(`${id} hasn't loaded yet`);
-        return copyOf(plugin.source, plugin.href);
+        return copyOf(await remote.whole(plugin), plugin.href);
       }
       if (method === "file") {
         const [path] = args;

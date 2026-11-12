@@ -15,13 +15,14 @@
 // hook's failure policy when it doesn't come. The trace id rides along as
 // Cordis's `thisArg`, so it survives awaits.
 
+import { part } from "./part";
 import type { Dispatch, KernelToPlugin, Manifest, PluginToKernel, Slot, View } from "../shared/protocol";
 import { HTML_MAX } from "../shared/html-max";
 import { made } from "./agents/linked";
 import { capabilities, check, grants } from "./gate";
 import { BEFORE_WRITE, capabilityFor, declaredHooks, defineHook, hookOwners, hooks, kernelPrefix, PLUGIN_HOOKS, type HookSpec } from "./hooks";
 import type { Host, Hosts } from "./hosts";
-import { ManifestError, readManifest } from "./manifest";
+import { CODE_APART, ManifestError, readManifest } from "./manifest";
 import type { Schema } from "./schema";
 import { record } from "./trace";
 import { env } from "./env";
@@ -208,6 +209,10 @@ export class RemotePlugins {
       record({ kind: "error", name: "plugin:refused", detail: message });
       return { ok: false, error: message };
     }
+    if (manifest.code && options.origin !== "app") {
+      record({ kind: "error", name: "plugin:refused", detail: CODE_APART });
+      return { ok: false, error: CODE_APART };
+    }
     this.stop(manifest.id);
     const enabled = options.enabled ?? previous?.enabled ?? true;
     this.installed.set(manifest.id, { id: manifest.id, source, manifest, caps: capabilities(manifest), origin: options.origin ?? "data", enabled, href: options.href });
@@ -262,9 +267,27 @@ export class RemotePlugins {
     return spawner ? [[plugin.id, spawner]] : [];
   }
 
+  /**
+   * Instances whose place a stand-in holds (the manifest's `standIn`), and the tab each would run in: no worker
+   * yet. Each starts at the first thing the person does in its stand-in (deliver).
+   */
+  private standIns = new Map<string, Host>();
+  /** Instances a stand-in gave way to, starting or running: what the person does reaches each once it has drawn its own view. */
+  private used = new Map<string, Promise<void>>();
+  /** Settles an instance's entry in `used`: it drew, or it stopped. */
+  drew = new Map<string, () => void>();
+
   private startInstance(plugin: Installed, instance: string, host: Host): Promise<boolean> {
+    const standIn = plugin.manifest.standIn;
+    if (standIn && !this.used.has(instance)) {
+      this.standIns.set(instance, host);
+      this.hosts.render(instance, standIn.slot as Slot, `${instance}:${standIn.key}`, stamp({ type: "html", html: standIn.html }, false, plugin.href), plugin.manifest.order, this.perTab(plugin) ? host.tab : undefined);
+      return Promise.resolve(true);
+    }
     record({ kind: "lifecycle", name: "plugin:spawn", plugin: instance, detail: `in tab ${host.tab}` });
-    this.hosts.send(host, { t: "spawn", plugin: instance, source: plugin.source, network: plugin.caps.has("network") });
+    // A plugin that is only its manifest (`code`): the page adds the rest, from the file beside it, as it starts the worker.
+    const { code } = plugin.manifest;
+    this.hosts.send(host, { t: "spawn", plugin: instance, source: plugin.source, network: plugin.caps.has("network"), ...(code && { code: new URL(code, plugin.href).href }) });
     return new Promise((resolve) => {
       const waiter: Waiter = { resolve };
       const list = this.waiting.get(instance) ?? [];
@@ -275,9 +298,23 @@ export class RemotePlugins {
         if (!current?.includes(waiter)) return;
         current.splice(current.indexOf(waiter), 1);
         record({ kind: "error", name: "plugin:start-timeout", plugin: instance });
+        // Its stand-in is still drawn (its code didn't arrive, say): the person is told, and the next press tries again.
+        if (standIn && this.used.delete(instance)) {
+          this.drew.get(instance)?.();
+          this.standIns.set(instance, host);
+          this.hosts.send(host, { t: "notice", text: `${plugin.manifest.name} didn't start. Check you are online, then try again.`, tone: "error" });
+        }
         resolve(false);
       }, 5000);
     });
+  }
+
+  /**
+   * A plugin's whole source, for showing or copying it. For most that is its file; one whose manifest names a
+   * `code` file has that read after it (plugin-code.ts).
+   */
+  whole(plugin: Installed): Promise<string> {
+    return plugin.manifest.code ? part("the plugin's code", () => import("./plugin-code")).then((m) => m.whole(plugin)) : Promise.resolve(plugin.source);
   }
 
   /** A tab created the worker for `instance` and passed its port. */
@@ -303,11 +340,17 @@ export class RemotePlugins {
   /** Stops every instance of a plugin. */
   stop(id: string): void {
     for (const [instance, remote] of this.live) if (remote.plugin.id === id) this.stopInstance(instance);
+    // And the ones a stand-in holds the place of, or did until a moment ago (their workers aren't there yet).
+    for (const instance of [...this.standIns.keys(), ...this.used.keys()]) if (instance.split("@")[0] === id) this.stopInstance(instance);
   }
 
   stopInstance(instance: string, terminate = true): void {
+    // Stopped, it is as it was before it was first used; one still starting takes its stand-in with it.
+    this.drew.get(instance)?.();
+    const held = this.standIns.delete(instance) || this.used.delete(instance);
+    this.used.delete(instance);
     const remote = this.live.get(instance);
-    if (!remote) return;
+    if (!remote) return held ? this.hosts.clear(instance) : undefined;
     remote.dispose();
     this.live.delete(instance);
     this.hosts.clear(instance);
@@ -453,7 +496,7 @@ export class RemotePlugins {
     if (!plugin?.enabled || !this.perTab(plugin) || !this.runsHere(plugin) || !this.allowedIn(plugin, host)) return;
     if (!this.hosts.workerHosts.includes(host)) return;
     const instance = `${id}@${host.tab}`;
-    if (this.live.has(instance) || this.waiting.has(instance)) return;
+    if (this.live.has(instance) || this.waiting.has(instance) || this.standIns.has(instance)) return;
     void this.startInstance(plugin, instance, host);
   }
 
@@ -465,6 +508,7 @@ export class RemotePlugins {
   /** A tab closed: its workers went with it. */
   hostLeft(host: Host): void {
     for (const [instance, remote] of this.live) if (remote.host === host) this.stopInstance(instance, false);
+    for (const [instance, at] of this.standIns) if (at === host) this.stopInstance(instance);
   }
 
   /** The spawner tab changed: start the shared plugins again in the new one. */
@@ -478,6 +522,18 @@ export class RemotePlugins {
   }
 
   deliver(instance: string, message: KernelToPlugin, transfer: Transferable[] = []): void {
+    // The first thing done in a stand-in starts its plugin, which then hears it.
+    const host = this.standIns.get(instance);
+    const plugin = this.installed.get(instance.split("@")[0]);
+    // (One whose worker did arrive, late, after its stand-in was put back is running: it isn't started twice.)
+    if (host && plugin && this.standIns.delete(instance) && !this.live.has(instance)) {
+      // Marked as used first: that is what tells startInstance to start it for real. It hears what was done once it
+      // has drawn its own view, by when it is listening; one that doesn't start hears nothing.
+      this.used.set(instance, new Promise((drew) => this.drew.set(instance, drew)));
+      void this.startInstance(plugin, instance, host).then((ok) => ok || this.drew.get(instance)?.());
+    }
+    const starting = this.used.get(instance);
+    if (starting) return void starting.then(() => this.live.get(instance)?.post(message, transfer));
     this.live.get(instance)?.post(message, transfer);
   }
 
@@ -684,6 +740,7 @@ export class Remote {
           return;
         }
         this.manager.hosts.render(this.instance, message.slot as Slot, `${this.instance}:${message.key}`, view, message.order ?? this.plugin.manifest.order, this.tab);
+        this.manager.drew.get(this.instance)?.();
         return;
       }
       case "call":

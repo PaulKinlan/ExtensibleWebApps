@@ -1,6 +1,6 @@
 // Collection queries (`data.query`), Durable SQLite `Records` seam + optional
-// `collections` seam delegation, schema `x-ref` and `x-ownership` extensions,
-// and `<ui-form>` / `<ui-table>` `x-ref`, `filterable` and `page-size` upgrades.
+// `collections` seam delegation, schema `x-ref` extension, and `<ui-form>` /
+// `<ui-table>` `x-ref`, `filterable` and `page-size` upgrades.
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -133,7 +133,7 @@ export default async function ({ check, context, URL: siteUrl, errors }) {
     );
   }
 
-  // 3. Schema extensions (`x-ref` and `x-ownership`) + html.ts component attribute docs.
+  // 3. Schema extension (`x-ref`) + html.ts component attribute docs.
   {
     const refuses = (fn) => {
       try {
@@ -147,7 +147,6 @@ export default async function ({ check, context, URL: siteUrl, errors }) {
     try {
       checkSchema({
         type: "object",
-        "x-ownership": "creator",
         properties: {
           authorId: { type: "string", "x-ref": { collection: "authors", label: "name" } },
           reviewerId: { type: "string", "x-ref": { collection: "authors" } },
@@ -156,13 +155,11 @@ export default async function ({ check, context, URL: siteUrl, errors }) {
       validOk = true;
     } catch {}
     check(
-      "schema supports x-ref and x-ownership keywords and rejects malformed definitions",
+      "schema supports x-ref keyword and rejects malformed definitions",
       validOk &&
         "x-ref" in SCHEMA_KEYWORDS &&
-        "x-ownership" in SCHEMA_KEYWORDS &&
         refuses(() => checkSchema({ type: "string", "x-ref": { collection: "Bad_Name!" } })) &&
-        refuses(() => checkSchema({ type: "string", "x-ref": { collection: "authors", extra: true } })) &&
-        refuses(() => checkSchema({ type: "object", "x-ownership": "nobody" })),
+        refuses(() => checkSchema({ type: "string", "x-ref": { collection: "authors", extra: true } })),
     );
     check(
       "ui-table documents filterable and page-size in COMPONENTS['ui-table'].attributes",
@@ -198,7 +195,6 @@ export default async function ({ check, context, URL: siteUrl, errors }) {
           schema: {
             type: "object",
             required: ["title", "year"],
-            "x-ownership": "any",
             properties: {
               title: { type: "string", title: "Title" },
               author: { type: "string", title: "Author" },

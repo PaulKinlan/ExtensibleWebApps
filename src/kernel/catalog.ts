@@ -12,12 +12,13 @@
 // capability needed: they are its own) and hears about changes as a
 // `settings:changed` event.
 
-import type { Dispatch, Manifest, View } from "../shared/protocol";
+import type { Dispatch, Manifest } from "../shared/protocol";
 import type { Hosts } from "./hosts";
 import { readManifest } from "./manifest";
 import type { ChangeLog } from "./changes";
 import type { RemotePlugins, ServiceProvider } from "./remote";
-import { placeLabel, type Reviews } from "./review";
+import { part } from "./part";
+import type { Reviews } from "./review";
 import type { Store } from "./store";
 import { record } from "./trace";
 
@@ -108,58 +109,21 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
     return { value: text.slice(0, 2000) };
   }
 
-  const view = (id: string): View | null => {
-    const plugin = remote.installed.get(id);
-    if (!plugin) return null;
-    const { manifest, origin, enabled } = plugin;
-    const values = settingsFor(id);
-    const fields: View[] = Object.entries(manifest.settings ?? {}).map(([key, spec]) => ({
-      type: "field",
-      name: key,
-      label: spec.title ?? key,
-      description: spec.description,
-      kind: spec.type === "boolean" ? "checkbox" : spec.type === "number" ? "number" : spec.enum ? "select" : "text",
-      options: spec.enum,
-      value: values[key],
-      action: `set:${id}:${key}`,
-    }));
-    const error = errors.get(id);
-    return {
-      type: "stack",
-      children: [
-        {
-          type: "stack",
-          direction: "row",
-          children: [
-            { type: "text", text: manifest.name, title: manifest.description },
-            { type: "text", text: origin === "built-in" ? "built in" : origin === "app" ? "from an open app" : "with the data", tone: "muted" },
-            ...(enabled ? [] : [{ type: "text" as const, text: "off", tone: "muted" as const }]),
-          ],
-        },
-        ...(enabled ? fields : []),
-        ...reviews.grantsFor(id).map((place): View => ({
-          type: "stack",
-          direction: "row",
-          children: [
-            { type: "text", text: `Changes ${placeLabel(place)} without asking`, tone: "muted" },
-            { type: "button", label: "Forget", action: `forget:${id}:${place}` },
-          ],
-        })),
-        ...(error ? [{ type: "text" as const, text: error, tone: "error" as const }] : []),
-        {
-          type: "stack",
-          direction: "row",
-          children: [
-            { type: "button", label: enabled ? "Turn off" : "Turn on", action: `toggle:${id}` },
-            ...(origin === "data" ? [{ type: "button" as const, label: "Remove", action: `remove:${id}` }] : []),
-          ],
-        },
-      ],
-    };
+  /**
+   * The plugins panel is the workbench's: no app's page shows it. Its views are made (catalog-panel.ts, fetched
+   * then) only while a workbench is open, so an app's kernel neither holds that code nor draws a panel no one sees.
+   */
+  let panel: Promise<typeof import("./catalog-panel")> | undefined;
+  const bench = () => hosts.list.some((host) => host.bench);
+  const draw = (id: string) => {
+    if (!bench()) return;
+    void (panel ??= part("the plugins panel", () => import("./catalog-panel"))).then(({ panelView }) => {
+      const plugin = remote.installed.get(id);
+      hosts.render("plugins", "side", `plugins:${id}`, plugin ? panelView(plugin, settingsFor(id), reviews.grantsFor(id), errors.get(id)) : null, ORDER + 1);
+    }, () => {});
   };
-
-  const draw = (id: string) => hosts.render("plugins", "side", `plugins:${id}`, view(id), ORDER + 1);
   const drawAll = () => {
+    if (!bench()) return;
     hosts.render("plugins", "side", "plugins:heading", { type: "heading", text: "Plugins" }, ORDER);
     for (const id of remote.installed.keys()) draw(id);
   };
@@ -216,25 +180,6 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
     }
   };
 
-  const set = (id: string, key: string, value: unknown, d: Dispatch) => {
-    const plugin = remote.installed.get(id);
-    if (!plugin) return;
-    const result = coerce(plugin.manifest, key, value);
-    if ("error" in result) {
-      errors.set(id, result.error);
-      record({ kind: "error", name: "settings:refused", plugin: id, trace: d.trace, detail: result.error });
-    } else {
-      errors.delete(id);
-      saved.settings[id] = { ...saved.settings[id], [key]: result.value };
-      void persist().catch(() => {});
-      record({ kind: "note", name: "settings:changed", plugin: id, trace: d.trace, detail: `${key} = ${JSON.stringify(result.value)}` });
-      void log.append({ kind: "settings", plugin: id, detail: `${key} = ${JSON.stringify(result.value)}`, trace: d.trace });
-      const values = settingsFor(id);
-      for (const instance of remote.instances(id)) remote.deliver(instance, { t: "event", action: "settings:changed", value: values, trace: d.trace });
-    }
-    draw(id);
-  };
-
   const service: ServiceProvider = {
     description: "The plugin's own settings, from the form the plugins panel builds out of its manifest.",
     methods: {
@@ -265,6 +210,8 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
       for (const id of wasOff) if (remote.installed.has(id)) void remote.setEnabled(id, true);
       await persist().catch(() => {});
     },
+    /** A workbench opened: its plugins panel is drawn. */
+    drawAll,
     /** Installs the built-in plugins and the ones in the data folder, then draws the panel. */
     async load(builtIn: string[]) {
       saved = valid(await store.readJson<unknown>(FILE, null));
@@ -285,14 +232,12 @@ export function catalog(remote: RemotePlugins, store: Store, hosts: Hosts, log: 
       booting = false;
       record({ kind: "lifecycle", name: "plugins:loaded", detail: `${builtIn.length} built in, ${stored.length} with the data, ${off.size} off` });
     },
+    /** Something pressed or changed in the plugins panel (catalog-panel.ts, which the panel being there has loaded). */
     event(action: string, value: unknown, trace: string) {
-      const d = { trace };
-      // `set:<id>:<key>`: ids have no colons, but setting keys may.
-      const [verb, id] = action.split(":", 2);
-      if (verb === "toggle") return void remote.setEnabled(id, !remote.installed.get(id)?.enabled);
-      if (verb === "remove") return void remove(id);
-      if (verb === "set") return set(id, action.slice(verb.length + id.length + 2), value, d);
-      if (verb === "forget") return void reviews.forget(id, action.slice(verb.length + id.length + 2), trace);
+      void panel?.then(({ panelEvent }) => {
+        const changed = panelEvent({ remote, coerce, errors, settings: saved.settings, persist, log, settingsFor, remove, reviews }, action, value, trace);
+        if (changed) draw(changed);
+      });
     },
   };
 }

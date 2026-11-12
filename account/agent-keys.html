@@ -1,13 +1,15 @@
 <!--
   Agent keys (agent-keys.js). It sends { user, spaces, keys, made, status,
   revision }: each key { id, name, about } (never the key itself), and
-  `made` ({ value, address, command, door }) for the key just made, shown once.
+  `made` ({ value, address, command, door, editor, settings }) for the key
+  just made, shown once. A key for an editor is made by the second form.
 -->
 <style>
   .keys { display: grid; gap: var(--space-3); }
   .keys form { display: flex; flex-direction: row; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
   .keys form input { flex: 1 1 12rem; }
   .keys .made input { width: 100%; }
+  .keys .made pre { overflow-x: auto; padding: var(--space-2); border: 1px solid var(--border); border-radius: var(--radius); }
   .keys ul { display: grid; gap: var(--space-2); padding: 0; list-style: none; }
   .keys li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
   .keys .status:empty { display: none; }
@@ -39,13 +41,35 @@
           <input id="key-door" name="door" placeholder="The app's agent plugin, like reading-list-agents" maxlength="64" pattern="[a-z0-9][a-z0-9\-]{0,63}">
           <button type="submit">Make a key</button>
         </form>
+        <h3>A key for an editor</h3>
+        <p>An editor such as Zed can talk to one of a space's own agents. A key made here opens only that agent, and lets you answer in the editor when the agent asks to change something. The agent uses the model key the space holds.</p>
+        <form data-action="make-editor" key="new-editor-key-{{revision}}">
+          <label for="editor-space">Space</label>
+          <select id="editor-space" name="space">
+            <template for="s of spaces"><option value="{{s}}">{{s}}</option></template>
+          </select>
+          <label for="editor-name" class="visually-hidden">The editor it's for</label>
+          <input id="editor-name" name="name" placeholder="Zed on my laptop" required maxlength="64">
+          <label for="editor-agent" class="visually-hidden">The agent's id</label>
+          <input id="editor-agent" name="editor" placeholder="The agent's id, like assistant" required maxlength="64" pattern="[a-z0-9][a-z0-9\-]{0,63}">
+          <button type="submit">Make a key for an editor</button>
+        </form>
       </template>
       <template if="made">
         <div class="made">
-          <p>Here is the key. It's shown only now, so copy it into your agent: <input id="key-value" readonly value="{{made.value}}"></p>
-          <p>The app's address for agents: <input id="key-address" readonly value="{{made.address}}"></p>
-          <p>For Claude Code: <input id="key-command" readonly value="{{made.command}}"></p>
-          <template if="!made.door"><p>Put the id of the app's plugin that lets outside agents in where it says &lt;plugin&gt;: the app's guide names it, as the reading list's is reading-list-agents.</p></template>
+          <template if="!made.editor">
+            <p>Here is the key. It's shown only now, so copy it into your agent: <input id="key-value" readonly value="{{made.value}}"></p>
+            <p>The app's address for agents: <input id="key-address" readonly value="{{made.address}}"></p>
+            <p>For Claude Code: <input id="key-command" readonly value="{{made.command}}"></p>
+            <template if="!made.door"><p>Put the id of the app's plugin that lets outside agents in where it says &lt;plugin&gt;: the app's guide names it, as the reading list's is reading-list-agents.</p></template>
+          </template>
+          <template if="made.editor">
+            <p>Here is the key. It's shown only now, so copy it into your editor's settings: <input id="key-value" readonly value="{{made.value}}"></p>
+            <p>The agent's address: <input id="key-address" readonly value="{{made.address}}"></p>
+            <p>The command your editor starts, with the key set as EXTENSIBLE_APP_KEY: <input id="key-command" readonly value="{{made.command}}"></p>
+            <p>For Zed, add this to its settings file (Agent Settings, External Agents, Add Custom Agent):</p>
+            <pre>{{made.settings}}</pre>
+          </template>
         </div>
       </template>
       <p class="status" role="status">{{status}}</p>

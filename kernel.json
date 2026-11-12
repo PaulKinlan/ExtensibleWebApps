@@ -1,11 +1,13 @@
 {
   "modules": [
     "account",
+    "acp",
     "agents",
     "audio",
     "bus",
     "commands",
     "debug",
+    "device-model",
     "email",
     "folder",
     "follow",

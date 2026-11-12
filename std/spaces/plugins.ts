@@ -29,7 +29,7 @@ import { readManifest } from "../../src/kernel/manifest";
 import type { Store } from "../../src/kernel/store";
 import { record as trace } from "../../src/kernel/trace";
 import { checkApp, type UserPlugins } from "../../src/kernel/user-plugins";
-import { isAgentFile } from "../../src/shared/agent-runner";
+import { isAgentFile } from "../../src/shared/agent-file";
 
 const INDEX = "user/shared.json";
 /** A shared plugin and its files, as sent: one WebSocket message, which Cloudflare caps at 1 MiB. */

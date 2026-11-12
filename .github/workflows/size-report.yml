@@ -1,0 +1,70 @@
+# The size and speed report: what every app pays before its first view, on this
+# pull request and on main, side by side (scripts/first-draw.mjs).
+#
+# It builds both, opens every demo against each build (a first visit with
+# nothing kept, then the next visit), and writes the numbers to the run's
+# summary: the files and bytes asked for before the first view, how long the
+# first view took, and each platform file's size, with the change against main.
+#
+# It never fails on a number. Growth shows as a warning on the pull request:
+# the answer to it is a change to the architecture (load on demand, split a
+# module, take a request off the path to the first view), in the same pull
+# request, not a red check (docs/layers.md, "The kernel stays small").
+#
+# Nor does it fail when it can't measure (a runner that couldn't install the
+# browser, say): every step may fail without the check going red, and the
+# run's log says what happened.
+
+name: Size and speed report
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: size-report-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # main, beside it, to measure against.
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The same pinned Chromium as the platform checks (platform-checks.yml).
+      - name: Install
+        continue-on-error: true
+        run: npm ci && npm i --no-save playwright@1.65.0 && (timeout -k 5 120 npx playwright install --with-deps chromium || npx playwright install chromium)
+
+      - name: Build this branch
+        continue-on-error: true
+        run: npx vite build --logLevel warn
+
+      - name: Build main
+        continue-on-error: true
+        working-directory: .main
+        run: npm ci && npx vite build --logLevel warn
+
+      # Measured with this branch's script against each build, so both are measured the same way.
+      - name: Measure main
+        continue-on-error: true
+        run: node --no-warnings scripts/first-draw.mjs --dist .main/dist --json main.json --quiet
+
+      - name: Measure this branch, and say what changed
+        continue-on-error: true
+        run: node --no-warnings scripts/first-draw.mjs --json branch.json --against main.json

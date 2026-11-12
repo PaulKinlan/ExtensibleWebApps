@@ -4,8 +4,8 @@
 // could stall the kernel). Supported: type (string, number, integer,
 // boolean, array, object), properties, required, enum, minimum, maximum,
 // minLength, maxLength, format (date, date-time, email, uri),
-// items, title, description, default, `x-multiline` for long text, `x-ref` to
-// point at another collection's records, and `x-ownership` for space records.
+// items, title, description, default, `x-multiline` for long text, and `x-ref`
+// to point at another collection's records.
 
 export interface Schema {
   type?: "string" | "number" | "integer" | "boolean" | "array" | "object";
@@ -23,7 +23,6 @@ export interface Schema {
   format?: "date" | "date-time" | "email" | "uri";
   "x-multiline"?: boolean;
   "x-ref"?: { collection: string; label?: string };
-  "x-ownership"?: "creator" | "any";
 }
 
 /** The JSON Schema keywords collections support, for the API reference. */
@@ -43,10 +42,9 @@ export const SCHEMA_KEYWORDS: Record<string, string> = {
   format: "date, date-time, email or uri; forms use the matching input",
   "x-multiline": "true makes a form show a text area",
   "x-ref": "{ collection, label? } links a field to another collection's records; forms show a menu and tables show the label",
-  "x-ownership": "creator or any; creator lets only the member who made a record in a space change or delete it",
 };
 
-const KEYS = new Set(["type", "title", "description", "default", "enum", "properties", "required", "items", "minimum", "maximum", "minLength", "maxLength", "format", "x-multiline", "x-ref", "x-ownership"]);
+const KEYS = new Set(["type", "title", "description", "default", "enum", "properties", "required", "items", "minimum", "maximum", "minLength", "maxLength", "format", "x-multiline", "x-ref"]);
 const COLLECTION_NAME = /^[a-z][a-z0-9-]{0,40}$/;
 const TYPES = new Set(["string", "number", "integer", "boolean", "array", "object"]);
 const FORMATS: Record<string, RegExp> = {
@@ -79,9 +77,6 @@ export function checkSchema(schema: unknown, path = "schema", depth = 0): assert
     for (const key of Object.keys(ref)) if (key !== "collection" && key !== "label") throw new Error(`${path}: x-ref.${key} isn't supported`);
     if (typeof ref.collection !== "string" || !COLLECTION_NAME.test(ref.collection)) throw new Error(`${path}: x-ref.collection must be a collection name`);
     if (ref.label !== undefined && (typeof ref.label !== "string" || !ref.label)) throw new Error(`${path}: x-ref.label must be a field name`);
-  }
-  if (s["x-ownership"] !== undefined && s["x-ownership"] !== "creator" && s["x-ownership"] !== "any") {
-    throw new Error(`${path}: x-ownership must be creator or any`);
   }
 }
 

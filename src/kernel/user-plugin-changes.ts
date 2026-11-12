@@ -11,8 +11,8 @@
 // Customize, a plugin they made is saved, a space sends a shared one.
 
 import { checkPath } from "../seams/index";
-import { isAgentFile } from "../shared/agent-runner";
-import { FILE_PATH, readManifest } from "./manifest";
+import { isAgentFile } from "../shared/agent-file";
+import { CODE_APART, FILE_PATH, readManifest } from "./manifest";
 import { asMove, type Moved } from "./moves";
 import type { RemotePlugins } from "./remote";
 import type { Store } from "./store";
@@ -509,7 +509,12 @@ export interface Kept {
 }
 
 export function userPluginChanges({ store, origin, list, setOn, plugin, tell }: Kept) {
-  const manifestOf = async (file: string, text: string) => readManifest((await plugin(file, text)).source);
+  /** A file's manifest. One that keeps its code in another file (`code`) is refused: the review shows one file. */
+  const manifestOf = async (file: string, text: string) => {
+    const m = readManifest((await plugin(file, text)).source);
+    if (m.code) throw new Error(CODE_APART);
+    return m;
+  };
 
   /** Looks up expected SHA-256 integrity for a registry package URL in /packages/index.json when present. */
   async function registryIntegrityOf(pathname: string): Promise<string | undefined> {
@@ -523,7 +528,6 @@ export function userPluginChanges({ store, origin, list, setOn, plugin, tell }: 
       return undefined;
     }
   }
-
   /**
    * Turns off the person's plugins for an app that need a service `plugin` provided, now it doesn't, and the
    * ones that need theirs in turn. A service running from something else (`elsewhere`: a kernel module, the

@@ -229,6 +229,17 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         ],
         description: "Sends something to the server's accounts as the person, and raises account:changed when it works.",
       },
+      "space-key": {
+        args: "(space, vendor, label?)",
+        returns: "{ set, vendor, model, byName, at } or null",
+        needs: "account",
+        params: [
+          { name: "space", schema: { type: "string", description: "A space the person owns" } },
+          { name: "vendor", schema: { type: "string", description: "Whose key it is: a vendor's id from /auth/spaces/<space>/model" } },
+          { name: "label", optional: true, schema: { type: "string", description: "The vendor's name, for the card" } },
+        ],
+        description: "Gives a space a model key for its members (src/server/space-model.ts): the person types it into a card the kernel draws, and it goes straight to the server, which keeps it encrypted. No plugin sees it. null if they closed the card.",
+      },
       register: {
         args: "(name?)",
         returns: "{ status }",
@@ -288,6 +299,13 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         params: [],
         description: "Takes the person's API keys out of their account. Each device keeps the keys it has, and asks for a key it hasn't.",
       },
+      notifications: {
+        args: "(action?)",
+        returns: "{ supported, permission?, here, devices: [{ id, label, created, here }] }",
+        needs: "account",
+        params: [{ name: "action", optional: true, schema: { type: "string", enum: ["state", "on", "off", "test"], description: "state (the default) says how things stand; on asks the browser to allow notifications and adds this device (call it right after a click); off takes this device away; test sends the person's devices a notification" } }],
+        description: "Notifications on this device with every tab closed (Web Push): what a space's server plugins send with notify.show reaches the devices each member turned on here. `here` says whether this browser is one of the person's devices. It fails, saying what to do, where the browser can't, the person said no, or its push service isn't one the site sends to.",
+      },
       came: {
         args: "()",
         returns: "{ path, title } | { error } | null",
@@ -338,6 +356,43 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
         if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `The server answered ${res.status}`);
         changed();
         return { ...data, status: res.status };
+      }
+      if (method === "space-key") {
+        const [space, vendor, label] = args;
+        if (typeof space !== "string" || !/^[a-z0-9][a-z0-9-]*$/.test(space)) throw new Error("account.space-key takes a space's name");
+        if (typeof vendor !== "string" || !/^[a-z0-9-]+$/.test(vendor)) throw new Error("account.space-key takes whose key it is");
+        const whose = typeof label === "string" && label ? label.slice(0, 40) : vendor;
+        // Typed into a card the kernel draws in this tab, and sent straight to the server: no plugin ever holds it.
+        const key = await kernel.secrets.ask({
+          heading: `A ${whose} key for ${space}`,
+          text: `Paste a ${whose} API key. It goes to this site's server, which keeps it encrypted and uses it only to ask ${whose} for the members of ${space}. It is never sent back to a browser, yours included. You pay for what the members ask, so make a key just for this where ${whose} lets you, with a spending limit.`,
+          label: "API key",
+          twice: false,
+          tab: host.tab,
+        });
+        if (key === undefined) return null;
+        const res = await fetch(new URL(`/auth/spaces/${space}/model/key`, self.location.origin), { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ vendor, key }) });
+        const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (!res.ok) throw new Error(typeof data.error === "string" ? data.error : `The server answered ${res.status}`);
+        changed();
+        return { ...data, status: res.status };
+      }
+      if (method === "notifications") {
+        const action = args[0] ?? "state";
+        if (action === "on") {
+          const { key } = await ask("/auth/push");
+          if (typeof key !== "string") throw new Error("Sign in to get notifications on this device");
+          await ask("/auth/push", await hosts.bridge("account", "pushOn", [key], dispatch, host));
+        } else if (action === "off") {
+          const endpoint = await hosts.bridge("account", "pushOff", [], dispatch, host);
+          if (endpoint) await ask("/auth/push/remove", { endpoint }).catch(() => {});
+        } else if (action === "test") await ask("/auth/push/test", {});
+        else if (action !== "state") throw new Error("account.notifications takes state, on, off or test");
+        const page = (await hosts.bridge("account", "pushState", [], dispatch, host)) as { supported: boolean; permission?: string; endpoint?: string };
+        const listed = await ask(`/auth/push${page.endpoint ? `?endpoint=${encodeURIComponent(page.endpoint)}` : ""}`);
+        const devices = (Array.isArray(listed.devices) ? listed.devices : []) as { id: string; label: string; created: number }[];
+        if (action !== "state") changed();
+        return { supported: page.supported, ...(page.permission ? { permission: page.permission } : {}), here: typeof listed.here === "string", devices: devices.map((d) => ({ ...d, here: d.id === listed.here })) };
       }
       if (method === "came") return cameFrom(host, dispatch);
       if (method === "keys" || method.startsWith("keys:")) return keys(host, method, args[0], dispatch);

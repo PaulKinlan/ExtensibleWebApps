@@ -1,0 +1,64 @@
+<!--
+  A model for a space (space-model.js). It sends { shown, spaces, status,
+  failed, said }: each space the person owns as { name, set, none, model,
+  since, refused, daily, vendors: [{ id, name }], used: [{ name, text }],
+  unused, confirming, canRemove, error }. Never a key.
+-->
+<style>
+  .space-model { display: grid; gap: var(--space-3); }
+  .space-model p { margin: 0; }
+  .space-model ul { display: grid; gap: var(--space-3); padding: 0; margin: 0; list-style: none; }
+  .space-model li.space { display: grid; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+  .space-model form, .space-model .actions { display: flex; flex-direction: row; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .space-model .used { display: grid; gap: var(--space-1); padding-left: var(--space-4); list-style: disc; }
+</style>
+<template id="space-model">
+  <template if="shown">
+    <section class="space-model" data-part="space-model">
+      <h2>A model for a space</h2>
+      <p>Give a space of yours one API key for a language model, and its members can ask that model without a key of their own. This site's server keeps the key encrypted and uses it only to ask the model for them. It is never sent to a browser, and nobody can read it back here, you included.</p>
+      <p class="muted">You pay for what the members ask. Each member can ask a set number of questions a day, and each is told it is your key before their first.</p>
+      <ul>
+        <template for="s of spaces">
+          <li class="space" key="{{s.name}}">
+            <strong>{{s.name}}</strong>
+            <template if="s.error"><p class="error" role="alert">{{s.error}}</p></template>
+            <template if="s.none">
+              <p>No model key. Its members use keys of their own.</p>
+              <form data-action="give:{{s.name}}">
+                <label for="vendor-{{s.name}}">Whose key</label>
+                <select id="vendor-{{s.name}}" name="vendor">
+                  <template for="v of s.vendors"><option value="{{v.id}}">{{v.name}}</option></template>
+                </select>
+                <button type="submit">Give it a key</button>
+              </form>
+            </template>
+            <template if="s.set">
+              <template if="!s.refused"><p>Its members ask {{s.model}} on the key you gave on {{s.since}}, up to {{s.daily}} questions a day each.</p></template>
+              <template if="s.refused"><p class="error" role="alert">{{s.model}} refused the key you gave on {{s.since}}, so the members get no answers. Take it away and give a new one.</p></template>
+              <template if="s.used.length">
+                <p>Asked today:</p>
+                <ul class="used">
+                  <template for="m of s.used"><li key="{{m.name}}">{{m.name}}: {{m.text}}</li></template>
+                </ul>
+              </template>
+              <template if="s.unused"><p class="muted">Nobody has asked anything today.</p></template>
+            </template>
+            <template if="s.canRemove">
+              <div class="actions"><button type="button" data-action="remove:{{s.name}}">Take the key away</button></div>
+            </template>
+            <template if="s.confirming">
+              <p>Take the key away from {{s.name}}? Its members get no more answers on it, and the server forgets it. To use it again you would paste it in again.</p>
+              <div class="actions">
+                <button type="button" data-action="remove-yes:{{s.name}}">Yes, take it away</button>
+                <button type="button" data-action="cancel:{{s.name}}">Cancel</button>
+              </div>
+            </template>
+          </li>
+        </template>
+      </ul>
+      <template if="failed"><p class="error" role="alert">{{status}}</p></template>
+      <template if="said"><p class="status" role="status">{{status}}</p></template>
+    </section>
+  </template>
+</template>

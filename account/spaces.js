@@ -1,7 +1,8 @@
 // Your spaces. A space holds people and their data, and any app can open in
-// it (/s/<space>/<app>/). Make one, invite someone as a member or a read-only
-// viewer with a link that works once for a week, switch members between
-// member and viewer, leave one you were invited to, and move one to another
+// it (/s/<space>/<app>/). Make one, invite someone with a link that works
+// once for a week, as an editor (who can change what the space keeps) or a
+// reader (who can only see it), say later which of the two each member is,
+// leave one you were invited to, and move one to another
 // server: Download a copy of everything in it, and Load a copy into an empty
 // one (src/server/transfer.ts). If you came here from an app, each space
 // offers to open that app in it. Shown only to someone signed in.
@@ -16,11 +17,16 @@ export const manifest = {
   services: ["account", "router"],
 };
 
+/** A role, as the list names it, and what it lets someone do. */
+const ROLES = { owner: "Owner", editor: "Editor", reader: "Reader" };
+const CAN = { owner: "", editor: "You can change what this space keeps.", reader: "You can see what this space keeps, but not change it. Its owner can make you an editor." };
+
 export default async function (ctx) {
   const views = ctx.ui.views("spaces.html");
   let status = "";
   /** The last invite made, while the same person is signed in. */
   let invite = "";
+  let inviteAs = "";
   let revision = 0;
   /** The app the person came here from, to open in a space ({ path, title }), if any: asked until the tab can say. */
   let app = null;
@@ -47,33 +53,24 @@ export default async function (ctx) {
       return views.render("spaces", "spaces", { user: null });
     }
     const { spaces = [] } = await ctx.call("account", "get", "/auth/spaces");
-    const details = await Promise.all(
-      spaces.map(({ name }) => ctx.call("account", "get", `/auth/spaces/${name}`).catch(() => ({ members: [] }))),
-    );
+    // Who is in each space, and as what. A space that can't say just now is shown without its people.
+    const people = await Promise.all(spaces.map(({ name }) => ctx.call("account", "get", `/auth/spaces/${name}`).then((found) => found?.members ?? [], () => [])));
     views.render("spaces", "spaces", {
       user: true,
       app,
       site,
-      spaces: spaces.map(({ name, role }, i) => {
-        const owner = role === "owner";
-        const members = (details[i]?.members ?? []).map((m) => ({
-          id: m.id,
-          name: m.name,
-          role: m.role,
-          editable: owner && m.role !== "owner",
-          isMember: m.role === "member",
-          isViewer: m.role === "viewer",
-        }));
-        return {
-          name,
-          owner,
-          role: owner ? "yours" : role === "viewer" ? "viewer" : "member",
-          open: app ? `/s/${name}${app.path}` : "",
-          hasMembers: members.length > 1,
-          members,
-        };
-      }),
+      spaces: spaces.map(({ name, role }, i) => ({
+        name,
+        owner: role === "owner",
+        role: role === "owner" ? "yours" : role,
+        can: CAN[role] ?? "",
+        open: app ? `/s/${name}${app.path}` : "",
+        members: people[i]
+          .map((m) => ({ id: m.id, name: m.name, role: ROLES[m.role] ?? m.role, tone: m.role === "owner" ? "accent" : "neutral", you: m.id === user.id, change: role === "owner" && m.role !== "owner", to: m.role === "reader" ? "editor" : "reader", toLabel: m.role === "reader" ? "Make an editor" : "Make a reader" }))
+          .sort((a, b) => Number(b.tone === "accent") - Number(a.tone === "accent") || a.name.localeCompare(b.name)),
+      })),
       invite,
+      inviteAs,
       status,
       revision,
     });
@@ -99,20 +96,25 @@ export default async function (ctx) {
         await ctx.call("account", "post", "/auth/spaces", { name: String(value?.name ?? "").trim() });
         revision++;
       }, "Your space is made.");
-    const [verb, name, who] = action.split(":");
-    if (verb === "invite")
+    const [verb, name, who, to] = action.split(":");
+    if (verb === "invite" || verb === "invite-reader")
       return run(async () => {
-        const role = value?.role === "viewer" ? "viewer" : "member";
-        const { token, site } = await ctx.call("account", "post", `/auth/spaces/${name}/invite`, { role });
-        invite = `${site}/account/?invite=${token}`;
-        return role === "viewer" ? `Here's a viewer invite to ${name}.` : `Here's an invite to ${name}.`;
+        const answer = await ctx.call("account", "post", `/auth/spaces/${name}/invite`, { role: verb === "invite" ? "editor" : "reader" });
+        if (!answer?.token) throw new Error(answer?.error ?? "The server didn't make an invite. Try again.");
+        invite = `${answer.site}/account/?invite=${answer.token}`;
+        inviteAs = verb === "invite" ? "They'll be able to change what the space keeps." : "They'll be able to see what the space keeps, but not change it.";
       }, `Here's an invite to ${name}.`);
-    if (verb === "role" && name && who)
+    if (verb === "role")
       return run(async () => {
-        const role = value === "viewer" ? "viewer" : "member";
-        await ctx.call("account", "post", `/auth/spaces/${name}/role`, { user: who, role });
-        return `Changed role in ${name} to ${role}.`;
-      }, `Role updated.`);
+        const answer = await ctx.call("account", "post", `/auth/spaces/${name}/role`, { user: who, role: to });
+        if (!answer?.ok) throw new Error(answer?.error ?? "The server didn't change it. Try again.");
+        return to === "reader" ? `They can now only see what ${name} keeps. Any agent keys they made for it have stopped working.` : `They can now change what ${name} keeps.`;
+      });
+    if (verb === "remove")
+      return run(async () => {
+        const answer = await ctx.call("account", "post", `/auth/spaces/${name}/leave`, { user: who });
+        if (!answer?.ok) throw new Error(answer?.error ?? "The server didn't remove them. Try again.");
+      }, `They're no longer in ${name}.`);
     if (verb === "leave") return run(() => ctx.call("account", "post", `/auth/spaces/${name}/leave`, {}), `You've left ${name}.`);
     if (verb === "load")
       return run(async () => {

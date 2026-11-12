@@ -17,8 +17,8 @@ export default async function ({ check, openTab, context, URL }) {
   check("the registry's generated files aren't committed (git rm them: the build makes them)", tracked === "", tracked);
   const { packages } = JSON.parse(want["index.json"]);
   const catalog = JSON.parse(want["catalog.json"]);
-  check("the registry offers the language models, so a plugin that needs llm can get one", ["llm-anthropic", "llm-browser", "llm-gemini", "llm-openai", "llm-openai-compatible"].every((id) => packages.some((p) => p.id === id && p.kind === "service")));
-  check("Ask the page says which plugins can answer the llm it needs", packages.find((p) => p.id === "ask-the-page")?.needsOneOf?.llm?.length === 5);
+  check("the registry offers the language models, so a plugin that needs llm can get one", ["llm-anthropic", "llm-gemini", "llm-openai", "llm-openai-compatible"].every((id) => packages.some((p) => p.id === id && p.kind === "service")));
+  check("Ask the page says which plugins can answer the llm it needs", packages.find((p) => p.id === "ask-the-page")?.needsOneOf?.llm?.length === 6);
   check("every offered plugin has a kind and a group", packages.every((p) => ["service", "ui", "background"].includes(p.kind) && p.group));
   check("the catalogue has every std plugin, every demo's plugins and the built-in services", catalog.plugins.some((p) => p.href === "/std/customize.js") && catalog.plugins.some((p) => p.href === "/demos/reading-list/library.js") && catalog.services.some((s) => s.id === "llm"));
 

@@ -49,7 +49,8 @@
 //   This is a reading list. ...
 
 import { grants } from "../gate";
-import { DEFAULT_RUNNER, isAgentFile, runnerName } from "../../shared/agent-runner";
+import { isAgentFile } from "../../shared/agent-file";
+import { DEFAULT_RUNNER, runnerName } from "../../shared/agent-runner";
 import { made, type AgentConfig } from "./linked";
 
 export { isAgentFile, type AgentConfig };

@@ -98,8 +98,11 @@ export type HostToKernel =
   | { t: "url"; path: string; query: Record<string, string> };
 
 export type Command =
+  /** The workbench asks for its plugins panel, which the kernel draws only for it. */
+  | "plugins-panel"
   | "bench"
   | "reload-test"
+  | "counts"
   | "reload"
   | "install"
   | "uninstall"
@@ -127,7 +130,8 @@ export type KernelToHost =
   | { t: "welcome"; tab: string; spawner: boolean; mode: "shared" | "dedicated" | "server" }
   | SyncToDevice
   | { t: "render"; slot: Slot; key: string; owner: string; order: number; view: View | null }
-  | { t: "spawn"; plugin: string; source: string; network: boolean }
+  /** `code`: the address of the file that holds the rest of the plugin's code (its manifest's `code`); the page reads it after `source`, as one file. */
+  | { t: "spawn"; plugin: string; source: string; network: boolean; code?: string }
   | { t: "terminate"; plugin: string }
   | { t: "bridge"; id: number; service: string; method: string; args: unknown[] }
   | { t: "trace"; events: TraceEvent[] }
@@ -210,7 +214,7 @@ export interface Manifest {
   /** Where it runs: in the browser (the default), on a space's server, or both. */
   runs?: "browser" | "server" | "both";
   /** Collections this plugin owns: `{ books: { title?, schema } }`, each schema a JSON Schema subset. */
-  collections?: Record<string, { title?: string; schema: unknown }>;
+  collections?: Record<string, { title?: string; schema: unknown; rules?: { add?: string; change?: string; remove?: string } }>;
   /** Settings the person can change; the shell builds the form from these. */
   settings?: Record<string, { type: "string" | "number" | "boolean"; title?: string; description?: string; default?: unknown; enum?: string[] }>;
   /** Places in the app's page where the plugin draws, adds or hides, by name: `{ days: { at: "main > h1", put: "after" } }`. */
@@ -221,6 +225,19 @@ export interface Manifest {
   theme?: Record<string, string>;
   /** Hooks it defines, by key: `{ open: { mode: "emit", args: "{ id }" } }` is the hook `<id>:open`, which only it can run. */
   hooks?: Record<string, PluginHook>;
+  /**
+   * What holds its place until the person first uses it, with the ui permission: `{ slot, key, html }`, the view it
+   * will draw there itself. The kernel draws it, and starts the plugin at the first thing the person does in it;
+   * the plugin hears that once it has drawn its own view (a panel behind a button costs an app nothing until it is opened).
+   */
+  standIn?: { slot: string; key: string; html: string };
+  /**
+   * A .js file beside the plugin that holds the rest of its code: everything but the manifest. The plugin's own
+   * file is then only its manifest, which is all the kernel needs to list it, switch it and draw its stand-in;
+   * the code is fetched when the plugin first starts. Only for a plugin the app's author links, that runs in the
+   * browser: never one a person added, whose review shows one file.
+   */
+  code?: string;
   /** Services it calls that not every site runs (kernel modules, docs/layers.md): `["llm", "bus"]`. It isn't started without them. */
   services?: string[];
   /** Services it provides, by name, with the `provide:<name>` permission: `{ mail: { description, methods: { send: { args?, returns?, description, needs? } } } }` (src/kernel/provided.ts). */

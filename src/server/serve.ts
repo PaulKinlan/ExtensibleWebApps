@@ -22,14 +22,17 @@ import { accounts } from "./auth/accounts.ts";
 import { FOLLOW_BODY } from "./auth/follow.ts";
 import { type Provider, providersFrom } from "./auth/providers.ts";
 import { providerModules } from "./auth/providers/index.ts";
-import { signed } from "./signed.ts";
+import { answerFor, signed } from "./signed.ts";
+import { pushHostsFrom } from "./auth/push.ts";
 import { type Accounts, type Decision, frontDoor, type Knock, SPACE, unrouted } from "./front-door.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "./routes.ts";
 import { exportSpace, importSpace, transferRoute } from "./transfer.ts";
+import { gatewaysFrom, modelRoute, MODEL_TIMEOUT_MS } from "./space-model.ts";
 import { accept } from "./websocket.ts";
 import { headerRules } from "./header-rules.ts";
 import { MCP_TIMEOUT_MS, mcpAddress, mcpRequest, mcpResponse, mcpStream, type Watch } from "./mcp.ts";
 import { createLiveMcpRelay } from "./live-mcp.ts";
+import { acpAddress, acpRequest, acpResponse, acpStream, acpWait, editorKey } from "./acp.ts";
 import { feedReader } from "./feed-reader.ts";
 import { nodeGet } from "./feed-reader-node.ts";
 
@@ -61,6 +64,10 @@ export interface Options {
    * (src/server/network-guard.ts).
    */
   allowPrivate?: string[];
+  /** Vendors' hosts that a space's model key is used through a gateway for (MODEL_GATEWAYS, src/server/space-model.ts), by host. */
+  modelGateways?: Record<string, string>;
+  /** More push services notifications may be sent to (PUSH_HOSTS, src/server/auth/push.ts), as origins. */
+  pushHosts?: string[];
   /** How the server sends the mail server plugins send (src/server/smtp.ts); without it, mail stays in each space's outbox. */
   email?: Email;
 }
@@ -79,27 +86,34 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
       for (const [socket, who] of clients) if (who.space === space && who.user === user) socket.close(4403, "You're no longer in this space");
     },
     // A key ended: the streams its space has open check theirs again.
-    keys: (space) => woken(space),
+    keys: (space) => {
+      woken(space);
+      woken(space, "acp");
+    },
     mail: async (message) => (options.email ? options.email.send(message) : null),
+    push: { hosts: options.pushHosts },
   });
 
   /** The MCP streams open for each space (src/server/mcp.ts mcpStream): each one's way to be told to ask its door again, or that nothing can tell it any more. */
   const watching = new Map<string, Set<{ wake(): void; lost(): void }>>();
+  /** A space's streams for one door: an editor's (the door `acp`, src/server/acp.ts) are kept apart from MCP clients'. */
+  const watched = (name: string, door: string) => (door === "mcp" ? name : `${name} ${door}`);
   /** Wakes a space's streams: its kernel said its door may answer differently, or a key for it ended. */
-  function woken(name: string) {
-    for (const stream of [...(watching.get(name) ?? [])]) stream.wake();
+  function woken(name: string, door = "mcp") {
+    for (const stream of [...(watching.get(watched(name, door)) ?? [])]) stream.wake();
   }
   /** A space's kernel stopped (it failed, or its folder is being copied): its streams end, and their clients open new ones, which start it again. */
   function stopped(name: string) {
-    for (const stream of [...(watching.get(name) ?? [])]) stream.lost();
+    for (const door of ["mcp", "acp"]) for (const stream of [...(watching.get(watched(name, door)) ?? [])]) stream.lost();
   }
-  const watch = (name: string): Watch => (wake, lost) => {
-    const set = watching.get(name) ?? new Set();
+  const watch = (name: string, door = "mcp"): Watch => (wake, lost) => {
+    const key = watched(name, door);
+    const set = watching.get(key) ?? new Set();
     const stream = { wake, lost };
-    watching.set(name, set.add(stream));
+    watching.set(key, set.add(stream));
     return () => {
       set.delete(stream);
-      if (!set.size && watching.get(name) === set) watching.delete(name);
+      if (!set.size && watching.get(key) === set) watching.delete(key);
     };
   };
 
@@ -119,12 +133,20 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
           if (m?.t === "ready") ready(worker);
           // What its `mcp` door answers may have changed: the streams open for the space ask again.
           if (m?.t === "changed" && m.door === "mcp") woken(name);
+          // And its `acp` door has something for an editor's stream (src/server/acp.ts).
+          if (m?.t === "changed" && m.door === "acp") woken(name, "acp");
           // The kernel asks about its members: their email addresses (the only ones its plugins may email) and names.
           // Mail the email module wrote to the outbox, to send.
           if (m?.t === "deliver" && options.email)
             void options.email.send(m.message).then(
               (value) => worker.postMessage({ t: m.t, id: m.id, value }),
               (error) => worker.postMessage({ t: m.t, id: m.id, value: { ok: false, error: String(error?.message ?? error) } }),
+            );
+          // A server plugin's notification, for members' devices (src/server/auth/push.ts).
+          if (m?.t === "push")
+            void auth.notify(name, m.note, url).then(
+              (value) => worker.postMessage({ t: m.t, id: m.id, value }),
+              (error) => worker.postMessage({ t: m.t, id: m.id, value: { sent: 0, devices: 0, people: 0, reached: 0, problems: [String(error?.message ?? error)] } }),
             );
           if (m?.t === "addresses" || m?.t === "members") {
             const asked: Promise<unknown> = m.t === "addresses" ? auth.addresses(name) : auth.members(name);
@@ -226,6 +248,28 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     return true;
   };
 
+  /** A model key a space holds for its members (src/server/space-model.ts). False for any other request. */
+  const model = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    if (!/^\/auth\/spaces\/[^/?]+\/model(\/key)?(\?|$)/.test(request.url ?? "")) return false;
+    const url = `${options.origin?.replace(/\/$/, "") ?? `http://${request.headers.host ?? "localhost"}`}${request.url}`;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
+    const answer = await modelRoute(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), {
+      async member(req, name) {
+        const found = await auth.member(req, name);
+        return found ? { id: found.user.id, name: found.user.name, role: found.role } : null;
+      },
+      lock: (name) => auth.modelLock(name),
+      ask: (name, _origin, route) => ask(name, route, MODEL_TIMEOUT_MS),
+      gateways: options.modelGateways,
+    });
+    if (!answer) return false;
+    response.writeHead(answer.status, Object.fromEntries(answer.headers));
+    response.end(Buffer.from(await answer.arrayBuffer()));
+    return true;
+  };
+
   /** A request under /auth/, as the web's Request, answered with the accounts' Response. */
   const signIn = async (request: IncomingMessage, response: ServerResponse) => {
     const chunks: Buffer[] = [];
@@ -282,6 +326,10 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
   const door: Accounts = {
     exists: (space) => auth.exists(space),
     member: async (cookie, space) => (await auth.member(new Request("http://localhost/", { headers: { cookie } }), space))?.user.id ?? null,
+    who: async (cookie, space) => {
+      const found = await auth.member(new Request("http://localhost/", { headers: { cookie } }), space);
+      return found ? { id: found.user.id, role: found.role } : null;
+    },
   };
   /** Where a page or file request is addressed: this server's public origin, if it has one. */
   const addressOf = (request: IncomingMessage) => new URL(request.url ?? "/", options.origin ?? `http://${request.headers.host ?? "localhost"}`);
@@ -347,10 +395,34 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     return sendMcpResponse(request, response, answer);
   };
 
+  /** An editor talking to one of a space's agents (src/server/acp.ts): false when the address isn't one. */
+  const acp = async (request: IncomingMessage, response: ServerResponse): Promise<boolean> => {
+    const url = addressOf(request);
+    const at = acpAddress(url);
+    if (!at) return false;
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(request.headers)) if (typeof value === "string") headers.set(name, value);
+    const body = request.method === "GET" || request.method === "HEAD" ? undefined : (Readable.toWeb(request) as ReadableStream<Uint8Array>);
+    const asked = await acpRequest(new Request(url, { method: request.method, headers, body, duplex: "half" } as RequestInit), at, {
+      member: auth.agent,
+      name: async (space, user) => (await auth.members(space)).find((m) => m.id === user)?.name,
+      lock: (space) => auth.modelLock(space),
+      gateways: options.modelGateways,
+    });
+    const key = () => auth.agent(headers.get("authorization"), at.space, editorKey(at.agent));
+    const answer =
+      asked instanceof Response
+        ? asked
+        : asked.method === "GET"
+          ? await acpStream(asked, (knock) => ask(at.space, knock), watch(at.space, "acp"), key)
+          : acpResponse(await ask(at.space, asked, acpWait(asked)));
+    return sendMcpResponse(request, response, answer);
+  };
+
   /** Sends what the door decided for a request that isn't the space's socket. */
   const answer = async (request: IncomingMessage, response: ServerResponse, decision: Decision): Promise<void> => {
     // Moving a space (src/server/transfer.ts) is under /auth/ too; anything else there is the accounts'.
-    if (decision.door === "auth") return void ((await transfer(request, response)) || (await signIn(request, response)));
+    if (decision.door === "auth") return void ((await transfer(request, response)) || (await model(request, response)) || (await signIn(request, response)));
     if (decision.door === "live-mcp") {
       const url = addressOf(request);
       const headers = new Headers();
@@ -360,7 +432,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
       return void (await sendMcpResponse(request, response, out));
     }
     if (decision.door === "route") {
-      if (!(await mcp(request, response)) && !(await publicRoute(request, response, decision))) await answer(request, response, unrouted(request.method ?? "GET"));
+      if (!(await mcp(request, response)) && !(await acp(request, response)) && !(await publicRoute(request, response, decision))) await answer(request, response, unrouted(request.method ?? "GET"));
       return;
     }
     if (decision.door === "asset") return file(request, response);
@@ -421,7 +493,7 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
       const status = decision.door === "refuse" ? decision.status : 404;
       return void raw.end(`HTTP/1.1 ${status} ${STATUS_CODES[status] ?? ""}\r\n\r\n`);
     }
-    const { space: name, member } = decision;
+    const { space: name, member, role } = decision;
     let kernel: Worker;
     try {
       kernel = await space(name);
@@ -449,7 +521,12 @@ export async function serve(options: Options): Promise<{ url: string; stop(): Pr
     socket.onMessage = (text) => {
       try {
         // The kernel learns who this client is from its hello, which only the server may say.
-        port1.postMessage(signed(JSON.parse(text), member));
+        const message = JSON.parse(text);
+        // A command the member may not run is answered here, with why; what isn't let through never reaches the kernel.
+        const answer = answerFor(message, role);
+        if (answer) socket.send(JSON.stringify(answer));
+        const heard = signed(message, member, role);
+        if (heard !== null) port1.postMessage(heard);
       } catch {
         socket.close(1007, "JSON only");
       }
@@ -494,6 +571,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const i = process.argv.indexOf(`--${name}`);
     return i > 0 ? process.argv[i + 1] : fallback;
   };
+  const allowPrivate = arg("allow-private", process.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean);
   const { url } = await serve({
     port: Number(arg("port", "8787")),
     host: arg("host", "127.0.0.1"),
@@ -502,8 +580,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     kernel: arg("kernel", ".build/server/space.js"),
     providers: providersFrom(process.env, providerModules),
     origin: arg("origin", process.env.PUBLIC_ORIGIN ?? "") || undefined,
-    allowPrivate: arg("allow-private", process.env.ALLOW_PRIVATE_HOSTS ?? "").split(",").map((h) => h.trim()).filter(Boolean),
+    allowPrivate,
     email: smtpFromEnv(process.env),
+    modelGateways: gatewaysFrom(process.env.MODEL_GATEWAYS, allowPrivate),
+    pushHosts: pushHostsFrom(process.env.PUSH_HOSTS),
   });
   console.log(`Serving ${arg("site", "dist")} at ${url}; spaces at ${url.replace("http", "ws")}/s/<space>/kernel, kept in ${arg("spaces", ".spaces")}/`);
 }

@@ -13,6 +13,8 @@
 //   extensible-app test [files...] [--json]               checks the app and runs its tests in memory
 //   extensible-app deploy [--name n] [--replace] [--keep-from address] [--no-deploy] [--dev]
 //                                                         the app on a Cloudflare Worker of its own, at /
+//   extensible-app acp <address>                          for an editor: talks to an agent in a space
+//                                                         (scripts/acp-bridge.mjs; needs no project)
 //
 // What it serves is one site: the platform's built files (dist/ of this
 // package, without this repo's own pages: the front page, the demos, the docs)
@@ -41,6 +43,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { SITE_PAGES } from "./deploy-app.mjs";
 import { browserKernel, cloudflareKernel, nodeKernel, projectKernel } from "./project-kernel.mjs";
 import { writeProjectTypes } from "./types.mjs";
+import { withHints } from "../sw/preload-hints.js";
 
 /** This package: the platform. */
 export const PLATFORM = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -84,7 +87,7 @@ export function siteEntries(project, { platform = PLATFORM } = {}) {
   for (const name of readdirSync(dist)) if (!SITE_PAGES.includes(name) && name !== "index.html") entries[name] = join(dist, name);
   const platformNames = Object.keys(entries).sort().join(", ");
   for (const name of readdirSync(project)) {
-    if (name.startsWith(".") || NOT_SERVED.includes(name)) continue;
+    if (!servable(name) || NOT_SERVED.includes(name)) continue;
     if (entries[name]) throw new Error(`Your project's ${name} has the same address as the platform's /${name}: rename it (the platform's are ${platformNames})`);
     entries[name] = join(project, name);
   }
@@ -121,6 +124,36 @@ export function writtenFiles(project, entries, kernel, { platform = PLATFORM } =
     written["_headers"] = headers.replace(forever, "$1 public, max-age=0, must-revalidate");
   }
   return written;
+}
+
+/**
+ * `written` with the app's page given its preload hints (sw/preload-hints.js), as the platform's build gives its
+ * own apps: the files the first view needs, named in the page, so a browser asks for them as the page arrives.
+ * Made from the project's files as they are now, so the project's own app.html is never changed. Both the page
+ * at /app.html and the front page, when that is the app's page, get them.
+ * @param {string} project @param {Record<string, string>} entries @param {Record<string, string>} written @param {{ platform?: string }} [options]
+ * @returns {Promise<Record<string, string>>}
+ */
+export async function withPreloadHints(project, entries, written, { platform = PLATFORM } = {}) {
+  const dist = platformSite(platform);
+  const facts = join(dist, "platform", "preload.json");
+  // A platform built before there were hints: the pages are served as they are.
+  if (!existsSync(facts)) return written;
+  const read = async (path) => {
+    const [, top, ...rest] = decodeURIComponent(path).split("/");
+    const address = [top, ...rest].join("/");
+    if (address in written) return written[address];
+    // Only what the site serves: the platform's files, and the project's own that aren't hidden.
+    if (!entries[top] || ![top, ...rest].every(servable)) return undefined;
+    const file = join(entries[top], ...rest);
+    return existsSync(file) && lstatSync(file).isFile() ? readFileSync(file, "utf8") : undefined;
+  };
+  const known = JSON.parse(readFileSync(facts, "utf8"));
+  const out = { ...written };
+  const page = readFileSync(join(project, "app.html"), "utf8");
+  out["app.html"] = await withHints(page, "/app.html", read, known);
+  if (entries["index.html"] === join(project, "app.html")) out["index.html"] = atRoot(await withHints(page, "/index.html", read, known));
+  return out;
 }
 
 /**
@@ -166,11 +199,11 @@ export async function dev(project, { port = 5173, host = "127.0.0.1", platform =
   const site = join(dir, "site");
   // The project's own kernel.json, if it has one: read once, as a kernel reads its settings when it starts.
   const kernel = projectKernel(project, { platform });
-  const lay = () => {
+  const lay = async () => {
     const entries = siteEntries(project, { platform });
-    linkSite(site, entries, project, writtenFiles(project, entries, kernel, { platform }));
+    linkSite(site, entries, project, await withPreloadHints(project, entries, writtenFiles(project, entries, kernel, { platform }), { platform }));
   };
-  lay();
+  await lay();
   writeProjectTypes(project, { platform });
   // A file or folder added anywhere in the project is served as soon as it's there.
   let timer;
@@ -180,11 +213,9 @@ export async function dev(project, { port = 5173, host = "127.0.0.1", platform =
     if (String(file) === "kernel.json" && !quiet) console.error("kernel.json changed: stop this and run it again to use it.");
     clearTimeout(timer);
     timer = setTimeout(() => {
-      try {
-        lay();
-      } catch (error) {
+      lay().catch((error) => {
         if (!quiet) console.error(error.message);
-      }
+      });
     }, 100);
   });
   const { serve } = await import(pathToFileURL(join(platform, ".build", "server", "serve.js")).href);
@@ -267,7 +298,9 @@ const USAGE = `Usage, in your project's folder:
   extensible-app dev [--port 5173] [--host 127.0.0.1]
   extensible-app check [--json]
   extensible-app test [files...] [--json]
-  extensible-app deploy [--name worker-name] [--replace] [--keep-from address] [--no-deploy] [--dev]`;
+  extensible-app deploy [--name worker-name] [--replace] [--keep-from address] [--no-deploy] [--dev]
+Anywhere, for an editor (it starts this itself):
+  extensible-app acp <address of an agent in a space>   with its key in EXTENSIBLE_APP_KEY`;
 
 // npm runs it through a link in node_modules/.bin, so compare the file the link points at.
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
@@ -285,7 +318,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
   };
   const project = process.cwd();
   try {
-    if (command === "dev") {
+    if (command === "acp") {
+      // An editor's way to an agent in a space (scripts/acp-bridge.mjs): needs no project, and nothing built.
+      await (await import("./acp-bridge.mjs")).main(args);
+    } else if (command === "dev") {
       const port = Number(option("--port") ?? 5173);
       const host = option("--host") ?? "127.0.0.1";
       if (args.length) throw Object.assign(new Error(USAGE), { code: 2 });
@@ -315,6 +351,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.ar
       const local = flag("--dev");
       if (args.length) throw Object.assign(new Error(USAGE), { code: 2 });
       const laid = layoutProject(project, { name });
+      // The app's page with its preload hints, as `dev` serves it.
+      for (const [address, text] of Object.entries(await withPreloadHints(project, siteEntries(project), {}))) writeFileSync(join(laid.site, address), text);
       const config = relative(project, laid.config);
       console.log(`Wrote ${relative(project, laid.target)}/ for the Worker "${laid.worker}"`);
       if (local) run("npx", ["wrangler", "dev", "-c", config], project);

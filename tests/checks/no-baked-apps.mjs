@@ -32,8 +32,8 @@ export default async function ({ check, context, URL: site, errors }) {
     });
   check("the core imports no plugin, demo or page of the site", !found.length, found.join(", "));
 
-  // An app runs only what it links: habits links habits.js, so that and Customize (std/customize.js, which
-  // the host adds to every app) are the only workers its tab starts.
+  // An app runs only what it links: habits links habits.js, so that is the only worker its tab starts. Customize
+  // (std/customize.js, which the host adds to every app) starts when it is first opened (tests/checks/stand-in.mjs).
   const own = await context.browser().newContext();
   const page = await own.newPage();
   watchErrors(page, errors, "no-baked-apps");
@@ -42,7 +42,7 @@ export default async function ({ check, context, URL: site, errors }) {
   // Long enough for any plugin the kernel started on its own to have been spawned too.
   await page.waitForTimeout(1500);
   const running = await page.evaluate(() => [...window.__host.workers.keys()].map((key) => key.split("@")[0]).sort());
-  check("an app runs only the plugins it links", running.join() === "customize,habits", running.join(", "));
+  check("an app runs only the plugins it links", running.join() === "habits", running.join(", "));
 
   // With the workbench open in the same browser, one kernel serves both tabs. The workbench's tab-scoped
   // demo plugin (bars) runs in the workbench's tab only, not in the habits tab beside it.

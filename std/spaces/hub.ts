@@ -9,7 +9,7 @@
 //   sync/log/<chunk>.json   the accepted changes, a hundred to a file, so a device catches up from any point
 
 import type { Dispatch } from "../../src/shared/protocol";
-import type { Accepted, AppRequest, BlobRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, ReviewToSpace, SpaceRole, SyncRecord, SyncToDevice, SyncToSpace, TraceRequest, Verdict } from "../../src/shared/sync";
+import type { Accepted, AppRequest, BlobRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, TraceRequest, Verdict } from "../../src/shared/sync";
 import { env } from "../../src/kernel/env";
 import { hooks } from "../../src/kernel/hooks";
 import type { Host, Hosts } from "../../src/kernel/hosts";
@@ -17,6 +17,8 @@ import type { Collections, StoredRecord } from "../../src/kernel/records";
 import { validate } from "../../src/kernel/schema";
 import type { Store } from "../../src/kernel/store";
 import { record as trace } from "../../src/kernel/trace";
+import type { SpacePermissions } from "./permissions";
+import type { Role } from "./rules";
 
 const HEAD = "sync/head.json";
 const CHUNK = 100;
@@ -25,7 +27,6 @@ const ID = /^[\w-]{1,64}$/;
 /** At most this many changes in one push, and this many bytes in one record. */
 const MAX_PUSH = 100;
 const MAX_RECORD = 100_000;
-export const VIEWER_REFUSAL = "Viewers can read this space, not change it";
 
 const chunkOf = (seq: number) => Math.floor((seq - 1) / CHUNK);
 const chunkFile = (chunk: number) => `sync/log/${String(chunk).padStart(8, "0")}.json`;
@@ -153,24 +154,6 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     return { baseRecord, deletedSince };
   }
 
-  /** Who first created the current incarnation of `(collection, id)` according to the sync log. */
-  async function creatorFromLog(collection: string, id: string, batchAccepted: Accepted[]): Promise<string | undefined> {
-    let creator: string | undefined;
-    const inspect = (c: Accepted) => {
-      if (c.collection !== collection || c.id !== id) return;
-      if (c.after === null) creator = undefined;
-      else if (!creator && c.by) creator = c.by;
-    };
-    for (let chunk = 0; chunk <= chunkOf(head.seq) && head.seq > 0; chunk++) {
-      for (const c of await readChunk(chunk)) inspect(c);
-    }
-    for (const c of batchAccepted) inspect(c);
-    return creator;
-  }
-
-  const isCreatorOwned = (collectionName: string): boolean =>
-    (records.registry.get(collectionName)?.schema as Record<string, unknown> | undefined)?.["x-ownership"] === "creator";
-
   /** Checks a change as a device sent it: names, sizes, and the collection's schema when this space knows it. */
   function problem(change: Outgoing): string | undefined {
     if (!change || typeof change !== "object") return "A change is an object";
@@ -182,9 +165,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     if (JSON.stringify(change.after).length > MAX_RECORD) return "That record is too big";
     const collection = records.registry.get(change.collection);
     if (collection) {
-      const hasCreatedByProp = Object.hasOwn(collection.schema.properties ?? {}, "createdBy");
-      const metaKeys = hasCreatedByProp ? ["id", "createdAt", "updatedAt"] : ["id", "createdAt", "updatedAt", "createdBy"];
-      const fields = Object.fromEntries(Object.entries(change.after).filter(([k]) => !metaKeys.includes(k)));
+      const fields = Object.fromEntries(Object.entries(change.after).filter(([k]) => k !== "id" && k !== "createdAt" && k !== "updatedAt"));
       const errors = validate({ ...collection.schema, type: "object" }, fields);
       if (errors.length) return errors.map((e) => `${e.path} ${e.message}`).join("; ");
     }
@@ -214,22 +195,15 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
    * Checks and applies one change. When `change.base` trails `version` (> 0) and both the device and the
    * server edited disjoint fields without deleting the record, merges them into one combined record.
    */
-  async function accept(change: Outgoing, by: string | undefined, role: SpaceRole | undefined, dispatch: Dispatch, batchAccepted: Accepted[] = []): Promise<{ verdict: Verdict; accepted?: Accepted }> {
+  async function accept(change: Outgoing, by: string | undefined, dispatch: Dispatch, role?: Role, batchAccepted: Accepted[] = []): Promise<{ verdict: Verdict; accepted?: Accepted }> {
     const wrong = problem(change);
     if (wrong) return { verdict: { ok: false, error: wrong, ...(await current(change)) } };
     const version = head.versions[key(change.collection, change.id)] ?? 0;
     const before = (await records.record(change.collection, change.id)) as SyncRecord | null;
-    const creatorOwned = isCreatorOwned(change.collection);
-
-    // Row-level creator ownership: only the creator (or space owner) can update or delete an existing record.
-    let creator: string | undefined;
-    if (creatorOwned && before !== null) {
-      creator = typeof before.createdBy === "string" && before.createdBy ? before.createdBy : await creatorFromLog(change.collection, change.id, batchAccepted);
-      if (creator && by && by !== creator && role !== "owner") {
-        return { verdict: { ok: false, error: "Only the member who created this record can change it", version, record: before } };
-      }
-    }
-
+    // The member's role and the collection's rules decide first (permissions.ts): what they may not change, they are told who can,
+    // even when the change is also out of date, so it isn't kept as a draft they could never send.
+    const no = await api.permit?.may(change, before, by, role);
+    if (no) return { verdict: { ok: false, error: no, denied: true, version, record: before } };
     const at = new Date().toISOString();
     let candidateAfter = change.after;
     let wasMerged = false;
@@ -240,7 +214,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
         const fallbackBase = !loggedBase && change.before && typeof change.before === "object" && !Array.isArray(change.before) && change.before.id === change.id ? change.before : null;
         const baseRecord = loggedBase ?? fallbackBase;
         if (baseRecord && !deletedSince) {
-          const ignored = new Set(creatorOwned ? ["id", "createdAt", "updatedAt", "createdBy"] : ["id", "createdAt", "updatedAt"]);
+          const ignored = new Set(["id", "createdAt", "updatedAt"]);
           const clientDiff = changedFields(baseRecord, change.after, ignored);
           const serverDiff = changedFields(baseRecord, before, ignored);
           const disjoint = clientDiff.size > 0 && ![...clientDiff].some((f) => serverDiff.has(f));
@@ -265,13 +239,11 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     }
 
     // Every stored record has string timestamps (collections sort by updatedAt): a device's are kept, missing ones filled in.
-    const stampedBy = creatorOwned ? (before === null ? by : (creator ?? (typeof before.createdBy === "string" ? before.createdBy : undefined))) : undefined;
     const after: SyncRecord | null =
       candidateAfter === null
         ? null
         : {
             ...candidateAfter,
-            ...(stampedBy ? { createdBy: stampedBy } : {}),
             createdAt: typeof candidateAfter.createdAt === "string" ? candidateAfter.createdAt : typeof before?.createdAt === "string" ? before.createdAt : at,
             updatedAt: wasMerged ? at : typeof candidateAfter.updatedAt === "string" ? candidateAfter.updatedAt : at,
           };
@@ -296,6 +268,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       announce(accepted.seq, null);
       throw error;
     }
+    api.permit?.did(change.collection, change.id, !before, after === null, by);
     return { verdict: { ok: true, seq: accepted.seq, ...(wasMerged && after ? { merged: after } : {}) }, accepted };
   }
 
@@ -323,6 +296,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       head.seq = accepted.seq;
       head.versions[key(change.collection, change.id)] = accepted.seq;
       unlogged.set(accepted.seq, accepted.by);
+      api.permit?.did(change.collection, change.id, !change.before, !change.after, accepted.by);
       return accepted;
     };
     const now = headLoaded ? number() : undefined;
@@ -341,33 +315,21 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     for (const host of hosts.list) hosts.send(host, { t: "sync", op: "again" });
   });
 
-  /** The space's members' names and roles by id, from the host's accounts; undefined where the host can't say. */
-  async function directory(): Promise<{ names: Record<string, string>; roles: Record<string, SpaceRole> } | undefined> {
+  /** The space's members' names by id, from the host's accounts; undefined where the host can't say. */
+  async function names(): Promise<Record<string, string> | undefined> {
     try {
-      const list = (await env().members?.()) as { id: string; name: string; role?: SpaceRole }[] | undefined;
+      const list = await env().members?.();
       if (!list) return undefined;
-      const names: Record<string, string> = {};
-      const roles: Record<string, SpaceRole> = {};
-      for (const m of list) {
-        if (typeof m?.id === "string" && typeof m.name === "string") {
-          names[m.id] = m.name;
-          if (m.role === "owner" || m.role === "member" || m.role === "viewer") roles[m.id] = m.role;
-        }
-      }
-      return { names, roles };
+      return Object.fromEntries(list.filter((m) => typeof m?.id === "string" && typeof m.name === "string").map((m) => [m.id, m.name]));
     } catch (error) {
       trace({ kind: "error", name: "sync:members", detail: String(error) });
       return undefined;
     }
   }
 
-  async function roleOf(member: string | undefined): Promise<SpaceRole | undefined> {
-    if (!member) return undefined;
-    const dir = await directory();
-    return dir?.roles[member];
-  }
-
   const api = {
+    /** Who may change what (permissions.ts): the space's kernel sets this. Without it, every member may change everything. */
+    permit: undefined as Pick<SpacePermissions, "may" | "told" | "reader" | "did"> | undefined,
     /** Members' plugins (plugins.ts): the space's kernel sets this. */
     plugins: undefined as ((host: Host, message: PluginRequest) => unknown) | undefined,
     /** Apps members made and shared (made-apps.ts): the space's kernel sets this. */
@@ -389,72 +351,43 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       for (const other of listening) hosts.send(other, message);
     },
     /** A sync message from a device. */
-    async handle(host: Host, message: SyncToSpace & { member?: string }): Promise<void> {
+    async handle(host: Host, message: SyncToSpace & { member?: string; role?: Role }): Promise<void> {
       if (hosts.mode !== "server") return hosts.send(host, { t: "sync", op: "refused", error: "Only a space's kernel answers sync" });
       await loaded;
+      // The server says what this member may do with each message (src/server/signed.ts). A reader's that would change the space is answered here.
+      const role = message.role;
+      if (role === "reader" && (await api.permit?.reader(host, message))) return;
       if (message.op === "hello") {
         const after = Number.isInteger(message.since) && message.since >= 0 ? message.since : 0;
-        // Each member's name (and role, when known), so the device can show who made a change (`by`) by name.
-        const dir = await directory();
-        const role = host.member ? dir?.roles[host.member] : undefined;
+        // Each member's name, by id, so the device can show who made a change (`by`) by name.
+        const members = await names();
         // Ordered with pushes, so a change accepted while this device catches up isn't missed or sent twice.
         await serially(async () => {
+          // Read here, in order with pushes: an author kept by a push just before can't be undone by an older answer.
+          const access = role && api.permit ? { role, ...(await api.permit.told()) } : {};
           // Only what has gone to every device: anything later comes to this one as it does to them.
-          hosts.send(host, {
-            t: "sync",
-            op: "changes",
-            changes: (await since(after)).filter((c) => c.seq <= sent),
-            seq: sent,
-            ...(host.member ? { member: host.member } : {}),
-            ...(role ? { role } : {}),
-            ...(dir ? { members: dir.names } : {}),
-            ...(dir && Object.keys(dir.roles).length ? { roles: dir.roles } : {}),
-          });
+          hosts.send(host, { t: "sync", op: "changes", changes: (await since(after)).filter((c) => c.seq <= sent), seq: sent, ...(host.member ? { member: host.member } : {}), ...(members ? { members } : {}), ...access });
           listening.add(host);
         });
         return;
       }
       if (message.op === "app") return void onApp?.(message.app);
-      if (message.op === "review") {
-        if (message.action === "answer" && (await roleOf(host.member)) === "viewer") return;
-        return void api.reviews?.(host, message);
-      }
+      if (message.op === "review") return void api.reviews?.(host, message);
       if (message.op === "live") return void api.live?.(host, message);
       if (message.op === "trace") return void (api.trace ? api.trace(host, message) : hosts.send(host, { t: "sync", op: "trace", on: false, error: "This space doesn't stream its trace" }));
       if (message.op === "reflect") return void (api.reflect ? api.reflect(host, message) : hosts.send(host, { t: "sync", op: "reflect:reply", id: message.id, ok: false, error: "This space's kernel has no reflect module" }));
-      if (message.op === "plugins") {
-        if ((message.action === "add" || message.action === "remove") && (await roleOf(host.member)) === "viewer") {
-          return hosts.send(host, { t: "sync", op: "plugins:reply", id: message.id, ok: false, error: VIEWER_REFUSAL });
-        }
-        return void (api.plugins ? api.plugins(host, message) : hosts.send(host, { t: "sync", op: "plugins:reply", id: message.id, ok: false, error: "This space doesn't keep plugins" }));
-      }
-      if (message.op === "apps") {
-        if ((message.action === "share" || message.action === "unshare") && (await roleOf(host.member)) === "viewer") {
-          return hosts.send(host, { t: "sync", op: "apps:reply", id: message.id, ok: false, error: VIEWER_REFUSAL });
-        }
-        return void (api.apps ? api.apps(host, message) : hosts.send(host, { t: "sync", op: "apps:reply", id: message.id, ok: false, error: "This space doesn't keep apps" }));
-      }
-      if (message.op === "blobs") {
-        if (message.action === "put" && (await roleOf(host.member)) === "viewer") {
-          return hosts.send(host, { t: "sync", op: "blobs:reply", id: message.id, ok: false, error: VIEWER_REFUSAL });
-        }
-        return void (api.blobs ? api.blobs(host, message) : hosts.send(host, { t: "sync", op: "blobs:reply", id: message.id, ok: false, error: "This space doesn't keep blobs" }));
-      }
+      if (message.op === "plugins") return void (api.plugins ? api.plugins(host, message) : hosts.send(host, { t: "sync", op: "plugins:reply", id: message.id, ok: false, error: "This space doesn't keep plugins" }));
+      if (message.op === "apps") return void (api.apps ? api.apps(host, message) : hosts.send(host, { t: "sync", op: "apps:reply", id: message.id, ok: false, error: "This space doesn't keep apps" }));
+      if (message.op === "blobs") return void (api.blobs ? api.blobs(host, message) : hosts.send(host, { t: "sync", op: "blobs:reply", id: message.id, ok: false, error: "This space doesn't keep blobs" }));
       if (message.op === "push") {
         const changes = Array.isArray(message.changes) ? message.changes.slice(0, MAX_PUSH) : [];
-        const role = await roleOf(host.member);
-        if (role === "viewer") {
-          const results: Verdict[] = await serially(async () => Promise.all(changes.map(async (change) => ({ ok: false as const, error: VIEWER_REFUSAL, ...(await current(change)) }))));
-          trace({ kind: "denied", name: "sync:viewer", detail: `refused push of ${changes.length} from ${host.member ?? "viewer"}` });
-          return hosts.send(host, { t: "sync", op: "pushed", id: message.id, results });
-        }
         const dispatch = { trace: `sync-${message.id}` };
         const results = await serially(async () => {
           const out: Verdict[] = [];
           const accepted: Accepted[] = [];
           for (const change of changes) {
             try {
-              const { verdict, accepted: one } = await accept(change, host.member, role, dispatch, accepted);
+              const { verdict, accepted: one } = await accept(change, host.member, dispatch, role, accepted);
               out.push(verdict);
               if (one) accepted.push(one);
             } catch (error) {

@@ -17,7 +17,7 @@
 // Kept in the space's folder:
 //   server/apps.json   the apps opened in the space
 
-import { isAgentFile } from "../../src/shared/agent-runner";
+import { isAgentFile } from "../../src/shared/agent-file";
 import { readManifest } from "../../src/kernel/manifest";
 import type { RemotePlugins } from "../../src/kernel/remote";
 import type { Store } from "../../src/kernel/store";
@@ -51,6 +51,8 @@ export function serverApps(
   fetcher: (url: string) => Promise<Response> = (url) => fetch(url),
   /** Called when an app's plugins have been read: the collections the space knows of may have changed. */
   learned: () => void = () => {},
+  /** Called with each of an app's plugins' manifests as it is read, whether or not it runs here (permissions.ts reads its collections' rules). */
+  read: (manifest: ReturnType<typeof readManifest>) => void = () => {},
 ) {
   let apps: string[] = [];
   /** The apps whose plugins were started since the kernel started. */
@@ -130,6 +132,7 @@ export function serverApps(
         continue;
       }
       loadedPlugins.add(href);
+      read(manifest);
       const runs = manifest.runs;
       // A plugin that runs only in the browser still says which collections it keeps, so the space's server
       // plugins can read the records it writes there (a survey a member made, say). It isn't started here.

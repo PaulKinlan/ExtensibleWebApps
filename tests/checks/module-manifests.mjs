@@ -20,16 +20,29 @@ const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 export default async function ({ check, context, URL: site }) {
   const { modules } = JSON.parse(readFileSync(join(ROOT, "kernel.json"), "utf8"));
 
-  // The build: one file per module, and none of them inside the kernel's.
+  // The build: one file per module, and none of them inside the kernel's. The exception is a module whose
+  // manifest says it starts with every kernel: every app runs it, so it is part of the kernel's own file, where it
+  // costs no first visit a request made only after the kernel arrived (scripts/first-draw.mjs).
   const assets = join(ROOT, "dist", "assets");
-  const built = existsSync(assets) ? readdirSync(assets) : [];
+  // This build's files, from the list the build writes (vite.parts.ts): dist/assets/ may also hold files kept from
+  // earlier deploys for pages still open (scripts/keep-assets.mjs), an older kernel or module file among them.
+  const parts = join(ROOT, "dist", "platform", "parts.json");
+  const built = existsSync(parts) ? JSON.parse(readFileSync(parts, "utf8")).files.filter((f) => f.startsWith("/assets/")).map((f) => f.slice("/assets/".length)) : existsSync(assets) ? readdirSync(assets) : [];
   const kernelFile = built.find((f) => /^browser-[\w-]+\.js$/.test(f));
   const kernel = kernelFile ? readFileSync(join(assets, kernelFile), "utf8") : "";
-  const noFile = modules.filter((name) => !built.some((f) => f.startsWith(`kernel-${name}-`)));
-  check("the build makes each kernel module a file of its own", !!kernelFile && !noFile.length, `no file for: ${noFile.join(", ")}`);
+  const always = modules.filter((name) => moduleManifest(name, ROOT).starts === "always");
+  // A module that is only for a server (`"only": "server"`) is no part of the browser's kernel: no file, no name.
+  const serverOnly = modules.filter((name) => moduleManifest(name, ROOT).only === "server");
+  const onDemand = modules.filter((name) => !always.includes(name) && !serverOnly.includes(name));
+  const inBrowser = serverOnly.filter((name) => built.some((f) => f.startsWith(`kernel-${name}-`)) || new RegExp(`name:\\s*"${name}"`).test(kernel));
+  check("a module that is only for a server is left out of the browser's kernel: no file of its own, and not named in the kernel's", !!kernelFile && serverOnly.includes("acp") && !inBrowser.length, `in the browser's build: ${inBrowser.join(", ")}`);
+  const noFile = onDemand.filter((name) => !built.some((f) => f.startsWith(`kernel-${name}-`)));
+  check("the build makes each kernel module that starts when used a file of its own", !!kernelFile && !noFile.length, `no file for: ${noFile.join(", ")}`);
   // Each module's file is fetched by name from the kernel, never copied into it: the kernel only names the file.
-  const named = modules.filter((name) => !new RegExp(`import\\("\\./kernel-${name}-[\\w-]+\\.js"\\)`).test(kernel));
-  check("the kernel's own file only names each module's file, to fetch when it is used", !named.length, `not fetched on demand: ${named.join(", ")}`);
+  const named = onDemand.filter((name) => !new RegExp(`import\\("\\./kernel-${name}-[\\w-]+\\.js"\\)`).test(kernel));
+  check("the kernel's own file only names each of those modules' files, to fetch when it is used", !named.length, `not fetched on demand: ${named.join(", ")}`);
+  const apart = always.filter((name) => built.some((f) => f.startsWith(`kernel-${name}-`)));
+  check("a module that starts with every kernel is in the kernel's own file, not a request after it", !!kernelFile && !apart.length, `a file of their own: ${apart.join(", ")}`);
 
   // A manifest the build doesn't understand stops it.
   const root = mkdtempSync(join(tmpdir(), "module-json-"));
@@ -54,13 +67,14 @@ export default async function ({ check, context, URL: site }) {
   const unknown = outcome({ services: ["bus"], provides: ["bus"] });
   const notList = outcome({ services: "bus" });
   const badStart = outcome({ services: ["bus"], starts: "sometimes" });
+  const badOnly = outcome({ services: ["bus"], only: "browser" });
   const twice = outcome({ services: ["llm"] });
   rmSync(root, { recursive: true, force: true });
   check("a kernel module's manifest says what it adds", good.ok?.bus?.hooks?.[0] === "bus:posted", JSON.stringify(good));
   check(
     "a module with no manifest, a manifest with a setting the kernel doesn't know or a wrong value, or two modules that add the same service, stops the build",
-    /has no manifest/.test(none.error) && /isn't a setting/.test(unknown.error) && /must be a list/.test(notList.error) && /starts must be/.test(badStart.error) && /both add llm/.test(twice.error),
-    JSON.stringify({ none, unknown, notList, badStart, twice }),
+    /has no manifest/.test(none.error) && /isn't a setting/.test(unknown.error) && /must be a list/.test(notList.error) && /starts must be/.test(badStart.error) && /only must be "server"/.test(badOnly.error) && /both add llm/.test(twice.error),
+    JSON.stringify({ none, unknown, notList, badStart, badOnly, twice }),
   );
 
   // A kernel of its own (another browser context has its own shared worker), so what other checks used doesn't count.
@@ -77,8 +91,8 @@ export default async function ({ check, context, URL: site }) {
     };
     await settled();
     const atStart = await running();
-    // history starts with every kernel (its manifest says so), as its own file: undo holds every write from the first.
-    check("history starts with every kernel, from a file of its own", atStart.includes("history") && built.some((f) => f.startsWith("kernel-history-")), `running at the start: ${atStart.join(", ") || "none"}`);
+    // history starts with every kernel (its manifest says so): undo holds every write from the first.
+    check("history starts with every kernel", atStart.includes("history"), `running at the start: ${atStart.join(", ") || "none"}`);
     // So a plugin that asks for history later, in an app whose plugins never listed it, can undo a write made before it asked.
     const log = (id, prefix) => page.waitForFunction(([i, p]) => window.__host.traces.findLast((e) => e.plugin === i && e.detail?.startsWith(p)), [id, prefix], { timeout: 5000 }).then((h) => h.jsonValue()).then((e) => e.detail).catch((e) => `no answer: ${e.message.split("\n")[0]}`);
     await page.evaluate((source) => window.__host.command("install", source), `export const manifest = { id: 'early-writer', name: 'Early writer', permissions: [], collections: { 'early-notes': { title: 'Early notes', schema: { type: 'object', properties: { title: { type: 'string' } } } } } };
@@ -105,7 +119,7 @@ export default async (ctx) => {
     const reference = await page.evaluate(() => window.__host.command("reference"));
     const state = await page.evaluate(() => window.__host.command("modules"));
     const stopped = state.filter((m) => !m.running).map((m) => m.name);
-    check("the kernel's reference describes every module the site lists, so asking for it starts them all", !stopped.length && modules.every((name) => state.some((m) => m.name === name)), `not running: ${stopped.join(", ")}`);
+    check("the kernel's reference describes every module the site lists, so asking for it starts them all", !stopped.length && modules.filter((name) => !serverOnly.includes(name)).every((name) => state.some((m) => m.name === name)), `not running: ${stopped.join(", ")}`);
     // What a module adds only on a space's server (a door, the spaces module's server hooks) is checked there (tests/server/).
     const SERVER_ONLY = /^(doors |hooks sync:)/;
     const untrue = state.flatMap((m) => m.unused.filter((n) => !SERVER_ONLY.test(n)).map((n) => `${m.name}: ${n}`));

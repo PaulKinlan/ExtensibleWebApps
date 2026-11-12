@@ -1,0 +1,31 @@
+<!doctype html>
+<!--
+  The skill's worked example: a small app whose two plugins show the shapes
+  to copy. It is checked on every change to the platform, so it is always
+  right for the version it came with.
+
+  reading.js        owns a collection, draws it live from reading.html,
+                    handles the person's actions, adds a command
+  reading-count.js  reads that collection with a permission, and draws in a
+                    place, as a plugin for an app that left no slot for it
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reading</title>
+  <meta name="description" content="Books to read, and a count of the ones finished.">
+  <link rel="stylesheet" href="/platform/host.css">
+  <script type="module" src="/platform/host.js"></script>
+  <link rel="plugin" href="reading.js">
+  <link rel="plugin" href="reading-count.js">
+</head>
+<body>
+  <header>
+    <h1>Reading</h1>
+  </header>
+  <main>
+    <slot name="main"><p>Loading your books…</p></slot>
+  </main>
+</body>
+</html>

@@ -17,8 +17,8 @@ export default async function ({ check }) {
   const socket = { upgrade: true, cookie: "session=ann", origin: "https://site.example" };
 
   check("front door: /auth/ goes to the accounts", (await door("/auth/me")) === '{"door":"auth"}');
-  check("front door: a member's WebSocket from this site joins the space", (await door("/s/family/kernel", socket)) === '{"door":"join","space":"family","member":"ann"}');
-  check("front door: a client that isn't a browser (no Origin) may join too", (await door("/s/family/kernel", { ...socket, origin: null })) === '{"door":"join","space":"family","member":"ann"}');
+  check("front door: a member's WebSocket from this site joins the space", (await door("/s/family/kernel", socket)) === '{"door":"join","space":"family","member":"ann","role":"editor"}');
+  check("front door: a client that isn't a browser (no Origin) may join too", (await door("/s/family/kernel", { ...socket, origin: null })) === '{"door":"join","space":"family","member":"ann","role":"editor"}');
   const refused = (d) => JSON.parse(d).status;
   check("front door: another site's page can't open the space's socket", refused(await door("/s/family/kernel", { ...socket, origin: "https://evil.example" })) === 403);
   check("front door: only the space's members may join it", refused(await door("/s/family/kernel", { ...socket, cookie: "session=ben" })) === 403);

@@ -282,6 +282,7 @@ export type SpaceBlobs = ReturnType<typeof spaceBlobs>;
 /** What the device side needs of `syncDevice` (device.ts). */
 export interface BlobLink {
   status: { connected: boolean };
+  state?(): Promise<{ access?: { role?: string; owner?: string } }>;
   send(message: BlobRequest): boolean;
   heard: Set<(message: SyncToDevice) => void>;
   caughtUp: Set<() => void>;
@@ -386,10 +387,15 @@ export function clientBlobs(store: Store, getLink: () => BlobLink | undefined, o
       const link = getLink();
       ensureAttached(link);
       if (link?.status.connected) {
-        // Upload first when connected so viewers and space-quota refusals reject cleanly, and other devices can read `hash` right away.
+        // Upload first when connected so readers and space-quota refusals reject cleanly, and other devices can read `hash` right away.
         const uploaded = await uploadToSpace(link, hash, bytes, checked);
         await kept.putBytes(hash, bytes, uploaded.mediaType, { pending: false });
         return uploaded;
+      }
+      const access = link ? (await link.state?.())?.access : undefined;
+      if (access?.role === "reader") {
+        const ask = access.owner ? `the space's owner, ${access.owner},` : "the space's owner";
+        throw new Error(`You can read this space but not change it. Ask ${ask} to make you an editor.`);
       }
       const { stored } = await kept.putBytes(hash, bytes, checked, { pending: !!link });
       return stored;

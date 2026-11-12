@@ -1,0 +1,17 @@
+<!doctype html>
+<!--
+  An app whose agent an editor can talk to (tests/server/acp.mjs): the
+  reading list's library, and shelf-keeper.agent.md, which takes messages and
+  may read the library and ask to change it. stamper.agent.md takes none, so
+  an editor is told why it can't be reached.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Editor agent check</title>
+  <link rel="plugin" href="/demos/reading-list/library.js">
+  <link rel="agent" href="shelf-keeper.agent.md">
+  <link rel="agent" href="stamper.agent.md">
+</head>
+<body><slot name="main"></slot></body>
+</html>

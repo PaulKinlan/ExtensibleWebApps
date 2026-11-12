@@ -1,6 +1,6 @@
 // The service worker (sw.js): an app's folder address serves its app.html, and
 // a plugin's routes answer requests (the reading list's books.json and add-book).
-export default async function ({ a, check, openTab, URL, traceHas }) {
+export default async function ({ a, check, openTab, context, URL, traceHas }) {
   // ready never settles if the worker fails to install, so the wait is bounded.
   const ready = await a.evaluate(() => Promise.race([navigator.serviceWorker.ready.then((r) => !!r.active), new Promise((resolve) => setTimeout(() => resolve(false), 8000))])).catch(() => false);
   check("the platform's service worker starts", ready);
@@ -27,8 +27,12 @@ export default async function ({ a, check, openTab, URL, traceHas }) {
   const odd = await page.evaluate(() => fetch("add-book", { method: "POST", body: new URLSearchParams({ title: "Parable of the Sower", constructor: "x", toString: "y" }) }).then((r) => r.url));
   check("form fields named constructor or toString don't break a route", odd.endsWith("/demos/reading-list/"), odd);
 
-  // Another site's form can't post to a plugin's route: 127.0.0.1 is another origin than localhost.
-  const other = await openTab(URL.replace("localhost", "127.0.0.1"));
+  // Another site's form can't post to a plugin's route. The other site is a page of its own, answered here and never fetched:
+  // this site's own pages can't stand in for it, because their policy (form-action 'self' in public/_headers) stops them
+  // posting a form anywhere else before the route is ever asked.
+  const other = await context.newPage();
+  await other.route("http://another-site.test/**", (route) => route.fulfill({ contentType: "text/html", body: "<!doctype html><title>Another site</title><body></body>" }));
+  await other.goto("http://another-site.test/");
   await other.evaluate((action) => {
     const form = document.createElement("form");
     form.method = "post";

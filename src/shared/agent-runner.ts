@@ -9,8 +9,9 @@
 /** The loop an agent runs when its file names none. */
 export const DEFAULT_RUNNER = "/std/agents/runner.js";
 
-/** True for a link the kernel reads as an agent file rather than a plugin. */
-export const isAgentFile = (href: string) => /\.agent\.md$/i.test(new URL(href, "http://x").pathname);
+// (Whether a link is an agent file at all is agent-file.ts, which everything that opens links uses. This file
+// imports nothing: the page's script fetches it while it is still starting, and a file that imported from the
+// page's script would wait for it to finish, which waits for this.)
 
 /** What an agent file's frontmatter names as its loop (`runner:`), as written, or undefined. The kernel checks the rest of the file. */
 export function runnerName(text: string): string | undefined {

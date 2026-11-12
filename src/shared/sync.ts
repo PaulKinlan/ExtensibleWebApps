@@ -9,9 +9,6 @@
 // a draft. A device that was away asks for the changes since the last sequence
 // number it saw.
 
-/** A member's role in a space (src/server/auth/accounts.ts). */
-export type SpaceRole = "owner" | "member" | "viewer";
-
 /** A record as it is stored: its fields, with the id and times the kernel keeps. */
 export type SyncRecord = Record<string, unknown> & { id: string };
 
@@ -41,8 +38,12 @@ export type Verdict =
   | { ok: true; seq: number; merged?: SyncRecord }
   /** Stale: the space has a newer version, made by `by` (when the space knows who), so the device can say who won without having heard it first. */
   | { ok: false; stale: true; version: number; record: SyncRecord | null; by?: string }
-  /** Refused for another reason; when the change named a record, the record as the space has it, so the device can put it back. */
-  | { ok: false; error: string; version?: number; record?: SyncRecord | null };
+  /**
+   * Refused for another reason; when the change named a record, the record as the space has it, so the device can put it back.
+   * `denied` says the member may not make this change at all (their role, or the collection's rules: std/spaces/permissions.ts),
+   * so there is nothing to keep as a draft: `error` says who can make it instead.
+   */
+  | { ok: false; error: string; denied?: true; version?: number; record?: SyncRecord | null };
 
 /** A file of a plugin a member shared with the space (std/spaces/plugins.ts): text, or binary as base64. */
 export type SharedFile = { name: string; text: string } | { name: string; base64: string };
@@ -134,13 +135,29 @@ export type SyncToSpace =
   /** An app was opened in the space (its folder, `demos/reading-list`): its plugins that run on the server start there. */
   | { t: "sync"; op: "app"; app: string };
 
+/**
+ * What a member may do in the space, as the space tells their device with its answer to hello (std/spaces/permissions.ts):
+ * their role, each collection's rules, who added each record under an "author" rule (by `collection/id`), and the owner's
+ * name, for saying whom to ask. A device uses it to say so before the person types; the space decides again on every change.
+ */
+export interface Access {
+  role: "owner" | "editor" | "reader";
+  rules: Record<string, { add?: string; change?: string; remove?: string }>;
+  authors: Record<string, string>;
+  owner?: string;
+}
+
 // space -> device
 export type SyncToDevice =
   /**
    * Changes in order. `seq` is the space's latest, so a device knows it has caught up. The first, the
    * answer to hello, says which member the device is signed in as, and their role when known.
    */
-  | { t: "sync"; op: "changes"; changes: Accepted[]; seq: number; member?: string; role?: SpaceRole; members?: Record<string, string>; roles?: Record<string, SpaceRole> }
+  | ({ t: "sync"; op: "changes"; changes: Accepted[]; seq: number; member?: string; members?: Record<string, string> } & Partial<Access>)
+  /** A collection's rules changed (an app's plugins were read again): what a device was told with hello, again. */
+  | ({ t: "sync"; op: "rules" } & Pick<Access, "rules" | "authors" | "owner">)
+  /** Who added a record under an "author" rule, as it is added; no `by` once it is removed. */
+  | { t: "sync"; op: "author"; key: string; by?: string }
   | { t: "sync"; op: "pushed"; id: number; results: Verdict[] }
   | { t: "sync"; op: "refused"; error: string }
   /** The answer to a PluginRequest: the list, one plugin's files, or a shared plugin's new hash. */

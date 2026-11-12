@@ -118,3 +118,60 @@ export function pick() {
     input.click();
   });
 }
+
+/** This browser's push manager, once the site's service worker is there; null where a browser has none. */
+async function pushManager() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification !== "function") return null;
+  const registration = await Promise.race([navigator.serviceWorker.ready, new Promise((r) => setTimeout(() => r(null), 5000))]);
+  return registration?.pushManager ?? null;
+}
+
+/** A name for this device in the person's list, from what the browser says of itself: "Chrome on Android". */
+function deviceLabel() {
+  const ua = navigator.userAgent;
+  const browser = /Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "A browser";
+  const system = /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS X/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : /Linux/.test(ua) ? "Linux" : "";
+  return system ? `${browser} on ${system}` : browser;
+}
+
+/**
+ * Whether this browser can get notifications with every tab closed, whether the person allowed them, and its
+ * subscription's address if it has one (the account says whether that is one of the person's devices).
+ */
+export async function pushState() {
+  const manager = await pushManager();
+  if (!manager) return { supported: false };
+  const subscription = await manager.getSubscription().catch(() => null);
+  return { supported: true, permission: Notification.permission, ...(subscription ? { endpoint: subscription.endpoint } : {}) };
+}
+
+/**
+ * Asks to show notifications (only right after the person clicks) and subscribes this browser with its push
+ * service, for the server whose public key is `key`. Gives the subscription, for the account to keep.
+ */
+export async function pushOn(key) {
+  const manager = await pushManager();
+  if (!manager) throw new Error("This browser can't get notifications with the site closed. On an iPhone or iPad, add the site to your Home Screen first, and open it from there.");
+  const permission = Notification.permission === "default" ? await Notification.requestPermission() : Notification.permission;
+  if (permission !== "granted") throw new Error(permission === "denied" ? "Notifications from this site are blocked in this browser. Allow them in the site's settings (the icon beside the address), then turn them on here." : "Notifications weren't allowed, so nothing was turned on.");
+  // A subscription made for another server's key (the site moved) can't be used: it is ended, and a new one made.
+  const had = await manager.getSubscription().catch(() => null);
+  const same = had?.options?.applicationServerKey && btoa(String.fromCharCode(...new Uint8Array(had.options.applicationServerKey))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") === key;
+  if (had && !same) await had.unsubscribe().catch(() => {});
+  let subscription;
+  try {
+    subscription = same ? had : await manager.subscribe({ userVisibleOnly: true, applicationServerKey: fromBase64Url(key) });
+  } catch (error) {
+    throw new Error(`This browser couldn't reach its push service, so notifications aren't on. Check you're online and try again. (${error?.message ?? error})`);
+  }
+  return { subscription: subscription.toJSON(), label: deviceLabel() };
+}
+
+/** Ends this browser's subscription. Gives its address, for the account to forget; null if it had none. */
+export async function pushOff() {
+  const manager = await pushManager();
+  const subscription = await manager?.getSubscription().catch(() => null);
+  if (!subscription) return null;
+  await subscription.unsubscribe().catch(() => {});
+  return subscription.endpoint;
+}

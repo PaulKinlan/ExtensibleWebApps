@@ -24,9 +24,9 @@
 // open in it, and a personal space is one with one member):
 //   GET  /auth/spaces                       the spaces you're in, with your role
 //   POST /auth/spaces            { name }   makes a space, with you as its owner
-//   GET  /auth/spaces/<name>                its members (members only)
-//   POST /auth/spaces/<name>/invite { role? } a one-time invite as member or viewer (its owner only)
-//   POST /auth/spaces/<name>/role { user, role } switches someone between member and viewer (its owner only)
+//   GET  /auth/spaces/<name>                its members, each with their role (members only)
+//   POST /auth/spaces/<name>/invite { role? } a one-time invite to it, as an editor or (role: "reader") a reader (its owner only)
+//   POST /auth/spaces/<name>/role { user, role } makes a member an editor or a reader (its owner only)
 //   POST /auth/invites/accept    { token }  joins the space an invite is for
 //   POST /auth/spaces/<name>/leave { user? } leaves it, or (its owner) removes someone
 //
@@ -34,8 +34,11 @@
 //   GET  /auth/follow?since=<n>, POST /auth/follow { changes }
 //
 // And the keys members give agents outside the browser, to reach a space's MCP server (agent-keys.ts):
-//   GET  /auth/keys, POST /auth/keys { space, name }, POST /auth/keys/revoke { id }
+//   GET  /auth/keys, POST /auth/keys { space, name, editor? }, POST /auth/keys/revoke { id }
 // or that an MCP client gets by signing in with OAuth (mcp-oauth.ts): /auth/mcp/* and /.well-known/oauth-*.
+//
+// And the devices a person gets notifications on with every tab closed (push.ts):
+//   GET  /auth/push, POST /auth/push { subscription }, POST /auth/push/remove { id }, POST /auth/push/test
 //
 // A host lets a client join a space's kernel only if `member()` says it's in it.
 //
@@ -48,6 +51,8 @@ import { agentKeys } from "./agent-keys.ts";
 import { follow } from "./follow.ts";
 import { mcpOAuth } from "./mcp-oauth.ts";
 import { isFlow, type OAuthProvider, type Provider } from "./providers.ts";
+import { push, type PushOptions } from "./push.ts";
+import { roleOf, type Role } from "./roles.ts";
 import { ALGORITHMS, b64url, unb64url, type CredentialJSON, type PublicKey, verifyAssertion, verifyRegistration } from "./webauthn.ts";
 
 export interface User {
@@ -94,7 +99,7 @@ interface Challenge {
   session?: string;
 }
 
-export type Role = "owner" | "member" | "viewer";
+export { roleOf, type Role } from "./roles.ts";
 
 interface Space {
   name: string;
@@ -147,10 +152,12 @@ export async function bodyOf(request: Request, limit: number): Promise<string | 
 
 /** What a host is told, to act on at once. */
 export interface Hooks {
-  /** Someone left a space, or was removed from it: close their connections to it. */
+  /** Someone left a space, was removed from it, or was given another role in it: close their connections to it (a device connects again by itself). */
   left?(space: string, user: string): void | Promise<void>;
   /** An agent key for a space stopped working (revoked, renewed, or its member left): end what it still has open (src/server/mcp.ts). */
   keys?(space: string): void | Promise<void>;
+  /** How notifications are sent to members' devices (push.ts): more push services the deployment allows, and how to reach them. */
+  push?: PushOptions;
   /** Sends a message, as the host sends a space's email; null when the host has no mail set up. */
   mail?(message: Parameters<Email["send"]>[0]): Promise<Awaited<ReturnType<Email["send"]>> | null>;
 }
@@ -335,23 +342,28 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   };
 
   /** A space's record, if the name is a space's. */
-  const spaceOf = (name: string) => (SPACE_NAME.test(name) ? read<Space>(`spaces/${name}.json`) : Promise.resolve(null));
-
-  /** Only owners and members (never read-only viewers) may connect MCP agents to a space. */
-  const canUseAgents = async (name: string, user: string) => {
-    const role = (await spaceOf(name))?.members[user];
-    return role === "owner" || role === "member";
+  const spaceOf = async (name: string): Promise<Space | null> => {
+    const space = SPACE_NAME.test(name) ? await read<Space>(`spaces/${name}.json`) : null;
+    if (!space) return null;
+    return { ...space, members: Object.fromEntries(Object.entries(space.members ?? {}).flatMap(([id, kept]) => (roleOf(kept) ? [[id, roleOf(kept)!]] : []))) };
   };
-  const keys = agentKeys(files, { isMember: canUseAgents, ended: (name) => hooks.keys?.(name) });
+
+  /** Whether a member may change a space, and so have an agent act as them in it: a reader's agent could do what the reader can't. */
+  const acts = async (name: string, user: string) => {
+    const role = (await spaceOf(name))?.members[user];
+    return !!role && role !== "reader";
+  };
+  const keys = agentKeys(files, { isMember: acts, ended: (name) => hooks.keys?.(name) });
   const mcpSignIn = mcpOAuth(files, {
     user: async (request) => (await session(request))?.user ?? null,
-    isMember: canUseAgents,
+    isMember: acts,
     keys,
     serial,
     providers: () => providers.map((p) => ({ id: p.id, name: p.name, ...(isFlow(p) && p.ask ? { ask: p.ask } : {}) })),
   });
 
   const following = follow(files, async (request) => (await session(request))?.user ?? null, serial);
+  const pushing = push(files, async (request) => (await session(request))?.user ?? null, serial, hooks.push);
 
   const join = async (space: Space, user: string, role: Role) => {
     space.members[user] = role;
@@ -377,7 +389,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
 
     if (route === "GET /auth/spaces") {
       const mine = await Promise.all(
-        (await files.list(`memberships/${me}/`)).map(async (p) => ({ name: p.slice(`memberships/${me}/`.length, -".json".length), role: (await read<{ role: Role }>(p))?.role })),
+        (await files.list(`memberships/${me}/`)).map(async (p) => ({ name: p.slice(`memberships/${me}/`.length, -".json".length), role: roleOf((await read<{ role: unknown }>(p))?.role) })),
       );
       return json({ spaces: mine });
     }
@@ -392,13 +404,12 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     if (route === "POST /auth/invites/accept") {
       const token = String(body.token ?? "");
       const key = await hash(token);
-      const invite = /^[A-Za-z0-9_-]{20,100}$/.test(token) ? await read<{ space: string; role?: Role; expires: number }>(`invites/${key}.json`) : null;
+      const invite = /^[A-Za-z0-9_-]{20,100}$/.test(token) ? await read<{ space: string; expires: number; role?: unknown }>(`invites/${key}.json`) : null;
       const space = invite && invite.expires > Date.now() ? await spaceOf(invite.space) : null;
       if (!space) return json({ error: "That invite has been used or has expired" }, 404);
       // One person, one use: the invite is gone once someone joins with it.
       await files.remove(`invites/${key}.json`);
-      const invitedRole: Role = invite?.role === "viewer" ? "viewer" : "member";
-      if (!space.members[me]) await join(space, me, invitedRole);
+      if (!space.members[me]) await join(space, me, invite?.role === "reader" ? "reader" : "editor");
       return json({ space: { name: space.name, role: space.members[me] } });
     }
 
@@ -414,22 +425,26 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     }
     if (action === "POST /invite") {
       if (space.members[me] !== "owner") return json({ error: "Only the space's owner can invite people" }, 403);
-      if (body.role !== undefined && body.role !== "member" && body.role !== "viewer") return json({ error: 'Invite role must be "member" or "viewer"' }, 400);
-      const role: Role = body.role === "viewer" ? "viewer" : "member";
+      const role = body.role ?? "editor";
+      if (role !== "editor" && role !== "reader") return json({ error: 'Invite someone as an editor (role: "editor"), who can change what the space keeps, or as a reader (role: "reader"), who can only see it' }, 400);
       const token = random(24);
       await write(`invites/${await hash(token)}.json`, { space: space.name, by: me, role, expires: Date.now() + INVITE_MS });
       return json({ token, role, expires: Date.now() + INVITE_MS });
     }
     if (action === "POST /role") {
-      if (space.members[me] !== "owner") return json({ error: "Only the space's owner can change roles" }, 403);
-      const who = typeof body.user === "string" ? body.user : "";
-      const next = body.role === "member" || body.role === "viewer" ? body.role : null;
-      if (!next) return json({ error: 'Role must be "member" or "viewer"' }, 400);
-      if (!who || !space.members[who]) return json({ error: "They aren't in this space" }, 404);
-      if (space.members[who] === "owner") return json({ error: "A space's owner stays its owner" }, 400);
-      await join(space, who, next);
-      if (next === "viewer") await keys.revokeSpace(who, space.name);
-      return json({ ok: true, user: who, role: next });
+      if (space.members[me] !== "owner") return json({ error: "Only the space's owner can say what each member may do" }, 403);
+      const who = String(body.user ?? "");
+      const role = body.role;
+      if (role !== "editor" && role !== "reader") return json({ error: 'A member is an editor (role: "editor"), who can change what the space keeps, or a reader (role: "reader"), who can only see it. A space has one owner.' }, 400);
+      if (!space.members[who]) return json({ error: "They aren't in this space" }, 404);
+      if (space.members[who] === "owner") return json({ error: "The owner's role can't change: a space always has its one owner" }, 400);
+      if (space.members[who] === role) return json({ ok: true, role });
+      await join(space, who, role);
+      // A reader's agents could change what the reader can't, so their keys for the space end with the role.
+      if (role === "reader") await keys.revokeSpace(who, space.name);
+      // Their open connections close, and come back at once with the new role: a connection keeps the role it was let in with.
+      await Promise.resolve(hooks.left?.(space.name, who)).catch((error) => console.error("Closing a member's connections:", error));
+      return json({ ok: true, role });
     }
     if (action === "POST /leave") {
       const who = typeof body.user === "string" ? body.user : me;
@@ -445,12 +460,12 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
   return {
     credentials,
 
-    /** Whether a request's session is a member of a space, and as what: for a host to ask before a client joins or moves it. */
-    async member(request: Request, name: string): Promise<{ user: User; role: "owner" | "member"; spaceRole: Role } | null> {
+    /** Whether a request's session is a member of a space, and as what: for a host to ask before a client joins it. */
+    async member(request: Request, name: string): Promise<{ user: User; role: Role } | null> {
       const current = await session(request);
       const space = current ? await spaceOf(name) : null;
-      const spaceRole = space && current ? space.members[current.user.id] : undefined;
-      return current && spaceRole ? { user: current.user, role: spaceRole === "owner" ? "owner" : "member", spaceRole } : null;
+      const role = space && current ? space.members[current.user.id] : undefined;
+      return current && role ? { user: current.user, role } : null;
     },
 
     /** The email addresses a space's members gave (User.email): the only ones its server plugins may email. */
@@ -465,12 +480,43 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
     /** Which member of a space an agent's key (an `Authorization` header) is for: for a host to ask before an MCP request. */
     agent: (authorization: string | null, name: string, plugin?: string) => keys.member(authorization, name, plugin),
 
-    /** A space's members, each with the name on their account and their role: what a page shows for `by`, and what sync checks for RBAC. */
+    /** A space's members, each with the name on their account (what a page shows for a change's `by`) and their role. */
     async members(name: string): Promise<{ id: string; name: string; role: Role }[]> {
       const space = await spaceOf(name);
       if (!space) return [];
       const users = await Promise.all(Object.keys(space.members).map((id) => read<User>(`users/${id}.json`)));
       return users.flatMap((u) => (u ? [{ id: u.id, name: u.name, role: space.members[u.id] }] : []));
+    },
+
+    /**
+     * Sends a notification from a space's server plugin to its members' devices, with every tab closed (push.ts):
+     * to every member, or only those in `to`. A click on it opens `app` (an app's folder) in the space. Answers how
+     * many devices it reached and what went wrong, for the plugin to say.
+     */
+    async notify(name: string, note: { title: string; body?: string; tag?: string; always?: boolean; app?: string; to?: string[] }, origin: string) {
+      const space = await spaceOf(name);
+      if (!space) throw new Error("No such space");
+      const members = Object.keys(space.members);
+      const to = Array.isArray(note.to) ? members.filter((id) => note.to!.includes(id)) : members;
+      const app = typeof note.app === "string" && /^[\w.~-]+(\/[\w.~-]+)*$/.test(note.app) && !note.app.split("/").includes("..") ? `/s/${name}/${note.app}/` : `/s/${name}/`;
+      return pushing.sendTo(to, { title: note.title, body: note.body, tag: note.tag ? `${name}:${note.tag}` : undefined, always: note.always, url: app, app }, origin);
+    },
+
+    /**
+     * What unlocks the model key a space holds for its members (src/server/space-model.ts): 32 random bytes,
+     * made the first time it is asked for and kept here, apart from the space's folder, where the key is
+     * kept encrypted. So neither store alone holds a key that can be read.
+     */
+    modelLock(name: string): Promise<string> {
+      return serial(async () => {
+        if (!(await spaceOf(name))) throw new Error("No such space");
+        const path = `space-locks/${name}.json`;
+        const found = await read<{ lock: string }>(path);
+        if (found?.lock) return found.lock;
+        const lock = random(32);
+        await write(path, { lock });
+        return lock;
+      });
     },
 
     /** Whether a space by this name exists: for a host to ask before waking it for a public route. */
@@ -488,6 +534,7 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       // What a person added, following them from device to device (follow.ts).
       const followed = await following.handle(request, url);
       if (followed) return followed;
+      if (request.method === "GET" && url.pathname === "/auth/push") return pushing.handle(request, url);
 
       if (route === "GET /auth/me") {
         const current = await session(request);
@@ -513,6 +560,8 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         return json({ error: "JSON only" }, 400);
       }
       if (typeof body !== "object" || body === null || Array.isArray(body)) return json({ error: "A JSON object, please" }, 400);
+      // The devices a person gets notifications on (push.ts), which takes its own turns with the accounts' other changes.
+      if (url.pathname.startsWith("/auth/push")) return pushing.handle(request, url, body);
       return serial(() => change(request, url, body));
     },
 
@@ -593,7 +642,12 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
       case "/auth/keys": {
         const current = await session(request);
         if (!current) return json({ error: "Not signed in" }, 401);
-        const made = await keys.make(current.user.id, String(body.space ?? ""), String(body.name ?? ""));
+        if ((await spaceOf(String(body.space ?? "")))?.members[current.user.id] === "reader") return json({ error: "You can read this space but not change it, and an agent with a key could. Ask the space's owner to make you an editor first." }, 403);
+        // A key for an editor (`editor`: the agent it talks to, src/server/acp.ts) reaches only that agent, and is the
+        // only kind whose editor may answer the agent's reviews.
+        const editor = body.editor === undefined || body.editor === "" ? undefined : String(body.editor);
+        if (editor !== undefined && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(editor)) return json({ error: "The agent an editor's key is for is its id: lowercase letters, digits and dashes, like assistant" }, 400);
+        const made = await keys.make(current.user.id, String(body.space ?? ""), String(body.name ?? ""), editor ? { plugin: `acp/${editor}` } : {});
         return "error" in made ? json({ error: made.error }, made.status) : json(made);
       }
       case "/auth/keys/revoke": {

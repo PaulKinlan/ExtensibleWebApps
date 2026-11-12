@@ -18,22 +18,24 @@ import { folder as appFolder, followLinks, screen } from "./router";
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
 import type { Arranger } from "./arrange";
 import { themeCss } from "../shared/theme";
-import { isAgentFile, runnerHref } from "../shared/agent-runner";
+import { isAgentFile } from "../shared/agent-file";
 import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
 import { audioProbe, audioStats } from "./audio-stats";
+// The plugin workers' script, in its two copies (see spawn). By address, so it can be asked for early (below).
+import netRuntimeUrl from "../sandbox/net-runtime.ts?worker&url";
+import runtimeUrl from "../sandbox/runtime.ts?worker&url";
 import { answerElements, connectBindings, receive, setOwner } from "./bindings";
 import { defineElementsIn, loadElement, onElementError, syncUserComponents } from "./elements";
 import { morphChildren } from "./morph";
 import { serviceWorker } from "./service-worker";
 import { cleanCss } from "./plugin-styles";
-import { watchCanvasTheme } from "./canvas-theme";
 import { fill, forgetFiles, loadedFile, loadFile } from "./templates";
 import { loadDrawing, needsDrawing } from "./drawing-gate";
+import { whenDrawing } from "./drawing-hooks";
 import { listenDrag } from "./drag";
 import { listenEditing } from "./editing";
 import { drawView } from "./views";
-import { workbench } from "./workbench";
 import { elementsIn, warmPlugin } from "./prefetch";
 import { reserveSlots } from "./reserve";
 import { speculate } from "./speculation";
@@ -102,9 +104,12 @@ type Entry = { owner: string; order: number; el: HTMLElement };
 const slots = new Map<Slot, Map<string, Entry>>();
 const canvases = new Map<string, HTMLCanvasElement>();
 // Each canvas went to its plugin with the theme (views/canvas.ts); when the theme changes, they hear it again.
-watchCanvasTheme((theme) => {
-  for (const owner of new Set([...canvases.keys()].map((key) => key.slice(0, key.indexOf("/"))))) send({ t: "canvas:theme", owner, theme });
-});
+// The watch starts with the first view that draws, when drawing.ts loads: until then there is no canvas to tell.
+whenDrawing((drawing) =>
+  drawing.watchCanvasTheme((theme) => {
+    for (const owner of new Set([...canvases.keys()].map((key) => key.slice(0, key.indexOf("/"))))) send({ t: "canvas:theme", owner, theme });
+  }),
+);
 
 // Each kind of view is drawn by its own file in views/, named after its type.
 function element(view: View, owner: string): HTMLElement {
@@ -243,6 +248,13 @@ const held = new Map<string, Extract<KernelToHost, { t: "render" }>>();
  * files (and their elements) start loading as soon as its source arrives (prefetch.ts).
  */
 const linked = links.map((href) => fetchLink(href, "high"));
+/**
+ * Workers for the app's first plugins, started now, while the kernel starts: a worker takes about as long to start
+ * as the kernel takes to ask for it, so the two waits overlap (a tenth off a visit answered from this device).
+ * Two at most, and none for Customize, which waits for its button; the kernel says which plugin each runs (spawn),
+ * and one left when the app has opened is stopped. They ask for the workers' script at once, on a first visit too.
+ */
+const spare: Worker[] = Array.from({ length: Math.min(2, links.length - (links.includes(CUSTOMIZE) ? 1 : 0)) }, () => new Worker(runtimeUrl, { type: "module" }));
 
 /**
  * A linked file's source. An agent file comes with the agent loop it runs (its `runner:`, or the standard
@@ -258,7 +270,8 @@ async function fetchLink(href: string, priority?: RequestPriority): Promise<{ hr
   }
   let loop: string;
   try {
-    loop = runnerHref(source, href);
+    // Which loop an agent file runs is read by a part only a page that links an agent fetches (src/shared/agent-runner.ts).
+    loop = (await import("../shared/agent-runner")).runnerHref(source, href);
   } catch {
     return { href, source: "", why: "its `runner:` isn't an address" };
   }
@@ -709,12 +722,12 @@ function drawIn(slot: string, container: HTMLElement, key: string, owner: string
 
 const workers = new Map<string, Worker>();
 
+/** The file that starts plugins whose code is beside their manifest, once one has been asked for. */
+let coded: Promise<typeof import("./plugin-code")> | undefined;
 function spawn(plugin: string, source: string, network: boolean) {
   workers.get(plugin)?.terminate();
   // Two copies of the runtime, served with different content security policies.
-  const worker = network
-    ? new Worker(new URL("../sandbox/net-runtime.ts", import.meta.url), { type: "module", name: plugin })
-    : new Worker(new URL("../sandbox/runtime.ts", import.meta.url), { type: "module", name: plugin });
+  const worker = (!network && spare.pop()) || new Worker(network ? netRuntimeUrl : runtimeUrl, { type: "module", name: plugin });
   const channel = new MessageChannel();
   worker.postMessage({ t: "init", source }, [channel.port2]);
   workers.set(plugin, worker);
@@ -792,7 +805,13 @@ function command(name: Command, arg?: unknown): Promise<unknown> {
 }
 
 /** The trace, benchmarks and demo links, on the workbench page only. */
-const bench = document.getElementById("devtools") ? workbench(command) : undefined;
+// Its code is fetched on that page only; what the kernel says meanwhile is shown, in order, once it has arrived.
+const benchLoaded = isWorkbench ? import("./workbench").then((m) => m.workbench(command)) : undefined;
+type Bench = ReturnType<typeof import("./workbench").workbench>;
+const bench: Bench | undefined = benchLoaded && {
+  mode: (text) => void benchLoaded.then((b) => b.mode(text)),
+  trace: (events) => void benchLoaded.then((b) => b.trace(events)),
+};
 /** Settles once the kernel has welcomed this tab: it answers commands from then on. */
 let welcomed!: () => void;
 const welcome = new Promise<void>((resolve) => (welcomed = resolve));
@@ -821,14 +840,20 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
       bench?.mode(`Kernel in a ${message.mode} worker · tab ${tab}${spawner ? " · runs the plugin workers" : ""}`);
       return;
     case "opened":
+      for (const worker of spare.splice(0)) worker.terminate();
       return opened(message.plugins, message.components);
     case "render":
       return render(message.slot, message.key, message.owner, message.order, message.view);
     case "spawn":
       // The kernel decides which tab runs which plugin instance.
-      spawn(message.plugin, message.source, message.network);
+      // A plugin that is only its manifest: its code is read after it, and the two start as one file (plugin-code.ts).
+      // One whose code doesn't arrive doesn't start, and the kernel tells the person so (remote.ts).
+      if (message.code) void (coded ??= import("./plugin-code")).then((file) => file.start(message, spawn), () => {});
+      else spawn(message.plugin, message.source, message.network);
       return;
     case "terminate":
+      // (One still waiting for its code doesn't start.)
+      void coded?.then((file) => file.stop(message.plugin), () => {});
       workers.get(message.plugin)?.terminate();
       workers.delete(message.plugin);
       return;

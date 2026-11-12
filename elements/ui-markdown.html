@@ -58,4 +58,7 @@
   </style>
   <article><p class="waiting">Loading…</p></article>
 </template>
+<!-- What the script imports, named here so the host asks for it along with the script (src/host/elements.ts). -->
+<link rel="modulepreload" href="markdown.js">
+<link rel="modulepreload" href="mermaid.js">
 <script type="module" src="ui-markdown.js"></script>

@@ -14,10 +14,13 @@
 // lets it on a card here, for one run or always (a grant of the place
 // `acts-as:person`). Its changes are still reviewed, one card each, but the
 // card and the change log say they are the person's, made through the agent.
+//
+// What a card looks like, and the diff it shows, is a part of its own
+// (review-card.ts), fetched the first time the person is asked: a page where
+// nothing writes outside its own data never needs it.
 
-import type { Dispatch, View } from "../shared/protocol";
+import type { Dispatch } from "../shared/protocol";
 import type { ChangeLog } from "./changes";
-import { diffLines, trim } from "./diff";
 import type { Hosts } from "./hosts";
 import { part } from "./part";
 import type { Store } from "./store";
@@ -90,68 +93,12 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
 
   const persist = () => store.writeJson(FILE, grants).catch((error) => record({ kind: "error", name: "grants:write-failed", detail: String(error) }));
 
-  /** A change to a place in the page: what will appear or disappear there, with no diff. */
-  const placeCard = (id: string, r: Request): View => ({
-    type: "stack",
-    children: [
-      { type: "heading", text: `${r.name} wants to change ${r.target}` },
-      { type: "text", text: `${r.reason} The app's author asked to review changes here.`, tone: "muted" },
-      {
-        type: "stack",
-        direction: "row",
-        children: [
-          { type: "button", label: "Allow", action: `accept:${id}`, primary: true },
-          { type: "button", label: "Always allow here", action: `always:${id}` },
-          { type: "button", label: "Decline", action: `decline:${id}` },
-        ],
-      },
-    ],
-  });
-
-  /** Asks whether an agent may act for the person: for this run, always, or not. */
-  const actsAsCard = (id: string, r: Request): View => ({
-    type: "stack",
-    children: [
-      { type: "heading", text: `Let ${r.name} act for you?` },
-      { type: "text", text: `${r.reason} Its changes will be logged as yours, made through ${r.name}. You still review each one, and it can do only what its own permissions allow.`, tone: "muted" },
-      {
-        type: "stack",
-        direction: "row",
-        children: [
-          { type: "button", label: "This time", action: `accept:${id}`, primary: true },
-          { type: "button", label: "Always", action: `always:${id}` },
-          { type: "button", label: "Not now", action: `decline:${id}` },
-        ],
-      },
-    ],
-  });
-
   /** A write by an agent acting for the person: its call carries the agent's id as `via`. */
   const forPerson = (r: Request, dispatch: Dispatch) => dispatch.via === r.plugin;
 
-  const card = (id: string, r: Request, dispatch: Dispatch): View =>
-    r.place === ACTS_AS
-      ? actsAsCard(id, r)
-      : r.kind === "place"
-      ? placeCard(id, r)
-      : {
-          type: "stack",
-          children: [
-            { type: "heading", text: forPerson(r, dispatch) ? `${r.name}, acting for you, wants to change ${r.target}` : `${r.name} wants to change ${r.target}` },
-            ...(forPerson(r, dispatch) ? [{ type: "text" as const, text: `If you accept, this is logged as your change, made through ${r.name}.` }] : []),
-            { type: "text", text: r.reason ? `Reason: ${r.reason}` : "No reason given.", tone: "muted" },
-            { type: "diff", lines: trim(diffLines(r.before, r.after)) },
-            {
-              type: "stack",
-              direction: "row",
-              children: [
-                { type: "button", label: "Accept", action: `accept:${id}`, primary: true },
-                ...(r.once ? [] : [{ type: "button" as const, label: `Always allow in ${placeLabel(r.place)}`, action: `always:${id}` }]),
-                { type: "button", label: "Decline", action: `decline:${id}` },
-              ],
-            },
-          ],
-        };
+  /** What draws a card (review-card.ts), fetched the first time the person is asked: most visits never ask. */
+  let drawing: Promise<typeof import("./review-card")> | undefined;
+  const cards = () => (drawing ??= part("the card that asks you about a change", () => import("./review-card")).catch((error) => ((drawing = undefined), Promise.reject(error))));
 
   const settle = (id: string, outcome: Outcome, trace?: string) => {
     const p = pending.get(id);
@@ -187,14 +134,25 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
       }
       const id = String(++nextId);
       record({ kind: "note", name: "review:asked", plugin: request.plugin, trace: dispatch.trace, detail: request.target });
-      return new Promise<Outcome>((resolve) => {
+      return new Promise<Outcome>((resolve, reject) => {
         const timer = setTimeout(() => settle(id, "cancelled"), TIMEOUT);
+        // Waiting from now, so a plugin that stops while the card's code is on its way still has its request cancelled.
         pending.set(id, { request, resolve, timer, dispatch });
-        hosts.render("review", "main", `review:${id}`, card(id, request, dispatch), 0);
         let same = 0;
         for (const p of pending.values()) if (p.request.plugin === request.plugin && p.request.place === request.place && ++same > 1) break;
         if (same > 1 || batches) syncBatches();
         api.relay?.(id, request);
+        cards().then(
+          (made) => pending.has(id) && hosts.render("review", "main", `review:${id}`, made.card(id, request, forPerson(request, dispatch)), 0),
+          (error) => {
+            // No card can be shown, so nothing is changed, and the plugin hears why (part.ts says what the person can do).
+            if (!pending.delete(id)) return;
+            clearTimeout(timer);
+            api.relayDone?.(id);
+            if (batches) batches.sync();
+            reject(error);
+          },
+        );
       });
     },
 

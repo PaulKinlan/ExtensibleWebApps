@@ -25,7 +25,8 @@ function model(ctx) {
       if (last.name === "commands_list") return call("commands_run", { name: "library/add", args: { title: "Piranesi", author: "Susanna Clarke" } });
       return { text: `Added it. The command said: ${last.content}`, stop: "end", usage };
     }
-    if (request.system.startsWith("You write plugins for this app")) {
+    // The builder is known by its tools, not by how its prompt opens: std/agents/builder.agent.md is prose that gets reworded.
+    if (request.tools.some((t) => t.name === "authoring_save")) {
       if (!last.name) return call("authoring_check", { code: PLUGIN });
       if (last.name === "authoring_check") return call("authoring_save", { code: PLUGIN });
       return { text: `Saving answered: ${last.content}`, stop: "end", usage };
@@ -41,10 +42,10 @@ export default async function ({ a, check, openTab, URL }) {
   const review = '[data-key^="review:"]';
   const asked = () => a.evaluate(() => window.__host.traces.filter((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked")).map((e) => JSON.parse(e.detail.slice(12))));
   /** The first model call that `test` (a function's source, run in the page) picks, waiting for its trace to arrive. */
-  // The model call whose system prompt starts with `system`, or whose first message has `first` in it. (Not a function as text:
-  // the page's Trusted Types policy refuses eval.)
+  // The model call whose system prompt starts with `system`, that was given the tool `tool`, or whose first message has `first`
+  // in it. (Not a function as text: the page's Trusted Types policy refuses eval.)
   const turnWhere = (test) =>
-    a.waitForFunction(({ system, first }) => window.__host.traces.filter((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked")).map((e) => JSON.parse(e.detail.slice(12))).find((c) => (system ? c.system.startsWith(system) : c.first.includes(first))), test, { timeout: 5000 }).then((h) => h.jsonValue(), () => undefined);
+    a.waitForFunction(({ system, tool, first }) => window.__host.traces.filter((e) => e.plugin === "fake-model" && e.detail?.startsWith("model-asked")).map((e) => JSON.parse(e.detail.slice(12))).find((c) => (system ? c.system.startsWith(system) : tool ? c.tools.includes(tool) : c.first.includes(first))), test, { timeout: 5000 }).then((h) => h.jsonValue(), () => undefined);
   const seen = (selector, timeout = 10000) => page.waitForSelector(selector, { timeout }).then(() => true, () => false);
   const chatSays = (text, timeout = 15000) => seen(`${chat} >> text=${text}`, timeout);
   const send = async (agent, text) => {
@@ -79,7 +80,7 @@ export default async function ({ a, check, openTab, URL }) {
     const answered = await chatSays("Saving answered");
     if (!answered && process.env.DEBUG_PRESETS) console.log(JSON.stringify((await a.evaluate(() => window.__host.traces.filter((e) => /builder|chat|bus\.|agent:|change:|review/.test(`${e.plugin} ${e.name}`)).slice(-60).map((e) => `${e.kind} ${e.name} ${e.plugin ?? ""} ${e.detail ?? ""}`))), null, 1), JSON.stringify(await changes()));
     check("the builder answers in the chat", answered);
-    const builderTurn = await turnWhere({ system: "You write plugins for this app" });
+    const builderTurn = await turnWhere({ tool: "authoring_save" });
     check("the builder's tools are the authoring tools, not the data", !!builderTurn && ["authoring_check", "authoring_save", "authoring_source", "authoring_mine"].every((t) => builderTurn.tools.includes(t)) && !builderTurn.tools.some((t) => /^data_(list|get|put|delete)/.test(t)), JSON.stringify(builderTurn?.tools));
     const saved = (await changes()).filter((e) => e.kind === "write" && e.plugin === "builder");
     check("the change log has the save as the person's, made through the builder", saved.at(-1)?.as === "person" && saved.at(-1)?.outcome === "allowed-once", JSON.stringify(saved.at(-1)));

@@ -252,6 +252,14 @@ Needs: `account`.
 
 Asks the person for a copy of a space (a .space.json file, from the server's Download a copy), right after they click, and loads it into `space`. null if they pick nothing.
 
+#### account.notifications
+
+`account.notifications(action?)` → { supported, permission?, here, devices: [{ id, label, created, here }] }
+
+Needs: `account`.
+
+Notifications on this device with every tab closed (Web Push): what a space's server plugins send with notify.show reaches the devices each member turned on here. `here` says whether this browser is one of the person's devices. It fails, saying what to do, where the browser can't, the person said no, or its push service isn't one the site sends to.
+
 #### account.post
 
 `account.post(path, body)` → { status, ...answer }
@@ -275,6 +283,14 @@ Makes a passkey in this tab (the browser asks the person) and gives it to the se
 Needs: `account`.
 
 Signs in with a passkey the browser has for this site (it asks the person which). { status: 401, error } if the server didn't know it.
+
+#### account.space-key
+
+`account.space-key(space, vendor, label?)` → { set, vendor, model, byName, at } or null
+
+Needs: `account`.
+
+Gives a space a model key for its members (src/server/space-model.ts): the person types it into a card the kernel draws, and it goes straight to the server, which keeps it encrypted. No plugin sees it. null if they closed the card.
 
 #### account.start
 
@@ -824,6 +840,26 @@ Needs: `debug:read`.
 
 The last 500 trace events, oldest first; `seq` counts up with each event, and `at` is milliseconds after `startedAt` (wall-clock ms). A tab-scoped caller also gets its `tab`, and `app`: the ids of the plugins the app open in that tab links, once it has opened one.
 
+### device-model
+
+The language model the browser carries itself (Chrome's built-in model): no key, and nothing leaves the device. Most plugins ask through llm instead.
+
+#### device-model.prompt
+
+`device-model.prompt({ system?, turns: [{ role, content }], schema? })` → { text, input, output }
+
+Needs: `device-model`.
+
+Asks the browser's model. input and output are the tokens the request and the answer took, as near as the browser says. While the model is still downloading, the error says how far it has got.
+
+#### device-model.state
+
+`device-model.state()` → { state: "available" | "downloadable" | "downloading" | "unavailable", progress }
+
+Needs: nothing.
+
+Whether this browser has a model of its own, which any plugin may ask (a list of plugins leaves out the ones that need a model the browser hasn't got). downloadable: it can have one, after a download of several GB that the first prompt() starts. progress is how much of a download has arrived, 0 to 1.
+
 ### email
 
 Email: messages a plugin on a space's server sends to the space's members. Each is written down in the space's outbox, then delivered if the deployment can send mail.
@@ -1110,7 +1146,7 @@ The files opened with the plugin's tab, once: they are gone after, and the tab m
 
 ### llm
 
-Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js). The caller never holds a key.
+Ask a language model, through whichever provider plugin the app has (std/llm/anthropic.js, std/llm/openai.js, std/llm/gemini.js, the browser's own with std/llm/chrome.js, or a space's with std/llm/space.js). The caller never holds a key.
 
 #### llm.add
 
@@ -1126,7 +1162,7 @@ Adds one of choices() to the person's own plugins for every app they open, once 
 
 Needs: `llm`.
 
-The language models this site offers (its plugin registry's packages that provide:llm), for a plugin to offer the person when providers() is empty. added: the person has it here already; linked: the app links it.
+The language models this site offers (its plugin registry's packages that provide:llm; the browser's built-in one only where the browser has it), for a plugin to offer the person when providers() is empty. added: the person has it here already; linked: the app links it.
 
 #### llm.complete
 
@@ -1188,6 +1224,14 @@ Needs: `apps:make`, and the person's review.
 
 In a space: copies one of the person's own apps (made outside it, on this device) in, as a made app in the space, once they accept one review. It can then be shared with the space's members.
 
+#### maker.dropLink
+
+`maker.dropLink()` → { ok }
+
+Needs: `apps:read`.
+
+Takes the app out of the tab's address without adding it.
+
 #### maker.history
 
 `maker.history(app, file)` → [{ version, at, by, note, removed? }]
@@ -1195,6 +1239,22 @@ In a space: copies one of the person's own apps (made outside it, on this device
 Needs: `apps:read`.
 
 The versions of one file of a made app, oldest first.
+
+#### maker.link
+
+`maker.link(app)` → { ok, url, length, files, via? } or { ok: false, error }
+
+Needs: `apps:read`.
+
+Makes a link that is the app: its files and none of its data, packed into the address, so nothing is kept on the site. Hands it to the system's share sheet, or copies it (via says which; call it right after the person clicks). Whoever opens it gets the app as their own, after a review.
+
+#### maker.linked
+
+`maker.linked()` → { name, title, files, here } or { error }, or null
+
+Needs: `apps:read`.
+
+The app the caller's tab was opened with a link to (link), before anything is added: the name it would get here, its title and its files' names. here is true when the person has this very app already. null when the address carries none.
 
 #### maker.list
 
@@ -1276,6 +1336,14 @@ Needs: `apps:read`.
 
 In a space: the apps its members shared with it. state is new (not accepted here), changed (a newer version than the one accepted here), same, or clash (an app of that name here that didn't come from the space). space is false outside a space.
 
+#### maker.takeLink
+
+`maker.takeLink()` → the same as save, with app
+
+Needs: `apps:make`, and the person's review.
+
+Adds the app in the tab's link to the person's own apps, once they accept one review that shows every file, as any save. It never replaces an app they have: one of the same name gets the next free name. The link then leaves the address.
+
 #### maker.unshare
 
 `maker.unshare(app)` → { ok } or { ok: false, error }
@@ -1318,11 +1386,11 @@ Asks the person to allow notifications (call it right after a click in the app, 
 
 #### notify.show
 
-`notify.show({ title, body?, tag?, always? })` → true if it was shown
+`notify.show({ title, body?, tag?, always?, to? })` → true if it was shown
 
 Needs: `notify`.
 
-Shows a notification from one tab with the plugin's app open, when nobody is looking at the app (or `always`). False if the person hasn't allowed notifications, or is looking. At most 6 a minute for each plugin.
+Shows a notification from one tab with the plugin's app open, when nobody is looking at the app (or `always`). False if the person hasn't allowed notifications, or is looking. At most 6 a minute for each plugin. From a plugin on a space's server, it is sent to the members' devices instead and arrives with every tab closed: true if it was sent to at least one device (each member turns notifications on for a device on their account page).
 
 #### notify.state
 
@@ -1616,6 +1684,14 @@ Saves a JSON value; null removes it. Up to 1 MB in all.
 
 How a page in a space stands with it, and the drafts it kept when someone else changed a record first.
 
+#### sync.ask
+
+`sync.ask(request)` → what llm.complete returns, or { models, tiers } for { models: true }
+
+Needs: `space-model`.
+
+Asks a language model on the key the space holds for its members: the request goes to the space's server, which asks the vendor with the key and sends back only the answer. The person is first shown whose key pays, once they allow it for good. What /std/llm/space.js uses to be a provider for llm: other plugins ask through llm. Fails outside a space, when the space has no key, or past a member's questions for the day.
+
 #### sync.dismiss
 
 `sync.dismiss(ref)` → { ok }
@@ -1640,6 +1716,14 @@ Needs: `live`.
 
 Sends a live message, kept nowhere: from a page in a space, to the space's server plugins, which hear it as sync:live with the member and device it came from; from a server plugin, to every device that has said something on the topic (or only `device`), whose plugins hear it as sync:live. For moves and frames of a game played together, cursors, presence. A device may send 60 a second. Fails outside a space, or while the page can't reach it.
 
+#### sync.may
+
+`sync.may(collection, id?)` → { add, change, remove, why? }
+
+Needs: `members`.
+
+Whether the person signed in here may add to a collection, and change or remove a record of it, in this space: from their role (a reader changes nothing) and the collection's `rules` in its plugin's manifest. For showing a form or a button only to those who can use it, with `why` to say when they can't. The space's server decides again on every change. All true outside a space.
+
 #### sync.members
 
 `sync.members()` → { space, you?, members: [{ id, name }] }
@@ -1647,6 +1731,14 @@ Sends a live message, kept nowhere: from a page in a space, to the space's serve
 Needs: `members`.
 
 The space's members, each with the name on their account, and which of them this page is signed in as (`you`). A change's `by` and data:changed's `by` are a member's id: show the name from here. Outside a space, `space` is null and the list is empty.
+
+#### sync.model
+
+`sync.model()` → { space: null } or { space, set: false } or { space, set, model, vendor, byName, yours, asked, daily, refused? }
+
+Needs: nothing.
+
+Whether the space holds a model key for its members (its owner gives one on their account page): which model it is for, the name of who gave it and pays (`byName`), whether that is you (`yours`), and how many of the day's questions you have asked. Never the key, which stays on the space's server. Outside a space, `space` is null. Needs no permission.
 
 #### sync.reflect
 
@@ -1656,13 +1748,21 @@ Needs: `reflect:read`.
 
 For debuggers: asks the space's own kernel, on its server, what its reflect service says (its server plugins, their permissions, hooks and workers, and the members' devices connected, each with its member). A snapshot also lists `shared`: the plugins members share, which the space keeps but never runs ({ app, id, by?, at }); source reads theirs too. Read only, like reflect. Fails outside a space, or while this page can't reach it.
 
+#### sync.role
+
+`sync.role()` → { space: null } or { space, role?, owner? }
+
+Needs: nothing.
+
+What the person signed in here may do in this space: `role` is "owner", "editor", or "reader" (who sees the space but can't change it), once the space has said, and `owner` the owner's name, to say whom to ask. For saying so before they try. Outside a space, `space` is null. Needs no permission.
+
 #### sync.state
 
-`sync.state()` → { space: null } or { space, member?, connected, pending, drafts }
+`sync.state()` → { space: null } or { space, member?, role?, owner?, connected, pending, drafts }
 
 Needs: `sync`.
 
-Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
+Whether this page keeps a copy of a space, who it is signed in as there (`member`, once the space has said) and what they may do (`role`: "owner", "editor", or "reader", who can see the space but not change it; `owner` is the owner's name, to say whom to ask), whether it reaches the space now, how many changes wait to be sent, and its drafts. A draft is `{ ref, collection, title, id, label?, mine, why, at }`: mine is the record as this device had made it (null for a delete).
 
 #### sync.trace
 
@@ -2060,10 +2160,10 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `ui:transform:<plugin>` | Change that plugin's views with places whose `in` names it: add to them, replace or hide parts of them. See docs/guide/slots-and-transforms.md. |
 | `hook:listen:<hook>` | Listen to an emit or parallel hook. |
 | `hook:intercept:<hook>` | Listen to a hook that can change or stop an action (serial, bail, waterfall). |
-| `account` | Call account.get, account.post, account.register, account.signin, account.start, account.load, account.keys, account.keys:protect, account.keys:unlock, account.keys:remove, account.came. |
+| `account` | Call account.get, account.post, account.space-key, account.register, account.signin, account.start, account.load, account.keys, account.keys:protect, account.keys:unlock, account.keys:remove, account.notifications, account.came. |
 | `agents:run:<agent>` | Call agents.run. |
-| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.unshare. |
-| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.check. |
+| `apps:make` | Call maker.save, maker.remove, maker.restore, maker.openFolder, maker.share, maker.accept, maker.copyIn, maker.takeLink, maker.unshare. |
+| `apps:read` | Call maker.list, maker.read, maker.history, maker.version, maker.saveToFolder, maker.shared, maker.ownApps, maker.link, maker.linked, maker.dropLink, maker.check. |
 | `audio` | Call audio.registerProcessor, audio.play, audio.cancel, audio.stop, audio.render, audio.mix, audio.keep, audio.forget, audio.playClip, audio.open, audio.save. |
 | `audio, or audio:kept:<of>` | Call audio.load, audio.kept. |
 | `bus:ask` | Call bus.ask. |
@@ -2076,6 +2176,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `data:read:<collection>` | Call data.list, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `debug:read` | Call debug.recent, debug.app. |
+| `device-model` | Call device-model.prompt. |
 | `email` | Call email.send. |
 | `files:<folder>` | Call files.read, files.write. |
 | `folder:choose` | Call folder.choose, folder.allow, folder.forget. |
@@ -2087,7 +2188,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `launch` | Call launch.take. |
 | `live` | Call sync.live. |
 | `llm` | Call llm.providers, llm.prefer, llm.models, llm.choices, llm.add, llm.complete. |
-| `members` | Call sync.members. |
+| `members` | Call sync.members, sync.may. |
 | `network:<host>` | Call net.fetch. |
 | `notify` | Call notify.state, notify.request, notify.show. |
 | `outside` | Call outside.open, outside.close, outside.status. |
@@ -2098,6 +2199,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `share` | Call share.send, share.take. |
+| `space-model` | Call sync.ask. |
 | `sync` | Call sync.state, sync.keep, sync.dismiss. |
 | `transfer` | Call transfer.collections, transfer.export, transfer.import. |
 | `ui` | Call page.matches, page.slots. |
@@ -2116,7 +2218,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `order` | Optional. Where the plugin's views go among others in the same slot; lower comes first. |
 | `scope` | "shared" (the default): one worker for every tab. "tab": one worker per open tab, for plugins that draw or keep view state. |
 | `runs` | "browser" (the default): in the browser, on each device. "server": only in a space's kernel on its server, for an app opened in a space (/s/<space>/…), with no app open anywhere; it has no UI, no file system, and no network unless it asks for `network`. "both": in each. See docs/server.md. |
-| `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. |
+| `collections` | Optional. Up to 10 collections the plugin owns: { name: { title?, schema } }, each schema a JSON Schema subset (see Collections). The owner reads and writes its own without asking. In a space, `rules` says which members may change it ({ add?, change?, remove? }, each "editors", "owner" or, for change and remove, "author": whoever added the record); the space's server enforces them. |
 | `settings` | Optional. Up to 30 settings, each { type, title?, description?, default?, enum? }; type is string, number or boolean, and enum (a list of choices) is for strings. The plugins panel builds the form. |
 | `places` | Optional. Up to 20 places in the app's page, for pages with no slot to draw in: { name: { at, put, each?, in? } }. `at` is a CSS selector run against the page (never inside another plugin's view, unless `in` names that plugin: a view transform, which needs the permission ui:transform:<in>); `put` is "before", "after", "prepend", "append", "replace" or "hide"; `each` uses every match, up to 200, instead of the first. Render to the name as to a slot. Needs the ui permission. See docs/guide/places.md. |
 | `theme` | Optional. Design tokens the plugin sets for the whole app: { "--accent": "light-dark(#7c3aed, #c4b5fd)" }. Only --bg, --bg-2, --surface, --fg, --fg-2, --border, --accent, --accent-fg, --action, --action-fg, --ok, --warn, --danger, --radius-sm, --radius, --radius-lg, --shadow-1, --font, --mono, color-scheme, to plain values (nothing that loads a file). They sit above the platform's defaults and below the page's own styles. Needs the ui:theme permission. See docs/guide/styling.md. |
@@ -2124,6 +2226,8 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `services` | Optional. Up to 30 services the plugin calls that not every site runs, by name: ["llm", "bus"]. The kernel's own services (data, storage, settings and the rest) are always there and needn't be listed. A plugin that lists a service the site doesn't run isn't started, and says which one is missing, so an app that needs it fails when it opens rather than on its first call. The site lists the services it runs in kernel.json (docs/layers.md). |
 | `provides` | Optional. Up to 5 services the plugin provides, by name: { mail: { description, methods: { send: { args?, returns?, description, needs? } } } }. Each needs the permission provide:<name>, and the plugin answers its calls with ctx.provide (shared plugins only, not scope "tab"). Other plugins call it with ctx.call(name, method, ...args) and the permission <name>, or what a method's `needs` says. A name the kernel or another plugin already has is refused. See docs/layers.md. |
 | `files` | Optional. Up to 20 other files next to the plugin that it needs, such as its templates and images: names like countdown.html, or paths in a folder beside it like plugin-editor.templates/card.js (up to four folders deep, and the first folder's name has a dot in it, so it can never be another app's folder). They are copied with it when a person adds it to an app. |
+| `standIn` | Optional, with the ui permission. { slot, key, html }: a view the kernel draws in the plugin's place, at the slot and key the plugin will draw its own, until the person first does something in it. The plugin starts then, draws its own view over it, and hears what they did once it has (so it listens before it first draws). For a plugin that is a panel behind a button: the button costs nothing until it is opened. `html` is at most 2,000 characters. |
+| `code` | Optional, for a plugin the app itself links that runs in the browser (never one a person adds). A .js file beside the plugin that holds the rest of its code, such as panel.code.js: the plugin's own file is then only `export const manifest = {…}`, and the other file has `export default function (ctx) {…}` and everything it uses. The page reads the two as one file when the plugin starts. With a `standIn`, an app that links the plugin fetches only its manifest until the person first uses it. |
 
 Reserved ids, which no plugin can take:
 
@@ -2135,6 +2239,7 @@ Reserved ids, which no plugin can take:
 - `commands`
 - `data`
 - `debug`
+- `device-model`
 - `email`
 - `files`
 - `folder`
@@ -2373,8 +2478,10 @@ For devtools and tests, from the page: `window.__host.command(name, arg)`.
 
 | Command | What it does |
 | --- | --- |
+| `plugins-panel` | Asks for the workbench's plugins panel, which the kernel draws only in pages that asked. |
 | `bench` | (n) Times a hook round trip to a plugin worker against one answered in the kernel. |
 | `reload-test` | (n) Reloads word-count n times and counts listeners and workers before and after. |
+| `counts` | How many entries each list, map and set the kernel keeps has now, by where it is kept: read before and after a change to find what it left behind. |
 | `reload` | (id) Restarts a plugin's workers. |
 | `install` | (source) Installs a plugin and keeps it with the data. |
 | `uninstall` | (id) Removes a plugin kept with the data. |

@@ -19,6 +19,7 @@ import { providersFrom } from "../../src/server/auth/providers.ts";
 import { providerModules } from "../../src/server/auth/providers/index.ts";
 import { smtpMailer } from "../../src/server/smtp.ts";
 import { fakeSmtp } from "./fake-smtp.mjs";
+import { acpChecks } from "./acp.mjs";
 import { authenticator } from "./authenticator.mjs";
 import { blueskyChecks } from "./bluesky.mjs";
 import { mcpChecks } from "./mcp.mjs";
@@ -30,6 +31,9 @@ import { fakeProvider } from "./fake-oauth.mjs";
 import { fakeDns } from "./fake-dns.mjs";
 import { feedReaderChecks } from "./feed-reader.mjs";
 import { followChecks } from "./follow.mjs";
+import { fakeModel, spaceModelChecks } from "./space-model.mjs";
+import { roleChecks } from "./roles.mjs";
+import { fakePushService, pushChecks } from "./push.mjs";
 
 const results = [];
 // Another site to sign in with, which both hosts are configured to use.
@@ -42,6 +46,11 @@ const mailbox = await fakeSmtp();
 const FROM = "Spaces <spaces@example.com>";
 // A resolver the Cloudflare host asks where a name leads (src/server/cloudflare/names.ts), with a table of its own.
 const dns = await fakeDns();
+// A vendor's model API, which both hosts reach through MODEL_GATEWAYS for the key a space holds (tests/server/space-model.mjs).
+const vendor = await fakeModel();
+
+// A push service, which both hosts may send members' notifications to (PUSH_HOSTS, tests/server/push.mjs).
+const pushService = await fakePushService();
 
 /** A free port on this machine. */
 const freePort = () =>
@@ -72,7 +81,7 @@ const hosts = {
     async start() {
       site ??= await siteWithFixtures();
       // 127.0.0.1, as written, is the one private host server plugins may reach here (the network guard's checks use it).
-      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env, providerModules), allowPrivate: ["127.0.0.1"], email: smtpMailer({ url: `smtp://127.0.0.1:${mailbox.port}`, from: FROM }) });
+      return serve({ port: 0, host: "127.0.0.1", spaces, site, kernel: ".build/server/space.js", providers: providersFrom(fake.env, providerModules), allowPrivate: ["127.0.0.1"], modelGateways: vendor.gateways, email: smtpMailer({ url: `smtp://127.0.0.1:${mailbox.port}`, from: FROM }), pushHosts: [pushService.origin] });
     },
     /** Whether a message with this subject went out to `to`, with these words. */
     /** The text of the last message sent to an address. */
@@ -87,7 +96,7 @@ const hosts = {
     async start() {
       cpSync("tests/fixtures/server-app", "dist/server-app", { recursive: true });
       const port = await freePort();
-      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries({ ...fake.env, EMAIL_FROM: FROM, ALLOW_PRIVATE_HOSTS: "127.0.0.1", DNS_RESOLVER: dns.url }).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
+      const dev = spawn("npx", ["wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--persist-to", spaces, ...Object.entries({ ...fake.env, EMAIL_FROM: FROM, ALLOW_PRIVATE_HOSTS: "127.0.0.1", DNS_RESOLVER: dns.url, MODEL_GATEWAYS: JSON.stringify(vendor.gateways), PUSH_HOSTS: pushService.origin }).flatMap(([k, v]) => ["--var", `${k}:${v}`]), "--show-interactive-dev-session=false"], { stdio: ["ignore", "pipe", "pipe"], detached: true, env: { ...process.env, CI: "1" } });
       let log = "";
       await new Promise((ready, fail) => {
         const timer = setTimeout(() => fail(new Error(`wrangler dev didn't start: ${log.slice(-500)}`)), 60_000);
@@ -194,6 +203,10 @@ async function device(base, space, cookie, { claim } = {}) {
       ws.send(JSON.stringify({ t: "sync", op: "hello", since }));
       await settle();
     },
+    /** Sends any sync message, as a device would. */
+    send: (message) => ws.send(JSON.stringify(message)),
+    /** Hears the socket close, with its code. */
+    onClose: (heard) => ws.addEventListener("close", (e) => heard(e.code)),
     push: (changes) =>
       new Promise((answer, fail) => {
         const n = ++id;
@@ -976,7 +989,7 @@ async function memberChecks(base, check, owner) {
   const mine = (await ada.call("/auth/spaces")).body?.spaces ?? [];
   check(
     "members: the owner's invite lets one person join, and then they can open the space",
-    joined.status === 200 && again.status === 404 && members.some((m) => m.name === "Ada" && m.role === "member") && mine.some((s) => s.name === "family" && s.role === "member") && (await opens(base, "family", ada.cookie)),
+    joined.status === 200 && again.status === 404 && members.some((m) => m.name === "Ada" && m.role === "editor") && mine.some((s) => s.name === "family" && s.role === "editor") && (await opens(base, "family", ada.cookie)),
     JSON.stringify({ joined, again: again.status, members, mine }),
   );
 
@@ -1170,6 +1183,31 @@ async function suite(name, make) {
     if (name === "node") await quietStreamChecks(check);
     // What a person added, following them between devices: the account's side, the same on both hosts.
     await followChecks(server.url, check, owner, stranger);
+    // A model key a space holds for its members: the same on both hosts.
+    await spaceModelChecks(server.url, check, owner, () => person(server.url), vendor, spaces, async () => {
+      await server.stop();
+      server = await host.start();
+      owner.base = stranger.base = server.url;
+      return server.url;
+    });
+    // An editor talking to one of a space's agents over ACP, with the model the space holds a key for.
+    await acpChecks(server.url, check, owner, () => person(server.url), vendor, async () => {
+      await server.stop();
+      server = await host.start();
+      owner.base = stranger.base = server.url;
+      return server.url;
+    });
+
+    // Who may change what in a space: roles and collections' rules, the same on both hosts.
+    await roleChecks(server.url, check, owner, () => person(server.url), { device, client }, async () => {
+      await server.stop();
+      server = await host.start();
+      owner.base = stranger.base = server.url;
+      return server.url;
+    });
+
+    // Notifications with every tab closed: Web Push from the space's server, the same on both hosts.
+    await pushChecks(server.url, check, owner, () => person(server.url), { device, client }, pushService);
 
     // The same cases on both hosts. (On Cloudflare in production, the Worker's own egress refuses them too.)
     await networkGuardChecks(server.url, check, name);
@@ -1389,7 +1427,7 @@ async function smtpChecks() {
 }
 
 const only = process.argv[2];
-process.on("exit", () => (fake.close(), atproto.close(), mailbox.close()));
+process.on("exit", () => (fake.close(), atproto.close(), mailbox.close(), vendor.close(), pushService.close()));
 for (const [name, make] of Object.entries(hosts)) if (!only || only === name) await suite(name, make);
 if (!only || only === "move") await moveChecks();
 if (!only || only === "smtp") await smtpChecks();

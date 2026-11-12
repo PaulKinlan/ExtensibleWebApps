@@ -10,8 +10,10 @@
                  and what a link here asks for (an invite, confirming an email)
   providers.js   the other sites this server lets people sign in with
   email.js       the address apps in your spaces may email you at
+  notifications.js  notifications on this device, with every tab closed
   model-keys.js  whether your model API keys follow you, encrypted, and unlocking them here
   spaces.js      your spaces: make one, invite people, open an app in one, move one
+  space-model.js a model key a space of yours holds for its members, so they need none
   agent-keys.js  keys that let agents outside the browser use a space as you
   page.js        what the service needs done in the page: passkeys, a file picked
                  from disk (loaded by the host's account bridge, not a plugin)
@@ -30,7 +32,9 @@
   <link rel="plugin" href="agent-keys.js">
   <link rel="plugin" href="email.js">
   <link rel="plugin" href="model-keys.js">
+  <link rel="plugin" href="notifications.js">
   <link rel="plugin" href="providers.js">
+  <link rel="plugin" href="space-model.js">
   <link rel="plugin" href="spaces.js">
   <style>
     main.account { width: 100%; max-width: 40rem; margin: 0 auto; padding: var(--space-6) var(--space-4); display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); overflow-wrap: anywhere; }
@@ -54,8 +58,10 @@
     <h1>Your account</h1>
     <slot name="main"><p>Loading your account…</p></slot>
     <slot name="email"></slot>
+    <slot name="notifications"></slot>
     <slot name="model-keys"></slot>
     <slot name="spaces"></slot>
+    <slot name="space-model"></slot>
     <slot name="keys"></slot>
   </main>
 </body>

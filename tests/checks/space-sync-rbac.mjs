@@ -1,4 +1,4 @@
-// Field-level 3-way sync merge, space RBAC (`viewer` role + `x-ownership: "creator"`),
+// Field-level 3-way sync merge, space RBAC (`owner` / `editor` / `reader` + collection `rules`),
 // and content-addressed blob sync (`sync.putBlob` / `sync.getBlob`) across members'
 // devices in a space.
 import { watchErrors } from "../page-errors.mjs";
@@ -54,6 +54,16 @@ async function waitSettled(page, timeout = 40000) {
   return false;
 }
 
+async function waitRole(page, expected, timeout = 15000) {
+  const deadline = Date.now() + timeout;
+  while (Date.now() < deadline) {
+    const s = await syncState(page).catch(() => null);
+    if (s?.access?.role === expected) return true;
+    await page.waitForTimeout(200);
+  }
+  return false;
+}
+
 /** Runs a one-shot helper plugin in `page` and returns the JSON object it logged with `prefix`. */
 let helperSeq = 0;
 async function runInPlugin(page, permissions, bodySource) {
@@ -80,7 +90,7 @@ export default async (ctx) => {
   }
 }
 
-/** Raw sync WebSocket client for testing protocol-level viewer refusals on plugins and apps. */
+/** Raw sync WebSocket client for testing protocol-level reader refusals on records, plugins, apps, and blobs. */
 async function rawSyncClient(base, space, cookie) {
   const ws = new WebSocket(`${base.replace("http", "ws")}/s/${space}/kernel`, { headers: { cookie } });
   const heard = [];
@@ -98,13 +108,13 @@ async function rawSyncClient(base, space, cookie) {
   await new Promise((r) => setTimeout(r, 250));
   let reqId = 0;
   return {
-    ask(op, payload) {
+    ask(op, payload, replyOp = `${op}:reply`) {
       const id = ++reqId;
       ws.send(JSON.stringify({ t: "sync", op, id, ...payload }));
       return new Promise((done) => {
         const deadline = Date.now() + 5000;
         const poll = () => {
-          const reply = heard.find((m) => m.op === `${op}:reply` && m.id === id);
+          const reply = heard.find((m) => m.op === replyOp && m.id === id);
           if (reply || Date.now() > deadline) return done(reply);
           setTimeout(poll, 40);
         };
@@ -115,17 +125,21 @@ async function rawSyncClient(base, space, cookie) {
   };
 }
 
-/** Verifies `x-ownership: "creator"` enforcement in `syncHub` directly with an in-memory store and registry. */
-async function checkCreatorOwnership(check) {
+/** Verifies collection `rules` (`author`) + `spacePermissions` enforcement in `syncHub` directly with an in-memory store. */
+async function checkAuthorRulesInHub(check) {
   const bundled = await build({
-    stdin: { contents: 'export { syncHub } from "./std/spaces/hub.ts";', resolveDir: ROOT, loader: "ts" },
+    stdin: {
+      contents: 'export { syncHub } from "./std/spaces/hub.ts"; export { spacePermissions } from "./std/spaces/permissions.ts";',
+      resolveDir: ROOT,
+      loader: "ts",
+    },
     bundle: true,
     write: false,
     format: "esm",
     platform: "neutral",
     logLevel: "silent",
   });
-  const { syncHub } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
+  const { syncHub, spacePermissions } = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
   const files = new Map();
   const store = {
     readJson: async (name, fallback) => (files.has(name) ? JSON.parse(files.get(name)) : fallback),
@@ -139,7 +153,7 @@ async function checkCreatorOwnership(check) {
         name: "notes",
         owner: "notes-plugin",
         title: "Notes",
-        schema: { type: "object", "x-ownership": "creator", properties: { text: { type: "string" } }, required: ["text"] },
+        schema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
       },
     ],
   ]);
@@ -163,40 +177,59 @@ async function checkCreatorOwnership(check) {
       sent.set(host, list);
     },
   };
+  const members = async () => [
+    { id: "u-owner", name: "Owner", role: "owner" },
+    { id: "u-ann", name: "Ann", role: "editor" },
+    { id: "u-ben", name: "Ben", role: "editor" },
+  ];
+  const permit = spacePermissions(store, hosts, members, (name) => registry.get(name));
+  permit.learn({
+    id: "notes-plugin",
+    name: "Notes",
+    permissions: [],
+    collections: {
+      notes: {
+        title: "Notes",
+        schema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] },
+        rules: { change: "author", remove: "author" },
+      },
+    },
+  });
+  await permit.settled();
+
   const root = { serial: async () => undefined };
   const hub = syncHub(root, store, records, hosts);
+  hub.permit = permit;
   const hostAnn = { tab: "t-ann", member: "u-ann", port: {} };
   const hostBen = { tab: "t-ben", member: "u-ben", port: {} };
 
-  const pushAs = async (host, changes) => {
+  const pushAs = async (host, role, changes) => {
     const id = Math.floor(Math.random() * 1e6);
-    await hub.handle(host, { t: "sync", op: "push", id, changes });
+    await hub.handle(host, { t: "sync", op: "push", id, role, changes });
     return (sent.get(host) ?? []).findLast((m) => m.op === "pushed" && m.id === id)?.results;
   };
 
-  const created = await pushAs(hostBen, [{ collection: "notes", id: "n1", base: 0, after: { id: "n1", text: "Ben's note" } }]);
-  const stored = data.get("n1");
-  const hijackEdit = await pushAs(hostAnn, [{ collection: "notes", id: "n1", base: 1, after: { id: "n1", text: "Taken by peer" } }]);
-  const hijackDelete = await pushAs(hostAnn, [{ collection: "notes", id: "n1", base: 1, after: null }]);
-  const ownEdit = await pushAs(hostBen, [{ collection: "notes", id: "n1", base: 1, after: { id: "n1", text: "Updated by Ben" } }]);
+  const created = await pushAs(hostBen, "editor", [{ collection: "notes", id: "n1", base: 0, after: { id: "n1", text: "Ben's note" } }]);
+  const hijackEdit = await pushAs(hostAnn, "editor", [{ collection: "notes", id: "n1", base: 1, after: { id: "n1", text: "Taken by peer" } }]);
+  const hijackDelete = await pushAs(hostAnn, "editor", [{ collection: "notes", id: "n1", base: 1, after: null }]);
+  const ownEdit = await pushAs(hostBen, "editor", [{ collection: "notes", id: "n1", base: 1, after: { id: "n1", text: "Updated by Ben" } }]);
   await hub.stop();
 
   check(
-    "space RBAC: x-ownership 'creator' stamps createdBy on new records, lets the creator update, and refuses updates or deletes from other non-owner members",
+    "space RBAC: collection rules { change: 'author', remove: 'author' } track record authors, let the author update, and refuse updates or deletes from other editors",
     created?.[0]?.ok === true &&
-      stored?.createdBy === "u-ben" &&
       hijackEdit?.[0]?.ok === false &&
-      /created this record/.test(hijackEdit[0].error ?? "") &&
+      hijackEdit?.[0]?.denied === true &&
+      /Ben added this/.test(hijackEdit[0].error ?? "") &&
       hijackDelete?.[0]?.ok === false &&
       ownEdit?.[0]?.ok === true &&
-      data.get("n1")?.text === "Updated by Ben" &&
-      data.get("n1")?.createdBy === "u-ben",
-    JSON.stringify({ created, stored, hijackEdit, hijackDelete, ownEdit }),
+      data.get("n1")?.text === "Updated by Ben",
+    JSON.stringify({ created, hijackEdit, hijackDelete, ownEdit }),
   );
 }
 
 export default async function ({ check, context, errors }) {
-  await checkCreatorOwnership(check);
+  await checkAuthorRulesInHub(check);
 
   const browser = context.browser();
   const spaces = await mkdtemp(join(tmpdir(), "space-sync-rbac-"));
@@ -206,7 +239,7 @@ export default async function ({ check, context, errors }) {
   const devices = [];
 
   try {
-    // 1. Ann creates `studio` and invites Ben as a normal member.
+    // 1. Ann creates `studio` and invites Ben as an editor ("Invite someone").
     const ann = await signUp(browser, `${server.url}/account/`, "Ann", errors);
     devices.push(ann.context);
     await ann.page.fill('form[data-action="make"] input[name="name"]', "studio");
@@ -214,27 +247,26 @@ export default async function ({ check, context, errors }) {
     await ann.page.waitForSelector('.space-list button:has-text("Invite someone")', { timeout: 8000 });
     await ann.page.click('.space-list button:has-text("Invite someone")');
     await ann.page.waitForSelector(".invite input", { timeout: 8000 });
-    const memberInvite = await ann.page.inputValue(".invite input");
-    const ben = await signUp(browser, memberInvite, "Ben", errors);
+    const editorInvite = await ann.page.inputValue(".invite input");
+    const ben = await signUp(browser, editorInvite, "Ben", errors);
     devices.push(ben.context);
 
-    // Ann also invites Cam as a read-only `viewer` using the role selector on /account/.
+    // Ann also invites Cam as a read-only `reader` ("Invite a reader") on /account/.
     await ann.page.goto(`${server.url}/account/`);
-    await ann.page.waitForSelector('form[data-action="invite:studio"] select[name="role"]', { timeout: 8000 });
-    await ann.page.selectOption('form[data-action="invite:studio"] select[name="role"]', "viewer");
-    await ann.page.click('.space-list button:has-text("Invite someone")');
-    await ann.page.waitForFunction(() => /viewer invite/.test(document.querySelector(".spaces .status")?.textContent ?? ""), null, { timeout: 8000 });
-    const viewerInvite = await ann.page.inputValue(".invite input");
-    const cam = await signUp(browser, viewerInvite, "Cam", errors);
+    await ann.page.waitForSelector('.space-list button:has-text("Invite a reader")', { timeout: 8000 });
+    await ann.page.click('.space-list button:has-text("Invite a reader")');
+    await ann.page.waitForFunction(() => /not change it/.test(document.querySelector(".invite")?.textContent ?? ""), null, { timeout: 8000 });
+    const readerInvite = await ann.page.inputValue(".invite input");
+    const cam = await signUp(browser, readerInvite, "Cam", errors);
     devices.push(cam.context);
     await cam.page.waitForSelector(".space-list strong", { timeout: 8000 });
-    const camSpacesText = (await cam.page.locator(".space-list").textContent()) ?? "";
+    const camSpacesText = ((await cam.page.locator(".space-list").textContent()) ?? "").replace(/\s+/g, " ").trim();
     await ann.page.reload();
-    await ann.page.waitForSelector(".member-list", { timeout: 8000 });
-    const annMembersText = (await ann.page.locator(".member-list").first().textContent()) ?? "";
+    await ann.page.waitForSelector(".members", { timeout: 8000 });
+    const annMembersText = ((await ann.page.locator(".members").first().textContent()) ?? "").replace(/\s+/g, " ").trim();
     check(
-      "space RBAC: an owner can invite someone as a viewer on /account/, and both see the viewer role",
-      /studio \(viewer\)/.test(camSpacesText) && /Cam \(viewer\)/.test(annMembersText) && /Ben \(member\)/.test(annMembersText),
+      "space RBAC: an owner can invite editors and readers on /account/, and both see their roles",
+      /studio \(reader\)/.test(camSpacesText) && /Cam\s*Reader/.test(annMembersText) && /Ben\s*Editor/.test(annMembersText),
       JSON.stringify({ camSpacesText, annMembersText }),
     );
 
@@ -245,6 +277,7 @@ export default async function ({ check, context, errors }) {
     await waitSettled(ann.page);
     await waitSettled(ben.page);
     await waitSettled(cam.page);
+    await waitRole(cam.page, "reader");
 
     // Ann adds a shared book via the reading-list form.
     await ann.page.fill(`${FORM} input[name="title"]`, "Hyperion");
@@ -255,7 +288,7 @@ export default async function ({ check, context, errors }) {
     await waitSettled(ann.page);
     await waitSettled(ben.page);
     await waitSettled(cam.page);
-    check("space RBAC: a viewer joins the space and receives synced records", reachedBen && reachedCam);
+    check("space RBAC: a reader joins the space and receives synced records", reachedBen && reachedCam);
 
     // 3. Field-level 3-way auto-merge: take server offline; Ann edits `author`, Ben edits `notes` on Hyperion!
     await server.stop();
@@ -326,23 +359,24 @@ export default async function ({ check, context, errors }) {
       JSON.stringify(conflictDrafts),
     );
 
-    // 5. Viewer write refusal: Cam (viewer) tries to add a book, share a plugin, and share an app.
+    // 5. Reader write refusal: Cam (reader) tries to add a book on the page, and over raw WebSocket push/plugin/app messages.
     await waitSettled(cam.page);
-    await cam.page.fill(`${FORM} input[name="title"]`, "Viewer Attempt");
+    await waitRole(cam.page, "reader");
+    await cam.page.fill(`${FORM} input[name="title"]`, "Reader Attempt");
     await cam.page.click(`${FORM} button[type="submit"]`);
-    const draftDeadline = Date.now() + 10000;
-    while (Date.now() < draftDeadline) {
-      const s = await syncState(cam.page).catch(() => null);
-      if (s?.drafts?.some((d) => d.mine?.title === "Viewer Attempt")) break;
-      await cam.page.waitForTimeout(200);
-    }
+    const noticeText = await cam.page.waitForSelector("#notice p", { timeout: 8000 }).then((p) => p.textContent(), () => "");
+    await cam.page.waitForTimeout(600);
     const camSync = await syncState(cam.page);
-    const viewerDraft = camSync.drafts.find((d) => d.mine?.title === "Viewer Attempt");
-    const leakedToAnn = await hasTitle(ann.page, "Viewer Attempt", 1000);
-    // Check raw plugin/app share refusals for viewer cookie as well.
+    const leakedToAnn = await hasTitle(ann.page, "Reader Attempt", 1000);
+
     const camCookies = await cam.context.cookies(server.url);
     const camCookieHeader = camCookies.map((c) => `${c.name}=${c.value}`).join("; ");
     const rawCam = await rawSyncClient(server.url, "studio", camCookieHeader);
+    const rawPushReply = await rawCam.ask(
+      "push",
+      { changes: [{ collection: "library", id: "reader-raw-1", base: 0, after: { id: "reader-raw-1", title: "Raw Reader Book" } }] },
+      "pushed",
+    );
     const pluginListReply = await rawCam.ask("plugins", { action: "list" });
     const pluginAddReply = await rawCam.ask("plugins", {
       action: "add",
@@ -352,19 +386,24 @@ export default async function ({ check, context, errors }) {
     const appShareReply = await rawCam.ask("apps", { action: "share", name: "vapp", files: [{ name: "app.html", text: "<!doctype html>" }] });
     rawCam.close();
 
+    const refusalRe = /You can read this space but not change it/;
     check(
-      "space RBAC: a viewer's record push, plugin add, and app share are refused with 'Viewers can read this space, not change it'",
+      "space RBAC: a reader's local write, record push, plugin add, and app share are refused without keeping drafts",
       !leakedToAnn &&
-        viewerDraft?.why === "Viewers can read this space, not change it" &&
+        refusalRe.test(noticeText ?? "") &&
+        camSync.drafts.length === 0 &&
+        rawPushReply?.results?.[0]?.ok === false &&
+        rawPushReply?.results?.[0]?.denied === true &&
+        refusalRe.test(rawPushReply?.results?.[0]?.error ?? "") &&
         pluginListReply?.ok === true &&
         pluginAddReply?.ok === false &&
-        pluginAddReply?.error === "Viewers can read this space, not change it" &&
+        refusalRe.test(pluginAddReply?.error ?? "") &&
         appShareReply?.ok === false &&
-        appShareReply?.error === "Viewers can read this space, not change it",
-      JSON.stringify({ viewerDraft, pluginListReply, pluginAddReply, appShareReply }),
+        refusalRe.test(appShareReply?.error ?? ""),
+      JSON.stringify({ noticeText, drafts: camSync.drafts, rawPushReply, pluginListReply, pluginAddReply, appShareReply }),
     );
 
-    // 6. Content-addressed blob sync (`sync.putBlob` / `sync.getBlob`) across Ann, Ben, and Cam (including multi-chunk >512 KB blob).
+    // 6. Content-addressed blob sync (`sync.putBlob` / `sync.getBlob`) across Ann (owner), Ben (editor), and Cam (reader).
     const putResult = await runInPlugin(
       ann.page,
       ["sync"],
@@ -403,7 +442,7 @@ export default async function ({ check, context, errors }) {
       }`,
     );
 
-    const viewerBlobCheck = await runInPlugin(
+    const readerBlobCheck = await runInPlugin(
       cam.page,
       ["sync"],
       `async (ctx) => {
@@ -421,7 +460,7 @@ export default async function ({ check, context, errors }) {
     const deniedBlobCheck = await runInPlugin(ann.page, [], `async (ctx) => ctx.call("sync", "getBlob", ${JSON.stringify(smallHash)})`);
 
     check(
-      "blob sync: sync.putBlob and sync.getBlob sync small and multi-chunk binary blobs across devices with SHA-256 verification, allow viewers to read but not write, and enforce permissions",
+      "blob sync: sync.putBlob and sync.getBlob sync small and multi-chunk binary blobs across devices with SHA-256 verification, allow readers to read but only owners/editors to write, and enforce permissions",
       putResult.ok &&
         /^[0-9a-f]{64}$/.test(smallHash) &&
         putResult.value.a.size === 12 &&
@@ -431,20 +470,20 @@ export default async function ({ check, context, errors }) {
         getOnBen.value.smallType === "image/png" &&
         getOnBen.value.largeMatches === true &&
         getOnBen.value.missing === null &&
-        viewerBlobCheck.ok &&
-        viewerBlobCheck.value.readSize === 12 &&
-        viewerBlobCheck.value.writeError === "Viewers can read this space, not change it" &&
+        readerBlobCheck.ok &&
+        readerBlobCheck.value.readSize === 12 &&
+        refusalRe.test(readerBlobCheck.value.writeError ?? "") &&
         deniedBlobCheck.ok === false &&
         /Missing capability/.test(deniedBlobCheck.error ?? ""),
-      JSON.stringify({ putResult, getOnBen, viewerBlobCheck, deniedBlobCheck }),
+      JSON.stringify({ putResult, getOnBen, readerBlobCheck, deniedBlobCheck }),
     );
 
     // 7. Role switching (`/auth/spaces/<name>/role`) & MCP agent-key RBAC:
-    //    viewers cannot mint agent keys; non-owners get 403 on role switch; promoting viewer -> member enables writes & keys; demoting revokes keys.
-    const viewerKeyAttempt = await fetch(`${server.url}/auth/keys`, {
+    //    readers cannot mint agent keys; non-owners get 403 on role switch; promoting reader -> editor enables writes & keys; demoting revokes keys.
+    const readerKeyAttempt = await fetch(`${server.url}/auth/keys`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: server.url, cookie: camCookieHeader },
-      body: JSON.stringify({ space: "studio", name: "Viewer MCP" }),
+      body: JSON.stringify({ space: "studio", name: "Reader MCP" }),
     });
     const benCookies = await ben.context.cookies(server.url);
     const benCookieHeader = benCookies.map((c) => `${c.name}=${c.value}`).join("; ");
@@ -453,45 +492,46 @@ export default async function ({ check, context, errors }) {
     const benTriesRole = await fetch(`${server.url}/auth/spaces/studio/role`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: server.url, cookie: benCookieHeader },
-      body: JSON.stringify({ user: camId, role: "member" }),
+      body: JSON.stringify({ user: camId, role: "editor" }),
     });
     const annCookies = await ann.context.cookies(server.url);
     const annCookieHeader = annCookies.map((c) => `${c.name}=${c.value}`).join("; ");
     const annPromotesCam = await fetch(`${server.url}/auth/spaces/studio/role`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: server.url, cookie: annCookieHeader },
-      body: JSON.stringify({ user: camId, role: "member" }),
+      body: JSON.stringify({ user: camId, role: "editor" }),
     });
-    // Now Cam (promoted to member) can mint an agent key and push changes!
-    const memberKeyMint = await fetch(`${server.url}/auth/keys`, {
+    // Wait for Cam's connection to reopen with role === "editor".
+    await waitRole(cam.page, "editor");
+    const editorKeyMint = await fetch(`${server.url}/auth/keys`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: server.url, cookie: camCookieHeader },
-      body: JSON.stringify({ space: "studio", name: "Member MCP" }),
+      body: JSON.stringify({ space: "studio", name: "Editor MCP" }),
     });
-    await cam.page.fill(`${FORM} input[name="title"]`, "Cam Is Member Now");
+    await cam.page.fill(`${FORM} input[name="title"]`, "Cam Is Editor Now");
     await cam.page.click(`${FORM} button[type="submit"]`);
-    const camBookReachedAnn = await hasTitle(ann.page, "Cam Is Member Now", 15000);
-    // Demoting Cam back to viewer revokes Cam's space agent keys.
+    const camBookReachedAnn = await hasTitle(ann.page, "Cam Is Editor Now", 15000);
+    // Demoting Cam back to reader revokes Cam's space agent keys.
     const annDemotesCam = await fetch(`${server.url}/auth/spaces/studio/role`, {
       method: "POST",
       headers: { "content-type": "application/json", origin: server.url, cookie: annCookieHeader },
-      body: JSON.stringify({ user: camId, role: "viewer" }),
+      body: JSON.stringify({ user: camId, role: "reader" }),
     });
     const camKeysAfterDemote = await fetch(`${server.url}/auth/keys`, { headers: { cookie: camCookieHeader } }).then((r) => r.json());
     check(
-      "space RBAC: viewers cannot mint MCP keys, only owners switch roles via /auth/spaces/<name>/role, promoting enables writes, and demoting back to viewer revokes space keys",
-      viewerKeyAttempt.status === 403 &&
+      "space RBAC: readers cannot mint MCP keys, only owners switch roles via /auth/spaces/<name>/role, promoting to editor enables writes, and demoting back to reader revokes space keys",
+      readerKeyAttempt.status === 403 &&
         benTriesRole.status === 403 &&
         annPromotesCam.status === 200 &&
-        memberKeyMint.status === 200 &&
+        editorKeyMint.status === 200 &&
         camBookReachedAnn &&
         annDemotesCam.status === 200 &&
         (camKeysAfterDemote?.keys ?? []).length === 0,
       JSON.stringify({
-        viewerKeyStatus: viewerKeyAttempt.status,
+        readerKeyStatus: readerKeyAttempt.status,
         benStatus: benTriesRole.status,
         annStatus: annPromotesCam.status,
-        memberKeyStatus: memberKeyMint.status,
+        editorKeyStatus: editorKeyMint.status,
         camBookReachedAnn,
         keysLeft: camKeysAfterDemote?.keys?.length,
       }),

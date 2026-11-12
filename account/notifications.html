@@ -1,0 +1,43 @@
+<!--
+  Notifications on this device (notifications.js). It sends { user,
+  unsupported, blocked, here, canTurnOn, devices, status }: `here` is whether
+  this browser gets them, `unsupported` and `blocked` why it can't, and each
+  device is { id, label, since, here }.
+-->
+<style>
+  .notifications { display: grid; gap: var(--space-3); }
+  .notifications .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .notifications ul { display: grid; gap: var(--space-2); padding: 0; list-style: none; }
+  .notifications li { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+  .notifications li .what { flex: 1 1 10rem; }
+  .notifications li small, .notifications .hint { color: var(--fg-2); }
+  .notifications .status:empty { display: none; }
+</style>
+<template id="notifications">
+  <template if="user">
+    <section class="notifications">
+      <h2>Notifications on this device</h2>
+      <p>Apps in your spaces can tell you something when you don't have them open, such as a reminder that has come due. Turn it on for each device you want them on. Nothing is sent until an app in one of your spaces has something to say.</p>
+      <template if="unsupported"><p class="hint" data-part="unsupported">This browser can't get notifications with the site closed. On an iPhone or iPad, add the site to your Home Screen and open it from there.</p></template>
+      <template if="blocked"><p class="hint" data-part="blocked">Notifications from this site are blocked in this browser. Allow them in the site's settings (the icon beside the address), then come back here.</p></template>
+      <div class="actions">
+        <template if="canTurnOn"><button type="button" class="primary" data-action="on">Turn on for this device</button></template>
+        <template if="here">
+          <button type="button" data-action="test">Send me a test</button>
+          <button type="button" data-action="off">Turn off for this device</button>
+        </template>
+      </div>
+      <template if="devices.length">
+        <ul aria-label="Your devices that get notifications">
+          <template for="d of devices">
+            <li key="{{d.id}}">
+              <span class="what">{{d.label}} <small>{{d.since}}</small></span>
+              <template if="!d.here"><button type="button" data-action="remove:{{d.id}}">Take away</button></template>
+            </li>
+          </template>
+        </ul>
+      </template>
+      <p class="status" role="status">{{status}}</p>
+    </section>
+  </template>
+</template>

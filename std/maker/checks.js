@@ -31,6 +31,7 @@ import { pageParts, pageProblems, tags } from "../../sw/made-page.js";
 /**
  * @typedef {{ level: "error" | "warning"; file: string; line?: number; message: string }} Problem
  * @typedef {{
+ *   checkRules?: (value: unknown, where: string) => unknown;
  *   readManifest(source: string): { id: string; name: string; permissions: string[]; collections?: Record<string, unknown>; places?: Record<string, unknown>; provides?: Record<string, any>; runs?: string };
  *   capabilities(manifest: any): Set<string>;
  *   grants(caps: Set<string>, wanted: string): boolean;
@@ -286,6 +287,16 @@ function checkPlugin(app, key, source, slots, rules, report) {
   for (const name of Object.keys(manifest.collections ?? {})) {
     const owner = rules.collectionOwner?.(name);
     if (owner && owner !== manifest.id) report("error", key, 1, `The ${name} collection already belongs to the plugin "${owner}", so this one can't declare it: name the app's collections after the app, such as "<app>-${name}"`);
+  }
+  // Who may change a collection in a space (`rules`, std/spaces/rules.ts): rules a space couldn't read would lock it to its owner.
+  for (const [name, spec] of Object.entries(manifest.collections ?? {})) {
+    const written = /** @type {{ rules?: unknown }} */ (spec ?? {}).rules;
+    if (written === undefined || !rules.checkRules) continue;
+    try {
+      rules.checkRules(written, `Collection ${name}`);
+    } catch (error) {
+      report("error", key, 1, `${error instanceof Error ? error.message : String(error)}. A space that can't read a collection's rules lets only its owner change it`);
+    }
   }
   // Comments blanked, so an example in one isn't read as a call; a match only counts where it isn't inside a string.
   const { code, bare } = scan(source);

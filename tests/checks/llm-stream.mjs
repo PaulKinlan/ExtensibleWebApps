@@ -1,6 +1,6 @@
 // Streaming (`llm.stream`, `llm:stream`, `llm:chunk`), multimodal user messages,
-// the on-device Browser Prompt API provider (`std/llm/browser.js`), and live
-// streaming updates in `std/ask-the-page.js` and `std/agents/chat.js`.
+// fallback from `llm:stream` to `llm:complete`, and live streaming updates in
+// `std/ask-the-page.js` and `std/agents/chat.js`.
 import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 
@@ -99,12 +99,11 @@ export default async function ({ a, check, openTab, URL: siteUrl, plugin, plugin
   await new Promise((resolve) => server.listen(0, "localhost", resolve));
   const local = `localhost:${server.address().port}`;
 
-  const browserPluginRaw = readFileSync(new URL("../../std/llm/browser.js", import.meta.url), "utf8");
   const ids = [
     "no-llm-chunk",
     "no-provide-chunk",
+    "unready-provider",
     "fallback-provider",
-    "llm-browser",
     "llm-anthropic",
     "llm-openai",
     "llm-openai-compatible",
@@ -125,8 +124,15 @@ export default async (ctx) => {
 };`);
     check("calling llm.chunk requires provide:llm", /Missing capability provide:llm/.test(await pluginLog("no-provide-chunk", "spoof").catch(() => "")));
 
-    // 2. Fallback provider (only implements llm:complete) + real unmodified browser.js (unavailable in headless Chromium).
-    await plugin(browserPluginRaw);
+    // 2. Unready provider + fallback provider (only implements llm:complete).
+    await plugin(`export const manifest = { id: 'unready-provider', name: 'Unready provider', permissions: ['provide:llm'] };
+export default (ctx) => {
+  ctx.on('llm:providers', (v) => ({ providers: [...v.providers, { id: 'unready-provider', name: 'Unready provider', ready: false }] }));
+  ctx.on('llm:complete', (req) => {
+    if (req.provider !== 'unready-provider') return;
+    return { error: 'not ready yet', declined: true };
+  });
+};`);
     await plugin(`export const manifest = { id: 'fallback-provider', name: 'Fallback provider', permissions: ['provide:llm'] };
 export default (ctx) => {
   ctx.on('llm:providers', (v) => ({ providers: [...v.providers, { id: 'fallback-provider', name: 'Fallback provider', ready: true }] }));
@@ -163,16 +169,16 @@ export default async (ctx) => {
   });
 
   const providers = await ctx.call('llm', 'providers');
-  const browserEntry = providers.find((p) => p.id === 'llm-browser');
-  ctx.log('browser-unavail ' + JSON.stringify(browserEntry));
+  const unreadyEntry = providers.find((p) => p.id === 'unready-provider');
+  ctx.log('unready-entry ' + JSON.stringify(unreadyEntry ?? null));
 
-  // Default provider selection skips unavailable llm-browser and picks the first ready provider.
+  // Default provider selection skips unready-provider and picks the first ready provider.
   const defaultAns = await ctx.call('llm', 'stream', { streamId: 'def-1', messages: [{ role: 'user', content: 'who answers?' }] });
   ctx.log('default-stream ' + JSON.stringify({ provider: defaultAns.provider, text: defaultAns.text, streamId: defaultAns.streamId, chunks: byStream.get('def-1') }));
 
-  // Explicit call to unavailable llm-browser fails cleanly.
-  const unavailErr = await ctx.call('llm', 'complete', { provider: 'llm-browser', messages: [{ role: 'user', content: 'hi' }] }).then(() => 'ok', (e) => e.message);
-  ctx.log('browser-err ' + unavailErr);
+  // Explicit call to absent provider fails cleanly.
+  const absentErr = await ctx.call('llm', 'complete', { provider: 'llm-absent', messages: [{ role: 'user', content: 'hi' }] }).then(() => 'ok', (e) => e.message);
+  ctx.log('absent-err ' + absentErr);
 
   // SSE streaming across all four vendor providers.
   for (const p of ['llm-anthropic', 'llm-openai', 'llm-openai-compatible', 'llm-gemini']) {
@@ -203,17 +209,17 @@ export default async (ctx) => {
     await pluginLog("stream-tester", "stream-tester-done");
     const log = (prefix) => pluginLog("stream-tester", prefix).catch(() => "");
 
-    const browserUnavail = JSON.parse((await log("browser-unavail ")).slice("browser-unavail ".length) || "null");
-    check("llm-browser reports ready: false when LanguageModel is unavailable", browserUnavail?.id === "llm-browser" && browserUnavail?.ready === false, JSON.stringify(browserUnavail));
+    const unreadyEntry = JSON.parse((await log("unready-entry ")).slice("unready-entry ".length) || "null");
+    check("llm.providers includes unready providers with ready: false", unreadyEntry?.id === "unready-provider" && unreadyEntry?.ready === false, JSON.stringify(unreadyEntry));
 
     const defStream = JSON.parse((await log("default-stream ")).slice("default-stream ".length) || "{}");
     const defJoined = (defStream.chunks ?? []).filter((c) => !c.done).map((c) => c.delta).join("");
     check(
-      "llm.stream skips unavailable llm-browser, falls back to llm:complete when llm:stream returns undefined, and emits chunks + done: true",
+      "llm.stream skips unready providers, falls back to llm:complete when llm:stream returns undefined, and emits chunks + done: true",
       defStream.provider === "fallback-provider" && defStream.streamId === "def-1" && defStream.text === "Fallback streams cleanly" && defJoined === "Fallback streams cleanly" && defStream.chunks?.at(-1)?.done === true,
       JSON.stringify(defStream),
     );
-    check("explicitly asking unavailable llm-browser fails with its name", /Browser AI \(On-device\): .*no on-device language model/.test(await log("browser-err ")));
+    check("explicitly asking an absent provider fails cleanly", /No provider llm-absent/.test(await log("absent-err ")));
 
     // Verify SSE chunks and final shapes for all 4 providers.
     for (const [id, expectedDeltas] of [
@@ -265,55 +271,7 @@ export default async (ctx) => {
       JSON.stringify(gemMm),
     );
 
-    // 3. Test std/llm/browser.js when LanguageModel is downloadable (ready: false) vs available (ready: true, prompt & promptStreaming & destroy).
-    const injectLanguageModel = (mockCode) => browserPluginRaw.replace(/(export const manifest = \{[\s\S]*?\};\n)/, `$1\n${mockCode}\n`);
-    await plugin(injectLanguageModel(`globalThis.LanguageModel = { availability: async () => "downloadable" };`));
-    await plugin(`export const manifest = { id: 'browser-dl-check', name: 'Browser DL check', permissions: ['llm'] };
-export default async (ctx) => {
-  const p = (await ctx.call('llm', 'providers')).find((x) => x.id === 'llm-browser');
-  ctx.log('dl-ready ' + JSON.stringify(p));
-};`);
-    check("llm-browser keeps ready: false when availability() is downloadable", /"ready":false/.test(await pluginLog("browser-dl-check", "dl-ready")));
-    await a.evaluate(() => window.__host.command("uninstall", "browser-dl-check")).catch(() => {});
-
-    await plugin(injectLanguageModel(`
-let destroyed = 0;
-globalThis.LanguageModel = {
-  availability: async () => "available",
-  create: async (opts) => ({
-    contextUsage: 12,
-    prompt: async (input, promptOpts) => {
-      if (promptOpts?.responseConstraint) return JSON.stringify({ count: 7, destroyed });
-      const hasBlob = Array.isArray(input) && input[0]?.content?.some((c) => c.value instanceof Blob);
-      return "on-device " + (opts?.initialPrompts?.[0]?.content ?? "") + " blob:" + hasBlob;
-    },
-    promptStreaming: async function* (input) {
-      yield "Local ";
-      yield "nano ";
-      yield String(input);
-    },
-    destroy() { destroyed++; },
-  }),
-};`));
-    await plugin(`export const manifest = { id: 'browser-ready-check', name: 'Browser ready check', permissions: ['llm'] };
-export default async (ctx) => {
-  const chunks = [];
-  ctx.on('llm:chunk', (c) => { if (c.streamId === 'b-s1' && !c.done) chunks.push(c.delta); });
-  const p = (await ctx.call('llm', 'providers')).find((x) => x.id === 'llm-browser');
-  const streamed = await ctx.call('llm', 'stream', { provider: 'llm-browser', streamId: 'b-s1', messages: [{ role: 'user', content: 'works' }] });
-  const mm = await ctx.call('llm', 'complete', { provider: 'llm-browser', system: 'SYS', messages: [{ role: 'user', content: [{ type: 'text', text: 'pic' }, { type: 'image', mediaType: 'image/png', data: 'aGVsbG8=' }] }] });
-  const shaped = await ctx.call('llm', 'complete', { provider: 'llm-browser', messages: [{ role: 'user', content: 'json' }], schema: { type: 'object', properties: { count: { type: 'number' }, destroyed: { type: 'number' } } } });
-  ctx.log('browser-live ' + JSON.stringify({ ready: p?.ready, chunks, text: streamed.text, mm: mm.text, json: shaped.json }));
-};`);
-    const browserLive = JSON.parse((await pluginLog("browser-ready-check", "browser-live ")).slice("browser-live ".length) || "{}");
-    check(
-      "llm-browser reports ready: true when available, streams promptStreaming chunks, passes multimodal Blobs and JSON schemas, and destroys sessions",
-      browserLive.ready === true && JSON.stringify(browserLive.chunks) === '["Local ","nano ","works"]' && browserLive.text === "Local nano works" && browserLive.mm === "on-device SYS blob:true" && browserLive.json?.count === 7 && browserLive.json?.destroyed >= 2,
-      JSON.stringify(browserLive),
-    );
-    await a.evaluate(() => window.__host.command("uninstall", "browser-ready-check")).catch(() => {});
-
-    // 4. Live UI streaming updates in std/ask-the-page.js and std/agents/chat.js (direct mode).
+    // 3. Live UI streaming updates in std/ask-the-page.js and std/agents/chat.js (direct mode).
     const tab = await openTab(`${siteUrl}demos/habits/app.html`);
     try {
       const gatedModel = `export const manifest = { id: "gated-stream", name: "Gated stream", permissions: ["provide:llm"], services: ["llm"] };

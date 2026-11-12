@@ -251,6 +251,8 @@ export async function buildCatalog(k, index) {
     const file = new URL(`${name}/module.ts`, STD);
     const text = read(file);
     const names = sorted(new Set([...text.matchAll(/(?:^export default service|kernel\.service|kernel\.provide)\("([a-z][a-z0-9-]*)"/gm)].map((m) => m[1])));
+    // A module that only answers a door on a space's server (std/acp) gives plugins no service to list.
+    if (!names.length && json(new URL(`${name}/module.json`, STD)).doors?.length) continue;
     if (!names.length) throw new Error(`std/${name}/module.ts: provides no service the catalogue can find (export default service("…"), or kernel.provide("…"))`);
     for (const service of names) services.push({ id: service, module: name, description: firstSentence(text), href: `https://github.com/PaulKinlan/ExtensibleWebApps/blob/main/std/${name}/module.ts`, docs: `/docs/api#${service}` });
   }

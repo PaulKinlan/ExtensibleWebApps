@@ -15,13 +15,14 @@
 // are read.
 
 import { DurableObject } from "cloudflare:workers";
-import { setEnv } from "../../kernel/env";
+import { setEnv, type PushAsk, type Pushed } from "../../kernel/env";
 import type { Files, Message } from "../../seams/index.ts";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import { type IsolateHost, remoteIsolates } from "../../seams/remote-isolates.ts";
 import type { RouteRequest, RouteResponse } from "../routes.ts";
 import { exportSpace, importSpace, type SpaceCopy } from "../space-copy.ts";
-import { signed } from "../signed.ts";
+import { answerFor, signed } from "../signed.ts";
+import { roleOf, type Role } from "../auth/roles.ts";
 
 type Send = (text: string) => void | Promise<void>;
 type Kept<T> = T & { dup?: () => T };
@@ -32,9 +33,11 @@ export interface SpaceHost extends IsolateHost {
   /** The space's members' email addresses (the email service mails only these). */
   addresses(): Promise<string[]>;
   /** The space's members, with the names on their accounts. */
-  members(): Promise<{ id: string; name: string }[]>;
+  members(): Promise<{ id: string; name: string; role?: Role }[]>;
   /** Sends a message through Cloudflare Email Service; null when the deployment hasn't set it up. */
   deliver(message: Message): Promise<{ ok: true; id: string } | { ok: false; error: string } | null>;
+  /** Sends a notification to the members' devices (src/server/auth/push.ts), as the space served at `origin`. */
+  push(note: PushAsk, origin: string): Promise<Pushed>;
   /** Sets the space's alarm for the earliest scheduled job, or clears it. */
   wake(at: number | undefined): Promise<void>;
   /** What a door answers may have changed (the door `mcp`): the Worker's open streams for the space ask it again. */
@@ -134,7 +137,7 @@ let answerRoute: ((request: RouteRequest) => Promise<RouteResponse | null>) | un
 
 export class SpaceKernel extends DurableObject {
   private started?: Promise<(port: MessagePort) => void>;
-  private clients = new Map<string, { port: MessagePort; send: Send; member: string }>();
+  private clients = new Map<string, { port: MessagePort; send: Send; member: string; role?: Role }>();
 
   /** Starts the kernel the first time a client connects, with this space's folder. */
   private start(origin: string, given?: SpaceHost): Promise<(port: MessagePort) => void> {
@@ -158,6 +161,7 @@ export class SpaceKernel extends DurableObject {
           addresses: () => host.addresses(),
           members: () => host.members(),
           deliver: (message: Message) => host.deliver(message),
+          push: (note: PushAsk) => host.push(note, origin),
           changed: (door: string) => void host.changed(door).catch(() => {}),
         }),
         onError: (report) => {
@@ -174,7 +178,7 @@ export class SpaceKernel extends DurableObject {
   }
 
   /** A client joins, as `member` of the space (which the supervisor's Worker checked). */
-  async join(client: string, origin: string, send: Send, member = "", host?: SpaceHost): Promise<void> {
+  async join(client: string, origin: string, send: Send, member = "", host?: SpaceHost, role?: string): Promise<void> {
     const accept = await this.start(origin, host);
     // A function passed over RPC lasts only as long as the call, unless it is kept with dup().
     const kept = (send as Send & { dup?: () => Send }).dup?.() ?? send;
@@ -186,7 +190,8 @@ export class SpaceKernel extends DurableObject {
         // Something that isn't JSON (a canvas, a port) has no meaning to a remote client.
       }
     };
-    this.clients.set(client, { port: port1, send: kept, member });
+    // What the member may do, as the Worker said; anything it didn't say is read as a reader, who changes nothing.
+    this.clients.set(client, { port: port1, send: kept, member, role: role === undefined ? undefined : (roleOf(role) ?? "reader") });
     accept(port2);
   }
 
@@ -222,7 +227,13 @@ export class SpaceKernel extends DurableObject {
   async deliver(client: string, text: string): Promise<void> {
     const found = this.clients.get(client);
     // The kernel learns who this client is from its hello, which only the supervisor may say.
-    found?.port.postMessage(signed(JSON.parse(text), found.member));
+    if (!found) return;
+    const message = JSON.parse(text);
+    // A command the member may not run is answered here, with why; what isn't let through never reaches the kernel.
+    const answer = answerFor(message, found.role);
+    if (answer) void found.send(JSON.stringify(answer));
+    const heard = signed(message, found.member, found.role);
+    if (heard !== null) found.port.postMessage(heard);
   }
 
   async leave(client: string): Promise<void> {

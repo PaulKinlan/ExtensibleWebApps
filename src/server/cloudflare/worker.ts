@@ -28,14 +28,19 @@ import isolateSource from "../../../.build/cloudflare/isolate-source.js";
 import { durableFiles, type Sql } from "../../seams/durable.ts";
 import type { Message } from "../../seams/index.ts";
 import { accounts } from "../auth/accounts.ts";
+import type { Role } from "../auth/roles.ts";
+import { pushHostsFrom } from "../auth/push.ts";
+import type { PushAsk, Pushed } from "../../seams/index.ts";
 import { providersFrom } from "../auth/providers.ts";
 import { providerModules } from "../auth/providers/index.ts";
 import { type Decision, frontDoor, unrouted } from "../front-door.ts";
 import { createLiveMcpRelay } from "../live-mcp.ts";
 import { mcpAddress, mcpRequest, mcpResponse, mcpStream, type Watch } from "../mcp.ts";
+import { acpAddress, acpRequest, acpResponse, acpStream, editorKey } from "../acp.ts";
 import { type RouteRequest, type RouteResponse, routeRequest, routeResponse, tooLarge } from "../routes.ts";
 import type { SpaceCopy } from "../space-copy.ts";
 import { transferRoute } from "../transfer.ts";
+import { gatewaysFrom, modelRoute } from "../space-model.ts";
 import { feedReader } from "../feed-reader.ts";
 import { isOwnNetwork, leadsInside } from "./network-guard.ts";
 import { resolverFrom } from "./names.ts";
@@ -55,12 +60,16 @@ interface Env {
   EMAIL_FROM?: string;
   /** Private hosts server plugins may reach anyway, comma-separated, as on Node (network-guard.ts). For tests under wrangler dev. */
   ALLOW_PRIVATE_HOSTS?: string;
+  /** Vendors' hosts a space's model key is used through a gateway for, as JSON (src/server/space-model.ts). */
+  MODEL_GATEWAYS?: string;
   /** The DNS-over-HTTPS resolver that says where a name leads (names.ts), when not Cloudflare's. The server checks name a stand-in. */
   DNS_RESOLVER?: string;
+  /** More push services notifications may be sent to, as origins separated by commas (src/server/auth/push.ts). */
+  PUSH_HOSTS?: string;
 }
 
 interface KernelStub {
-  join(client: string, origin: string, send: (text: string) => void, member?: string, host?: PluginHost): Promise<void>;
+  join(client: string, origin: string, send: (text: string) => void, member?: string, host?: PluginHost, role?: string): Promise<void>;
   deliver(client: string, text: string): Promise<void>;
   leave(client: string): Promise<void>;
   route(origin: string, request: RouteRequest, host?: PluginHost): Promise<RouteResponse | null>;
@@ -170,8 +179,13 @@ class PluginHost extends RpcTarget {
     return send(this.env, message);
   }
 
+  /** A server plugin's notification, for the members' devices: the accounts keep their subscriptions and send it (src/server/auth/push.ts). */
+  push(note: PushAsk, origin: string): Promise<Pushed> {
+    return this.env.ACCOUNTS.getByName("accounts").notify(this.space, note, origin);
+  }
+
   /** The space's members, with the names on their accounts (sync.ts tells each device, to show who changed what). */
-  members(): Promise<{ id: string; name: string }[]> {
+  members(): Promise<{ id: string; name: string; role: Role }[]> {
     return this.env.ACCOUNTS.getByName("accounts").members(this.space);
   }
 
@@ -219,6 +233,8 @@ const tellWatchers = (ctx: DurableObjectState, door: string) => {
 
 /** The header the Worker names a space's client's member with, for the space to know them by. */
 const MEMBER = "x-ewa-member";
+/** And the header it says what that member may do with (src/server/signed.ts): set by the Worker alone, like the member. */
+const ROLE = "x-ewa-role";
 
 export class Space extends DurableObject<Env> {
   /** The open clients, by the member each one is. */
@@ -226,7 +242,7 @@ export class Space extends DurableObject<Env> {
   private plugins?: PluginHost;
   private live = createLiveMcpRelay();
 
-  /** Someone left the space, or was removed: their connections close at once. */
+  /** Someone left the space, was removed, or was given another role: their connections close at once (a device connects again by itself). */
   async revoke(user: string): Promise<void> {
     for (const [socket, who] of this.clients) if (who === user) socket.close(4403, "You're no longer in this space");
   }
@@ -284,6 +300,7 @@ export class Space extends DurableObject<Env> {
   /** An agent key for the space ended: the Worker's open streams check theirs again. */
   async keysChanged(): Promise<void> {
     tellWatchers(this.ctx, "mcp");
+    tellWatchers(this.ctx, "acp");
   }
 
   /** A watcher went: its end is closed too. (Nothing is kept for one but the socket itself.) */
@@ -324,7 +341,7 @@ export class Space extends DurableObject<Env> {
     // The client's messages wait for the kernel to be ready for them, in order.
     this.plugins ??= new PluginHost(this.ctx, this.env, space);
     await this.remember(space, url.origin);
-    let ready = kernel.join(id, url.origin, (text) => server.send(text), this.clients.get(server) ?? "", this.plugins);
+    let ready = kernel.join(id, url.origin, (text) => server.send(text), this.clients.get(server) ?? "", this.plugins, request.headers.get(ROLE) ?? undefined);
     ready.catch((e) => console.error(`Space ${space}: the kernel didn't start`, e?.stack ?? e));
     server.addEventListener("message", (e) => {
       ready = ready.then(() => kernel.deliver(id, String(e.data))).catch(() => server.close(1011, "The kernel stopped"));
@@ -344,6 +361,8 @@ export class Accounts extends DurableObject<Env> {
     left: (space, user) => this.env.SPACE.getByName(space).revoke(user),
     keys: (space) => this.env.SPACE.getByName(space).keysChanged(),
     mail: (message) => send(this.env, message),
+    // More push services to send notifications to, if the deployment names any (PUSH_HOSTS).
+    push: { hosts: pushHostsFrom(this.env.PUSH_HOSTS) },
   });
 
   async fetch(request: Request): Promise<Response> {
@@ -360,14 +379,30 @@ export class Accounts extends DurableObject<Env> {
     return this.auth.addresses(space);
   }
 
+  /** Sends a space's notification to its members' devices (src/server/auth/push.ts). */
+  async notify(space: string, note: PushAsk, origin: string): Promise<Pushed> {
+    return this.auth.notify(space, note, origin);
+  }
+
   /** A space's members, with the names on their accounts. */
-  async members(space: string): Promise<{ id: string; name: string }[]> {
+  async members(space: string): Promise<{ id: string; name: string; role: Role }[]> {
     return this.auth.members(space);
   }
 
   /** The role in a space of the session in a cookie header, if they're in it. */
-  async role(cookie: string, space: string): Promise<"owner" | "member" | null> {
+  async role(cookie: string, space: string): Promise<Role | null> {
     return (await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space))?.role ?? null;
+  }
+
+  /** Who the session in a cookie header is in a space, with the name on their account and their role, if they're in it. */
+  async who(cookie: string, space: string): Promise<{ id: string; name: string; role: Role } | null> {
+    const found = await this.auth.member(new Request("https://accounts/", { headers: { cookie } }), space);
+    return found ? { id: found.user.id, name: found.user.name, role: found.role } : null;
+  }
+
+  /** What unlocks the model key a space holds, kept here and not in the space (src/server/space-model.ts). */
+  async modelLock(space: string): Promise<string> {
+    return this.auth.modelLock(space);
   }
 
   /** Which member of a space the session in a cookie header is, if it's one. */
@@ -376,7 +411,7 @@ export class Accounts extends DurableObject<Env> {
   }
 
   /** Which member of a space an agent's key (an Authorization header) is for, if it's one (src/server/mcp.ts). */
-  async agent(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string; expires?: number } | null> {
+  async agent(authorization: string | null, space: string, plugin?: string): Promise<{ user: string; key: string; expires?: number; only?: string } | null> {
     return this.auth.agent(authorization, space, plugin);
   }
 }
@@ -415,6 +450,44 @@ async function mcp(request: Request, env: Env): Promise<Response | undefined> {
   return mcpResponse(await space.route(at.space, url.origin, asked));
 }
 
+/** How the Worker watches one of a space's doors (WATCH): told each time the space's object says the door may answer differently. */
+const watchDoor =
+  (space: DurableObjectStub<Space>, door: string): Watch =>
+  async (wake, lost) => {
+    const opened = await space.fetch(new Request(`https://space/watch/${door}`, { headers: { upgrade: "websocket" } }));
+    const socket = opened.webSocket;
+    if (!socket) throw new Error("The space didn't let its door be watched");
+    socket.accept();
+    socket.addEventListener("message", () => wake());
+    socket.addEventListener("close", () => lost());
+    socket.addEventListener("error", () => lost());
+    return () => {
+      try {
+        socket.close(1000, "The stream ended");
+      } catch {}
+    };
+  };
+
+/** An editor talking to one of a space's agents (src/server/acp.ts); undefined when the address isn't one. */
+async function acp(request: Request, env: Env): Promise<Response | undefined> {
+  const url = new URL(request.url);
+  const at = acpAddress(url);
+  if (!at) return undefined;
+  const accounts = env.ACCOUNTS.getByName("accounts");
+  const authorization = request.headers.get("authorization");
+  const asked = await acpRequest(request, at, {
+    member: (key, space, only) => accounts.agent(key, space, only),
+    name: async (space, user) => (await accounts.members(space)).find((m) => m.id === user)?.name,
+    lock: (space) => accounts.modelLock(space),
+    gateways: gatewaysFrom(env.MODEL_GATEWAYS, [...allowedPrivate(env)]),
+  });
+  if (asked instanceof Response) return asked;
+  const space = env.SPACE.getByName(at.space);
+  // The editor's stream stays open in the Worker, as an MCP client's does: the space's object isn't held open for it.
+  if (asked.method === "GET") return acpStream(asked, (knock) => space.route(at.space, url.origin, knock), watchDoor(space, "acp"), () => accounts.agent(authorization, at.space, editorKey(at.agent)));
+  return acpResponse(await space.route(at.space, url.origin, asked));
+}
+
 /** A request to /s/<space>/<path> that one of the space's server plugins answers; undefined when none does. */
 async function publicRoute(request: Request, env: Env, at: { space: string; path: string }): Promise<Response | undefined> {
   const route = await routeRequest(request, at.path);
@@ -437,7 +510,7 @@ export default {
         cookie: request.headers.get("cookie") ?? "",
         upgrade: request.headers.get("upgrade")?.toLowerCase() === "websocket",
       },
-      { exists: (space) => accounts().exists(space), member: (cookie, space) => accounts().member(cookie, space) },
+      { exists: (space) => accounts().exists(space), member: (cookie, space) => accounts().member(cookie, space), who: (cookie, space) => accounts().who(cookie, space) },
     );
     return answer(request, env, decision);
   },
@@ -455,18 +528,28 @@ async function answer(request: Request, env: Env, decision: Decision): Promise<R
         exportSpace: (space) => env.SPACE.getByName(space).exportCopy(space),
         importSpace: (space, copy, origin) => env.SPACE.getByName(space).importCopy(space, origin, copy),
       });
-      return moved ?? env.ACCOUNTS.getByName("accounts").fetch(request);
+      if (moved) return moved;
+      // A model key a space holds for its members (src/server/space-model.ts): used in the space's own kernel.
+      const accounts = env.ACCOUNTS.getByName("accounts");
+      const asked = await modelRoute(request, {
+        member: (req, space) => accounts.who(req.headers.get("cookie") ?? "", space),
+        lock: (space) => accounts.modelLock(space),
+        ask: (space, origin, route) => env.SPACE.getByName(space).route(space, origin, route),
+        gateways: gatewaysFrom(env.MODEL_GATEWAYS, [...allowedPrivate(env)]),
+      });
+      return asked ?? accounts.fetch(request);
     }
     case "join": {
       const forward = new Request(request);
       forward.headers.set(MEMBER, decision.member);
+      forward.headers.set(ROLE, decision.role);
       return env.SPACE.getByName(decision.space).fetch(forward);
     }
     case "live-bridge":
     case "live-mcp":
       return env.SPACE.getByName(`_live:${decision.channel}`).fetch(request);
     case "route":
-      return (await mcp(request, env)) ?? (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
+      return (await mcp(request, env)) ?? (await acp(request, env)) ?? (await publicRoute(request, env, decision)) ?? answer(request, env, unrouted(request.method));
     case "feed":
       return feedReader(request, async (url, signal) => {
         // A host written as a private address is refused here, and so is a name that leads to one (names.ts), as on Node.
