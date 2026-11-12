@@ -56,7 +56,7 @@ export default async function ({ check, context, URL, errors }) {
     check("some seconds after a first visit, the service worker has kept every listed part, used or not", kept, `not kept: ${left.missing.join(", ") || "only the list"}; the kernel had started: ${started.join(", ")}`);
 
     // The next visit: its kernel starts under the service worker, which answers what the kernel fetches. (The first
-    // visit's kernel started before there was a worker, so its own fetches go to the network to the end of that visit.)
+    // visit's kernel is answered by the worker too, once the worker has claimed it: tests/checks/offline-first-visit.mjs.)
     await page.close();
     const next = await own.newPage();
     watchErrors(next, errors, "offline-parts");
