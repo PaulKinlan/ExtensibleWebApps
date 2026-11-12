@@ -50,3 +50,18 @@ export default async function (ctx) {
   }
 }
 ```
+
+## Finding what a change left behind
+
+A plugin is reloaded every time its code changes, and everything the old one added has to go with it. To see whether something stayed, ask the kernel how much it is keeping, before and after:
+
+```js
+const before = await window.__host.command("counts");
+// reload a plugin a hundred times, or do whatever you suspect
+const after = await window.__host.command("counts");
+for (const key in after) if (after[key] > (before[key] ?? 0)) console.log(key, before[key] ?? 0, "→", after[key]);
+```
+
+`counts` answers the size of every list, map and set the kernel keeps, by where it is kept (`remote.live`, `hooks.owners`, `cordis.listeners`, about 350 of them), so a number that grew names what was left. It is part of the `debug` module, fetched when first asked for.
+
+[`tests/checks/hot-reload-leak.mjs`](../../tests/checks/hot-reload-leak.mjs) does this on every pull request: a plugin that adds one of everything (listeners, a hook, a service, a command, a route, a scheduled job, a collection, two views) is reloaded a hundred times, and none of the kernel's counts, the page's workers, nodes and event listeners may grow, and neither heap by more than 500 KB. What does grow is known: the engine compiles the reload path as it gets hot (about 140 KB in the kernel over the first hundred reloads, less after), and the page keeps the trace for the debugger until it holds 7,000 events.

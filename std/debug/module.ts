@@ -8,7 +8,12 @@
 //   (window.__host.command("bench", 500)): a hook round trip timed against one
 //   answered in the kernel, and a plugin reloaded many times to show nothing is
 //   left behind.
+// - The page command `counts`: how many entries every list, map and set the
+//   kernel keeps has now, each by where it is kept. tests/checks/hot-reload-leak.mjs
+//   reads it before and after a plugin is reloaded a hundred times: a number
+//   that grew is something a reload left behind, named.
 
+import { declaredHooks, hookOwners, hooks } from "../../src/kernel/hooks";
 import { record, recent, startedAt } from "../../src/kernel/trace";
 import type { KernelModule, ModuleKernel } from "../../src/kernel/modules";
 import type { ServiceProvider } from "../../src/kernel/remote";
@@ -93,6 +98,51 @@ async function reloadTest({ root, hosts, remote }: ModuleKernel, n: number) {
   return result;
 }
 
+/**
+ * How many entries each collection the kernel keeps has, by where it is kept: `remote.live`, `hosts.views`,
+ * `cordis.hooks.data:changed`. Everything reachable from the kernel's parts is walked, a few levels down, so a
+ * list added later is counted without being named here. A collection's own entries are walked only while it is
+ * small: a big one is counted, not read.
+ */
+function counts(kernel: ModuleKernel): Record<string, number> {
+  const { root, hosts, remote, collections, reviews, userAdded, moved } = kernel;
+  const out: Record<string, number> = {};
+  const seen = new WeakSet<object>();
+  const walk = (value: unknown, path: string, depth: number) => {
+    if (!value || typeof value !== "object" || seen.has(value) || depth > 5) return;
+    seen.add(value);
+    const proto = Object.getPrototypeOf(value);
+    const plain = proto === Object.prototype || proto === null;
+    if (value instanceof Map || value instanceof Set || Array.isArray(value)) {
+      const size = Array.isArray(value) ? value.length : value.size;
+      out[path] = size;
+      if (size > 40) return;
+      let i = 0;
+      for (const entry of value instanceof Map ? value : [...value].map((v) => [i++, v] as const)) walk(entry[1], `${path}.${typeof entry[0] === "string" ? entry[0] : "*"}`, depth + 1);
+      return;
+    }
+    // Not Cordis's own objects (its listeners and plugins are counted below), and nothing of the browser's: a port, a file handle.
+    if (value === root || "registry" in value || "scope" in value || (typeof EventTarget !== "undefined" && value instanceof EventTarget) || ArrayBuffer.isView(value) || /Handle\]$/.test(String(value))) return;
+    if (plain) out[`${path}{}`] = Object.keys(value).length;
+    for (const [key, inner] of Object.entries(value)) walk(inner, `${path}.${key}`, depth + 1);
+  };
+  walk(remote, "remote", 0);
+  walk(hosts, "hosts", 0);
+  walk(collections, "collections", 0);
+  walk(reviews, "reviews", 0);
+  walk(userAdded, "userAdded", 0);
+  walk(moved, "moved", 0);
+  walk(hooks, "hooks", 0);
+  walk(hookOwners, "hookOwners", 0);
+  walk(declaredHooks, "declaredHooks", 0);
+  // Cordis: every listener by its hook, and every plugin it runs.
+  out["cordis.listeners"] = hookCount(root);
+  for (const [name, list] of Object.entries(root.events._hooks as Record<string, unknown[]>)) if (!name.startsWith("internal/")) out[`cordis.hooks.${name}`] = list.length;
+  const registry = (root.registry as { size?: number } | undefined)?.size;
+  if (typeof registry === "number") out["cordis.plugins"] = registry;
+  return out;
+}
+
 export default {
   name: "debug",
   apply(_ctx, kernel) {
@@ -100,5 +150,6 @@ export default {
     kernel.provide("debug", debug(kernel));
     kernel.command("bench", (arg) => bench(kernel, Number(arg) || 300));
     kernel.command("reload-test", (arg) => reloadTest(kernel, Number(arg) || 50));
+    kernel.command("counts", () => counts(kernel));
   },
 } satisfies KernelModule;
