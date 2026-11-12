@@ -102,6 +102,7 @@ export type Command =
   | "plugins-panel"
   | "bench"
   | "reload-test"
+  | "counts"
   | "reload"
   | "install"
   | "uninstall"

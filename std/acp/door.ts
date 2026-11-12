@@ -46,7 +46,8 @@ import { callService } from "../../src/kernel/remote";
 import { placeLabel, type Request as Review } from "../../src/kernel/review";
 import type { RouteRequest, RouteResponse } from "../../src/kernel/routes";
 import { record } from "../../src/kernel/trace";
-import { isAgentFile, runnerName } from "../../src/shared/agent-runner";
+import { isAgentFile } from "../../src/shared/agent-file";
+import { runnerName } from "../../src/shared/agent-runner";
 import { pluginLinks } from "../spaces/server-apps";
 import type { Tool } from "../tools/module";
 

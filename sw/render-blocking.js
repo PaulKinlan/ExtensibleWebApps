@@ -8,13 +8,27 @@
 // Only a visit the service worker serves gets this: on a first visit there
 // is nothing remembered to hold, and the page is exactly as its file says.
 
+import { hintedFiles, withoutHints } from "./preload-hints.js";
+
 const HOST = /<script\b(?![^>]*\bblocking=)([^>]*\bsrc=["']?\/platform\/host\.js["']?[^>]*)>/i;
 
-/** @param {Response} response */
-export async function renderBlocking(response) {
+/**
+ * A page the worker serves also goes without its preload hints (sw/preload-hints.js). Those are for a visit no
+ * worker answers. Here Chrome won't give a file preloaded through a service worker to the fetch() that asks for it
+ * afterwards ("cross-world service worker resource mismatch"), so each hint would be a second request for the same
+ * file; and on a visit answered from what was kept, thirty requests as the page arrives only get in the way of the
+ * host's script and the kernel's (measured: a fifth slower on an app with five plugins).
+ * @param {Response} response
+ * @param {(files: string[], base?: string) => void} [hinted] told the addresses the hints named, as the page wrote
+ * them, and the page's <base> if it has one, so the worker can ask for them itself (sw.js)
+ */
+export async function renderBlocking(response, hinted) {
   if (!response.ok || !(response.headers.get("Content-Type") ?? "").includes("text/html")) return response;
-  const html = await response.clone().text();
-  if (!HOST.test(html)) return response;
+  const page = await response.clone().text();
+  if (!HOST.test(page)) return response;
+  const html = withoutHints(page);
+  // (A page served at an address inside the app, /demos/reading-list/book/42, names its files from its <base>.)
+  if (html !== page) hinted?.(hintedFiles(page), /<base\b[^>]*\bhref=["']?([^"'\s>]+)/i.exec(page)?.[1]);
   const headers = new Headers(response.headers);
   // The body is decoded here.
   headers.delete("Content-Encoding");

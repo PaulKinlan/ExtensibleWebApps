@@ -21,7 +21,7 @@
 // plugins (a security reviewer) may stop it with { block: reason }, which
 // the caller gets back as the error, or let it through to the review.
 
-import { isAgentFile } from "../shared/agent-runner";
+import { isAgentFile } from "../shared/agent-file";
 import { COMPONENT_NAMES } from "../shared/html-allowed";
 import { readManifest } from "./manifest";
 import type { Dispatch } from "../shared/protocol";

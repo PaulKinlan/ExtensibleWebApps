@@ -13,18 +13,21 @@ export function workbench(command: (name: Command, arg?: unknown) => Promise<unk
   document.getElementById("bench")!.onclick = async () => {
     result.textContent = "Measuring…";
     const r = (await command("bench", 300)) as any;
+    if (!r || r.error) return void (result.textContent = r?.error ?? "That part of the kernel couldn't be loaded. Check you are online, then try again.");
     result.textContent = `Hook round trip to a plugin worker: p50 ${r.remote.p50} ms, p95 ${r.remote.p95} ms (in-kernel p50 ${r.local.p50} ms)`;
   };
   document.getElementById("reload-test")!.onclick = async () => {
     result.textContent = "Reloading…";
     const r = (await command("reload-test", 50)) as any;
+    if (!r || r.error) return void (result.textContent = r?.error ?? "That part of the kernel couldn't be loaded. Check you are online, then try again.");
     result.textContent = `50 reloads: listeners ${r.before.hooks} → ${r.after.hooks}, workers ${r.before.workers} → ${r.after.workers}, ${r.failures} failed`;
   };
   document.getElementById("reference")!.onclick = async () => {
     const pre = document.getElementById("reference-text")!;
     if (!pre.hidden) return void (pre.hidden = true);
-    const r = (await command("reference")) as { live: string };
-    pre.textContent = r.live;
+    // Offline, on a device that never fetched the reference, the kernel says so, and so does this.
+    const r = (await command("reference")) as { live?: string; error?: string };
+    pre.textContent = r.live ?? r.error ?? "The reference couldn't be read.";
     pre.hidden = false;
   };
 

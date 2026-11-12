@@ -18,7 +18,7 @@ import { folder as appFolder, followLinks, screen } from "./router";
 import type { Command, HostToKernel, KernelToHost, Opened, Slot, TraceEvent, View } from "../shared/protocol";
 import type { Arranger } from "./arrange";
 import { themeCss } from "../shared/theme";
-import { isAgentFile, runnerHref } from "../shared/agent-runner";
+import { isAgentFile } from "../shared/agent-file";
 import { places as makePlaces } from "./places";
 import { bridges } from "./bridges";
 import { audioProbe, audioStats } from "./audio-stats";
@@ -248,10 +248,13 @@ const held = new Map<string, Extract<KernelToHost, { t: "render" }>>();
  * files (and their elements) start loading as soon as its source arrives (prefetch.ts).
  */
 const linked = links.map((href) => fetchLink(href, "high"));
-// On a first visit the plugin workers' script is asked for now, while the kernel is on its way, rather than when the
-// kernel says to start the first plugin: it never changes at its address, so the worker then has it at once.
-// (On later visits the service worker answers at once anyway.)
-if (links.length && !navigator.serviceWorker?.controller) void fetch(runtimeUrl, { priority: "high" }).catch(() => {});
+/**
+ * Workers for the app's first plugins, started now, while the kernel starts: a worker takes about as long to start
+ * as the kernel takes to ask for it, so the two waits overlap (a tenth off a visit answered from this device).
+ * Two at most, and none for Customize, which waits for its button; the kernel says which plugin each runs (spawn),
+ * and one left when the app has opened is stopped. They ask for the workers' script at once, on a first visit too.
+ */
+const spare: Worker[] = Array.from({ length: Math.min(2, links.length - (links.includes(CUSTOMIZE) ? 1 : 0)) }, () => new Worker(runtimeUrl, { type: "module" }));
 
 /**
  * A linked file's source. An agent file comes with the agent loop it runs (its `runner:`, or the standard
@@ -267,7 +270,8 @@ async function fetchLink(href: string, priority?: RequestPriority): Promise<{ hr
   }
   let loop: string;
   try {
-    loop = runnerHref(source, href);
+    // Which loop an agent file runs is read by a part only a page that links an agent fetches (src/shared/agent-runner.ts).
+    loop = (await import("../shared/agent-runner")).runnerHref(source, href);
   } catch {
     return { href, source: "", why: "its `runner:` isn't an address" };
   }
@@ -723,7 +727,7 @@ let coded: Promise<typeof import("./plugin-code")> | undefined;
 function spawn(plugin: string, source: string, network: boolean) {
   workers.get(plugin)?.terminate();
   // Two copies of the runtime, served with different content security policies.
-  const worker = new Worker(network ? netRuntimeUrl : runtimeUrl, { type: "module", name: plugin });
+  const worker = (!network && spare.pop()) || new Worker(network ? netRuntimeUrl : runtimeUrl, { type: "module", name: plugin });
   const channel = new MessageChannel();
   worker.postMessage({ t: "init", source }, [channel.port2]);
   workers.set(plugin, worker);
@@ -836,6 +840,7 @@ port.onmessage = async (e: MessageEvent<KernelToHost>) => {
       bench?.mode(`Kernel in a ${message.mode} worker · tab ${tab}${spawner ? " · runs the plugin workers" : ""}`);
       return;
     case "opened":
+      for (const worker of spare.splice(0)) worker.terminate();
       return opened(message.plugins, message.components);
     case "render":
       return render(message.slot, message.key, message.owner, message.order, message.view);

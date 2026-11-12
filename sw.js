@@ -48,7 +48,9 @@ self.addEventListener("message", (event) => {
     return event.waitUntil(found.then((app) => port.postMessage(app?.folder === "/"), () => port.postMessage(false)));
   }
   if (event.data?.t !== "sw:warm" || !Array.isArray(event.data.urls)) return;
-  const urls = event.data.urls.filter((u) => typeof u === "string" && new URL(u, location.href).origin === location.origin).slice(0, 200);
+  // And the site's front page, which answering an app's folder reads to tell the app's page from a server's
+  // fallback page (sw/routes/apps.js): not kept, the first visit back to an app waited on the network for it.
+  const urls = ["/index.html", ...event.data.urls.filter((u) => typeof u === "string" && new URL(u, location.href).origin === location.origin).slice(0, 200)];
   event.waitUntil(Promise.all(urls.map((u) => cached(new Request(u), event).catch(() => {}))));
   // And, a little later, the parts no visit has used yet, so each works offline the first time too (sw/parts.js).
   // (Not while developing on this machine, where the network answers first and files change under the worker.)
@@ -61,7 +63,8 @@ self.addEventListener("fetch", (event) => {
   // A visit begins: once the page has had time to draw, the parts a newer deploy brought are kept too (sw/parts.js).
   if (event.request.mode === "navigate" && cacheFirst(event.request)) event.waitUntil(keepParts(CACHE));
   // A page it serves waits for the host before its first paint (sw/render-blocking.js).
-  event.respondWith(event.request.mode === "navigate" ? answer(event, url).then(renderBlocking) : answer(event, url).then((response) => leftBehind(event, url, response)));
+  // It goes without its preload hints, and the worker asks for the files they named itself (`ahead`, below).
+  event.respondWith(event.request.mode === "navigate" ? answer(event, url).then((response) => renderBlocking(response, (files, base) => ahead(files, new URL(base ?? "", url), event))) : answer(event, url).then((response) => leftBehind(event, url, response)));
 });
 
 /** A built platform script: its content's hash is in its name, so each deploy has its own (public/_headers). */
@@ -117,7 +120,8 @@ async function outOfDate(clientId, path) {
 
 /** @param {FetchEvent} event @param {URL} url */
 async function answer(event, url) {
-  const env = { fetch: (request) => cached(request, event), kernel: (name, arg, space = "") => kernel(event.clientId, name, arg, space) };
+  // `wait` holds the worker open for work a route starts and doesn't wait for (sw/routes/made.js warms an app's files).
+  const env = { fetch: (request) => cached(request, event), kernel: (name, arg, space = "") => kernel(event.clientId, name, arg, space), wait: (work) => event.waitUntil(work) };
   for (const route of routes) {
     if (route.prefix && !url.pathname.startsWith(route.prefix)) continue;
     try {
@@ -128,6 +132,36 @@ async function answer(event, url) {
     }
   }
   return event.request.method === "GET" ? cached(event.request, event) : fetch(event.request);
+}
+
+/** How long after a kept file is answered it is fetched again, for the next visit. */
+const REFRESH_MS = 2500;
+/** The visits answered with a page that was kept. */
+const keptPages = new WeakSet();
+
+/** Files this worker is fetching ahead of a page that will ask for them, by address: the page's request is answered with the same fetch. */
+const coming = new Map();
+/** How long a file fetched ahead stays ready for the page to ask for. */
+const AHEAD_MS = 5000;
+
+/**
+ * Asks for the files a page's preload hints named (sw/preload-hints.js), as the page is answered: the page comes
+ * from here without the hints, and its own requests for those files, which begin once its script runs, are
+ * answered with these. Not when the page came from what was kept: its files are kept too, and are answered at once.
+ * @param {string[]} files as the page named them @param {URL} page what the page's addresses are read against: its <base>, or its own address @param {FetchEvent} event
+ */
+function ahead(files, page, event) {
+  if (keptPages.has(event)) return;
+  for (const file of files) {
+    const url = new URL(file, page);
+    if (url.origin !== location.origin) continue;
+    // (A file still held from the visit before is asked for again: while developing, it may have changed.)
+    coming.delete(url.href);
+    const asked = cached(new Request(url.href), event);
+    coming.set(url.href, asked);
+    const done = () => setTimeout(() => coming.get(url.href) === asked && coming.delete(url.href), AHEAD_MS);
+    event.waitUntil(asked.then(done, () => void (coming.get(url.href) === asked && coming.delete(url.href))));
+  }
 }
 
 // A kept file answers whatever headers the request has. A server that says `Vary: Origin` (Vite's does) would
@@ -146,24 +180,46 @@ const KEPT = { ignoreVary: true };
  * @param {Request} request @param {ExtendableEvent} event
  */
 async function cached(request, event) {
+  // Already being fetched for the page that is now asking (`ahead`): the one fetch answers both.
+  const early = request.method === "GET" && request.mode !== "navigate" ? coming.get(request.url) : undefined;
+  if (early) {
+    const response = await early.then((r) => r.clone(), () => undefined);
+    if (response) return response;
+  }
   const cache = await caches.open(CACHE);
-  const fresh = fetch(request).then((response) => {
-    if (request.method === "GET" && response.ok && response.type === "basic" && !/no-store/.test(response.headers.get("Cache-Control") ?? "")) {
-      const copy = response.clone();
-      event.waitUntil(cache.put(request, copy).catch(() => {}));
-    }
-    return response;
-  });
-  if (cacheFirst(request) && new URL(request.url).pathname !== RELOADED) {
+  /** @type {Promise<Response> | undefined} */
+  let asked;
+  const fresh = () =>
+    (asked ??= fetch(request).then((response) => {
+      if (request.method === "GET" && response.ok && response.type === "basic" && !/no-store/.test(response.headers.get("Cache-Control") ?? "")) {
+        const copy = response.clone();
+        event.waitUntil(cache.put(request, copy).catch(() => {}));
+      }
+      return response;
+    }));
+  const path = new URL(request.url).pathname;
+  const first = cacheFirst(request) && path !== RELOADED;
+  // Asked for at once where the network answers first, as before; a kept file is looked for first.
+  if (!first) void fresh().catch(() => {});
+  else {
     const kept = await cache.match(request, KEPT);
     // A navigation can't be answered with a redirected response.
     if (kept && !(request.mode === "navigate" && kept.redirected)) {
-      event.waitUntil(fresh.catch(() => {}));
+      const page = request.mode === "navigate";
+      // The page this visit is answered with came from what was kept (an app's folder is answered with its app.html).
+      if (page || path.endsWith("/app.html")) keptPages.add(event);
+      // A built file never changes at its address, so there is no newer copy to fetch: one the server said is
+      // immutable, that is. (A project with a kernel.json of its own serves its kernel at the built address with
+      // "must-revalidate", scripts/extensible-app.mjs, and that one is asked for again.) The rest are fetched again
+      // once the page has had time to draw: a visit answered from what was kept is bound by this device's
+      // processor, not its network, and thirty fetches and thirty files stored again were competing with the
+      // page's own start. The page itself is asked for at once, so a deploy is seen as early as it was.
+      if (!(path.startsWith(BUILT) && /\bimmutable\b/.test(kept.headers.get("Cache-Control") ?? ""))) event.waitUntil((page ? fresh() : new Promise((resolve) => setTimeout(resolve, REFRESH_MS)).then(fresh)).catch(() => {}));
       return kept;
     }
   }
   try {
-    return await fresh;
+    return await fresh();
   } catch (error) {
     const kept = await cache.match(request, KEPT);
     if (kept) return kept;

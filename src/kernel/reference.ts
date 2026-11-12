@@ -179,6 +179,7 @@ export const COMMANDS: Record<Command, string> = {
   "plugins-panel": "Asks for the workbench's plugins panel, which the kernel draws only in pages that asked.",
   bench: "(n) Times a hook round trip to a plugin worker against one answered in the kernel.",
   "reload-test": "(n) Reloads word-count n times and counts listeners and workers before and after.",
+  counts: "How many entries each list, map and set the kernel keeps has now, by where it is kept: read before and after a change to find what it left behind.",
   reload: "(id) Restarts a plugin's workers.",
   install: "(source) Installs a plugin and keeps it with the data.",
   uninstall: "(id) Removes a plugin kept with the data.",
