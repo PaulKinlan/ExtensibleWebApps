@@ -34,7 +34,7 @@
 //   GET  /auth/follow?since=<n>, POST /auth/follow { changes }
 //
 // And the keys members give agents outside the browser, to reach a space's MCP server (agent-keys.ts):
-//   GET  /auth/keys, POST /auth/keys { space, name }, POST /auth/keys/revoke { id }
+//   GET  /auth/keys, POST /auth/keys { space, name, editor? }, POST /auth/keys/revoke { id }
 // or that an MCP client gets by signing in with OAuth (mcp-oauth.ts): /auth/mcp/* and /.well-known/oauth-*.
 //
 // And the devices a person gets notifications on with every tab closed (push.ts):
@@ -643,7 +643,11 @@ export function accounts(files: Files, providers: Provider[] = [], hooks: Hooks 
         const current = await session(request);
         if (!current) return json({ error: "Not signed in" }, 401);
         if ((await spaceOf(String(body.space ?? "")))?.members[current.user.id] === "reader") return json({ error: "You can read this space but not change it, and an agent with a key could. Ask the space's owner to make you an editor first." }, 403);
-        const made = await keys.make(current.user.id, String(body.space ?? ""), String(body.name ?? ""));
+        // A key for an editor (`editor`: the agent it talks to, src/server/acp.ts) reaches only that agent, and is the
+        // only kind whose editor may answer the agent's reviews.
+        const editor = body.editor === undefined || body.editor === "" ? undefined : String(body.editor);
+        if (editor !== undefined && !/^[a-z0-9][a-z0-9-]{0,63}$/.test(editor)) return json({ error: "The agent an editor's key is for is its id: lowercase letters, digits and dashes, like assistant" }, 400);
+        const made = await keys.make(current.user.id, String(body.space ?? ""), String(body.name ?? ""), editor ? { plugin: `acp/${editor}` } : {});
         return "error" in made ? json({ error: made.error }, made.status) : json(made);
       }
       case "/auth/keys/revoke": {

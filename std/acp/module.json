@@ -1,0 +1,6 @@
+{
+  "doors": [
+    "acp"
+  ],
+  "only": "server"
+}

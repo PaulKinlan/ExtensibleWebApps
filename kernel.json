@@ -1,6 +1,7 @@
 {
   "modules": [
     "account",
+    "acp",
     "agents",
     "audio",
     "bus",

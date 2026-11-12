@@ -147,10 +147,18 @@ export async function mcpStream(
   asked: RouteRequest,
   ask: (request: RouteRequest) => Promise<RouteResponse | null>,
   watch: Watch,
-  options: { beat?: number; life?: number; key?: () => Promise<{ expires?: number } | null> } = {},
+  options: {
+    beat?: number;
+    life?: number;
+    key?: () => Promise<{ expires?: number } | null>;
+    /** How a notice goes out, for a door whose notices carry their own event ids (src/server/acp.ts): its id and its message. */
+    frame?: (notice: unknown) => { id: string; data: unknown };
+    /** More to ask the door with each time, such as the last notice sent. */
+    query?: () => Record<string, string>;
+  } = {},
 ): Promise<Response> {
   const { beat = STREAM_BEAT_MS, life = STREAM_MS, key = async (): Promise<{ expires?: number } | null> => ({}) } = options;
-  const knock = (first: boolean) => ask({ ...asked, query: { ...asked.query, ...(first ? { first: "1" } : {}) } }).catch(() => null);
+  const knock = (first: boolean) => ask({ ...asked, query: { ...asked.query, ...options.query?.(), ...(first ? { first: "1" } : {}) } }).catch(() => null);
   // Watching starts before the first ask, so a change between that ask and the stream opening isn't missed.
   let woken = false;
   let wake = () => void (woken = true);
@@ -175,7 +183,12 @@ export async function mcpStream(
   const tag = asked.query?.stream?.slice(0, 8) ?? "s";
   let sent = 0;
   const events = (result: RouteResponse) =>
-    (((result.json ?? {}) as McpAnswer).notices ?? []).map((message) => `id: ${tag}-${++sent}\nevent: message\ndata: ${JSON.stringify(message)}\n\n`).join("");
+    (((result.json ?? {}) as McpAnswer).notices ?? [])
+      .map((message) => {
+        const { id, data } = options.frame?.(message) ?? { id: `${tag}-${++sent}`, data: message };
+        return `id: ${id}\nevent: message\ndata: ${JSON.stringify(data)}\n\n`;
+      })
+      .join("");
   let timers: ReturnType<typeof setTimeout>[] = [];
   let over = false;
   const finish = () => {

@@ -14,10 +14,15 @@ export const KEY = "sk-space-0123456789abcdefghijKLMNOP";
 /** A key the vendor refuses. */
 const BAD = "sk-refused-0123456789abcdefghijKLMN";
 
-/** A vendor with the shape of Anthropic's API. `keys` is every key it was sent, `asked` every question. */
+/**
+ * A vendor with the shape of Anthropic's API. `keys` is every key it was sent, `asked` every question.
+ * `script`, when a check sets it, answers a request in the vendor's place (tests/server/acp.mjs has it ask
+ * for tools): it is given the request's body, and what it returns is the answer; undefined leaves it to the vendor.
+ */
 export async function fakeModel() {
   const keys = [];
   const asked = [];
+  const out = { script: undefined };
   const server = createServer(async (req, res) => {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
@@ -31,13 +36,15 @@ export async function fakeModel() {
     const last = body.messages?.at(-1)?.content;
     const text = typeof last === "string" ? last : JSON.stringify(last);
     asked.push(text);
+    const scripted = await out.script?.(body);
+    if (scripted) return send(200, { stop_reason: "end_turn", model: body.model, usage: { input_tokens: 7, output_tokens: 5 }, ...scripted });
     // A vendor that repeats the key in what it says: the space must take it out again.
     if (/repeat the key/.test(text)) return send(400, { error: { message: `Your key ${key} can't do that` } });
     return send(200, { content: [{ type: "text", text: `You said: ${text}` }], stop_reason: "end_turn", model: body.model, usage: { input_tokens: 7, output_tokens: 5 } });
   });
   await new Promise((ready) => server.listen(0, "127.0.0.1", ready));
   const url = `http://127.0.0.1:${server.address().port}`;
-  return { url, keys, asked, gateways: { "api.anthropic.com": url }, close: () => server.close() };
+  return Object.assign(out, { url, keys, asked, gateways: { "api.anthropic.com": url }, close: () => server.close() });
 }
 
 /**

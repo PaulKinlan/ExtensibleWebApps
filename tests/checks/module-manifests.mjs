@@ -31,7 +31,11 @@ export default async function ({ check, context, URL: site }) {
   const kernelFile = built.find((f) => /^browser-[\w-]+\.js$/.test(f));
   const kernel = kernelFile ? readFileSync(join(assets, kernelFile), "utf8") : "";
   const always = modules.filter((name) => moduleManifest(name, ROOT).starts === "always");
-  const onDemand = modules.filter((name) => !always.includes(name));
+  // A module that is only for a server (`"only": "server"`) is no part of the browser's kernel: no file, no name.
+  const serverOnly = modules.filter((name) => moduleManifest(name, ROOT).only === "server");
+  const onDemand = modules.filter((name) => !always.includes(name) && !serverOnly.includes(name));
+  const inBrowser = serverOnly.filter((name) => built.some((f) => f.startsWith(`kernel-${name}-`)) || new RegExp(`name:\\s*"${name}"`).test(kernel));
+  check("a module that is only for a server is left out of the browser's kernel: no file of its own, and not named in the kernel's", !!kernelFile && serverOnly.includes("acp") && !inBrowser.length, `in the browser's build: ${inBrowser.join(", ")}`);
   const noFile = onDemand.filter((name) => !built.some((f) => f.startsWith(`kernel-${name}-`)));
   check("the build makes each kernel module that starts when used a file of its own", !!kernelFile && !noFile.length, `no file for: ${noFile.join(", ")}`);
   // Each module's file is fetched by name from the kernel, never copied into it: the kernel only names the file.
@@ -63,13 +67,14 @@ export default async function ({ check, context, URL: site }) {
   const unknown = outcome({ services: ["bus"], provides: ["bus"] });
   const notList = outcome({ services: "bus" });
   const badStart = outcome({ services: ["bus"], starts: "sometimes" });
+  const badOnly = outcome({ services: ["bus"], only: "browser" });
   const twice = outcome({ services: ["llm"] });
   rmSync(root, { recursive: true, force: true });
   check("a kernel module's manifest says what it adds", good.ok?.bus?.hooks?.[0] === "bus:posted", JSON.stringify(good));
   check(
     "a module with no manifest, a manifest with a setting the kernel doesn't know or a wrong value, or two modules that add the same service, stops the build",
-    /has no manifest/.test(none.error) && /isn't a setting/.test(unknown.error) && /must be a list/.test(notList.error) && /starts must be/.test(badStart.error) && /both add llm/.test(twice.error),
-    JSON.stringify({ none, unknown, notList, badStart, twice }),
+    /has no manifest/.test(none.error) && /isn't a setting/.test(unknown.error) && /must be a list/.test(notList.error) && /starts must be/.test(badStart.error) && /only must be "server"/.test(badOnly.error) && /both add llm/.test(twice.error),
+    JSON.stringify({ none, unknown, notList, badStart, badOnly, twice }),
   );
 
   // A kernel of its own (another browser context has its own shared worker), so what other checks used doesn't count.
@@ -114,7 +119,7 @@ export default async (ctx) => {
     const reference = await page.evaluate(() => window.__host.command("reference"));
     const state = await page.evaluate(() => window.__host.command("modules"));
     const stopped = state.filter((m) => !m.running).map((m) => m.name);
-    check("the kernel's reference describes every module the site lists, so asking for it starts them all", !stopped.length && modules.every((name) => state.some((m) => m.name === name)), `not running: ${stopped.join(", ")}`);
+    check("the kernel's reference describes every module the site lists, so asking for it starts them all", !stopped.length && modules.filter((name) => !serverOnly.includes(name)).every((name) => state.some((m) => m.name === name)), `not running: ${stopped.join(", ")}`);
     // What a module adds only on a space's server (a door, the spaces module's server hooks) is checked there (tests/server/).
     const SERVER_ONLY = /^(doors |hooks sync:)/;
     const untrue = state.flatMap((m) => m.unused.filter((n) => !SERVER_ONLY.test(n)).map((n) => `${m.name}: ${n}`));
