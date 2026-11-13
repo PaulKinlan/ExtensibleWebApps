@@ -474,11 +474,11 @@ The person's own plugins for an app, for a plugin editor, a Customize panel or a
 
 #### authoring.add
 
-`authoring.add(url, { everywhere }?)` → { ok: true, id } or { ok: false, error }
+`authoring.add(url, { everywhere, integrity }?)` → { ok: true, id } or { ok: false, error }
 
 Needs: `plugins:author`.
 
-Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn(). With { everywhere: true } it is added for every app the person opens on this device, and the review says so.
+Adds a plugin from this site, such as one in the registry at /packages/, to the person's own for the caller's app, with the files its manifest lists, verifying its SHA-256 integrity when present and once they accept a review that shows its code and what it asks for. It is added off: turn it on with turn(). With { everywhere: true } it is added for every app the person opens on this device, and the review says so.
 
 #### authoring.arrange
 
@@ -487,6 +487,14 @@ Adds a plugin from this site, such as one in the registry at /packages/, to the 
 Needs: `plugins:read`.
 
 Starts the page's arrange mode, where the person sees every plugin's view that can move and drags or points it somewhere else; with a plugin (and place), that one is picked to move.
+
+#### authoring.backup
+
+`authoring.backup(options?)` → { ok: true, format, version, exportedAt, summary, files, file? } or { ok: false, error }
+
+Needs: `plugins:author`.
+
+Exports the person's entire local device OPFS profile (collections, plugins, plugin-data, user plugins, moves, grants and settings, strictly excluding secrets.json and sync session marks). With `{ download: true }` right after a click, downloads the backup as a JSON file.
 
 #### authoring.check
 
@@ -562,11 +570,11 @@ Locks a part of the page again, for a plugin that was let into it.
 
 #### authoring.mine
 
-`authoring.mine()` → [{ id, name, description, permissions, places, on, shared, everywhere, agent, error? }]
+`authoring.mine()` → [{ id, name, description, version?, integrity?, permissions, places, on, shared, everywhere, agent, updateAvailable, addedPermissions, error? }]
 
 Needs: `plugins:author`.
 
-The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. everywhere says which ones they use in every app (kept once, and on or off in all of them). error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).
+The person's own plugins for the caller's app. In a space, shared says which are the space's plugins. everywhere says which ones they use in every app (kept once, and on or off in all of them). updateAvailable and addedPermissions say when a registry package has an update and what new permissions it asks for. error says why one can't run: its manifest can't be read, or it needs a service nothing here provides (and which registry package does).
 
 #### authoring.move
 
@@ -578,11 +586,11 @@ Moves one of a plugin's places in the caller's app to another spot on the page, 
 
 #### authoring.packages
 
-`authoring.packages()` → [{ id, name, description, href, permissions, can, added, linked, adds: [{ id, name, href }] }]
+`authoring.packages()` → [{ id, name, description, version?, href, integrity?, permissions, can, added, updateAvailable, addedPermissions, linked, adds: [{ id, name, href, integrity? }] }]
 
 Needs: `plugins:read`.
 
-The site's plugin registry (/packages/): each package, what its permissions let it do in words (can), whether the person has added it to this app, whether the app links it already (linked), and what adding it adds, in order: first the packages that provide services it needs that aren't here yet, then itself.
+The site's plugin registry (/packages/): each package, its SHA-256 integrity, what its permissions let it do in words (can), whether the person has added it to this app, whether an update is available and what new permissions it requests, whether the app links it already (linked), and what adding it adds, in order.
 
 #### authoring.page
 
@@ -615,6 +623,14 @@ Removes one of the person's own plugins for the caller's app, once they accept a
 Needs: `plugins:author`.
 
 Removes one of the person's custom `ui-*` components for the caller's app, once they accept a review.
+
+#### authoring.restore
+
+`authoring.restore(archive?)` → { ok: true, collections, plugins, files } or { ok: false, cancelled?, error }
+
+Needs: `plugins:author`, and the person's review.
+
+Restores a local device OPFS profile backup after checking every path and showing a single review card summarizing the collections and plugins in it. Without `archive` (right after a click), opens the file chooser to pick a `.json` backup.
 
 #### authoring.save
 
@@ -671,6 +687,14 @@ Lets a plugin into a part of the page the app's author locked, once the person a
 Needs: `plugins:author`.
 
 In a space: stops sharing a space plugin, once the person accepts a review. It goes from the other members' devices and stays here as theirs.
+
+#### authoring.update
+
+`authoring.update(id)` → { ok: true, id, addedPermissions, version } or { ok: false, error }
+
+Needs: `plugins:author`, and the person's review.
+
+Updates an installed registry plugin to the site's current version after verifying its SHA-256 integrity and showing a review card that highlights any newly added permissions (or the code diff when permissions are unchanged).
 
 ### bus
 
@@ -819,6 +843,14 @@ Every record in a collection. Each record has its fields plus id, createdAt and 
 Needs: `data:write:<collection>`, and the person's review.
 
 Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection.
+
+#### data.query
+
+`data.query(collection, { where?, search?, sort?, limit?, offset? }?)` → { records, total, hasMore }
+
+Needs: `data:read:<collection>`.
+
+Matching records in a collection: `where` matches fields or `{ $gt, $gte, $lt, $lte, $contains, $in }`, `search` searches string fields case-insensitively, `sort` is `field` or `-field`, with `limit` and `offset`.
 
 ### debug
 
@@ -1164,13 +1196,21 @@ Needs: `llm`.
 
 The language models this site offers (its plugin registry's packages that provide:llm; the browser's built-in one only where the browser has it), for a plugin to offer the person when providers() is empty. added: the person has it here already; linked: the app links it.
 
+#### llm.chunk
+
+`llm.chunk(streamId, delta)` → true
+
+Needs: `provide:llm`.
+
+For a provider answering llm:stream: emits a text delta on llm:chunk for streamId.
+
 #### llm.complete
 
 `llm.complete({ messages, system?, tools?, schema?, model?, maxTokens?, provider? })` → { text, json?, toolCalls, stop, usage: { input, output }, provider, model, message }
 
 Needs: `llm`.
 
-Asks a model. messages are { role: "user" | "assistant", content }, an assistant's { toolCalls: [{ id, name, args }], state }, or a tool's answer { role: "tool", id, name, content }; add each answer's message to messages to go on. tools are [{ name, description, parameters }]; schema (the platform's JSON Schema subset, as collections use) asks for an answer of that shape, in json, checked before it's returned. model is an id or a tier: best, balanced or fast (the default is the provider's setting). Without provider, the one the person picked answers (prefer), else the first ready one; when none has its key, each asks for it in turn until the person gives one.
+Asks a model. messages are { role: "user" | "assistant", content } (where a user message's content is text or a list of text, image and audio parts), an assistant's { toolCalls: [{ id, name, args }], state }, or a tool's answer { role: "tool", id, name, content }; add each answer's message to messages to go on. tools are [{ name, description, parameters }]; schema (the platform's JSON Schema subset, as collections use) asks for an answer of that shape, in json, checked before it's returned. model is an id or a tier: best, balanced or fast (the default is the provider's setting). Without provider, the one the person picked answers (prefer), else the first ready one; when none has its key, each asks for it in turn until the person gives one.
 
 #### llm.models
 
@@ -1194,7 +1234,15 @@ Sets which of providers() answers a request that names none, for every app the p
 
 Needs: `llm`.
 
-The providers the caller's app has; ready means it has its key, preferred that the person picked it (prefer).
+The providers the caller's app has; ready means it can answer right now, preferred that the person picked it (prefer).
+
+#### llm.stream
+
+`llm.stream({ messages, system?, tools?, schema?, model?, maxTokens?, provider?, streamId? })` → { text, json?, toolCalls, stop, usage: { input, output }, provider, model, message, streamId }
+
+Needs: `llm`.
+
+Streams an answer from a model. Takes the same request as complete with an optional streamId, emits { streamId, delta, done } on llm:chunk as text arrives (falling back to llm:complete when a provider doesn't implement llm:stream), and resolves to complete's answer with streamId.
 
 ### maker
 
@@ -1366,11 +1414,11 @@ Web requests the kernel makes for a plugin, to the hosts its manifest names. A h
 
 #### net.fetch
 
-`net.fetch({ url, method?, headers?, body? })` → { ok, status, headers, text }
+`net.fetch({ url, method?, headers?, body?, streamId? })` → { ok, status, headers, text }
 
 Needs: `network:<host>`.
 
-Fetches `url` (https:, or http: on localhost) and returns the answer as text, up to 4 MB, within two minutes. A header given as `{ secret: name }` is filled with that secret, if the plugin has `secret:<name>` and the host is one the secret is for.
+Fetches `url` (https:, or http: on localhost) and returns the answer as text, up to 4 MB, within ten minutes (emitting incremental chunks on `net:chunk` to the caller when `streamId` is set). A header given as `{ secret: name }` is filled with that secret, if the plugin has `secret:<name>` and the host is one the secret is for.
 
 ### notify
 
@@ -1682,7 +1730,7 @@ Saves a JSON value; null removes it. Up to 1 MB in all.
 
 ### sync
 
-How a page in a space stands with it, and the drafts it kept when someone else changed a record first.
+How a page in a space stands with it, the drafts it kept when someone else changed a record first, and content-addressed blobs synced across the space.
 
 #### sync.ask
 
@@ -1699,6 +1747,14 @@ Asks a language model on the key the space holds for its members: the request go
 Needs: `sync`.
 
 Lets a draft go: the record stays as the space has it.
+
+#### sync.getBlob
+
+`sync.getBlob(hash)` → { data, mediaType } or null
+
+Needs: `sync`.
+
+Reads a content-addressed blob by its SHA-256 hash from local storage or the space, returning `{ data, mediaType }` (`data` is a `Uint8Array`) or `null` if unknown. Plugins with `sync` or `files` permission may call this.
 
 #### sync.keep
 
@@ -1739,6 +1795,14 @@ The space's members, each with the name on their account, and which of them this
 Needs: nothing.
 
 Whether the space holds a model key for its members (its owner gives one on their account page): which model it is for, the name of who gave it and pays (`byName`), whether that is you (`yours`), and how many of the day's questions you have asked. Never the key, which stays on the space's server. Outside a space, `space` is null. Needs no permission.
+
+#### sync.putBlob
+
+`sync.putBlob(data, mediaType?)` → { hash, size, mediaType }
+
+Needs: `sync`.
+
+Stores a content-addressed binary or media blob under sync/blobs/<sha256> (capped at 2 MB per blob and 32 MB per space) and syncs it with the space. Plugins with `sync` or `files` permission may call this.
 
 #### sync.reflect
 
@@ -2008,6 +2072,14 @@ Mode: `emit`. Listening needs `launch`.
 
 Listeners get `{}`.
 
+### `llm:chunk`
+
+A piece of a streaming answer from llm.stream, with streamId matching the request's, delta text, and done: true once the stream ends. Listening needs llm.
+
+Mode: `emit`. Listening needs `llm`.
+
+Listeners get `{ streamId, delta, done }`.
+
 ### `llm:complete`
 
 Asks the provider named in request.provider for an answer. Others return nothing. Answer { text, json?, toolCalls?, stop?, usage?, model? }, or { error }, with declined: true when the person gave it no key. Listening needs provide:llm.
@@ -2031,6 +2103,14 @@ Asks which language models are available. A provider returns { providers: [...pr
 Mode: `waterfall`, 2000 ms per listener, fails open. Listening needs `provide:llm`.
 
 Listeners get `{ providers: [{ id, name, model?, ready }] }`.
+
+### `llm:stream`
+
+Asks the provider named in request.provider to stream an answer, sending text deltas through llm.chunk(streamId, delta). Others return nothing; returning nothing falls back to llm:complete. Answer { text, json?, toolCalls?, stop?, usage?, model?, state? }, or { error }, with declined: true when the person gave it no key. Listening needs provide:llm.
+
+Mode: `bail`, 660000 ms per listener, fails open. Listening needs `provide:llm`.
+
+Listeners get `request, with provider set to the id of the provider that should answer, and streamId`.
 
 ### `maker:changed`
 
@@ -2063,6 +2143,14 @@ The space told this page who its members are and which one this page is signed i
 Mode: `emit`. Listening needs `members`.
 
 Listeners get `{}`.
+
+### `net:chunk`
+
+Incremental text chunks of a streaming net.fetch call, delivered only to the caller.
+
+Mode: `emit`. Listening needs `hook:listen:net:chunk`.
+
+Listeners get `{ streamId, chunk, done }`.
 
 ### `outside:called`
 
@@ -2103,6 +2191,14 @@ Something was shared to an app from elsewhere (it is installed as a share target
 Mode: `emit`. Listening needs `share`.
 
 Listeners get `{}`.
+
+### `sync:blobs`
+
+Another member or server plugin stored a content-addressed blob in this space. Read its bytes with sync.getBlob(hash).
+
+Mode: `emit`. Listening needs `sync`.
+
+Listeners get `{ hash, size, mediaType }`.
 
 ### `sync:changed`
 
@@ -2173,7 +2269,7 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `bus:read:<topic>` | Call bus.read. |
 | `bus:send:<to>` | Call bus.send. |
 | `commands` | Call commands.list, commands.run. |
-| `data:read:<collection>` | Call data.list, data.get. |
+| `data:read:<collection>` | Call data.list, data.query, data.get. |
 | `data:write:<collection>` | Call data.put, data.delete. |
 | `debug:read` | Call debug.recent, debug.app. |
 | `device-model` | Call device-model.prompt. |
@@ -2187,20 +2283,21 @@ A plugin lists what it needs in its manifest's `permissions`; the gate checks ev
 | `history` | Call history.state, history.undo, history.redo. |
 | `launch` | Call launch.take. |
 | `live` | Call sync.live. |
-| `llm` | Call llm.providers, llm.prefer, llm.models, llm.choices, llm.add, llm.complete. |
+| `llm` | Call llm.providers, llm.prefer, llm.models, llm.choices, llm.add, llm.complete, llm.stream. |
 | `members` | Call sync.members, sync.may. |
 | `network:<host>` | Call net.fetch. |
 | `notify` | Call notify.state, notify.request, notify.show. |
 | `outside` | Call outside.open, outside.close, outside.status. |
-| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.pick, authoring.unlock, authoring.lock, authoring.choose, authoring.share, authoring.unshare, authoring.everywhere, authoring.save, authoring.saveComponent, authoring.removeComponent, authoring.remove, authoring.file, outside.openLive, outside.closeLive. |
+| `plugins:author` | Call authoring.copy, authoring.mine, authoring.add, authoring.update, authoring.backup, authoring.restore, authoring.pick, authoring.unlock, authoring.lock, authoring.choose, authoring.share, authoring.unshare, authoring.everywhere, authoring.save, authoring.saveComponent, authoring.removeComponent, authoring.remove, authoring.file, outside.openLive, outside.closeLive. |
 | `plugins:manage` | Call authoring.turn, authoring.move, plugins.setEnabled, follow.now. |
 | `plugins:read` | Call authoring.source, authoring.page, authoring.packages, authoring.arrange, authoring.layout, authoring.inspect, authoring.components, authoring.check, plugins.app, follow.status, outside.liveStatus. |
+| `provide:llm` | Call llm.chunk. |
 | `reflect:read` | Call reflect.snapshot, reflect.plugins, reflect.hooks, reflect.workers, reflect.tabs, reflect.source, sync.reflect, sync.trace. |
 | `router` | Call router.current, router.go. |
 | `secret:<name>` | Call secrets.has, secrets.request, secrets.forget. |
 | `share` | Call share.send, share.take. |
 | `space-model` | Call sync.ask. |
-| `sync` | Call sync.state, sync.keep, sync.dismiss. |
+| `sync` | Call sync.state, sync.keep, sync.putBlob, sync.getBlob, sync.dismiss. |
 | `transfer` | Call transfer.collections, transfer.export, transfer.import. |
 | `ui` | Call page.matches, page.slots. |
 
@@ -2294,6 +2391,7 @@ Schemas are a JSON Schema subset:
 | `maxLength` | Over 200 makes a form show a text area |
 | `format` | date, date-time, email or uri; forms use the matching input |
 | `x-multiline` | true makes a form show a text area |
+| `x-ref` | { collection, label? } links a field to another collection's records; forms show a menu and tables show the label |
 
 Views bind to a collection with `<ui-table collection="…">` and `<ui-form collection="…">` (see Components), acting with the rights of the plugin that drew them.
 
@@ -2311,7 +2409,7 @@ Plugins describe UI as plain HTML, up to 200,000 characters. The host parses it 
 | `<ui-badge>` | tone="neutral\|accent\|ok\|warn\|danger" | A short status word. |
 | `<ui-stat>` | label, value, delta, tone | A number with its label, and an optional change. |
 | `<ui-empty>` | heading | What to show when there is nothing yet; put a sentence and a button inside. |
-| `<ui-table>` | collection, columns="title,author", sort="title\|-title", empty, row-action, deletable | A sortable table of a collection's records, kept up to date. The first column becomes a button that sends `row-action` with the record's id; `deletable` adds a Delete button. Acts with the rights of the plugin that drew it. |
+| `<ui-table>` | collection, columns="title,author", sort="title\|-title", empty, row-action, deletable, filterable, page-size | A sortable table of a collection's records, kept up to date. The first column becomes a button that sends `row-action` with the record's id; `deletable` adds a Delete button; `filterable` adds a search box; `page-size` pages the rows. Acts with the rights of the plugin that drew it. |
 | `<ui-form>` | collection, fields="title,author", record, submit, action | A form built from the collection's schema: labels, input types, required fields and errors from the kernel's checks, beside the control they are about. A list field gets a row per item with Add and Remove buttons, and a group gets a fieldset, two levels deep. Saves a new record, or edits `record`; sends `action` with the saved record's id. |
 | `<ui-toolbar>` |  | A row of controls that wraps, with the last group pushed to the end by a ui-spacer. |
 | `<ui-spacer>` |  | Takes up the free space in a row. |
