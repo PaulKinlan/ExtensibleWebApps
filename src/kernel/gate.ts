@@ -13,6 +13,8 @@ export function capabilities(manifest: Manifest): Set<string> {
     if (read) out.add(`hook:listen:data:changed:${read[1]}`);
     // Writing plugins includes reading them: plugins:author grants plugins:read.
     if (permission === "plugins:author") out.add("plugins:read");
+    // Making web requests includes hearing streaming chunks of one's own net.fetch calls.
+    if (permission === "network" || permission.startsWith("network:")) out.add("hook:listen:net:chunk");
   }
   return out;
 }

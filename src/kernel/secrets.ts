@@ -65,9 +65,16 @@ export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => 
     (making ??= part("the card that asks for a key", () => import("./secrets-card")).then((m) => (made = m.cards(hosts, nameOf, (name, secret) => ((kept[name] = secret), void persist()))), (error) => ((making = undefined), Promise.reject(error))));
 
   async function managed(name: string, plugin?: string): Promise<ManagedSecret | undefined> {
-    const origin = plugin ? originOf?.(base(plugin)) : undefined;
-    if (!NAME.test(name) || !(origin === "server" || ((origin === undefined || origin === "app") && isServer()))) return undefined;
-    const found = (await (isServer() || origin ? (() => { try { return env().deploymentSecrets; } catch { return undefined; } })() : undefined)?.(name)) as { value?: unknown; hosts?: unknown; dailyCap?: unknown } | undefined;
+    if (!NAME.test(name) || !plugin) return undefined;
+    const origin = originOf?.(base(plugin));
+    if (isServer() ? origin !== "server" : origin !== "app" && origin !== "server") return undefined;
+    let lookup: ReturnType<typeof env>["deploymentSecrets"];
+    try {
+      lookup = env().deploymentSecrets;
+    } catch {
+      return undefined;
+    }
+    const found = (await lookup?.(name)) as { value?: unknown; hosts?: unknown; dailyCap?: unknown } | undefined;
     if (!found || typeof found.value !== "string" || !found.value || !Array.isArray(found.hosts)) return undefined;
     const allowed = found.hosts.filter((h): h is string => typeof h === "string").map((h) => h.trim().toLowerCase()).filter((h) => HOST.test(h));
     if (!allowed.length) return undefined;

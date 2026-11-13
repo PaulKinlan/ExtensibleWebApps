@@ -211,9 +211,11 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
   /** The provider the person picked to answer when a request names none: theirs, on this device, for every app. */
   const PREFERENCE = "llm.json";
   const preference = async () => (await store.readJson<{ prefer?: string }>(PREFERENCE, {})).prefer;
-  /** Streams currently under way, keyed by streamId, so only the answering provider can emit chunks for it. */
-  const activeStreams = new Map<string, { provider: string; emitted: boolean }>();
-  let nextStream = 0;
+  /** Streams currently under way, keyed by `${caller}:${streamId}`, so tabs cannot collide and only the answering provider can emit chunks. */
+  const activeStreams = new Map<string, { caller: string; streamId: string; provider: string; emitted: boolean }>();
+  root.on("internal/stopped", (instance: string) => {
+    for (const [key, entry] of activeStreams) if (entry.caller === instance) activeStreams.delete(key);
+  });
 
   kernel.hook("llm:providers", {
     mode: "waterfall",
@@ -368,11 +370,16 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       if (method === "chunk") {
         const [id, delta] = args;
         if (typeof id !== "string" || typeof delta !== "string") throw new Error("llm.chunk takes (streamId, delta)");
-        const active = activeStreams.get(id);
-        if (!active || active.provider !== plugin.split("@")[0]) return false;
+        const providerId = plugin.split("@")[0];
+        let active = activeStreams.get(id);
+        if (!active) {
+          const matches = [...activeStreams.values()].filter((s) => s.streamId === id && s.provider === providerId);
+          if (matches.length === 1) active = matches[0];
+        }
+        if (!active || active.provider !== providerId) return false;
         if (delta.length) {
           active.emitted = true;
-          root.emit(dispatch, "llm:chunk", { streamId: id, delta, done: false });
+          remote.emitTo(active.caller, "llm:chunk", { streamId: active.streamId, delta, done: false }, dispatch.trace);
         }
         return true;
       }
@@ -406,14 +413,16 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       }
       if (!parsed) throw new Error(`llm.${method} is not a method`);
       const { streamId: requestedStreamId, ...request } = parsed;
-      const streamId = streaming ? (requestedStreamId ?? `stream-${++nextStream}-${Math.random().toString(36).slice(2, 8)}`) : undefined;
+      const streamId = streaming ? (requestedStreamId ?? crypto.randomUUID()) : undefined;
+      const streamKey = streamId ? `${plugin}:${streamId}` : undefined;
+      if (streamKey && activeStreams.has(streamKey)) throw new Error(`Stream ${streamId} is already active`);
       const traceName = streaming ? "llm:stream" : "llm:complete";
       const started = performance.now();
 
       const askOne = async (providerId: string): Promise<unknown> => {
         if (!streaming) return root.serial(dispatch, "llm:complete", { ...request, provider: providerId });
-        activeStreams.set(streamId!, { provider: providerId, emitted: false });
-        const streamed = await root.serial(dispatch, "llm:stream", { ...request, provider: providerId, streamId });
+        activeStreams.set(streamKey!, { caller: plugin, streamId: streamId!, provider: providerId, emitted: false });
+        const streamed = await root.serial(dispatch, "llm:stream", { ...request, provider: providerId, streamId: streamKey });
         if (streamed !== undefined) return streamed;
         // Provider doesn't implement llm:stream: fall back to llm:complete.
         return root.serial(dispatch, "llm:complete", { ...request, provider: providerId });
@@ -443,20 +452,20 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
           const problems = "json" in answer ? validate(request.schema as Schema, answer.json) : [{ path: "", message: "no JSON came back" }];
           if (problems.length) throw new Error(`${chosen.name}'s answer isn't of the shape asked for: ${problems.slice(0, 3).map((p) => `${p.path || "the answer"} ${p.message}`).join("; ")}`);
         }
-        if (streaming && streamId) {
-          const state = activeStreams.get(streamId);
+        if (streaming && streamId && streamKey) {
+          const state = activeStreams.get(streamKey);
           if (!state?.emitted) {
             const chunks = Array.isArray(value.chunks) ? value.chunks.filter((c): c is string => typeof c === "string" && c.length > 0) : fallbackChunks(answer.text as string);
-            for (const delta of chunks) root.emit(dispatch, "llm:chunk", { streamId, delta, done: false });
+            for (const delta of chunks) remote.emitTo(plugin, "llm:chunk", { streamId, delta, done: false }, dispatch.trace);
           }
-          root.emit(dispatch, "llm:chunk", { streamId, delta: "", done: true });
+          remote.emitTo(plugin, "llm:chunk", { streamId, delta: "", done: true }, dispatch.trace);
           answer.streamId = streamId;
         }
         const usage = answer.usage as { input: number; output: number };
         record({ kind: "call", name: traceName, plugin, ms, detail: `${chosen.id} ${answer.model} ${answer.stop}, ${usage.input} in, ${usage.output} out` });
         return answer;
       } finally {
-        if (streamId) activeStreams.delete(streamId);
+        if (streamKey) activeStreams.delete(streamKey);
       }
     },
   };
