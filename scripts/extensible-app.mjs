@@ -51,8 +51,8 @@ export const PLATFORM = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 /** A project's own files at its top that aren't the app's, and so aren't served. */
 const NOT_SERVED = ["node_modules", "package.json", "package-lock.json", "kernel.json", "jsconfig.json", "tsconfig.json", "app.test.mjs", "tests"];
 
-/** Whether a file or folder of the project is served, at any depth: nothing starting with a dot (.env, .git), no node_modules, no test files. */
-const servable = (name) => !name.startsWith(".") && name !== "node_modules" && !/\.test\.[cm]?js$/.test(name);
+/** Whether a file or folder of the project is served, at any depth: nothing starting with a dot (.env, .git), no node_modules, no test files or folders. */
+const servable = (name) => !name.startsWith(".") && name !== "node_modules" && name !== "__tests__" && !/\.(?:test|spec)\.[cm]?[jt]s$/.test(name);
 
 /** The project's identity, which its Worker carries (EXTENSIBLE_APP), so a deploy only replaces a Worker of the same project. */
 function projectName(project) {

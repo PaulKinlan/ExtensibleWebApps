@@ -3,11 +3,41 @@
 // import or an agent proposes several changes together. Draws a summary above
 // the individual cards so the person can accept or decline all N at once, or
 // still answer each card on its own.
+//
+// Every rendered banner revision gets a monotonically increasing token bound
+// to an immutable snapshot of the exact request IDs shown in that banner, so a
+// request arriving after the banner was drawn is never settled unseen and an
+// earlier or replayed token can never target a later batch.
 
 import type { View } from "../shared/protocol";
 import type { Hosts } from "./hosts";
 import type { Outcome, Pending } from "./review";
 import { record } from "./trace";
+
+type Snapshot = {
+  readonly plugin: string;
+  readonly place: string;
+  readonly ids: readonly string[];
+};
+
+type Shown = {
+  readonly key: string;
+  readonly plugin: string;
+  readonly place: string;
+  sig: string;
+  token: string;
+};
+
+function parseBatchAction(action: string): { verb: "accept" | "decline"; token: string } | undefined {
+  const parts = action.split(":");
+  if ((parts[0] === "accept-batch" || parts[0] === "decline-batch") && parts[1]) {
+    return { verb: parts[0] === "accept-batch" ? "accept" : "decline", token: parts[1] };
+  }
+  if (parts[0] === "batch" && (parts[1] === "accept" || parts[1] === "decline") && parts[2]) {
+    return { verb: parts[1], token: parts[2] };
+  }
+  return undefined;
+}
 
 export function reviewBatches(
   hosts: Hosts,
@@ -15,26 +45,21 @@ export function reviewBatches(
   settle: (id: string, outcome: Outcome, trace?: string) => void,
   placeLabel: (place: string) => string,
 ) {
-  const groupIds = new Map<string, string>();
-  const groupsById = new Map<string, { plugin: string; place: string }>();
-  const shown = new Set<string>();
-  let nextGroup = 0;
+  const snapshots = new Map<string, Snapshot>();
+  const shown = new Map<string, Shown>();
+  let nextView = 0;
+  let batchRev = 0;
   let settling = false;
 
   const groupKey = (plugin: string, place: string) => `${plugin}\n${place}`;
 
-  function idFor(plugin: string, place: string): string {
-    const k = groupKey(plugin, place);
-    let id = groupIds.get(k);
-    if (!id) {
-      id = String(++nextGroup);
-      groupIds.set(k, id);
-      groupsById.set(id, { plugin, place });
+  function dropGroupSnapshots(plugin: string, place: string) {
+    for (const [tok, snap] of snapshots) {
+      if (snap.plugin === plugin && snap.place === place) snapshots.delete(tok);
     }
-    return id;
   }
 
-  function banner(gid: string, items: Pending[]): View {
+  function banner(token: string, items: Pending[]): View {
     const first = items[0].request;
     const n = items.length;
     const label = placeLabel(first.place);
@@ -49,8 +74,8 @@ export function reviewBatches(
           type: "stack",
           direction: "row",
           children: [
-            { type: "button", label: `Accept all ${n} in ${label}`, action: `batch:accept:${gid}`, primary: true },
-            { type: "button", label: `Decline all ${n}`, action: `batch:decline:${gid}` },
+            { type: "button", label: `Accept all ${n} in ${label}`, action: `accept-batch:${token}`, primary: true },
+            { type: "button", label: `Decline all ${n}`, action: `decline-batch:${token}` },
           ],
         },
       ],
@@ -59,38 +84,53 @@ export function reviewBatches(
 
   function sync() {
     if (settling) return;
-    const grouped = new Map<string, Pending[]>();
-    for (const p of pending.values()) {
+    const grouped = new Map<string, [string, Pending][]>();
+    for (const entry of pending) {
+      const p = entry[1];
       const k = groupKey(p.request.plugin, p.request.place);
       let list = grouped.get(k);
       if (!list) grouped.set(k, (list = []));
-      list.push(p);
+      list.push(entry);
     }
     const active = new Set<string>();
-    for (const items of grouped.values()) {
-      if (items.length < 2) continue;
-      const { plugin, place } = items[0].request;
-      const gid = idFor(plugin, place);
-      const key = `review-batch:${gid}`;
-      active.add(key);
-      shown.add(key);
-      hosts.render("review", "main", key, banner(gid, items), -1);
+    for (const [k, entries] of grouped) {
+      if (entries.length < 2) continue;
+      active.add(k);
+      const { plugin, place } = entries[0][1].request;
+      const ids = Object.freeze(entries.map(([id]) => id));
+      const sig = ids.join(",");
+      const prev = shown.get(k);
+      if (prev && prev.sig === sig) continue;
+      const token = String(++batchRev);
+      snapshots.set(token, { plugin, place, ids });
+      const key = prev ? prev.key : `review-batch:${++nextView}`;
+      shown.set(k, { key, plugin, place, sig, token });
+      hosts.render("review", "main", key, banner(token, entries.map(([, p]) => p)), -1);
     }
-    for (const key of [...shown]) {
-      if (active.has(key)) continue;
-      shown.delete(key);
-      hosts.render("review", "main", key, null, -1);
+    for (const [k, prev] of [...shown]) {
+      if (active.has(k)) continue;
+      shown.delete(k);
+      dropGroupSnapshots(prev.plugin, prev.place);
+      hosts.render("review", "main", prev.key, null, -1);
+    }
+    for (const [tok, snap] of snapshots) {
+      if (!snap.ids.some((id) => pending.has(id))) snapshots.delete(tok);
     }
   }
 
   function event(action: string, trace: string) {
-    const [, verb, gid] = action.split(":");
-    const group = gid ? groupsById.get(gid) : undefined;
-    if (!group || (verb !== "accept" && verb !== "decline")) return;
-    const outcome: Outcome = verb === "accept" ? "allowed-once" : "rejected";
-    const ids = [...pending].filter(([, p]) => p.request.plugin === group.plugin && p.request.place === group.place).map(([id]) => id);
-    if (!ids.length) return;
-    record({ kind: "note", name: "review:batch", plugin: group.plugin, trace, detail: `${outcome} (${ids.length} in ${placeLabel(group.place)})` });
+    const parsed = parseBatchAction(action);
+    if (!parsed) return;
+    const snap = snapshots.get(parsed.token);
+    if (!snap) return;
+    const ids = snap.ids.filter((id) => pending.has(id));
+    if (!ids.length) {
+      snapshots.delete(parsed.token);
+      return;
+    }
+    dropGroupSnapshots(snap.plugin, snap.place);
+    const outcome: Outcome = parsed.verb === "accept" ? "allowed-once" : "rejected";
+    record({ kind: "note", name: "review:batch", plugin: snap.plugin, trace, detail: `${outcome} (${ids.length} in ${placeLabel(snap.place)})` });
     settling = true;
     try {
       for (const id of ids) settle(id, outcome, trace);
