@@ -509,8 +509,8 @@ export default (ctx) => {
       for (const id of ["chat", "ask-the-page", "same-id-probe", "gated-stream"]) {
         await tab.evaluate((id) => window.__host.command("user:remove", { app: "demos/habits", id }), id).catch(() => {});
       }
-      await tab2?.close({ runBeforeUnload: true }).catch(() => {});
-      await tab.close({ runBeforeUnload: true });
+      await tab2?.close().catch(() => {});
+      await tab.close();
     }
 
     // 4. Agent mediation guard: an agent's custom runner cannot call llm.stream directly to bypass agents.complete budgets.

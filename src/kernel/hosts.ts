@@ -28,7 +28,7 @@ export class Hosts {
   readonly list: Host[] = [];
   private views = new Map<string, Rendered>();
   private bridgeId = 0;
-  private bridgeWaiting = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+  private bridgeWaiting = new Map<number, { host: Host; resolve: (v: unknown) => void; reject: (e: Error) => void }>();
   onSpawnerChange?: (host: Host | undefined) => void;
   onMessage?: (host: Host, message: HostToKernel) => void;
   onHello?: (host: Host, folder: FileSystemDirectoryHandle | undefined) => void;
@@ -87,6 +87,11 @@ export class Hosts {
     if (index < 0) return;
     const wasSpawner = host === this.spawner;
     this.list.splice(index, 1);
+    for (const [id, waiting] of this.bridgeWaiting) {
+      if (waiting.host !== host) continue;
+      this.bridgeWaiting.delete(id);
+      waiting.reject(new Error("That tab has closed"));
+    }
     record({ kind: "lifecycle", name: "host:disconnect", detail: host.tab });
     this.onLeave?.(host);
     if (wasSpawner) {
@@ -129,7 +134,7 @@ export class Hosts {
     const id = ++this.bridgeId;
     const started = performance.now();
     return new Promise<unknown>((resolve, reject) => {
-      this.bridgeWaiting.set(id, { resolve, reject });
+      this.bridgeWaiting.set(id, { host, resolve, reject });
       this.send(host, { t: "bridge", id, service, method, args });
     }).finally(() => record({ kind: "bridge", name: `${service}.${method}`, ms: Math.round((performance.now() - started) * 100) / 100, trace: dispatch.trace }));
   }
