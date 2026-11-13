@@ -64,7 +64,6 @@ export default function (ctx) {
   /** The model being added, and why the last add didn't happen. */
   let adding = "";
   let addError = "";
-  let streamSeq = 0;
   let activeStream = null;
   let streamTimer;
 
@@ -136,7 +135,7 @@ export default function (ctx) {
     error = "";
     answer = null;
     await draw();
-    const streamId = `ask-${++streamSeq}`;
+    const streamId = crypto.randomUUID();
     try {
       const { context, named } = await describe(question);
       const sent = `System:\n${SYSTEM}\n\n${context}\n\nYou:\n${question}`;

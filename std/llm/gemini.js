@@ -92,30 +92,65 @@ function toContents(messages) {
 
 const STOP = { STOP: "end", MAX_TOKENS: "length", SAFETY: "refused", RECITATION: "refused", PROHIBITED_CONTENT: "refused", BLOCKLIST: "refused" };
 
-/** Parses Server-Sent Events into `{ event, data }` items. */
-function parseSse(raw) {
-  const events = [];
-  for (const block of raw.split(/\r?\n\r?\n/)) {
+/** Incremental Server-Sent Events parser for streaming net:chunk deliveries. */
+function makeSseParser(onEvent) {
+  let buffer = "";
+  let jsonFallback = false;
+  const parseBlock = (block) => {
     let event = "";
     const data = [];
-    for (const line of block.split(/\r?\n/)) {
+    for (const line of block.split("\n")) {
       if (line.startsWith("event:")) event = line.slice(6).trim();
       else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
     }
-    if (!data.length) continue;
+    if (!data.length) return;
     const joined = data.join("\n");
     if (data.length > 1) {
       try {
         JSON.parse(joined);
-        events.push({ event, data: joined });
-        continue;
+        onEvent({ event, data: joined });
+        return;
       } catch {
-        for (const d of data) events.push({ event, data: d });
-        continue;
+        for (const d of data) onEvent({ event, data: d });
+        return;
       }
     }
-    events.push({ event, data: joined });
-  }
+    onEvent({ event, data: joined });
+  };
+  return {
+    push(chunk, done = false) {
+      if (chunk) buffer += chunk;
+      const heldCr = !done && buffer.endsWith("\r") ? "\r" : "";
+      let ready = (heldCr ? buffer.slice(0, -1) : buffer).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      if (jsonFallback) {
+        buffer = ready + heldCr;
+        return;
+      }
+      const trimmedStart = ready.trimStart();
+      if (trimmedStart.startsWith("{") || trimmedStart.startsWith("[")) {
+        jsonFallback = true;
+        buffer = ready + heldCr;
+        return;
+      }
+      let sep;
+      while ((sep = ready.indexOf("\n\n")) !== -1) {
+        const block = ready.slice(0, sep);
+        ready = ready.slice(sep + 2);
+        parseBlock(block);
+      }
+      if (done && ready.trim()) parseBlock(ready);
+      buffer = done ? "" : ready + heldCr;
+    },
+    get isJsonFallback() {
+      return jsonFallback;
+    },
+  };
+}
+
+/** Parses Server-Sent Events into `{ event, data }` items. */
+function parseSse(raw) {
+  const events = [];
+  makeSseParser((e) => events.push(e)).push(raw, true);
   return events;
 }
 
@@ -277,12 +312,51 @@ export default function (ctx) {
       if (!(await ensureKey())) return { error: "No Gemini API key was given", declined: true };
       const model = await resolve(request.model ?? (await setting()));
       const used = given;
-      const response = await ctx.call("net", "fetch", {
-        url: `${API}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
-        method: "POST",
-        headers: { ...KEY, "content-type": "application/json", accept: "text/event-stream" },
-        body: JSON.stringify(buildBody(request)),
+      const fetchStreamId = crypto.randomUUID();
+      const packets = [];
+      let streamError = "";
+      let parseFailure = null;
+      let sending = Promise.resolve();
+      let batch = [];
+      const parser = makeSseParser(({ data: raw }) => {
+        if (streamError || !raw || raw === "[DONE]") return;
+        const packet = JSON.parse(raw);
+        if (packet.error) {
+          streamError = packet.error.message ?? "Stream error";
+          return;
+        }
+        packets.push(packet);
+        for (const part of packet.candidates?.[0]?.content?.parts ?? []) {
+          if (typeof part.text === "string" && !part.thought && part.text.length) batch.push(part.text);
+        }
       });
+      const off = ctx.on("net:chunk", ({ streamId, chunk, done }) => {
+        if (streamId !== fetchStreamId || parseFailure || streamError) return;
+        batch = [];
+        try {
+          parser.push(chunk, Boolean(done));
+        } catch (err) {
+          parseFailure = err;
+          return;
+        }
+        if (batch.length && !streamError) {
+          const out = batch;
+          sending = sending.then(() => emitChunks(ctx, request.streamId, out));
+        }
+      });
+      let response;
+      try {
+        response = await ctx.call("net", "fetch", {
+          url: `${API}/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`,
+          method: "POST",
+          headers: { ...KEY, "content-type": "application/json", accept: "text/event-stream" },
+          body: JSON.stringify(buildBody(request)),
+          streamId: fetchStreamId,
+        });
+      } finally {
+        off();
+      }
+      await sending;
       const trimmed = (response.text || "").trim();
       if (!response.ok) {
         let parsed = {};
@@ -292,20 +366,15 @@ export default function (ctx) {
         } catch {}
         return { error: await failure(response, parsed, used) };
       }
-      let packets = [];
-      if (trimmed.startsWith("[")) packets = JSON.parse(trimmed);
-      else if (trimmed.startsWith("{")) packets = [JSON.parse(trimmed)];
-      else {
-        for (const { data: raw } of parseSse(trimmed)) {
-          if (!raw || raw === "[DONE]") continue;
-          const packet = JSON.parse(raw);
-          if (packet.error) return { error: packet.error.message ?? "Stream error" };
-          packets.push(packet);
-        }
+      if (parseFailure) throw parseFailure;
+      if (streamError) return { error: streamError };
+      if (parser.isJsonFallback || (!packets.length && (trimmed.startsWith("[") || trimmed.startsWith("{")))) {
+        const fallbackPackets = trimmed.startsWith("[") ? JSON.parse(trimmed) : trimmed.startsWith("{") ? [JSON.parse(trimmed)] : [];
+        const { answer, deltas } = fromPackets(fallbackPackets, model, request);
+        await emitChunks(ctx, request.streamId, deltas);
+        return answer;
       }
-      const { answer, deltas } = fromPackets(packets, model, request);
-      await emitChunks(ctx, request.streamId, deltas);
-      return answer;
+      return fromPackets(packets, model, request).answer;
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
     }

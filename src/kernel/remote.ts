@@ -537,6 +537,13 @@ export class RemotePlugins {
     this.live.get(instance)?.post(message, transfer);
   }
 
+  /** Delivers an emit or parallel hook event only to listeners registered by `instance`. */
+  emitTo(instance: string, name: string, value: unknown, trace?: string): void {
+    const spec = hooks.get(name);
+    if (spec && spec.mode !== "emit" && spec.mode !== "parallel") throw new Error(`emitTo only sends emit or parallel hooks, not ${name}`);
+    this.live.get(instance)?.emitTo(name, value, trace);
+  }
+
   /** Checks whether a running instance's worker answers on its port within `timeoutMs`; traces `plugin:unresponsive` when it doesn't. */
   ping(instance: string, timeoutMs = 2000): Promise<boolean> {
     const remote = this.live.get(instance);
@@ -642,6 +649,13 @@ export class Remote {
 
   post(message: KernelToPlugin, transfer: Transferable[] = []): void {
     if (!this.disposed) this.port.postMessage(message, transfer);
+  }
+
+  emitTo(name: string, value: unknown, trace?: string): void {
+    if (this.disposed) return;
+    for (const [listener, entry] of this.listeners) {
+      if (entry.name === name) this.post({ t: "hook", listener, name, args: [value], trace });
+    }
   }
 
   ping(timeoutMs = 2000): Promise<boolean> {
@@ -959,7 +973,7 @@ export class Remote {
     // An agent reaches its model and its tools only through the agents service, which counts its runs and
     // tokens and asks agent:beforeTool first. Its loop is a file the app chose (std/agents/runner.js or its
     // own `runner:`), so the kernel holds it to that here, rather than trusting the loop to.
-    const mediated = (service === "llm" && method === "complete") || (service === "tools" && method === "call");
+    const mediated = (service === "llm" && (method === "complete" || method === "stream")) || (service === "tools" && method === "call");
     if (mediated && made.has(this.plugin.source)) return reply(false, undefined, `An agent calls ${service}.${method} through the agents service (agents.${service === "llm" ? "complete" : "tool"}), so its limits and checks hold`);
     try {
       reply(true, await callService(this.manager.services, this.instance, this.caps, service, method, args, { trace }));

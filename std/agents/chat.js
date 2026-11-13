@@ -47,7 +47,6 @@ export default function (ctx) {
   let sending = false;
   /** The models to pick from: [{ id, name, label, picked }]. */
   let models = [];
-  let streamSeq = 0;
   let activeStream = null;
   let streamTimer;
 
@@ -124,7 +123,7 @@ export default function (ctx) {
     say("You", message, "", "you", DIRECT);
     sending = true;
     draw();
-    const streamId = `chat-${++streamSeq}`;
+    const streamId = crypto.randomUUID();
     activeStream = { id: streamId, who: target.name, line: null };
     try {
       const reply = await ctx.call("llm", STREAM, {

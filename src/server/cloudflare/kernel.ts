@@ -42,8 +42,8 @@ export interface SpaceHost extends IsolateHost {
   wake(at: number | undefined): Promise<void>;
   /** What a door answers may have changed (the door `mcp`): the Worker's open streams for the space ask it again. */
   changed(door: string): Promise<void>;
-  /** Deployment-managed secrets (when the supervisor exposes them). */
-  deploymentSecrets?(name: string): Promise<{ value: string; hosts: string[] } | undefined> | { value: string; hosts: string[] } | undefined;
+  /** Deployment-managed secrets from the supervisor's environment, bound to their allowed hosts. */
+  deploymentSecrets(name: string): Promise<{ value: string; hosts: string[]; dailyCap?: number } | undefined> | { value: string; hosts: string[]; dailyCap?: number } | undefined;
 }
 
 const SECRET_NAME = /^[a-z][a-z0-9-]{0,40}$/;
@@ -64,9 +64,15 @@ function parseHosts(raw: unknown): string[] {
   return list.filter((h): h is string => typeof h === "string").map((h) => h.trim().toLowerCase()).filter((h) => SECRET_HOST.test(h));
 }
 
+function parseCap(raw: unknown): number | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+  if (typeof raw === "string" && /^\d+$/.test(raw.trim())) return Number(raw.trim());
+  return undefined;
+}
+
 function deploymentSecretFromEnv(vars: Record<string, unknown>, name: string): { value: string; hosts: string[]; dailyCap?: number } | undefined {
   if (!SECRET_NAME.test(name)) return undefined;
-  const defaultCap = typeof vars.DEPLOYMENT_SECRET_DAILY_CAP === "string" && /^\d+$/.test(vars.DEPLOYMENT_SECRET_DAILY_CAP) ? Number(vars.DEPLOYMENT_SECRET_DAILY_CAP) : undefined;
+  const defaultCap = parseCap(vars.DEPLOYMENT_SECRET_DAILY_CAP);
   let map: unknown = vars.DEPLOYMENT_SECRETS;
   if (typeof map === "string") {
     try {
@@ -80,7 +86,7 @@ function deploymentSecretFromEnv(vars: Record<string, unknown>, name: string): {
     if (entry && typeof entry === "object" && typeof entry.value === "string" && entry.value) {
       const hosts = parseHosts(entry.hosts);
       if (hosts.length) {
-        const cap = typeof entry.dailyCap === "number" && Number.isFinite(entry.dailyCap) && entry.dailyCap >= 0 ? Math.floor(entry.dailyCap) : defaultCap;
+        const cap = parseCap(entry.dailyCap) ?? defaultCap;
         return { value: entry.value, hosts, ...(cap !== undefined && { dailyCap: cap }) };
       }
     }
@@ -91,8 +97,7 @@ function deploymentSecretFromEnv(vars: Record<string, unknown>, name: string): {
   if (typeof value !== "string" || !value) return undefined;
   const hosts = parseHosts(rawHosts);
   if (!hosts.length) return undefined;
-  const rawCap = vars[`EWA_SECRET_${key}_DAILY_CAP`] ?? vars[`EWA_SECRET_${name}_DAILY_CAP`];
-  const cap = typeof rawCap === "string" && /^\d+$/.test(rawCap) ? Number(rawCap) : defaultCap;
+  const cap = parseCap(vars[`EWA_SECRET_${key}_DAILY_CAP`] ?? vars[`EWA_SECRET_${name}_DAILY_CAP`]) ?? defaultCap;
   return { value, hosts, ...(cap !== undefined && { dailyCap: cap }) };
 }
 
@@ -152,8 +157,15 @@ export class SpaceKernel extends DurableObject {
         connect: (a) => void (accept = a),
         serve: (answer) => void (answerRoute = answer),
         boot: (start) => void (boot = start),
-        deploymentSecrets: (name: string) =>
-          host?.deploymentSecrets ? host.deploymentSecrets(name) : deploymentSecretFromEnv(((this as unknown as { env?: Record<string, unknown> }).env ?? {}), name),
+        deploymentSecrets: async (name: string) => {
+          if (host) {
+            try {
+              const found = await host.deploymentSecrets(name);
+              if (found) return found;
+            } catch {}
+          }
+          return deploymentSecretFromEnv(((this as unknown as { env?: Record<string, unknown> }).env ?? {}), name);
+        },
         ...(host && { wake: (at: number | undefined) => void host.wake(at).catch((error) => console.error("Couldn't set the space's alarm:", error)) }),
         ...(host && {
           isolates: remoteIsolates(host, (name, error) => console.error(`Plugin ${name}:`, error)),

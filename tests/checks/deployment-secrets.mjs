@@ -11,6 +11,8 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { serve } from "../../src/server/serve.ts";
+import { deploymentSecretFromEnv } from "../../src/server/space-env.ts";
+import { build as esbuild } from "esbuild";
 import { authenticator } from "../server/authenticator.mjs";
 
 function echoServer() {
@@ -236,6 +238,27 @@ export default (ctx) => {
       JSON.stringify({ wrongHost, deniedPlugin, apiBReceived: apiB.received }),
     );
 
+    // Persisted data-origin plugin in space storage must never run or access deployment secrets on a server.
+    const persistedPluginsDir = join(spaces, "ops", "files", "plugins");
+    mkdirSync(persistedPluginsDir, { recursive: true });
+    writeFileSync(
+      join(persistedPluginsDir, "data-sneak.js"),
+      `export const manifest = {
+  id: "data-sneak",
+  name: "Data sneak",
+  runs: "server",
+  permissions: ["network:${hostA}", "secret:echo"],
+};
+export default async (ctx) => {
+  await ctx.call("net", "fetch", {
+    url: "http://${hostA}/sneak",
+    method: "POST",
+    headers: { authorization: { secret: "echo", prefix: "Bearer " } },
+    body: "exfil",
+  }).catch(() => {});
+};`,
+    );
+
     // Daily request cap per plugin (persisted across restarts); secrets without an explicit override get the 500/day default.
     const cap1 = await postCall(`http://${hostA}/c1`, "capped");
     const cap2 = await postCall(`http://${hostA}/c2`, "capped");
@@ -244,6 +267,7 @@ export default (ctx) => {
     await host.stop();
     host = await startHost();
     const capAfterRestart = await postCall(`http://${hostA}/c4`, "capped");
+    const serverStillWorks = await postCall(`http://${hostA}/server-origin-ok`, "echo");
     check(
       "deployment secrets: per-plugin daily request cap stops excess calls and persists across space restarts",
       cap1.ok === true &&
@@ -254,6 +278,84 @@ export default (ctx) => {
         capAfterRestart.ok === false &&
         /daily limit \(4\)/.test(capAfterRestart.error),
       JSON.stringify({ cap1, cap2, cap3, uncappedDefault, capAfterRestart }),
+    );
+    check(
+      "deployment secrets: persisted data-origin plugin in space folder never accesses deploymentSecrets while server-origin plugin succeeds",
+      !apiA.received.some((r) => r.url === "/sneak") && serverStillWorks.ok === true,
+      JSON.stringify({ sneakCalls: apiA.received.filter((r) => r.url === "/sneak"), serverStillWorks }),
+    );
+
+    // Direct fail-closed origin check on makeSecrets + net under env().kind === "server".
+    const bundled = await esbuild({
+      stdin: {
+        contents: `
+          import { setEnv } from "./src/kernel/env.ts";
+          import { secrets as makeSecrets } from "./src/kernel/secrets.ts";
+          import { net as makeNet } from "./src/kernel/net.ts";
+          export { setEnv, makeSecrets, makeNet };
+        `,
+        resolveDir: resolve("."),
+        loader: "ts",
+      },
+      bundle: true,
+      write: false,
+      format: "esm",
+      platform: "neutral",
+      logLevel: "silent",
+    });
+    const mod = await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`);
+    mod.setEnv({
+      kind: "server",
+      origin: "https://example.test",
+      allowPrivate: ["127.0.0.1"],
+      connect: () => {},
+      onError: () => {},
+      deploymentSecrets: (name) => (name === "echo" ? { value: ECHO_SECRET, hosts: [hostA] } : undefined),
+    });
+    const fakeStore = { readJson: async (_p, d) => d, writeJson: async () => {} };
+    const fakeHosts = { mode: "server", list: [], broadcast: () => {}, render: () => {}, send: () => {}, clear: () => {} };
+    const origins = new Map([
+      ["data-plugin", "data"],
+      ["app-plugin", "app"],
+      ["builtin-plugin", "built-in"],
+      ["server-plugin", "server"],
+    ]);
+    const secWithOrigin = mod.makeSecrets(fakeStore, fakeHosts, (p) => p, (p) => origins.get(p));
+    const secWithoutOrigin = mod.makeSecrets(fakeStore, fakeHosts, (p) => p);
+    const caps = new Set([`network:${hostA}`, "secret:echo"]);
+    const netWithOrigin = mod.makeNet(secWithOrigin, () => caps);
+    const dataHas = await secWithOrigin.service.call("data-plugin", "has", ["echo"], {});
+    const dataReq = await secWithOrigin.service.call("data-plugin", "request", ["echo", { hosts: [hostA] }], {});
+    const appHas = await secWithOrigin.service.call("app-plugin", "has", ["echo"], {});
+    const unknownHas = await secWithOrigin.service.call("unknown-plugin", "has", ["echo"], {});
+    const omittedOriginHas = await secWithoutOrigin.service.call("server-plugin", "has", ["echo"], {});
+    const dataNetErr = await netWithOrigin.call("data-plugin", "fetch", [{ url: `http://${hostA}/from-data`, headers: { authorization: { secret: "echo" } } }], {}).then(() => "allowed", (e) => e.message);
+    const serverHas = await secWithOrigin.service.call("server-plugin", "has", ["echo"], {});
+    const serverNet = await netWithOrigin.call("server-plugin", "fetch", [{ url: `http://${hostA}/from-server`, headers: { authorization: { secret: "echo", prefix: "Bearer " } } }], {});
+    check(
+      "deployment secrets: secrets.ts fails closed for data, app, undefined, and missing originOf on a server while allowing server-origin plugins",
+      dataHas.set === false &&
+        dataReq.set === false &&
+        appHas.set === false &&
+        unknownHas.set === false &&
+        omittedOriginHas.set === false &&
+        /hasn't given the secret echo/.test(dataNetErr) &&
+        !apiA.received.some((r) => r.url === "/from-data") &&
+        serverHas.set === true &&
+        serverHas.managed === true &&
+        serverNet.ok === true &&
+        apiA.received.some((r) => r.url === "/from-server" && r.authorization === `Bearer ${ECHO_SECRET}`),
+      JSON.stringify({ dataHas, dataReq, appHas, unknownHas, omittedOriginHas, dataNetErr, serverHas, serverNetOk: serverNet.ok }),
+    );
+
+    // Shared env parser parity (JSON map + EWA_SECRET_<NAME> + dailyCap).
+    const parsedJson = deploymentSecretFromEnv({ DEPLOYMENT_SECRETS: JSON.stringify({ demo: { value: "v1", hosts: ["API.Example.com", "bad/host"], dailyCap: 12 } }) }, "demo");
+    const parsedEnv = deploymentSecretFromEnv({ EWA_SECRET_MY_KEY: "v2", EWA_SECRET_MY_KEY_HOSTS: "a.example.com, b.example.com:8443", EWA_SECRET_MY_KEY_DAILY_CAP: "25" }, "my-key");
+    check(
+      "deployment secrets: shared env parser normalizes hosts and dailyCap across DEPLOYMENT_SECRETS and EWA_SECRET_<NAME>",
+      JSON.stringify(parsedJson) === JSON.stringify({ value: "v1", hosts: ["api.example.com"], dailyCap: 12 }) &&
+        JSON.stringify(parsedEnv) === JSON.stringify({ value: "v2", hosts: ["a.example.com", "b.example.com:8443"], dailyCap: 25 }),
+      JSON.stringify({ parsedJson, parsedEnv }),
     );
 
     if (a && plugin && pluginLog) {
