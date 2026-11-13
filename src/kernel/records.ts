@@ -48,8 +48,9 @@ export const RECORD_FIELDS = ["id", "createdAt", "updatedAt"];
 const NAME = /^[a-z][a-z0-9-]{0,40}$/;
 const MAX_RECORDS = 10_000;
 const MAX_BYTES = 5_000_000;
-/** Not a valid collection name (names start with a letter), so no collection's records can land on it. */
+/** Not valid collection names (names start with a letter), so no collection's records can land on them. */
 const INDEX = "collections/_registry.json";
+const SEAM_MIGRATED = "collections/.seam_migrated.json";
 
 /** What `reviewed` in the kernel does: asks the person, throws unless they allow it. */
 /** A write to a record: `after` is missing for a delete, `before` for a new record. */
@@ -102,6 +103,26 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     return out;
   };
 
+  const migrated = new Set<string>();
+  const seamReady = seam
+    ? store.readJson<unknown>(SEAM_MIGRATED, {}).then((saved) => {
+        if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+          for (const [k, v] of Object.entries(saved)) if (NAME.test(k) && v === true) migrated.add(k);
+        }
+      })
+    : undefined;
+  let migratedWrite: Promise<unknown> = Promise.resolve();
+  const markMigrated = (name: string) => {
+    const run = migratedWrite.then(async () => {
+      const next = new Set(migrated);
+      next.add(name);
+      await store.writeJson(SEAM_MIGRATED, Object.fromEntries([...next].sort().map((k) => [k, true])));
+      migrated.add(name);
+    });
+    migratedWrite = run.catch(() => {});
+    return run;
+  };
+
   const load = (name: string) => {
     if (!data.has(name)) {
       data.set(
@@ -109,15 +130,18 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
         ready
           .then(async () => {
             if (!seam) return fromStore(name);
-            const rows = await seam.list(name);
-            if (rows.length) {
-              const out = new Map<string, StoredRecord>();
-              for (const { id, value } of rows) if (value && typeof value === "object") out.set(id, value as StoredRecord);
-              return out;
+            await seamReady;
+            if (!migrated.has(name)) {
+              const legacy = await fromStore(name);
+              for (const [id, r] of legacy) {
+                if (!(await seam.get(name, id))) await seam.put(name, id, r, 0);
+              }
+              await markMigrated(name);
             }
-            const migrated = await fromStore(name);
-            for (const [id, r] of migrated) await seam.put(name, id, r);
-            return migrated;
+            const rows = await seam.list(name);
+            const out = new Map<string, StoredRecord>();
+            for (const { id, value } of rows) if (value && typeof value === "object") out.set(id, value as StoredRecord);
+            return out;
           })
           .catch((error) => {
             // Not loaded (carrying old data over failed to write, say): the next call tries again, rather than an

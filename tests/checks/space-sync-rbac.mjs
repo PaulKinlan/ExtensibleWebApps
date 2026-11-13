@@ -228,8 +228,265 @@ async function checkAuthorRulesInHub(check) {
   );
 }
 
+/**
+ * Deterministic regression check for #4556299334: when an in-flight push is 3-way merged by the server while
+ * a newer local edit (and a write arriving during async `records.apply`) happened on the device, local `data.get`
+ * and the server both retain the peer's merged fields AND all newer local edits once the queue drains.
+ */
+async function checkInFlightMergeLocalReconcile(check) {
+  const bundled = await build({
+    stdin: {
+      contents: `
+        export { Context } from "cordis";
+        export { Store } from "./src/kernel/store.ts";
+        export { Hosts } from "./src/kernel/hosts.ts";
+        export { RemotePlugins } from "./src/kernel/remote.ts";
+        export { collections } from "./src/kernel/records.ts";
+        export { memoryFiles } from "./src/seams/memory.ts";
+        export { syncHub } from "./std/spaces/hub.ts";
+        export { syncDevice } from "./std/spaces/device.ts";
+      `,
+      resolveDir: ROOT,
+      loader: "ts",
+    },
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "neutral",
+    mainFields: ["module", "main"],
+    logLevel: "silent",
+  });
+  const { Context, Store, Hosts, RemotePlugins, collections, memoryFiles, syncHub, syncDevice } = await import(
+    `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`
+  );
+
+  const manifest = {
+    id: "books-owner",
+    name: "Books",
+    permissions: [],
+    collections: {
+      books: {
+        title: "Books",
+        schema: {
+          type: "object",
+          required: ["title"],
+          properties: {
+            title: { type: "string" },
+            author: { type: "string" },
+            notes: { type: "string" },
+            genre: { type: "string" },
+            rating: { type: "integer" },
+          },
+        },
+      },
+    },
+  };
+
+  // Space hub setup
+  const hubRoot = new Context();
+  const hubStore = new Store(hubRoot);
+  hubStore.use(memoryFiles());
+  let deliverToAnn = () => {};
+  const hubHosts = {
+    mode: "server",
+    list: [],
+    send: (host, msg) => {
+      if (host.deliver) host.deliver(msg);
+    },
+  };
+  const hubRemote = new RemotePlugins(hubRoot, hubHosts, {});
+  const hubCols = collections(hubRoot, hubStore, hubHosts, hubRemote, async () => "allowed-once");
+  await hubCols.ready;
+  hubRemote.installed.set("books-owner", { id: "books-owner", source: "", manifest, caps: new Set(), origin: "app", enabled: true });
+  hubCols.register(manifest);
+  const hub = syncHub(hubRoot, hubStore, hubCols, hubHosts);
+
+  const hostAnn = { tab: "t-ann", member: "u-ann", port: {}, deliver: (msg) => deliverToAnn(msg) };
+  const hostBen = { tab: "t-ben", member: "u-ben", port: {} };
+
+  // Controllable WebSocket wire between Ann's syncDevice and syncHub
+  let holdWire = false;
+  const heldClientToServer = [];
+  const heldServerToClient = [];
+  let activeSocket = null;
+
+  const forwardToHub = async (raw) => {
+    const parsed = JSON.parse(String(raw));
+    if (parsed?.t === "sync") await hub.handle(hostAnn, { ...parsed, member: "u-ann", role: "editor" });
+  };
+
+  deliverToAnn = (msg) => {
+    const raw = JSON.stringify(msg);
+    if (holdWire) heldServerToClient.push(raw);
+    else activeSocket?.onmessage?.({ data: raw });
+  };
+
+  class FakeSocket {
+    readyState = 0;
+    onopen = null;
+    onmessage = null;
+    onclose = null;
+    constructor() {
+      activeSocket = this;
+      queueMicrotask(() => {
+        this.readyState = 1;
+        this.onopen?.();
+      });
+    }
+    send(raw) {
+      if (holdWire) heldClientToServer.push(raw);
+      else void forwardToHub(raw);
+    }
+    close() {
+      this.readyState = 3;
+      this.onclose?.();
+    }
+  }
+
+  const flushWire = async () => {
+    holdWire = false;
+    while (heldClientToServer.length || heldServerToClient.length) {
+      while (heldClientToServer.length) await forwardToHub(heldClientToServer.shift());
+      while (heldServerToClient.length) activeSocket?.onmessage?.({ data: heldServerToClient.shift() });
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  };
+
+  // Ann's device kernel setup
+  const devRoot = new Context();
+  const devStore = new Store(devRoot);
+  devStore.use(memoryFiles());
+  const devHosts = new Hosts();
+  const devRemote = new RemotePlugins(devRoot, devHosts, {});
+  const devCols = collections(devRoot, devStore, devHosts, devRemote, async () => "allowed-once");
+  await devCols.ready;
+  devRemote.installed.set("books-owner", { id: "books-owner", source: "", manifest, caps: new Set(), origin: "app", enabled: true });
+  devCols.register(manifest);
+
+  const device = syncDevice("ws://space.local/s/studio/kernel", devStore, devCols, devHosts, { WebSocketImpl: FakeSocket });
+  const waitDeviceSettled = async () => {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      const s = await device.state();
+      if (s.connected && s.pending === 0 && heldClientToServer.length === 0 && heldServerToClient.length === 0) return s;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error("Timed out waiting for syncDevice to settle");
+  };
+
+  const dataPut = (record) => devCols.service.call("books-owner", "put", ["books", record], {});
+  const dataGet = (id) => devCols.service.call("books-owner", "get", ["books", id], {});
+
+  try {
+    await waitDeviceSettled();
+
+    // Seed initial record b1 at seq = 1 from Ben and wait for Ann to receive it.
+    await hub.handle(hostBen, {
+      t: "sync",
+      op: "push",
+      id: 100,
+      member: "u-ben",
+      role: "editor",
+      changes: [{ collection: "books", id: "b1", base: 0, after: { id: "b1", title: "Hyperion", author: "Simmons", notes: "First edition" } }],
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    await waitDeviceSettled();
+
+    // 1. Hold wire so Ann's first push stays in flight while Ben updates `notes` on the server and Ann makes a 2nd local edit (`genre`).
+    holdWire = true;
+    await hub.handle(hostBen, {
+      t: "sync",
+      op: "push",
+      id: 101,
+      member: "u-ben",
+      role: "editor",
+      changes: [{ collection: "books", id: "b1", base: 1, after: { id: "b1", title: "Hyperion", author: "Simmons", notes: "Hugo winner" } }],
+    });
+
+    // Ann's 1st local edit (`author`) triggers an in-flight push (held in heldClientToServer).
+    await dataPut({ id: "b1", title: "Hyperion", author: "Dan Simmons", notes: "First edition" });
+    await new Promise((r) => setTimeout(r, 10));
+    const pushInFlight = heldClientToServer.length === 1;
+
+    // While that push is in flight, Ann makes a 2nd local edit (`genre: "sci-fi"`).
+    await dataPut({ id: "b1", title: "Hyperion", author: "Dan Simmons", notes: "First edition", genre: "sci-fi" });
+
+    // Release wire and wait for queue to drain completely.
+    await flushWire();
+    const state1 = await waitDeviceSettled();
+    const localAfter1 = await dataGet("b1");
+    const hubAfter1 = await hubCols.record("books", "b1");
+
+    // 2. Also verify a 3rd local edit arriving mid-`records.apply` await during merge reconciliation is preserved!
+    holdWire = true;
+    const baseSeq2 = state1.seq;
+    await hub.handle(hostBen, {
+      t: "sync",
+      op: "push",
+      id: 102,
+      member: "u-ben",
+      role: "editor",
+      changes: [
+        {
+          collection: "books",
+          id: "b1",
+          base: baseSeq2,
+          after: { id: "b1", title: "Hyperion", author: "Dan Simmons", notes: "Hugo & Locus winner", genre: "sci-fi" },
+        },
+      ],
+    });
+    await dataPut({ id: "b1", title: "Hyperion", author: "Dan Simmons (rev 2)", notes: "Hugo winner", genre: "sci-fi" });
+    await new Promise((r) => setTimeout(r, 10));
+    await dataPut({ id: "b1", title: "Hyperion", author: "Dan Simmons (rev 2)", notes: "Hugo winner", genre: "space-opera" });
+
+    const origApply = devCols.apply;
+    let injectedMidApply = false;
+    devCols.apply = async (...args) => {
+      if (!injectedMidApply && String(args[3]?.trace ?? "").startsWith("sync-merged-")) {
+        injectedMidApply = true;
+        // Simulate a local edit landing while `reconcileMerged` is awaiting `records.apply` (before `origApply` updates local records).
+        await dataPut({ id: "b1", title: "Hyperion", author: "Dan Simmons (rev 2)", notes: "Hugo winner", genre: "space-opera", rating: 5 });
+      }
+      return origApply(...args);
+    };
+
+    await flushWire();
+    const state2 = await waitDeviceSettled();
+    devCols.apply = origApply;
+    const localAfter2 = await dataGet("b1");
+    const hubAfter2 = await hubCols.record("books", "b1");
+
+    check(
+      "field-level 3-way merge: concurrent local edits during an in-flight auto-merged push (and during async records.apply) reconcile server-merged fields into local data.get",
+      pushInFlight &&
+        state1.drafts.length === 0 &&
+        localAfter1?.author === "Dan Simmons" &&
+        localAfter1?.notes === "Hugo winner" &&
+        localAfter1?.genre === "sci-fi" &&
+        hubAfter1?.author === "Dan Simmons" &&
+        hubAfter1?.notes === "Hugo winner" &&
+        hubAfter1?.genre === "sci-fi" &&
+        injectedMidApply &&
+        state2.drafts.length === 0 &&
+        localAfter2?.author === "Dan Simmons (rev 2)" &&
+        localAfter2?.notes === "Hugo & Locus winner" &&
+        localAfter2?.genre === "space-opera" &&
+        localAfter2?.rating === 5 &&
+        hubAfter2?.author === "Dan Simmons (rev 2)" &&
+        hubAfter2?.notes === "Hugo & Locus winner" &&
+        hubAfter2?.genre === "space-opera" &&
+        hubAfter2?.rating === 5,
+      JSON.stringify({ pushInFlight, localAfter1, hubAfter1, injectedMidApply, localAfter2, hubAfter2 }),
+    );
+  } finally {
+    device.stop();
+    await hub.stop();
+  }
+}
+
 export default async function ({ check, context, errors }) {
   await checkAuthorRulesInHub(check);
+  await checkInFlightMergeLocalReconcile(check);
 
   const browser = context.browser();
   const spaces = await mkdtemp(join(tmpdir(), "space-sync-rbac-"));
