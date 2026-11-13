@@ -131,6 +131,108 @@ export default async function ({ check, context, URL: siteUrl, errors }) {
         afterDelete[0].id === "n2",
       JSON.stringify({ migrated, written, seamRows, afterDelete }),
     );
+
+    // Delete the remaining record so the Records seam now has 0 rows while legacy collections/notes.json still exists,
+    // then reload a fresh collections(...) instance over the same files + seam to verify deleted records never resurrect.
+    await cols.write("notes-owner", "notes", "n2", null, "", {});
+    const emptySeamRows = await seam.list("notes");
+    const legacyStillOnDisk = (await files.readText("collections/notes.json")) !== null;
+
+    const root2 = new Context();
+    const store2 = new Store(root2);
+    store2.use(files);
+    const hosts2 = new Hosts();
+    const remote2 = new RemotePlugins(root2, hosts2, {});
+    const cols2 = collections(root2, store2, hosts2, remote2, async () => "allowed-once", seam);
+    await cols2.ready;
+    remote2.installed.set("notes-owner", { id: "notes-owner", source: "", manifest, caps: new Set(), origin: "app", enabled: true });
+    cols2.register(manifest);
+    const afterReload = await cols2.records("notes");
+    const gotDeleted = await cols2.record("notes", "n1");
+    check(
+      "collections tracks Records seam migration completion independently of row count so deleting all records never resurrects legacy JSON",
+      emptySeamRows.length === 0 && legacyStillOnDisk && afterReload.length === 0 && gotDeleted === null,
+      JSON.stringify({ emptySeamRows, legacyStillOnDisk, afterReload, gotDeleted }),
+    );
+  }
+
+  // 2b. Partial migration failure retries cleanly on next load without clobbering already-migrated records.
+  {
+    const files = memoryFiles();
+    await files.write(
+      "collections/notes.json",
+      JSON.stringify({
+        n1: { id: "n1", title: "Legacy 1", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+        n2: { id: "n2", title: "Legacy 2", createdAt: "2026-01-02T00:00:00.000Z", updatedAt: "2026-01-02T00:00:00.000Z" },
+        n3: { id: "n3", title: "Legacy 3", createdAt: "2026-01-03T00:00:00.000Z", updatedAt: "2026-01-03T00:00:00.000Z" },
+      }),
+    );
+    const baseSeam = memoryRecords();
+    let puts = 0;
+    let failOnSecondPut = true;
+    const flakySeam = {
+      get: (c, id) => baseSeam.get(c, id),
+      list: (c) => baseSeam.list(c),
+      put: async (c, id, val, base) => {
+        puts++;
+        if (failOnSecondPut && puts === 2) {
+          failOnSecondPut = false;
+          throw new Error("Simulated mid-migration failure");
+        }
+        return baseSeam.put(c, id, val, base);
+      },
+      remove: (c, id, base) => baseSeam.remove(c, id, base),
+      changes: (since, limit) => baseSeam.changes(since, limit),
+    };
+    const manifest = {
+      id: "notes-owner",
+      name: "Notes",
+      permissions: [],
+      collections: { notes: { title: "Notes", schema: { type: "object", required: ["title"], properties: { title: { type: "string" } } } } },
+    };
+    const makeCols = async () => {
+      const root = new Context();
+      const store = new Store(root);
+      store.use(files);
+      const hosts = new Hosts();
+      const remote = new RemotePlugins(root, hosts, {});
+      const c = collections(root, store, hosts, remote, async () => "allowed-once", flakySeam);
+      await c.ready;
+      remote.installed.set("notes-owner", { id: "notes-owner", source: "", manifest, caps: new Set(), origin: "app", enabled: true });
+      c.register(manifest);
+      return c;
+    };
+
+    const cols1 = await makeCols();
+    let firstErr = "";
+    try {
+      await cols1.records("notes");
+    } catch (e) {
+      firstErr = String(e?.message ?? e);
+    }
+    const partialRows = await baseSeam.list("notes");
+    // Update the already-migrated record in seam before retrying to ensure idempotent retry does not clobber it.
+    await baseSeam.put("notes", "n1", { id: "n1", title: "Updated n1", createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-04T00:00:00.000Z" });
+
+    // Even a fresh collections(...) instance seeing non-empty partialRows must finish migrating n2 & n3 before marking complete.
+    const cols2 = await makeCols();
+    const retried = await cols2.records("notes");
+    for (const r of retried) await cols2.write("notes-owner", "notes", r.id, null, "", {});
+    const cols3 = await makeCols();
+    const afterClearAndReload = await cols3.records("notes");
+
+    check(
+      "partial legacy-to-seam migration failure retries remaining records without clobbering existing ones before marking complete",
+      firstErr === "Simulated mid-migration failure" &&
+        partialRows.length === 1 &&
+        partialRows[0].id === "n1" &&
+        retried.length === 3 &&
+        retried.find((r) => r.id === "n1")?.title === "Updated n1" &&
+        retried.some((r) => r.id === "n2" && r.title === "Legacy 2") &&
+        retried.some((r) => r.id === "n3" && r.title === "Legacy 3") &&
+        afterClearAndReload.length === 0,
+      JSON.stringify({ firstErr, partialRows, retried, afterClearAndReload }),
+    );
   }
 
   // 3. Schema extension (`x-ref`) + html.ts component attribute docs.
