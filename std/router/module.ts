@@ -56,7 +56,10 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     const [id, tab] = instance.split("@");
     let candidates = hosts.list.filter((h) => (tab ? h.tab === tab : apps.linkedBy(h.tab)?.includes(id)));
     // A plugin no app links (one installed on the workbench) goes with whichever tab moved last.
-    if (!tab && !candidates.length && !apps.alongside(instance)) candidates = [...hosts.list];
+    if (!tab && !candidates.length && !apps.alongside(instance)) {
+      const benches = hosts.list.filter((h) => h.bench);
+      candidates = benches.length ? benches : [...hosts.list];
+    }
     const host = candidates.sort((a, b) => (b.url?.at ?? 0) - (a.url?.at ?? 0))[0];
     if (!host) throw new Error(`No tab has ${base(instance)}'s app open`);
     return host;

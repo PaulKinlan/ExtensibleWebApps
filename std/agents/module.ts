@@ -38,7 +38,7 @@
 //
 // A kernel module (docs/layers.md): a site that lists `agents` in kernel.json has it, as `ctx.call("agents", …)`.
 
-import { made, type AgentConfig } from "../../src/kernel/agents/file";
+import { made, type AgentConfig } from "../../src/kernel/agents/linked";
 import { BEFORE_WRITE, hooks } from "../../src/kernel/hooks";
 import { callService, type ServiceProvider } from "../../src/kernel/remote";
 import { ACTS_AS } from "../../src/kernel/review";

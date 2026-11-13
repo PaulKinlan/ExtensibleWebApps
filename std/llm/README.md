@@ -88,35 +88,66 @@ The request and the answer are the same whichever vendor answers:
 - **`messages`**: `{ role: "user" | "assistant", content }`. The first is the person's. To go on
   from an answer, add its `message`: the model's turn, with its `state`, the vendor's own record of
   the turn (the model's reasoning, signatures), which some vendors need back.
+- **Multimodal user messages**: a user message's `content` may be a string or a non-empty list of
+  parts:
+  - `{ type: "text", text }`
+  - `{ type: "image", mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif", data }`
+  - `{ type: "audio", mediaType, data }`
+  `data` is base64 (a `data:...;base64,` URL prefix is stripped automatically), and each provider
+  translates the parts to its vendor's format.
 - **`tools`**: `[{ name, description, parameters }]`, with `parameters` as JSON Schema. When the
   model wants one, the answer has `stop: "tool"` and `toolCalls: [{ id, name, args }]`. Run it, then
   ask again with the answer's `message` and each result as `{ role: "tool", id, name, content }`.
 - **`schema`**: a JSON Schema, in the platform's subset that collections use. The answer's `json`
   is then a value of that shape: the kernel checks it, and an answer of another shape is an error.
-- **`model`**, **`maxTokens`**, **`provider`**: optional. Without `provider`, the first provider
-  that has its key answers. `ctx.call("llm", "providers")` lists them. A plugin only sees the
+- **`model`**, **`maxTokens`**, **`provider`**: optional. Without `provider`, the preferred or
+  first ready provider answers. `ctx.call("llm", "providers")` lists them. A plugin only sees the
   providers its own app links, not those of other apps open in other tabs.
 
 The answer is `{ text, json?, toolCalls, stop, usage: { input, output }, provider, model, message }`, where
 `stop` is `end`, `tool`, `length` or `refused`. A vendor's error arrives as the call's error, named
 for the provider.
 
+## Streaming answers
+
+Call `llm.stream` and listen to `llm:chunk` (both require only the `llm` permission) to show words
+as they arrive:
+
+```js
+const streamId = "ask-1";
+const off = ctx.on("llm:chunk", ({ streamId: id, delta, done }) => {
+  if (id === streamId && !done) showMore(delta);
+});
+const answer = await ctx.call("llm", "stream", {
+  streamId,
+  messages: [{ role: "user", content: "Explain how plugins stay isolated." }],
+});
+off();
+```
+
+`llm.stream` resolves to the same shape as `complete`, plus `streamId`. If the answering provider
+doesn't implement `llm:stream`, the kernel automatically falls back to `llm:complete` and emits the
+answer's text as `llm:chunk` deltas followed by `{ streamId, delta: "", done: true }`.
+
 ## Keys
 
-The first time a provider is asked, the kernel shows the person a card to paste its API key. The key
+The first time a cloud provider is asked, the kernel shows the person a card to paste its API key. The key
 is kept with the app's data. No plugin can read it, the provider included: the provider names it in
 a request header as `{ secret: "anthropic" }`, and the kernel fills it in, only for that vendor's
 host (`secrets` and `net.fetch` in [docs/api.md](../../docs/api.md)).
 
 ## Writing a provider
 
-A provider needs `provide:llm`, the `network:<host>` of its API and the `secret:<name>` of its key.
-It listens to three hooks:
+A provider needs `provide:llm` (plus `network:<host>` and `secret:<name>` if it calls a web API)
+and `services: ["llm"]`. It listens to hooks:
 
 - `llm:providers` (waterfall): return `{ providers: [...value.providers, { id, name, model, ready }] }`.
 - `llm:complete`: answer only when `request.provider` is its own id, with the answer above (the
   kernel fills in `provider` and `message`; return the vendor's turn as `state` if it needs it back),
   or `{ error }`. Return nothing otherwise.
+- `llm:stream` (optional): answer when `request.provider` is its own id, calling
+  `await ctx.call("llm", "chunk", request.streamId, delta)` as text deltas arrive, and return the
+  same answer object as `llm:complete`. Returning `undefined` falls back to `llm:complete`.
 - `llm:models`: when `provider` is its own id, return `{ models: [{ id, name? }], tiers: { best, balanced, fast } }`.
 
 For another service that speaks OpenAI's Chat Completions API, copy `openai-compatible.js`, give it

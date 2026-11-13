@@ -55,7 +55,8 @@ export interface Request {
   elsewhere?: boolean;
 }
 
-type Pending = { request: Request; resolve: (o: Outcome) => void; timer: ReturnType<typeof setTimeout>; dispatch: Dispatch };
+export type Pending = { request: Request; resolve: (o: Outcome) => void; timer: ReturnType<typeof setTimeout>; dispatch: Dispatch };
+type Batches = ReturnType<typeof import("./review-batch").reviewBatches>;
 
 /** The place an agent is granted to act for the person: `acts-as: person` in its file. */
 export const ACTS_AS = "acts-as:person";
@@ -72,6 +73,13 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
   });
   const pending = new Map<string, Pending>();
   let nextId = 0;
+  let batches: Batches | undefined;
+  let loadingBatches: Promise<Batches> | undefined;
+  const syncBatches = () =>
+    void (loadingBatches ??= part("batched reviews", () => import("./review-batch")).then(
+      (m) => (batches = m.reviewBatches(hosts, pending, settle, placeLabel)),
+      (e) => ((loadingBatches = undefined), Promise.reject(e)),
+    )).then((b) => b.sync(), () => {});
   const api = {
     /** Told when a plugin's grants change, so its panel can redraw. */
     onGrants: undefined as ((plugin: string) => void) | undefined,
@@ -105,9 +113,14 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
       void persist();
       void log.append({ kind: "grant", plugin: p.request.plugin, detail: placeLabel(p.request.place), trace });
       api.onGrants?.(p.request.plugin);
+      for (const [otherId, other] of [...pending])
+        if (other.request.plugin === p.request.plugin && other.request.place === p.request.place && !other.request.once && !other.request.elsewhere)
+          settle(otherId, "granted", trace);
     }
     // Letting an agent act for the person is a grant, not a write: only "always" (above) is kept.
     if (p.request.place !== ACTS_AS) void log.append({ kind: "write", plugin: p.request.plugin, detail: p.request.target, outcome, ...(forPerson(p.request, p.dispatch) ? { as: "person" as const } : {}), trace: trace ?? p.dispatch.trace });
+    if (batches) batches.sync();
+    else if (loadingBatches) void loadingBatches.then((b) => b.sync(), () => {});
     p.resolve(outcome);
   };
 
@@ -125,6 +138,9 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
         const timer = setTimeout(() => settle(id, "cancelled"), TIMEOUT);
         // Waiting from now, so a plugin that stops while the card's code is on its way still has its request cancelled.
         pending.set(id, { request, resolve, timer, dispatch });
+        let same = 0;
+        for (const p of pending.values()) if (p.request.plugin === request.plugin && p.request.place === request.place && ++same > 1) break;
+        if (same > 1 || batches) syncBatches();
         api.relay?.(id, request);
         cards().then(
           (made) => pending.has(id) && hosts.render("review", "main", `review:${id}`, made.card(id, request, forPerson(request, dispatch)), 0),
@@ -133,6 +149,8 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
             if (!pending.delete(id)) return;
             clearTimeout(timer);
             api.relayDone?.(id);
+            if (batches) batches.sync();
+            else if (loadingBatches) void loadingBatches.then((b) => b.sync(), () => {});
             reject(error);
           },
         );
@@ -151,6 +169,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
 
     event(action: string, trace: string) {
       const [verb, id] = action.split(":");
+      if (verb === "accept-batch" || verb === "decline-batch" || verb === "batch") return void batches?.event(action, trace);
       if (verb === "accept") settle(id, "allowed-once", trace);
       else if (verb === "always") settle(id, "allowed-always", trace);
       else if (verb === "decline") settle(id, "rejected", trace);

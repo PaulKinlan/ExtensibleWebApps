@@ -9,10 +9,11 @@
 // own (secrets-card.ts), fetched the first time a key is asked for: most pages
 // never ask for one.
 //
-// Secrets are kept with the app's data in `secrets.json`. A key the
-// deployment provides (a server holding the app's key) comes with the
-// servers in phase 2b, behind the same calls.
+// Secrets are kept with the app's data in `secrets.json`. On a space's server,
+// a key not in `secrets.json` may also come from the deployment (`env().deploymentSecrets`),
+// behind the same `secret:<name>` capability, host allowlist and daily cap.
 
+import { env } from "./env";
 import type { Hosts } from "./hosts";
 import { part } from "./part";
 import type { ServiceProvider } from "./remote";
@@ -20,6 +21,8 @@ import type { Store } from "./store";
 import { record } from "./trace";
 
 const FILE = "secrets.json";
+const USAGE = "server/secrets-usage.json";
+const DAILY_CAP = 500;
 const NAME = /^[a-z][a-z0-9-]{0,40}$/;
 const HOST = /^(?:[a-z0-9-]+\.)*[a-z0-9-]+(?::\d{1,5})?$/;
 
@@ -30,9 +33,23 @@ export interface Secret {
   label?: string;
 }
 
+export interface ManagedSecret extends Secret {
+  managed: true;
+  dailyCap?: number;
+}
+
 type Cards = ReturnType<typeof import("./secrets-card").cards>;
 
-export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => string) {
+const base = (instance: string) => instance.split("@")[0];
+const isServer = () => {
+  try {
+    return env().kind === "server";
+  } catch {
+    return false;
+  }
+};
+
+export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => string, originOf?: (plugin: string) => string | undefined) {
   const kept: Record<string, Secret> = Object.create(null);
   const loaded = store.readJson<unknown>(FILE, {}).then((saved) => {
     if (!saved || typeof saved !== "object" || Array.isArray(saved)) return;
@@ -46,6 +63,46 @@ export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => 
   let making: Promise<Cards> | undefined;
   const cards = () =>
     (making ??= part("the card that asks for a key", () => import("./secrets-card")).then((m) => (made = m.cards(hosts, nameOf, (name, secret) => ((kept[name] = secret), void persist()))), (error) => ((making = undefined), Promise.reject(error))));
+
+  async function managed(name: string, plugin?: string): Promise<ManagedSecret | undefined> {
+    if (!NAME.test(name) || !plugin) return undefined;
+    const origin = originOf?.(base(plugin));
+    if (isServer() ? origin !== "server" : origin !== "app" && origin !== "server") return undefined;
+    let lookup: ReturnType<typeof env>["deploymentSecrets"];
+    try {
+      lookup = env().deploymentSecrets;
+    } catch {
+      return undefined;
+    }
+    const found = (await lookup?.(name)) as { value?: unknown; hosts?: unknown; dailyCap?: unknown } | undefined;
+    if (!found || typeof found.value !== "string" || !found.value || !Array.isArray(found.hosts)) return undefined;
+    const allowed = found.hosts.filter((h): h is string => typeof h === "string").map((h) => h.trim().toLowerCase()).filter((h) => HOST.test(h));
+    if (!allowed.length) return undefined;
+    const cap = typeof found.dailyCap === "number" && Number.isFinite(found.dailyCap) && found.dailyCap >= 0 ? Math.floor(found.dailyCap) : undefined;
+    return { value: found.value, hosts: allowed, managed: true, ...(cap !== undefined && { dailyCap: cap }) };
+  }
+
+  let usageQueue: Promise<void> = Promise.resolve();
+  let usage: { day: string; used: Record<string, number> } | undefined;
+  function countManaged(instance: string, trace?: string, cap = DAILY_CAP): Promise<void> {
+    const id = base(instance);
+    const run = usageQueue.then(async () => {
+      const day = new Date().toISOString().slice(0, 10);
+      if (!usage) {
+        const s = await store.readJson<{ day?: string; used?: Record<string, number> }>(USAGE, {});
+        usage = { day, used: Object.assign(Object.create(null), s?.day === day && s.used && typeof s.used === "object" && !Array.isArray(s.used) ? s.used : {}) };
+      } else if (usage.day !== day) usage = { day, used: Object.create(null) };
+      const n = Number(usage.used[id]) || 0;
+      if (n >= cap) {
+        record({ kind: "denied", name: "secret:limit", plugin: id, trace, detail: `${cap} a day` });
+        throw new Error(`Plugin ${id} has reached the daily limit (${cap}) for deployment secrets`);
+      }
+      usage.used[id] = n + 1;
+      await store.writeJson(USAGE, usage).catch(() => {});
+    });
+    usageQueue = run.catch(() => {});
+    return run;
+  }
 
   const service: ServiceProvider = {
     description: "API keys and tokens. A plugin never reads one: it asks the person for it by name, then uses it in requests it makes with net.fetch, which the kernel sends only to the hosts the secret was given for.",
@@ -64,19 +121,36 @@ export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => 
       await loaded;
       const name = String(args[0]);
       if (!NAME.test(name)) throw new Error("A secret's name is lowercase letters, digits and dashes");
-      if (method === "has") return { set: name in kept, hosts: kept[name]?.hosts ?? [] };
+      if (method === "has") {
+        if (name in kept) return { set: true, hosts: kept[name].hosts };
+        const dep = await managed(name, plugin);
+        return dep ? { set: true, hosts: dep.hosts, managed: true } : { set: false, hosts: [] };
+      }
       if (method === "forget") {
-        const was = kept[name];
-        delete kept[name];
-        // Only say it's forgotten once it's gone from the disk too.
-        await store.writeJson(FILE, kept).catch((error) => {
-          if (was) kept[name] = was;
-          throw new Error(`Couldn't forget ${name}: ${error instanceof Error ? error.message : error}`);
-        });
-        record({ kind: "note", name: "secret:forgotten", plugin, detail: name });
+        if (name in kept) {
+          const was = kept[name];
+          delete kept[name];
+          // Only say it's forgotten once it's gone from the disk too.
+          await store.writeJson(FILE, kept).catch((error) => {
+            kept[name] = was;
+            throw new Error(`Couldn't forget ${name}: ${error instanceof Error ? error.message : error}`);
+          });
+          record({ kind: "note", name: "secret:forgotten", plugin, detail: name });
+        }
         return true;
       }
       if (method !== "request") throw new Error(`secrets.${method} is not a method`);
+      if (!(name in kept)) {
+        const dep = await managed(name, plugin);
+        const onServer = isServer();
+        if (dep || onServer) {
+          const list = Array.isArray((args[1] as { hosts?: unknown })?.hosts) ? ((args[1] as { hosts: unknown[] }).hosts) : [];
+          if (!list.length || list.length > 5 || list.some((h) => typeof h !== "string" || !HOST.test(h)))
+            throw new Error('Say which hosts the secret is for: { hosts: ["api.example.com"] }, up to 5');
+          if (dep && (list as string[]).every((h) => dep.hosts.includes(h))) return { set: true, managed: true };
+          if (onServer) return { set: false };
+        }
+      }
       return { set: await (await cards()).request(plugin, name, args[1]) };
     },
   };
@@ -86,6 +160,10 @@ export function secrets(store: Store, hosts: Hosts, nameOf: (plugin: string) => 
     loaded,
     /** The secret, for the kernel's own use in net.fetch. Never sent to a plugin. */
     get: (name: string): Secret | undefined => kept[name],
+    /** A deployment-managed secret, for trusted server plugins when `kept` has none. Never sent to a plugin. */
+    managed,
+    /** Counts one request by `plugin` using a deployment secret against its daily cap. */
+    countManaged,
     /** Every secret, for the part of the kernel that carries them, encrypted, between the person's devices (std/follow). Never sent to a plugin. */
     all: (): Record<string, Secret> => ({ ...kept }),
     /** Keeps a secret as another of the person's devices has it, or (given none) removes it. */

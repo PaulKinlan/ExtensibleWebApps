@@ -34,6 +34,7 @@ import { env } from "../../src/kernel/env";
 import { record as trace } from "../../src/kernel/trace";
 import type { KernelModule } from "../../src/kernel/modules";
 import type { RouteRequest, RouteResponse } from "../../src/kernel/routes";
+import { spaceBlobs, type SpaceBlobs } from "./blobs";
 import { syncHub } from "./hub";
 import { spaceMadeApps } from "./made-apps";
 import type { startDevice } from "./on-device";
@@ -59,8 +60,8 @@ export default {
   apply(_ctx, kernel) {
     const where = env();
     const { root, store, hosts, remote, collections: records, reviews, userAdded, reopen } = kernel;
-    /** This space's live messages, on its server (live.ts): the sync service's live() sends through it. Each space has its own. */
-    const space: { live?: LiveSpace } = {};
+    /** This space's live messages and content-addressed blobs, on its server: the sync service calls through them. Each space has its own. */
+    const space: { live?: LiveSpace; blobs?: SpaceBlobs } = {};
     kernel.provide("sync", service(kernel, space));
 
     if (hosts.mode === "server") {
@@ -83,6 +84,10 @@ export default {
       hub.plugins = shared.handle;
       // And the apps they made and shared (made-apps.ts), which it never runs either.
       hub.apps = spaceMadeApps(store, hosts, (message) => hub.tell(message)).handle;
+      // Content-addressed binary and media blobs synced across members' devices (blobs.ts).
+      const blobs = spaceBlobs(store, hosts, (message) => hub.tell(message));
+      space.blobs = blobs;
+      hub.blobs = blobs.handle;
       // A member's debugger may ask what runs here, from the kernel's own reflect service (reflect.ts).
       hub.reflect = spaceReflect(remote, hosts, shared);
       // A member's debugger may hear this kernel's trace as it happens (trace.ts).
@@ -93,6 +98,7 @@ export default {
       space.live = live;
       hub.live = (host, message) => live.heard(host, message);
       const leaving = (host: Parameters<typeof hub.hostLeft>[0]) => {
+        blobs.left(host);
         streamed.left(host);
         live.left(host);
       };
@@ -112,6 +118,7 @@ export default {
         hub.permit = undefined;
         hub.plugins = undefined;
         hub.apps = undefined;
+        hub.blobs = undefined;
         hub.reviews = undefined;
         hub.reflect = undefined;
         hub.trace = undefined;
@@ -120,6 +127,7 @@ export default {
         streamed.stop();
         live.stop();
         space.live = undefined;
+        space.blobs = undefined;
         draining.set(store, hub.stop());
       });
       return;

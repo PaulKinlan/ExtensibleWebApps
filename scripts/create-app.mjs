@@ -86,7 +86,7 @@ export function makeProject(target, { name, platform = PLATFORM_SPEC } = {}) {
   for (const file of readdirSync(join(ROOT, "starter"))) {
     const path = join(folder, file);
     // In JavaScript the name goes inside a string, escaped as JSON; in HTML, as text.
-    const named = file.endsWith(".js") ? JSON.stringify(title).slice(1, -1) : escapeHtml(title);
+    const named = file.endsWith(".js") || file.endsWith(".mjs") ? JSON.stringify(title).slice(1, -1) : escapeHtml(title);
     writeFileSync(path, readFileSync(path, "utf8").replace(/my-app/g, () => id).replace(/My app/g, () => named));
   }
 
@@ -107,6 +107,7 @@ export function makeProject(target, { name, platform = PLATFORM_SPEC } = {}) {
     scripts: {
       dev: "extensible-app dev",
       check: "extensible-app check",
+      test: "extensible-app test",
       deploy: "extensible-app deploy",
     },
     dependencies: { [platformPkg.name]: platform },
@@ -115,6 +116,21 @@ export function makeProject(target, { name, platform = PLATFORM_SPEC } = {}) {
     engines: platformPkg.engines,
   };
   writeFileSync(join(folder, "package.json"), JSON.stringify(pkg, null, 2) + "\n");
+  const jsconfig = {
+    compilerOptions: {
+      checkJs: true,
+      strict: true,
+      noEmit: true,
+      skipLibCheck: true,
+      target: "ES2022",
+      module: "ESNext",
+      moduleResolution: "Bundler",
+      lib: ["ES2022", "DOM", "WebWorker"],
+      types: [],
+    },
+    include: ["*.js", "plugins/**/*.js", ".extensible/*.d.ts"],
+  };
+  writeFileSync(join(folder, "jsconfig.json"), JSON.stringify(jsconfig, null, 2) + "\n");
   writeFileSync(join(folder, ".gitignore"), GITIGNORE);
   writeFileSync(
     join(folder, "README.md"),
@@ -124,10 +140,12 @@ An app on [Extensible Web Apps](https://extensibleweb.app/): whoever uses it can
 
 - \`app.html\` is the app's page: it loads the platform, lays out slots, and lists its plugins.
 - \`main.js\` is its first plugin, and \`main.html\` that plugin's template.
+- \`app.test.mjs\` tests the app in memory without opening a browser.
 
 \`\`\`sh
 npm run dev       # http://localhost:5173/
 npm run check     # find mistakes without opening a browser
+npm test          # run static checks and in-memory app tests
 npm run deploy    # on a Cloudflare Worker of its own (run \`npx wrangler login\` once first)
 \`\`\`
 

@@ -77,10 +77,16 @@ const bare = (host: string) => host.toLowerCase().replace(/^\[|\]$/g, "");
 /** Headers that belong to the site they were sent to, so a redirect to another site doesn't carry them on (as fetch does). */
 const CREDENTIALS = ["authorization", "cookie", "proxy-authorization"];
 
-export class NetworkGuard extends WorkerEntrypoint<unknown, { allow?: string[]; resolver?: string }> {
+interface GuardProps {
+  allow?: string[];
+  resolver?: string;
+}
+
+export class NetworkGuard extends WorkerEntrypoint {
   async fetch(request: Request): Promise<Response> {
-    const allow = new Set((this.ctx.props?.allow ?? []).map(bare));
-    const resolver = this.ctx.props?.resolver;
+    const props = this.ctx.props as GuardProps | undefined;
+    const allow = new Set((props?.allow ?? []).map(bare));
+    const resolver = props?.resolver;
     const check = async (url: URL) => {
       if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error(`A server plugin can only fetch http: and https:, not ${url.protocol}`);
       if (allow.has(bare(url.hostname))) return;

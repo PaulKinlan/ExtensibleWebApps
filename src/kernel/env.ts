@@ -76,6 +76,11 @@ export interface KernelEnv {
    * doesn't have to ask on a timer (src/server/mcp.ts mcpStream).
    */
   changed?(door: string): void;
+  /**
+   * On a server, API keys and tokens the deployment provides by name, each bound to the hosts it may be
+   * sent to, so server plugins can use a key without keeping it in a space's folder (src/kernel/secrets.ts).
+   */
+  deploymentSecrets?: (name: string) => Promise<{ value: string; hosts: string[] } | undefined> | { value: string; hosts: string[] } | undefined;
 }
 
 let current: KernelEnv | undefined;

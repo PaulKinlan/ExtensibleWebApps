@@ -17,6 +17,12 @@
     "web-apps"
   ],
   "type": "module",
+  "exports": {
+    ".": "./scripts/test-app.mjs",
+    "./test": "./scripts/test-app.mjs",
+    "./types": "./dist/platform/types.d.ts",
+    "./*": "./*"
+  },
   "bin": {
     "extensible-web-apps": "scripts/create-app.mjs",
     "create-extensible-app": "scripts/create-app.mjs",
@@ -24,7 +30,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/keep-assets.mjs && npm run build:cloudflare",
+    "build": "vite build && node scripts/types.mjs && node scripts/keep-assets.mjs && npm run build:cloudflare",
     "build:server": "vite build -c vite.server.config.ts",
     "build:cloudflare": "vite build -c vite.cloudflare.config.ts && vite build -c vite.cloudflare-isolate.config.ts",
     "check": "node scripts/check.mjs",
@@ -38,6 +44,7 @@
     "test": "npm run build && npm run build:server && node tests/platform.test.mjs",
     "test:project": "node tests/project/run.mjs",
     "reference": "vite build && node scripts/reference.mjs",
+    "types": "node scripts/types.mjs",
     "packages": "node scripts/packages.mjs",
     "gallery": "node scripts/gallery.mjs",
     "sizes": "node scripts/sizes.mjs",

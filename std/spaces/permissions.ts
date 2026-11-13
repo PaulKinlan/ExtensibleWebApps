@@ -159,6 +159,7 @@ export function spacePermissions(store: Store, hosts: Hosts, members: () => Prom
       const no = async () => `${READER}. Ask ${await askOwner()} to make you an editor.`;
       if (message.op === "plugins" && (message.action === "add" || message.action === "remove")) return hosts.send(host, { t: "sync", op: "plugins:reply", id: message.id, ok: false, error: await no() }), true;
       if (message.op === "apps" && (message.action === "share" || message.action === "unshare")) return hosts.send(host, { t: "sync", op: "apps:reply", id: message.id, ok: false, error: await no() }), true;
+      if (message.op === "blobs" && message.action === "put") return hosts.send(host, { t: "sync", op: "blobs:reply", id: message.id, ok: false, error: await no() }), true;
       // Allowing what the space's own plugins ask to change is changing it; so is a move in a game.
       if (message.op === "review" && message.action === "answer") return true;
       if (message.op === "live") return true;

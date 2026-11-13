@@ -146,6 +146,9 @@ export default function (ctx) {
       off: !p.on,
       offClass: p.on ? "" : "off",
       error: p.error,
+      updateAvailable: !!p.updateAvailable,
+      newPermsLabel: p.addedPermissions?.length ? `${p.addedPermissions.length} new permission${p.addedPermissions.length === 1 ? "" : "s"}` : "",
+      updateOnly: !!p.updateAvailable && !p.addedPermissions?.length,
       places: p.on ? placesOf(page, p.id, running(p.id)) : [],
       // Off, it neither shows nor runs: say so in the row, with what turning it on does.
       offHint: p.on || p.error ? "" : `Off: it isn't running.${p.places.length ? ` Turn it on and it ${p.places.map(whereOfText).map((w) => w[0].toLowerCase() + w.slice(1)).join("; ")}.` : " Turn it on to use it."}`,
@@ -249,6 +252,8 @@ export default function (ctx) {
           stateClass: own ? (own.on ? "on" : "off") : "",
           add: !p.linked && !own,
           turnOn: !!own && !own.on,
+          updateAvailable: !!p.updateAvailable,
+          newPermsLabel: p.addedPermissions?.length ? `${p.addedPermissions.length} new permission${p.addedPermissions.length === 1 ? "" : "s"}` : "",
           disabled: busy,
           // What its permissions let it do, in the kernel's own words (authoring.ts explain), as the review card says them.
           can: p.can ?? [],
@@ -336,7 +341,7 @@ export default function (ctx) {
     try {
       const ids = [];
       for (const a of adds) {
-        const result = await call("add", a.href);
+        const result = await call("add", a.href, a.integrity ? { integrity: a.integrity } : undefined);
         if (result?.ok === false) {
           message = result.error === "Not added" ? `${a.name} wasn't added.` : result.error;
           follow = null;
@@ -532,6 +537,58 @@ export default function (ctx) {
       const packages = await call("packages");
       const p = Array.isArray(packages) ? packages.find((x) => x.id === value) : undefined;
       if (p && p.adds.length) await addAll(p.adds);
+      return;
+    }
+    if (action === "update") {
+      if (busy) return;
+      const id = String(value ?? "");
+      const mine = await call("mine");
+      const name = (Array.isArray(mine) ? mine.find((m) => m.id === id)?.name : undefined) ?? id;
+      busy = true;
+      message = "Waiting for your answer on the review card…";
+      follow = null;
+      await draw();
+      try {
+        const result = await call("update", id);
+        message =
+          result?.ok === false
+            ? result.error === "Not updated"
+              ? `${name} wasn't updated.`
+              : result.error
+            : `Updated ${name}${result?.version ? ` to ${result.version}` : ""}.`;
+        follow = null;
+      } finally {
+        busy = false;
+        await draw();
+      }
+      return;
+    }
+    if (action === "backup") {
+      if (busy) return;
+      busy = true;
+      follow = null;
+      try {
+        const result = await call("backup", { download: true });
+        message = result?.ok === false ? result.error : `Exported backup${result?.file ? ` (${result.file})` : ""}. Your API keys were left out.`;
+      } finally {
+        busy = false;
+        await draw();
+      }
+      return;
+    }
+    if (action === "restore") {
+      if (busy) return;
+      busy = true;
+      follow = null;
+      try {
+        const result = await call("restore");
+        if (result?.cancelled) message = "";
+        else if (result?.ok === false) message = result.error === "Not restored" ? "Backup wasn't restored." : result.error;
+        else message = `Restored backup (${result?.files ?? 0} file${result?.files === 1 ? "" : "s"}).`;
+      } finally {
+        busy = false;
+        await draw();
+      }
       return;
     }
     if (action === "sample") {

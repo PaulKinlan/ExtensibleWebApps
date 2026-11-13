@@ -62,8 +62,9 @@ export function badThemeValue(value: unknown, token?: string): string | undefine
 
 /** The CSS for a list of themes, later ones winning, or "" for none. Anything not allowed is left out. */
 export function themeCss(themes: Record<string, string>[]): string {
+  const allowed = new Set(Object.keys(THEME_TOKENS));
   const lines: string[] = [];
   for (const theme of themes)
-    for (const [token, value] of Object.entries(theme)) if (token in THEME_TOKENS && !badThemeValue(value, token)) lines.push(`  ${token}: ${value};`);
+    for (const [token, value] of Object.entries(theme)) if (allowed.has(token) && !badThemeValue(value, token)) lines.push(`  ${token}: ${value};`);
   return lines.length ? `@layer plugins {\n:root {\n${lines.join("\n")}\n}\n}\n` : "";
 }

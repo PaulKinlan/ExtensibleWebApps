@@ -40,7 +40,7 @@
 // member it belongs to, so one can go on after the space's server slept.
 
 import { env } from "../../src/kernel/env";
-import { fromAgentFile, isOutsideFile, made, type AgentConfig } from "../../src/kernel/agents/file";
+import { made, type AgentConfig } from "../../src/kernel/agents/linked";
 import type { ModuleKernel } from "../../src/kernel/modules";
 import { callService } from "../../src/kernel/remote";
 import { placeLabel, type Request as Review } from "../../src/kernel/review";
@@ -242,6 +242,8 @@ export function acpDoor(kernel: ModuleKernel) {
   /** Reads the agent files of the apps opened in the space. */
   async function look() {
     const apps = (await kernel.lent()?.server?.list?.()) ?? [];
+    if (!apps.length) return;
+    const { fromAgentFile, isOutsideFile } = await import("../../src/kernel/agents/file");
     for (const app of apps) {
       const base = `${where.origin.replace(/\/$/, "")}/${app}/`;
       const page = await fetcher(`${base}app.html`).catch(() => undefined);

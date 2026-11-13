@@ -19,11 +19,12 @@
 // the plugin that drew the view, so it gets exactly that plugin's rights.
 
 import type { Dispatch, Manifest } from "../shared/protocol";
+import type { Records } from "../seams";
 import { BEFORE_WRITE, defineHook, hooks } from "./hooks";
 import type { Host, Hosts } from "./hosts";
 import { check, grants } from "./gate";
-import type { RemotePlugins, ServiceProvider } from "./remote";
 import { part } from "./part";
+import type { RemotePlugins, ServiceProvider } from "./remote";
 import { checkSchema, validate, type Schema } from "./schema";
 import type { Store } from "./store";
 import { record as trace } from "./trace";
@@ -47,8 +48,9 @@ export const RECORD_FIELDS = ["id", "createdAt", "updatedAt"];
 const NAME = /^[a-z][a-z0-9-]{0,40}$/;
 const MAX_RECORDS = 10_000;
 const MAX_BYTES = 5_000_000;
-/** Not a valid collection name (names start with a letter), so no collection's records can land on it. */
+/** Not valid collection names (names start with a letter), so no collection's records can land on them. */
 const INDEX = "collections/_registry.json";
+const SEAM_MIGRATED = "collections/.seam_migrated.json";
 
 /** What `reviewed` in the kernel does: asks the person, throws unless they allow it. */
 /** A write to a record: `after` is missing for a delete, `before` for a new record. */
@@ -66,7 +68,14 @@ type Review = (instance: string, place: string, target: string, before: string, 
 const base = (instance: string) => instance.split("@")[0];
 const newId = () => `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
-export function collections(root: any, store: Store, hosts: Hosts, remote: RemotePlugins, review: Review) {
+let querying: Promise<typeof import("../shared/query")> | undefined;
+const loadQuery = () =>
+  (querying ??= part("collection queries", () => import("../shared/query")).catch((error) => {
+    querying = undefined;
+    throw error;
+  }));
+
+export function collections(root: any, store: Store, hosts: Hosts, remote: RemotePlugins, review: Review, seam?: Records) {
   const registry = new Map<string, Collection>();
   const data = new Map<string, Promise<Map<string, StoredRecord>>>();
   /** Bindings from views, by `<tab>/<id>`. */
@@ -80,23 +89,58 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     return run;
   };
 
+  const fromStore = async (name: string) => {
+    // Notes the kernel once kept in a file of its own come over the first time (legacy.ts). That code is
+    // fetched only for a folder that still has that file and no collection yet: almost never.
+    const old =
+      name === "notes" && (await store.readText("collections/notes.json")) === undefined && (await store.readText("notes.json")) !== undefined
+        ? await (await part("the part that brings older notes over", () => import("./legacy"))).carryOver(store, name, registry.get(name)?.owner, MAX_BYTES)
+        : undefined;
+    if (old) return old;
+    const saved = await store.readJson<unknown>(`collections/${name}.json`, {});
+    const out = new Map<string, StoredRecord>();
+    if (saved && typeof saved === "object" && !Array.isArray(saved)) for (const [id, r] of Object.entries(saved)) if (r && typeof r === "object") out.set(id, r as StoredRecord);
+    return out;
+  };
+
+  const migrated = new Set<string>();
+  const seamReady = seam
+    ? store.readJson<unknown>(SEAM_MIGRATED, {}).then((saved) => {
+        if (saved && typeof saved === "object" && !Array.isArray(saved)) {
+          for (const [k, v] of Object.entries(saved)) if (NAME.test(k) && v === true) migrated.add(k);
+        }
+      })
+    : undefined;
+  let migratedWrite: Promise<unknown> = Promise.resolve();
+  const markMigrated = (name: string) => {
+    const run = migratedWrite.then(async () => {
+      const next = new Set(migrated);
+      next.add(name);
+      await store.writeJson(SEAM_MIGRATED, Object.fromEntries([...next].sort().map((k) => [k, true])));
+      migrated.add(name);
+    });
+    migratedWrite = run.catch(() => {});
+    return run;
+  };
+
   const load = (name: string) => {
     if (!data.has(name)) {
       data.set(
         name,
         ready
-          // Notes the kernel once kept in a file of its own come over the first time (legacy.ts). That code is
-          // fetched only for a folder that still has that file and no collection yet: almost never.
-          .then(async () =>
-            name === "notes" && (await store.readText("collections/notes.json")) === undefined && (await store.readText("notes.json")) !== undefined
-              ? (await part("the part that brings older notes over", () => import("./legacy"))).carryOver(store, name, registry.get(name)?.owner, MAX_BYTES)
-              : undefined,
-          )
-          .then(async (old) => {
-            if (old) return old;
-            const saved = await store.readJson<unknown>(`collections/${name}.json`, {});
+          .then(async () => {
+            if (!seam) return fromStore(name);
+            await seamReady;
+            if (!migrated.has(name)) {
+              const legacy = await fromStore(name);
+              for (const [id, r] of legacy) {
+                if (!(await seam.get(name, id))) await seam.put(name, id, r, 0);
+              }
+              await markMigrated(name);
+            }
+            const rows = await seam.list(name);
             const out = new Map<string, StoredRecord>();
-            if (saved && typeof saved === "object" && !Array.isArray(saved)) for (const [id, r] of Object.entries(saved)) if (r && typeof r === "object") out.set(id, r as StoredRecord);
+            for (const { id, value } of rows) if (value && typeof value === "object") out.set(id, value as StoredRecord);
             return out;
           })
           .catch((error) => {
@@ -110,9 +154,14 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     return data.get(name)!;
   };
 
-  const save = async (name: string, records: Map<string, StoredRecord>) => {
+  const persist = async (name: string, id: string, record: StoredRecord | undefined, records: Map<string, StoredRecord>) => {
     const text = JSON.stringify(Object.fromEntries(records), null, 1);
     if (new TextEncoder().encode(text).length > MAX_BYTES) throw new Error(`The ${name} collection is limited to ${MAX_BYTES / 1_000_000} MB`);
+    if (seam) {
+      if (record) await seam.put(name, id, record);
+      else await seam.remove(name, id);
+      return;
+    }
     await store.writeText(`collections/${name}.json`, text);
   };
 
@@ -230,7 +279,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       if (after) records.set(recordId, after);
       else records.delete(recordId);
       try {
-        await save(name, records);
+        await persist(name, recordId, after, records);
       } catch (error) {
         if (before) records.set(recordId, before);
         else records.delete(recordId);
@@ -269,7 +318,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       if (to) records.set(id, to);
       else records.delete(id);
       try {
-        await save(name, records);
+        await persist(name, id, to, records);
       } catch (error) {
         if (from) records.set(id, from);
         else records.delete(id);
@@ -299,7 +348,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       if (after) records.set(id, after);
       else records.delete(id);
       try {
-        await save(name, records);
+        await persist(name, id, after ?? undefined, records);
       } catch (error) {
         if (before) records.set(id, before);
         else records.delete(id);
@@ -315,6 +364,7 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
     methods: {
       collections: { args: "()", returns: "[{ name, owner, title, schema }]", description: "Every collection, with its schema.", params: [] },
       list: { args: "(collection)", returns: "[record], most recently changed first", needs: "data:read:<collection>", description: "Every record in a collection. Each record has its fields plus id, createdAt and updatedAt. A collection no plugin has made yet reads as empty.", params: [{ name: "collection", schema: { type: "string", description: "The collection's name" }, names: "data:read:" }] },
+      query: { args: "(collection, { where?, search?, sort?, limit?, offset? }?)", returns: "{ records, total, hasMore }", needs: "data:read:<collection>", description: "Matching records in a collection: `where` matches fields or `{ $gt, $gte, $lt, $lte, $contains, $in }`, `search` searches string fields case-insensitively, `sort` is `field` or `-field`, with `limit` and `offset`.", params: [{ name: "collection", schema: { type: "string", description: "The collection's name" }, names: "data:read:" }, { name: "query", optional: true, schema: { type: "object", description: "Filters, search, sort and page", properties: { where: { type: "object" }, search: { type: "string" }, sort: { type: "string" }, limit: { type: "integer", minimum: 0 }, offset: { type: "integer", minimum: 0 } } } }] },
       get: { args: "(collection, id)", returns: "record or null", needs: "data:read:<collection>", description: "One record.", params: [{ name: "collection", schema: { type: "string", description: "The collection's name" }, names: "data:read:" }, { name: "id", schema: { type: "string", description: "The record's id" } }] },
       put: { args: "(collection, { id?, ...fields }, reason?)", returns: "{ ok, id, outcome? } or { ok: false, errors }", needs: "data:write:<collection>", reviewed: true, description: "Creates or replaces a record, checked against the collection's schema. Reviewed unless the plugin owns the collection.", params: [{ name: "collection", schema: { type: "string", description: "The collection's name" }, names: "data:write:" }, { name: "record", schema: { type: "object", description: "The record's fields; include its id to replace an existing record" }, recordOf: "collection" }, { name: "reason", schema: { type: "string", description: "Why, in a sentence the person reads when they review the change" }, optional: true }] },
       delete: { args: "(collection, id, reason?)", returns: "{ ok, id }", needs: "data:write:<collection>", reviewed: true, description: "Deletes a record. Reviewed unless the plugin owns the collection.", params: [{ name: "collection", schema: { type: "string", description: "The collection's name" }, names: "data:write:" }, { name: "id", schema: { type: "string", description: "The record's id" } }, { name: "reason", schema: { type: "string", description: "Why, in a sentence the person reads when they review the change" }, optional: true }] },
@@ -327,18 +377,22 @@ export function collections(root: any, store: Store, hosts: Hosts, remote: Remot
       const name = String(args[0]);
       // A collection no plugin has made yet holds nothing. A plugin that may read it gets
       // an empty answer rather than an error, and can listen for its first write.
-      if (!registry.has(name) && (method === "list" || method === "get")) {
+      if (!registry.has(name) && (method === "list" || method === "get" || method === "query")) {
         const plugin = remote.installed.get(base(instance));
-        if (plugin && grants(plugin.caps, `data:read:${name}`)) return method === "list" ? [] : null;
+        if (plugin && grants(plugin.caps, `data:read:${name}`)) {
+          if (method === "query") return (await loadQuery()).queryRecords([], args[1]);
+          return method === "list" ? [] : null;
+        }
       }
       known(name);
-      const what = method === "list" || method === "get" ? "read" : "write";
+      const what = method === "list" || method === "get" || method === "query" ? "read" : "write";
       if (!may(instance, name, what)) {
         check(instance, new Set(), `data:${what}:${name}`); // traced as denied
         throw new Error(`Missing capability data:${what}:${name}`);
       }
       const records = await load(name);
       if (method === "list") return sorted(records);
+      if (method === "query") return (await loadQuery()).queryRecords(sorted(records), args[1]);
       if (method === "get") return records.get(String(args[1])) ?? null;
       if (method === "put") {
         const input = args[1] as Fields | null;

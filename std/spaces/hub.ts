@@ -1,14 +1,15 @@
 // A space's side of sync (src/shared/sync.ts says how it works): the space
-// kernel orders every change its devices send, refuses stale ones, keeps
-// each accepted change in a log, and sends it to every device. Only a space
-// kernel answers sync; a kernel in a browser refuses it.
+// kernel orders every change its devices send, auto-merges stale edits when
+// disjoint fields changed since `base`, refuses conflicting or unauthorized
+// edits, keeps each accepted change in a log, and sends it to every device.
+// Only a space kernel answers sync; a kernel in a browser refuses it.
 //
 // Kept in the space's folder, beside the collections:
 //   sync/head.json          the latest sequence number, and each record's version
 //   sync/log/<chunk>.json   the accepted changes, a hundred to a file, so a device catches up from any point
 
 import type { Dispatch } from "../../src/shared/protocol";
-import type { Accepted, AppRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, TraceRequest, Verdict } from "../../src/shared/sync";
+import type { Accepted, AppRequest, BlobRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, ReviewToSpace, SyncRecord, SyncToDevice, SyncToSpace, TraceRequest, Verdict } from "../../src/shared/sync";
 import { env } from "../../src/kernel/env";
 import { hooks } from "../../src/kernel/hooks";
 import type { Host, Hosts } from "../../src/kernel/hosts";
@@ -30,6 +31,37 @@ const MAX_RECORD = 100_000;
 const chunkOf = (seq: number) => Math.floor((seq - 1) / CHUNK);
 const chunkFile = (chunk: number) => `sync/log/${String(chunk).padStart(8, "0")}.json`;
 const key = (collection: string, id: string) => `${collection}/${id}`;
+
+/** Canonical value serialization so nested object key order doesn't count as a field change. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => [k, canonical(v)]),
+    );
+  }
+  return value;
+}
+
+/** Fields whose value (or presence) differs between `a` and `b`, ignoring record timestamps and `ignored`. */
+function changedFields(a: SyncRecord, b: SyncRecord, ignored: ReadonlySet<string>): Set<string> {
+  const diff = new Set<string>();
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (ignored.has(k) || k === "__proto__" || k === "constructor" || k === "prototype") continue;
+    const hasA = Object.hasOwn(a, k) && a[k] !== undefined;
+    const hasB = Object.hasOwn(b, k) && b[k] !== undefined;
+    if (hasA !== hasB) {
+      diff.add(k);
+    } else if (hasA && hasB && JSON.stringify(canonical(a[k])) !== JSON.stringify(canonical(b[k]))) {
+      diff.add(k);
+    }
+  }
+  return diff;
+}
 
 /**
  * `onApp` hears each app a device opens in the space (server-apps.ts). `after` is the work a stopped hub
@@ -86,6 +118,42 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     return out;
   }
 
+  /**
+   * Looks up the ancestor of `(collection, id)` at `base` from the sync log (or earlier in the same push),
+   * and checks whether the record was deleted between `base` and `version`.
+   */
+  async function ancestorAt(collection: string, id: string, base: number, version: number, batchAccepted: Accepted[]): Promise<{ baseRecord: SyncRecord | null; deletedSince: boolean }> {
+    let baseRecord: SyncRecord | null = null;
+    let bestSeq = 0;
+    let deletedSince = false;
+
+    const inspect = (c: Accepted) => {
+      if (c.collection !== collection || c.id !== id) return;
+      if (c.seq <= base && c.seq >= bestSeq) {
+        bestSeq = c.seq;
+        baseRecord = c.after;
+      } else if (c.seq > base && c.seq <= version && c.after === null) {
+        deletedSince = true;
+      }
+    };
+
+    // Fast path: `base` is normally the exact sequence number of the ancestor version.
+    if (base > 0 && head.seq > 0) {
+      const startChunk = chunkOf(base);
+      const endChunk = chunkOf(Math.min(version, head.seq));
+      for (let chunk = startChunk; chunk <= endChunk; chunk++) {
+        for (const c of await readChunk(chunk)) inspect(c);
+      }
+      if (bestSeq === 0) {
+        for (let chunk = startChunk - 1; chunk >= 0 && bestSeq === 0; chunk--) {
+          for (const c of await readChunk(chunk)) inspect(c);
+        }
+      }
+    }
+    for (const c of batchAccepted) inspect(c);
+    return { baseRecord, deletedSince };
+  }
+
   /** Checks a change as a device sent it: names, sizes, and the collection's schema when this space knows it. */
   function problem(change: Outgoing): string | undefined {
     if (!change || typeof change !== "object") return "A change is an object";
@@ -97,7 +165,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     if (JSON.stringify(change.after).length > MAX_RECORD) return "That record is too big";
     const collection = records.registry.get(change.collection);
     if (collection) {
-      const fields = Object.fromEntries(Object.entries(change.after).filter(([k]) => !["id", "createdAt", "updatedAt"].includes(k)));
+      const fields = Object.fromEntries(Object.entries(change.after).filter(([k]) => k !== "id" && k !== "createdAt" && k !== "updatedAt"));
       const errors = validate({ ...collection.schema, type: "object" }, fields);
       if (errors.length) return errors.map((e) => `${e.path} ${e.message}`).join("; ");
     }
@@ -124,10 +192,10 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
   }
 
   /**
-   * Checks and applies one change. The space's head moves on in memory; the push writes the log and
-   * head once, when all its changes are in (`record`).
+   * Checks and applies one change. When `change.base` trails `version` (> 0) and both the device and the
+   * server edited disjoint fields without deleting the record, merges them into one combined record.
    */
-  async function accept(change: Outgoing, by: string | undefined, dispatch: Dispatch, role?: Role): Promise<{ verdict: Verdict; accepted?: Accepted }> {
+  async function accept(change: Outgoing, by: string | undefined, dispatch: Dispatch, role?: Role, batchAccepted: Accepted[] = []): Promise<{ verdict: Verdict; accepted?: Accepted }> {
     const wrong = problem(change);
     if (wrong) return { verdict: { ok: false, error: wrong, ...(await current(change)) } };
     const version = head.versions[key(change.collection, change.id)] ?? 0;
@@ -136,17 +204,50 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     // even when the change is also out of date, so it isn't kept as a draft they could never send.
     const no = await api.permit?.may(change, before, by, role);
     if (no) return { verdict: { ok: false, error: no, denied: true, version, record: before } };
-    if (change.base !== version) return { verdict: { ok: false, stale: true, version, record: before, ...(await madeBy(version)) } };
     const at = new Date().toISOString();
+    let candidateAfter = change.after;
+    let wasMerged = false;
+
+    if (change.base !== version) {
+      if (change.base > 0 && change.base < version && change.after !== null && before !== null) {
+        const { baseRecord: loggedBase, deletedSince } = await ancestorAt(change.collection, change.id, change.base, version, batchAccepted);
+        const fallbackBase = !loggedBase && change.before && typeof change.before === "object" && !Array.isArray(change.before) && change.before.id === change.id ? change.before : null;
+        const baseRecord = loggedBase ?? fallbackBase;
+        if (baseRecord && !deletedSince) {
+          const ignored = new Set(["id", "createdAt", "updatedAt"]);
+          const clientDiff = changedFields(baseRecord, change.after, ignored);
+          const serverDiff = changedFields(baseRecord, before, ignored);
+          const disjoint = clientDiff.size > 0 && ![...clientDiff].some((f) => serverDiff.has(f));
+          if (disjoint) {
+            const combined: SyncRecord = { ...before, id: change.id };
+            for (const field of clientDiff) {
+              if (Object.hasOwn(change.after, field) && change.after[field] !== undefined) combined[field] = change.after[field];
+              else delete combined[field];
+            }
+            combined.createdAt = typeof before.createdAt === "string" ? before.createdAt : typeof change.after.createdAt === "string" ? change.after.createdAt : at;
+            combined.updatedAt = at;
+            const mergedProblem = problem({ ...change, base: version, after: combined });
+            if (mergedProblem) return { verdict: { ok: false, error: mergedProblem, version, record: before } };
+            candidateAfter = combined;
+            wasMerged = true;
+          }
+        }
+      }
+      if (!wasMerged) {
+        return { verdict: { ok: false, stale: true, version, record: before, ...(await madeBy(version)) } };
+      }
+    }
+
     // Every stored record has string timestamps (collections sort by updatedAt): a device's are kept, missing ones filled in.
     const after: SyncRecord | null =
-      change.after === null
+      candidateAfter === null
         ? null
         : {
-            ...change.after,
-            createdAt: typeof change.after.createdAt === "string" ? change.after.createdAt : typeof before?.createdAt === "string" ? before.createdAt : at,
-            updatedAt: typeof change.after.updatedAt === "string" ? change.after.updatedAt : at,
+            ...candidateAfter,
+            createdAt: typeof candidateAfter.createdAt === "string" ? candidateAfter.createdAt : typeof before?.createdAt === "string" ? before.createdAt : at,
+            updatedAt: wasMerged ? at : typeof candidateAfter.updatedAt === "string" ? candidateAfter.updatedAt : at,
           };
+
     // The space's own plugins (step 7) can stop a change, as a browser's can stop a write.
     const name = `data:beforeWrite:${change.collection}`;
     if (hooks.has(name)) {
@@ -168,7 +269,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       throw error;
     }
     api.permit?.did(change.collection, change.id, !before, after === null, by);
-    return { verdict: { ok: true, seq: accepted.seq }, accepted };
+    return { verdict: { ok: true, seq: accepted.seq, ...(wasMerged && after ? { merged: after } : {}) }, accepted };
   }
 
   /** Adds a push's accepted changes to the log, one write per chunk they fall in, then saves the head. */
@@ -233,6 +334,8 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
     plugins: undefined as ((host: Host, message: PluginRequest) => unknown) | undefined,
     /** Apps members made and shared (made-apps.ts): the space's kernel sets this. */
     apps: undefined as ((host: Host, message: AppRequest) => unknown) | undefined,
+    /** Content-addressed binary/media blobs (blobs.ts): the space's kernel sets this. */
+    blobs: undefined as ((host: Host, message: BlobRequest) => unknown) | undefined,
     /** Reviews the space's server asks its members for (reviews.ts): the space's kernel sets this. */
     reviews: undefined as ((host: Host, message: ReviewToSpace) => unknown) | undefined,
     /** A member's debugger asking what runs in the space's kernel (reflect.ts): the space's kernel sets this. */
@@ -275,6 +378,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
       if (message.op === "reflect") return void (api.reflect ? api.reflect(host, message) : hosts.send(host, { t: "sync", op: "reflect:reply", id: message.id, ok: false, error: "This space's kernel has no reflect module" }));
       if (message.op === "plugins") return void (api.plugins ? api.plugins(host, message) : hosts.send(host, { t: "sync", op: "plugins:reply", id: message.id, ok: false, error: "This space doesn't keep plugins" }));
       if (message.op === "apps") return void (api.apps ? api.apps(host, message) : hosts.send(host, { t: "sync", op: "apps:reply", id: message.id, ok: false, error: "This space doesn't keep apps" }));
+      if (message.op === "blobs") return void (api.blobs ? api.blobs(host, message) : hosts.send(host, { t: "sync", op: "blobs:reply", id: message.id, ok: false, error: "This space doesn't keep blobs" }));
       if (message.op === "push") {
         const changes = Array.isArray(message.changes) ? message.changes.slice(0, MAX_PUSH) : [];
         const dispatch = { trace: `sync-${message.id}` };
@@ -283,7 +387,7 @@ export function syncHub(root: any, store: Store, records: Collections, hosts: Ho
           const accepted: Accepted[] = [];
           for (const change of changes) {
             try {
-              const { verdict, accepted: one } = await accept(change, host.member, dispatch, role);
+              const { verdict, accepted: one } = await accept(change, host.member, dispatch, role, accepted);
               out.push(verdict);
               if (one) accepted.push(one);
             } catch (error) {

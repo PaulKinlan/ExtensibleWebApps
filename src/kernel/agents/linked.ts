@@ -7,7 +7,32 @@
 
 import { part } from "../part";
 import { isAgentFile } from "../../shared/agent-file";
-import type { AgentConfig } from "./file";
+
+/** What the runner needs to know about its agent, fixed in its source. */
+export interface AgentConfig {
+  id: string;
+  name: string;
+  model?: string;
+  instructions: string;
+  hooks: string[];
+  commands: string[];
+  /** Whether it has an inbox on the bus (`- message: true`), and the bus topics it wakes on. */
+  inbox: boolean;
+  topics: string[];
+  /** Hooks it is asked about before the action happens, and may block (`- check: <hook>`). */
+  checks: string[];
+  /** For a hook or check with `when`: a regular expression its value, as JSON, must match to wake the agent. */
+  when: Record<string, string>;
+  /** What happens to an action it couldn't check: in time, within its limits, or with an answer. */
+  ifUnsure: "allow" | "block";
+  /**
+   * Who its changes are made as. `person`: in a run the person asked for (a message from a plugin, not
+   * another agent, or a command), once they let it on a card, its changes are logged as theirs, made
+   * through it. They are still reviewed, and it still may do only what its own permissions allow.
+   */
+  actsAs: "self" | "person";
+  limits: { runsPerHour: number; tokensPerDay: number; steps: number };
+}
 
 /** Sources the kernel made from agent files, with what each one runs as: only these may call the agent methods. */
 export const made = new Map<string, AgentConfig>();

@@ -4,7 +4,8 @@
 // could stall the kernel). Supported: type (string, number, integer,
 // boolean, array, object), properties, required, enum, minimum, maximum,
 // minLength, maxLength, format (date, date-time, email, uri),
-// items, title, description, default, and `x-multiline` for long text.
+// items, title, description, default, `x-multiline` for long text, and `x-ref`
+// to point at another collection's records.
 
 export interface Schema {
   type?: "string" | "number" | "integer" | "boolean" | "array" | "object";
@@ -21,6 +22,7 @@ export interface Schema {
   maxLength?: number;
   format?: "date" | "date-time" | "email" | "uri";
   "x-multiline"?: boolean;
+  "x-ref"?: { collection: string; label?: string };
 }
 
 /** The JSON Schema keywords collections support, for the API reference. */
@@ -39,9 +41,11 @@ export const SCHEMA_KEYWORDS: Record<string, string> = {
   maxLength: "Over 200 makes a form show a text area",
   format: "date, date-time, email or uri; forms use the matching input",
   "x-multiline": "true makes a form show a text area",
+  "x-ref": "{ collection, label? } links a field to another collection's records; forms show a menu and tables show the label",
 };
 
-const KEYS = new Set(["type", "title", "description", "default", "enum", "properties", "required", "items", "minimum", "maximum", "minLength", "maxLength", "format", "x-multiline"]);
+const KEYS = new Set(["type", "title", "description", "default", "enum", "properties", "required", "items", "minimum", "maximum", "minLength", "maxLength", "format", "x-multiline", "x-ref"]);
+const COLLECTION_NAME = /^[a-z][a-z0-9-]{0,40}$/;
 const TYPES = new Set(["string", "number", "integer", "boolean", "array", "object"]);
 const FORMATS: Record<string, RegExp> = {
   date: /^\d{4}-\d{2}-\d{2}$/,
@@ -67,6 +71,13 @@ export function checkSchema(schema: unknown, path = "schema", depth = 0): assert
     for (const [name, child] of entries) checkSchema(child, `${path}.${name}`, depth + 1);
   }
   if (s.items !== undefined) checkSchema(s.items, `${path}[]`, depth + 1);
+  if (s["x-ref"] !== undefined) {
+    const ref = s["x-ref"] as Record<string, unknown>;
+    if (!ref || typeof ref !== "object" || Array.isArray(ref)) throw new Error(`${path}: x-ref must be { collection, label? }`);
+    for (const key of Object.keys(ref)) if (key !== "collection" && key !== "label") throw new Error(`${path}: x-ref.${key} isn't supported`);
+    if (typeof ref.collection !== "string" || !COLLECTION_NAME.test(ref.collection)) throw new Error(`${path}: x-ref.collection must be a collection name`);
+    if (ref.label !== undefined && (typeof ref.label !== "string" || !ref.label)) throw new Error(`${path}: x-ref.label must be a field name`);
+  }
 }
 
 const typeOf = (value: unknown) => (value === null ? "null" : Array.isArray(value) ? "array" : typeof value);

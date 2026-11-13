@@ -13,6 +13,7 @@
 //   npm run packages    makes all three and says what is in them, or fails on a plugin it can't list (it writes nothing)
 //
 // Nothing here runs a plugin: each manifest is read as the kernel reads it, without running the code.
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { build } from "esbuild";
@@ -56,6 +57,19 @@ async function kernel() {
 const read = (url) => readFileSync(url, "utf8");
 const json = (url) => JSON.parse(read(url));
 const sorted = (list) => [...list].sort();
+
+/** Content-addressed SHA-256 integrity ("sha256-<base64>") over a plugin's source and any accompanying files in manifest.files. */
+export function integrityOf(fileUrl, sourceText, files = []) {
+  const hash = createHash("sha256");
+  hash.update(Buffer.from(sourceText, "utf8"));
+  for (const name of sorted(files ?? [])) {
+    const target = new URL(name, fileUrl);
+    const bytes = existsSync(target) ? readFileSync(target) : Buffer.alloc(0);
+    hash.update(Buffer.from(`\0${name}\0${bytes.byteLength}\n`, "utf8"));
+    hash.update(bytes);
+  }
+  return `sha256-${hash.digest("base64")}`;
+}
 
 /** Services a manifest provides: its `provides`, and any provide:<name> permission (the llm providers answer the llm module's hooks). */
 const providesOf = (m) => sorted(new Set([...Object.keys(m.provides ?? {}), ...m.permissions.filter((p) => p.startsWith("provide:")).map((p) => p.slice(8))]));
@@ -124,15 +138,16 @@ export async function buildIndex(k) {
   const linkedBy = (href) => apps.filter((a) => a.plugins.includes(href)).map((a) => a.path);
   const { groups } = json(new URL("groups.json", ROOT));
   const groupOf = new Map(Object.entries(groups).flatMap(([group, ids]) => ids.map((id) => [id, group])));
-  const entry = (manifest, href, std) => {
+  const entry = (manifest, href, std, integrity) => {
     const group = groupOf.get(manifest.id);
     if (!group) throw new Error(`packages/groups.json: put ${manifest.id} under one of the groups (the sub-heading it shows under)`);
     return {
       id: manifest.id,
       name: manifest.name,
       description: manifest.description ?? "",
-      version: manifest.version ?? "",
+      ...(manifest.version ? { version: manifest.version } : {}),
       href,
+      integrity,
       permissions: manifest.permissions,
       provides: Object.keys(manifest.provides ?? {}).sort(),
       services: sorted(manifest.services ?? []),
@@ -149,10 +164,11 @@ export async function buildIndex(k) {
     const file = new URL(`${id}/${id}.js`, ROOT);
     if (!ID.test(id) || !existsSync(file)) throw new Error(`packages/${id}/ needs ${id}.js`);
     // Read as the kernel reads it, so nothing in the plugin runs here, and a manifest the kernel would refuse fails now.
-    const manifest = k.readManifest(read(file));
+    const source = read(file);
+    const manifest = k.readManifest(source);
     if (manifest?.id !== id) throw new Error(`packages/${id}/${id}.js: its manifest's id must be ${id}`);
     for (const name of manifest.files ?? []) if (!existsSync(new URL(`${id}/${name}`, ROOT))) throw new Error(`packages/${id}/: ${name} is in files but missing`);
-    packages.push(entry(manifest, `/packages/${id}/${id}.js`, false));
+    packages.push(entry(manifest, `/packages/${id}/${id}.js`, false, integrityOf(file, source, manifest.files)));
   }
   // The standard plugins offered too (packages/std.json): they stay in std/, where apps link them, and a
   // person adds them from there, with the files their manifests list (the plugin editor's starting templates
@@ -162,12 +178,13 @@ export async function buildIndex(k) {
   for (const path of std) {
     const file = new URL(`${path}.js`, STD);
     if (!STD_PATH.test(path) || !existsSync(file)) throw new Error(`packages/std.json: std/${path}.js doesn't exist`);
-    const manifest = k.readManifest(read(file));
+    const source = read(file);
+    const manifest = k.readManifest(source);
     for (const name of manifest.files ?? []) if (!existsSync(new URL(name, file))) throw new Error(`std/${path}.js: ${name} is in files but missing`);
     // A person adds it to an app with no slots, so it must say where it draws.
     if (!Object.keys(manifest.places ?? {}).length && manifest.permissions.includes("ui")) throw new Error(`std/${path}.js: offered in the registry, so its manifest needs places, for pages without its slot`);
     // Its manifest's id, which Customize matches against the person's plugins (std/sync.js is sync-status).
-    packages.push(entry(manifest, `/std/${path}.js`, true));
+    packages.push(entry(manifest, `/std/${path}.js`, true, integrityOf(file, source, manifest.files)));
   }
   const offered = new Set(packages.map((p) => p.id));
   for (const id of groupOf.keys()) if (!offered.has(id)) throw new Error(`packages/groups.json: ${id} isn't a plugin the registry offers`);
@@ -243,7 +260,8 @@ export async function buildCatalog(k, index) {
   const plugins = [];
   const add = (file, source) => {
     const href = served(file);
-    const text = read(new URL(file, SITE));
+    const fileUrl = new URL(file, SITE);
+    const text = read(fileUrl);
     const agent = file.endsWith(".agent.md");
     // An agent's manifest as the kernel makes it from the file, with what its loop needs added (llm, agents).
     const m = k.readManifest(agent ? k.fromAgentFile(text, "// The loop, which the manifest doesn't depend on.") : text);
@@ -253,7 +271,9 @@ export async function buildCatalog(k, index) {
       id: m.id,
       name: m.name,
       description: m.description ?? "",
+      ...(m.version ? { version: m.version } : {}),
       href,
+      integrity: integrityOf(fileUrl, text, agent ? [] : m.files),
       source,
       kind: agent ? "agent" : kindOf(m),
       ...(pkg ? { offered: true, group: pkg.group } : {}),

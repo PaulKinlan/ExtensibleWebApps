@@ -1,12 +1,13 @@
-// Sync between a device and its space, before 2c's CRDTs: the space orders
-// every change. A device sends each record it changed with `base`, the
-// version it last had (0 for one it made). The space accepts a change only
-// when `base` is still the record's version, gives it the next sequence
-// number (which becomes the record's version), and sends it to every device.
-// A change based on an older version is refused as stale, with the record as
-// the space has it, so the device can show the newer one and keep its own as
-// a draft. A device that was away asks for the changes since the last
-// sequence number it saw.
+// Sync between a device and its space: the space orders every change. A device
+// sends each record it changed with `base`, the version it last had (0 for one
+// it made). When `base` is still the record's version, the space accepts the
+// change as the next sequence number. When `base` is older (> 0) and both the
+// device and the space changed completely disjoint fields since `base` (with
+// neither deleting the record), the space merges the fields into one combined
+// record and accepts it. Otherwise a stale change is refused with the record
+// as the space has it, so the device shows the newer one and keeps its own as
+// a draft. A device that was away asks for the changes since the last sequence
+// number it saw.
 
 /** A record as it is stored: its fields, with the id and times the kernel keeps. */
 export type SyncRecord = Record<string, unknown> & { id: string };
@@ -16,6 +17,8 @@ export interface Outgoing {
   collection: string;
   id: string;
   base: number;
+  /** The record as the device had it at `base`, when known, for 3-way field merge fallback. */
+  before?: SyncRecord | null;
   after: SyncRecord | null;
 }
 
@@ -30,9 +33,9 @@ export interface Accepted {
   at: string;
 }
 
-/** What the space says to each change in a push, in the same order. */
+/** What the space says to each change in a push, in the same order. `merged` carries the combined record when a 3-way field merge succeeded. */
 export type Verdict =
-  | { ok: true; seq: number }
+  | { ok: true; seq: number; merged?: SyncRecord }
   /** Stale: the space has a newer version, made by `by` (when the space knows who), so the device can say who won without having heard it first. */
   | { ok: false; stale: true; version: number; record: SyncRecord | null; by?: string }
   /**
@@ -112,10 +115,16 @@ export type LiveToSpace = { t: "sync"; op: "live"; topic: string; value?: unknow
 /** A member's debugger asks to hear the space's trace as it happens (std/spaces/trace.ts), or to stop. */
 export type TraceRequest = { t: "sync"; op: "trace"; on: boolean };
 
+/** Content-addressed binary/media blobs synced across a space (std/spaces/blobs.ts). Each gets a `blobs:reply` with the same id. */
+export type BlobRequest =
+  | { t: "sync"; op: "blobs"; id: number; action: "put"; hash: string; mediaType: string; size: number; data: string; index?: number; total?: number }
+  | { t: "sync"; op: "blobs"; id: number; action: "get"; hash: string; index?: number };
+
 // device -> space
 export type SyncToSpace =
   | PluginRequest
   | AppRequest
+  | BlobRequest
   | ReviewToSpace
   | ReflectRequest
   | LiveToSpace
@@ -142,9 +151,9 @@ export interface Access {
 export type SyncToDevice =
   /**
    * Changes in order. `seq` is the space's latest, so a device knows it has caught up. The first, the
-   * answer to hello, says which member the device is signed in as.
+   * answer to hello, says which member the device is signed in as, and their role when known.
    */
-  | { t: "sync"; op: "changes"; changes: Accepted[]; seq: number; member?: string; members?: Record<string, string> } & Partial<Access>
+  | ({ t: "sync"; op: "changes"; changes: Accepted[]; seq: number; member?: string; members?: Record<string, string> } & Partial<Access>)
   /** A collection's rules changed (an app's plugins were read again): what a device was told with hello, again. */
   | ({ t: "sync"; op: "rules" } & Pick<Access, "rules" | "authors" | "owner">)
   /** Who added a record under an "author" rule, as it is added; no `by` once it is removed. */
@@ -159,6 +168,10 @@ export type SyncToDevice =
   | { t: "sync"; op: "apps:reply"; id: number; ok: boolean; error?: string; list?: SharedAppSummary[]; files?: { name: string; text: string }[]; hash?: string }
   /** A member shared, changed or stopped sharing an app: each device asks for the list again. */
   | { t: "sync"; op: "apps:changed" }
+  /** The answer to a BlobRequest: confirms a stored blob or returns its base64 bytes. */
+  | { t: "sync"; op: "blobs:reply"; id: number; ok: boolean; error?: string; hash?: string; size?: number; mediaType?: string; data?: string; index?: number; total?: number }
+  /** A member stored a new content-addressed blob in the space. */
+  | { t: "sync"; op: "blobs:changed"; hash: string; size: number; mediaType: string }
   /** The space's kernel started its sync again (the spaces module restarted): each device says hello again, to catch up and keep hearing changes. */
   | { t: "sync"; op: "again" }
   /** A change the space's server wants reviewed, for a device to show; `done` once anyone answered it, or it ended. */

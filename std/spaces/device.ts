@@ -11,7 +11,7 @@
 // Kept in the space's copy, beside its collections:
 //   sync/device.json   the last sequence number seen, each record's version, changes not yet sent, and drafts
 
-import type { Access, Accepted, AppRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, SyncRecord, SyncToDevice, TraceRequest, Verdict } from "../../src/shared/sync";
+import type { Accepted, Access, AppRequest, BlobRequest, LiveToSpace, Outgoing, PluginRequest, ReflectRequest, SyncRecord, SyncToDevice, TraceRequest, Verdict } from "../../src/shared/sync";
 import type { Hosts } from "../../src/kernel/hosts";
 import type { Change, Collections, StoredRecord } from "../../src/kernel/records";
 import type { Store } from "../../src/kernel/store";
@@ -21,6 +21,40 @@ import { thisDevice } from "./this-device";
 const STATE = "sync/device.json";
 const MAX_PUSH = 100;
 const key = (collection: string, id: string) => `${collection}/${id}`;
+/** Canonical value serialization so nested object key order doesn't count as a field change. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => [k, canonical(v)]),
+    );
+  }
+  return value;
+}
+
+/** Layers the fields changed from `from` to `to` onto `onto`, preserving `onto`'s untouched fields. */
+function layerChangedFields(from: SyncRecord, to: SyncRecord, onto: SyncRecord, id: string): SyncRecord {
+  const combined: SyncRecord = { ...onto, id };
+  const allKeys = new Set([...Object.keys(from), ...Object.keys(to)]);
+  for (const f of allKeys) {
+    if (f === "id" || f === "createdAt" || f === "updatedAt" || f === "__proto__" || f === "constructor" || f === "prototype") continue;
+    const hasFrom = Object.hasOwn(from, f) && from[f] !== undefined;
+    const hasTo = Object.hasOwn(to, f) && to[f] !== undefined;
+    if (hasFrom !== hasTo || (hasFrom && JSON.stringify(canonical(from[f])) !== JSON.stringify(canonical(to[f])))) {
+      if (hasTo) combined[f] = to[f];
+      else delete combined[f];
+    }
+  }
+  combined.createdAt = typeof onto.createdAt === "string" ? onto.createdAt : typeof to.createdAt === "string" ? to.createdAt : new Date().toISOString();
+  const toUpdated = typeof to.updatedAt === "string" ? to.updatedAt : undefined;
+  const ontoUpdated = typeof onto.updatedAt === "string" ? onto.updatedAt : undefined;
+  combined.updatedAt = toUpdated && ontoUpdated ? (toUpdated >= ontoUpdated ? toUpdated : ontoUpdated) : (toUpdated ?? ontoUpdated ?? new Date().toISOString());
+  return combined;
+}
+
 /** Whether two versions of a record say the same, apart from when each was made. */
 const same = (a: SyncRecord | null, b: SyncRecord | null) => {
   const fields = (r: SyncRecord | null) => (r ? JSON.stringify(Object.entries(r).filter(([k]) => k !== "createdAt" && k !== "updatedAt").sort(([x], [y]) => x.localeCompare(y))) : "null");
@@ -57,13 +91,17 @@ interface State {
 /** Connects to `url` (the space's kernel) and keeps this kernel's collections in step with it. */
 export function syncDevice(url: string, store: Store, records: Collections, hosts: Hosts, { WebSocketImpl = globalThis.WebSocket } = {}) {
   let state: State = { seq: 0, versions: {}, pending: {}, drafts: [] };
+  let stateReady = false;
   /** Who this device is signed in as, once the space has said (its answer to hello). */
   let member: string | undefined;
   const loaded = store.readJson<unknown>(STATE, null).then((saved) => {
     const s = saved as State | null;
     if (s && typeof s.seq === "number") state = { seq: s.seq, ...(s.members && typeof s.members === "object" ? { members: { ...s.members } } : {}), ...(typeof s.member === "string" ? { member: s.member } : {}), ...(s.access && typeof s.access === "object" ? { access: s.access } : {}), versions: { ...s.versions }, pending: { ...s.pending }, drafts: Array.isArray(s.drafts) ? s.drafts.map((d, i) => ({ ...d, ref: d.ref ?? `d${i}-${d.at}` })) : [] };
+    stateReady = true;
   });
-  void loaded.then(() => (member ??= state.member));
+  void loaded.then(() => {
+    member ??= state.member;
+  });
   let saving: Promise<unknown> = Promise.resolve();
   const save = () => {
     changed();
@@ -94,15 +132,30 @@ export function syncDevice(url: string, store: Store, records: Collections, host
   void loaded.then(() => state.seq > 0 && first());
   setTimeout(() => first(), 5000);
 
+  /** Local writes arriving while a server-merged record is being applied locally, keyed by `collection/id`. */
+  const reconciling = new Map<string, Change[]>();
+
+  const recordLocal = (change: Change) => {
+    const k = key(change.collection, change.id);
+    reconciling.get(k)?.push(change);
+    const existing = state.pending[k];
+    const base = existing?.base ?? state.versions[k] ?? 0;
+    const before = existing && "before" in existing ? existing.before : ((change.before as SyncRecord | undefined) ?? null);
+    state.pending[k] = {
+      collection: change.collection,
+      id: change.id,
+      base,
+      ...(base > 0 && before ? { before } : {}),
+      after: (change.after as SyncRecord | undefined) ?? null,
+    };
+    save();
+    push();
+  };
+
   // Changes made here: remember them, and send them when connected.
   const local = (change: Change) => {
-    void loaded.then(() => {
-      const k = key(change.collection, change.id);
-      const base = state.pending[k]?.base ?? state.versions[k] ?? 0;
-      state.pending[k] = { collection: change.collection, id: change.id, base, after: (change.after as SyncRecord | undefined) ?? null };
-      save();
-      push();
-    });
+    if (stateReady) recordLocal(change);
+    else void loaded.then(() => recordLocal(change));
   };
   records.local.add(local);
 
@@ -129,7 +182,10 @@ export function syncDevice(url: string, store: Store, records: Collections, host
       if (mine) {
         // Ours, accepted. A newer edit made here since is now based on this version.
         if (pending && JSON.stringify(pending.after) === JSON.stringify(c.after)) delete state.pending[k];
-        else if (pending) pending.base = c.seq;
+        else if (pending) {
+          pending.base = c.seq;
+          pending.before = c.after;
+        }
       } else if (pending) {
         // Someone else's, passed over while this device's own edit waits: who made it is kept, for when the
         // space refuses that edit and its record is put back here.
@@ -146,7 +202,7 @@ export function syncDevice(url: string, store: Store, records: Collections, host
           return false;
         }
       }
-      state.versions[k] = c.seq;
+      state.versions[k] = Math.max(state.versions[k] ?? 0, c.seq);
       state.seq = c.seq;
     }
     state.seq = Math.max(state.seq, seq);
@@ -169,59 +225,119 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     }
   }
 
+  /**
+   * Reconciles a server-merged record locally, rebasing any newer local edit made while the push was in flight
+   * (or while `records.apply` is awaiting) onto `merged` in both `state.pending` and local `records`.
+   */
+  async function reconcileMerged(change: Outgoing, merged: SyncRecord, seq: number, pushId: number, newer: Outgoing | undefined) {
+    const k = key(change.collection, change.id);
+    let current: SyncRecord | null;
+    if (newer) {
+      if (newer.after === null) {
+        state.pending[k] = { collection: change.collection, id: change.id, base: seq, before: merged, after: null };
+        passedOver.delete(k);
+        return;
+      }
+      current = change.after ? layerChangedFields(change.after, newer.after, merged, change.id) : newer.after;
+      state.pending[k] = { collection: change.collection, id: change.id, base: seq, before: merged, after: current };
+    } else {
+      delete state.pending[k];
+      current = merged;
+    }
+
+    const concurrent: Change[] = [];
+    reconciling.set(k, concurrent);
+    try {
+      while (true) {
+        await take(change.collection, change.id, current, seq, `merged-${pushId}`);
+        if (!concurrent.length) break;
+        const batch = concurrent.splice(0);
+        for (const c of batch) {
+          const after = (c.after as SyncRecord | undefined) ?? null;
+          if (!after) {
+            current = null;
+          } else if (current && c.before) {
+            current = layerChangedFields(c.before as SyncRecord, after, current, change.id);
+          } else {
+            current = after;
+          }
+        }
+        state.pending[k] = { collection: change.collection, id: change.id, base: seq, before: merged, after: current };
+      }
+    } finally {
+      reconciling.delete(k);
+    }
+  }
+
   async function pushed(id: number, results: Verdict[]) {
     if (!inFlight || inFlight.id !== id) return;
-    const sent = inFlight.changes;
-    inFlight = undefined;
+    const flight = inFlight;
+    const sent = flight.changes;
     const denied = new Set<string>();
-    for (const [i, verdict] of results.entries()) {
-      const change = sent[i];
-      if (!change) continue;
-      const k = key(change.collection, change.id);
-      const pending = state.pending[k];
-      /** An edit made here while the push was out, which is newer than what was sent. */
-      const newer = pending && JSON.stringify(pending.after) !== JSON.stringify(change.after) ? pending : undefined;
-      if (verdict.ok) {
-        state.versions[k] = Math.max(state.versions[k] ?? 0, verdict.seq);
-        if (newer) newer.base = verdict.seq;
-        else delete state.pending[k];
-        continue;
-      }
-      // Refused as stale, but the space has what this device made (two devices added the same sample, say): nothing is lost.
-      if ("stale" in verdict && same(verdict.record, change.after)) {
-        state.versions[k] = verdict.version;
-        if (newer) newer.base = verdict.version;
-        else {
-          delete state.pending[k];
-          await take(change.collection, change.id, verdict.record, verdict.version, `same-${id}`, verdict.by);
+    try {
+      await loaded;
+      for (const [i, verdict] of results.entries()) {
+        const change = sent[i];
+        if (!change) continue;
+        const k = key(change.collection, change.id);
+        const pending = state.pending[k];
+        /** An edit made here while the push was out, which is newer than what was sent. */
+        const newer = pending && JSON.stringify(pending.after) !== JSON.stringify(change.after) ? pending : undefined;
+        if (verdict.ok) {
+          state.versions[k] = Math.max(state.versions[k] ?? 0, verdict.seq);
+          if (verdict.merged) {
+            await reconcileMerged(change, verdict.merged, verdict.seq, id, newer);
+          } else if (newer) {
+            newer.base = verdict.seq;
+            newer.before = change.after;
+            passedOver.delete(k);
+          } else {
+            delete state.pending[k];
+            passedOver.delete(k);
+          }
+          continue;
         }
-        continue;
-      }
-      // Refused: the space's record is put back here, and this device's latest version is kept as a draft.
-      const why = "stale" in verdict ? "Someone changed it first" : verdict.error;
-      // Not theirs to change (their role, or the collection's rules): the record goes back as it was, and they are told who can change it.
-      // There is no draft to keep: sending it again would be refused the same way.
-      if ("denied" in verdict && verdict.denied) {
-        delete state.pending[k];
-        if (verdict.record !== undefined && typeof verdict.version === "number") {
+        // Refused as stale, but the space has what this device made (two devices added the same sample, say): nothing is lost.
+        if ("stale" in verdict && same(verdict.record, change.after)) {
           state.versions[k] = verdict.version;
-          await take(change.collection, change.id, verdict.record, verdict.version, `denied-${id}`);
+          if (newer) {
+            newer.base = verdict.version;
+            newer.before = verdict.record;
+            passedOver.delete(k);
+          } else {
+            delete state.pending[k];
+            await take(change.collection, change.id, verdict.record, verdict.version, `same-${id}`, verdict.by);
+          }
+          continue;
         }
-        trace({ kind: "note", name: "sync:denied", detail: `${change.collection}/${change.id}: ${why}` });
-        denied.add(why);
-        continue;
+        // Refused: the space's record is put back here, and this device's latest version is kept as a draft.
+        const why = "stale" in verdict ? "Someone changed it first" : verdict.error;
+        // Not theirs to change (their role, or the collection's rules): the record goes back as it was, and they are told who can change it.
+        // There is no draft to keep: sending it again would be refused the same way.
+        if ("denied" in verdict && verdict.denied) {
+          delete state.pending[k];
+          if (verdict.record !== undefined && typeof verdict.version === "number") {
+            state.versions[k] = verdict.version;
+            await take(change.collection, change.id, verdict.record, verdict.version, `denied-${id}`);
+          }
+          trace({ kind: "note", name: "sync:denied", detail: `${change.collection}/${change.id}: ${why}` });
+          denied.add(why);
+          continue;
+        }
+        state.drafts.push({ ref: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, collection: change.collection, id: change.id, mine: pending ? pending.after : change.after, why, at: new Date().toISOString() });
+        delete state.pending[k];
+        if ("record" in verdict && verdict.record !== undefined && typeof verdict.version === "number") {
+          state.versions[k] = verdict.version;
+          await take(change.collection, change.id, verdict.record, verdict.version, `refused-${id}`, "stale" in verdict ? verdict.by : undefined);
+        }
+        trace({ kind: "note", name: "sync:draft", detail: `${change.collection}/${change.id}: ${why}` });
+        hosts.broadcast({ t: "notice", text: `${why === "Someone changed it first" ? "Someone else changed this record first" : `The space didn't take a change: ${why}`}. Your version is kept as a draft.`, tone: "error" });
       }
-      state.drafts.push({ ref: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`, collection: change.collection, id: change.id, mine: pending ? pending.after : change.after, why, at: new Date().toISOString() });
-      delete state.pending[k];
-      if ("record" in verdict && verdict.record !== undefined && typeof verdict.version === "number") {
-        state.versions[k] = verdict.version;
-        await take(change.collection, change.id, verdict.record, verdict.version, `refused-${id}`, "stale" in verdict ? verdict.by : undefined);
-      }
-      trace({ kind: "note", name: "sync:draft", detail: `${change.collection}/${change.id}: ${why}` });
-      hosts.broadcast({ t: "notice", text: `${why === "Someone changed it first" ? "Someone else changed this record first" : `The space didn't take a change: ${why}`}. Your version is kept as a draft.`, tone: "error" });
+      // One notice for a whole push the space refused the same way (a reader's form with several fields, say).
+      for (const why of denied) hosts.broadcast({ t: "notice", text: `Your change wasn't kept. ${why}`, tone: "error" });
+    } finally {
+      if (inFlight === flight) inFlight = undefined;
     }
-    // One notice for a whole push the space refused the same way (a reader's form with several fields, say).
-    for (const why of denied) hosts.broadcast({ t: "notice", text: `Your change wasn't kept. ${why}`, tone: "error" });
     save();
     push();
   }
@@ -321,10 +437,10 @@ export function syncDevice(url: string, store: Store, records: Collections, host
     heard,
     caughtUp: caughtUpHeard,
     /**
-     * Sends a request about members' plugins, a debugger's question (reflect.ts) or its asking for the trace
+     * Sends a request about members' plugins, blobs, a debugger's question (reflect.ts) or its asking for the trace
      * (trace.ts), a live message (live.ts), or a request about members' made apps (made-apps.ts), if connected and caught up: whether it went.
      */
-    send(message: PluginRequest | ReflectRequest | LiveToSpace | TraceRequest | AppRequest): boolean {
+    send(message: PluginRequest | ReflectRequest | LiveToSpace | TraceRequest | AppRequest | BlobRequest): boolean {
       if (!socket || socket.readyState !== 1 || !caughtUp) return false;
       socket.send(JSON.stringify(message));
       return true;

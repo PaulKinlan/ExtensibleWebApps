@@ -66,6 +66,66 @@ interface Env {
   DNS_RESOLVER?: string;
   /** More push services notifications may be sent to, as origins separated by commas (src/server/auth/push.ts). */
   PUSH_HOSTS?: string;
+  /** Deployment-managed secrets for server plugins: JSON map (`DEPLOYMENT_SECRETS`) or `EWA_SECRET_<NAME>` vars (src/kernel/secrets.ts). */
+  DEPLOYMENT_SECRETS?: string;
+  DEPLOYMENT_SECRET_DAILY_CAP?: string;
+  [key: `EWA_SECRET_${string}`]: string | undefined;
+}
+
+const SECRET_NAME = /^[a-z][a-z0-9-]{0,40}$/;
+const SECRET_HOST = /^(?:[a-z0-9-]+\.)*[a-z0-9-]+(?::\d{1,5})?$/;
+
+function parseSecretHosts(raw: unknown): string[] {
+  let list: unknown[] = [];
+  if (Array.isArray(raw)) list = raw;
+  else if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) list = parsed;
+      } catch {}
+    } else list = trimmed.split(",");
+  }
+  return list.filter((h): h is string => typeof h === "string").map((h) => h.trim().toLowerCase()).filter((h) => SECRET_HOST.test(h));
+}
+
+function parseSecretCap(raw: unknown): number | undefined {
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) return Math.floor(raw);
+  if (typeof raw === "string" && /^\d+$/.test(raw.trim())) return Number(raw.trim());
+  return undefined;
+}
+
+/** Reads a named deployment secret from Worker vars, matching `src/server/space-env.ts`. */
+function deploymentSecretFromEnv(vars: Record<string, unknown>, name: string): { value: string; hosts: string[]; dailyCap?: number } | undefined {
+  if (!SECRET_NAME.test(name)) return undefined;
+  const defaultCap = parseSecretCap(vars.DEPLOYMENT_SECRET_DAILY_CAP);
+  let map: unknown = vars.DEPLOYMENT_SECRETS;
+  if (typeof map === "string") {
+    try {
+      map = JSON.parse(map);
+    } catch {
+      map = undefined;
+    }
+  }
+  if (map && typeof map === "object" && !Array.isArray(map) && Object.hasOwn(map, name)) {
+    const entry = (map as Record<string, unknown>)[name] as { value?: unknown; hosts?: unknown; dailyCap?: unknown } | undefined;
+    if (entry && typeof entry === "object" && typeof entry.value === "string" && entry.value) {
+      const hosts = parseSecretHosts(entry.hosts);
+      if (hosts.length) {
+        const cap = parseSecretCap(entry.dailyCap) ?? defaultCap;
+        return { value: entry.value, hosts, ...(cap !== undefined && { dailyCap: cap }) };
+      }
+    }
+  }
+  const key = name.toUpperCase().replace(/-/g, "_");
+  const value = vars[`EWA_SECRET_${key}`] ?? vars[`EWA_SECRET_${name}`];
+  const rawHosts = vars[`EWA_SECRET_${key}_HOSTS`] ?? vars[`EWA_SECRET_${name}_HOSTS`];
+  if (typeof value !== "string" || !value) return undefined;
+  const hosts = parseSecretHosts(rawHosts);
+  if (!hosts.length) return undefined;
+  const cap = parseSecretCap(vars[`EWA_SECRET_${key}_DAILY_CAP`] ?? vars[`EWA_SECRET_${name}_DAILY_CAP`]) ?? defaultCap;
+  return { value, hosts, ...(cap !== undefined && { dailyCap: cap }) };
 }
 
 interface KernelStub {
@@ -198,6 +258,11 @@ class PluginHost extends RpcTarget {
     const { pathname, search } = new URL(url);
     return this.env.ASSETS.fetch(new Request(`https://assets${pathname}${search}`));
   }
+
+  /** Deployment-managed secrets from the Worker's environment, bound to their allowed hosts (src/kernel/secrets.ts). */
+  deploymentSecrets(name: string): { value: string; hosts: string[]; dailyCap?: number } | undefined {
+    return deploymentSecretFromEnv(this.env as unknown as Record<string, unknown>, name);
+  }
 }
 
 type Delivery = { ok: true; id: string } | { ok: false; error: string } | null;
@@ -247,14 +312,25 @@ export class Space extends DurableObject<Env> {
     for (const [socket, who] of this.clients) if (who === user) socket.close(4403, "You're no longer in this space");
   }
 
+  /** Deployment secret variables forwarded only to the space's trusted kernel isolate (never to plugin isolates). */
+  private kernelEnv(): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    if (this.env.DEPLOYMENT_SECRETS !== undefined) out.DEPLOYMENT_SECRETS = this.env.DEPLOYMENT_SECRETS;
+    if (this.env.DEPLOYMENT_SECRET_DAILY_CAP !== undefined) out.DEPLOYMENT_SECRET_DAILY_CAP = this.env.DEPLOYMENT_SECRET_DAILY_CAP;
+    for (const [k, v] of Object.entries(this.env)) if (k.startsWith("EWA_SECRET_") && typeof v === "string") out[k] = v;
+    return out;
+  }
+
   /** The space's kernel, a facet running the kernel's class from its own isolate. */
   private kernel(space: string): KernelStub {
     this.plugins ??= new PluginHost(this.ctx, this.env, space);
     const guard = this.plugins.guard();
+    const env = this.kernelEnv();
     const worker = this.env.LOADER.get(`space:${space}:${KERNEL_VERSION}`, async () => ({
       compatibilityDate: "2026-11-01",
       mainModule: kernelSource.main,
       modules: kernelSource.modules,
+      env,
       // The kernel makes vendor calls for plugins with `network:<host>` (net.fetch), guarded like plugin isolates.
       globalOutbound: guard,
     }));

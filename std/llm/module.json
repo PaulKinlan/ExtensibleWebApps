@@ -3,8 +3,10 @@
     "llm"
   ],
   "hooks": [
+    "llm:chunk",
     "llm:complete",
     "llm:models",
-    "llm:providers"
+    "llm:providers",
+    "llm:stream"
   ]
 }

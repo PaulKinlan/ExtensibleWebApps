@@ -47,6 +47,7 @@ tap(root);
 // Hooks the kernel defines here; its services define more, each collection has its own, and plugins define
 // theirs in their manifests (`<plugin>:<key>`).
 defineHook("debug:trace", { mode: "emit", needs: "debug:read", args: "[{ seq, at, kind, name, plugin?, trace?, ms?, detail? }]", description: "New trace events, in batches at most ten times a second. They name every plugin and what it did, so listening needs debug:read." });
+defineHook("net:chunk", { mode: "emit", quiet: true, args: "{ streamId, chunk, done }", description: "Incremental text chunks of a streaming net.fetch call, delivered only to the caller." });
 
 const hosts = new Hosts(where.kind);
 setSink((events) => {
@@ -120,10 +121,21 @@ const later = (name: string, make: () => Promise<ServiceProvider>): ServiceProvi
 };
 
 const remote = new RemotePlugins(root, hosts, services);
-const secrets = makeSecrets(store, hosts, (instance) => remote.installed.get(base(instance))?.manifest.name ?? base(instance));
+const secrets = makeSecrets(
+  store,
+  hosts,
+  (instance) => remote.installed.get(base(instance))?.manifest.name ?? base(instance),
+  (instance) => remote.installed.get(base(instance))?.origin,
+);
 services.secrets = secrets.service;
 // net.fetch is fetched the first time a plugin makes a request through it (net.ts): most apps never do.
-services.net = later("net", async () => (await import("./net")).net(secrets, (instance) => remote.installed.get(base(instance))?.caps ?? new Set()));
+services.net = later("net", async () =>
+  (await import("./net")).net(
+    secrets,
+    (instance) => remote.installed.get(base(instance))?.caps ?? new Set(),
+    (instance, value, trace) => remote.emitTo(instance, "net:chunk", value, trace),
+  ),
+);
 const plugins = catalog(remote, store, hosts, log, reviews);
 remote.onDispose = (instance) => {
   reviews.cancelInstance(instance);

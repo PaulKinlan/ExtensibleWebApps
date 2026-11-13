@@ -48,7 +48,6 @@ import { recent, record } from "../../src/kernel/trace";
 import { COMPONENTS, DROPPED_WITH_CONTENT, ELEMENTS, ELEMENT_ATTRIBUTES, GLOBAL_ATTRIBUTES, INPUT_TYPES } from "../../src/shared/html";
 import { SVG_ATTRIBUTES } from "../../src/shared/svg";
 import { SVG_ELEMENTS } from "../../src/shared/svg-docs";
-import { fromAgentFile } from "../../src/kernel/agents/file";
 import { DEFAULT_RUNNER, runnerName } from "../../src/shared/agent-runner";
 import { env } from "../../src/kernel/env";
 import { service, type MadeAppsSeam, type ModuleKernel } from "../../src/kernel/modules";
@@ -131,9 +130,16 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
       await store.writeJson(INDEX, present ? [...names, name].sort() : names);
     });
 
+  let agentReader: Promise<typeof import("../../src/kernel/agents/file")> | undefined;
+  const loadAgentReader = () =>
+    (agentReader ??= import("../../src/kernel/agents/file").catch((error) => {
+      agentReader = undefined;
+      throw error;
+    }));
+
   /** The kernel's rules for the checks: its manifest reader, gate, HTML allowlist and API reference. */
   const rules = async (name: string) => {
-    const reference = await kernel.describe();
+    const [{ fromAgentFile }, reference] = await Promise.all([loadAgentReader(), kernel.describe()]);
     const methods = new Map<string, string | undefined>();
     for (const s of reference.services) for (const m of s.methods) methods.set(`${s.name}.${m.name}`, m.needs);
     return {
@@ -712,6 +718,7 @@ const make = (kernel: ModuleKernel): ServiceProvider => {
     capability: (method) => (["save", "remove", "restore", "openFolder", "share", "accept", "unshare", "copyIn", "takeLink"].includes(method) ? "apps:make" : "apps:read"),
     call: async (instance, method, args, dispatch) => {
       loadChecks().catch(() => {});
+      loadAgentReader().catch(() => {});
       if (method === "list") {
         const out = [];
         for (const name of await store.readJson<string[]>(INDEX, [])) {

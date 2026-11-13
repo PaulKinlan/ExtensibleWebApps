@@ -8,7 +8,9 @@
   A list field (type: "array") gets a row per item, each with a Remove
   button, and an Add button; a group (type: "object") gets a fieldset of its
   own fields. Lists of groups work too, two levels deep: a recipe's
-  ingredients, each with an amount, a unit and an item.
+  ingredients, each with an amount, a unit and an item. A field with `x-ref`
+  shows a menu of the referenced collection's records when the plugin may read
+  it, or a plain text input otherwise.
 
   The behaviour is in ui-form.js, linked below.
 -->

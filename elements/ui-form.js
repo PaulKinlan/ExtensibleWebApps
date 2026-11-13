@@ -3,7 +3,10 @@
 
 import { BoundElement, h, label, list } from "./bound-element.js";
 
-/** @typedef {import("./bound-element.js").Schema} Schema */
+/** @typedef {{ collection: string, label?: string }} XRef */
+/** @typedef {import("./bound-element.js").Row} Row */
+/** @typedef {import("./bound-element.js").Schema & { "x-ref"?: XRef, items?: Schema, properties?: Record<string, Schema> }} Schema */
+/** @typedef {import("./bound-element.js").Bound & { refs?: Record<string, Row[] | null> }} BoundWithRefs */
 
 export default class UiForm extends BoundElement {
   static observedAttributes = ["collection", "fields", "record", "submit", "action"];
@@ -37,7 +40,8 @@ export default class UiForm extends BoundElement {
     this.edited = undefined;
     this.draftFor = identity;
 
-    const props = this.schema.properties ?? {};
+    const props = /** @type {Record<string, Schema>} */ (this.schema.properties ?? {});
+    const refs = /** @type {BoundWithRefs | undefined} */ (this.state)?.refs;
     const required = new Set(this.schema.required ?? []);
     // A field the form can't edit (a list nested too deep) is left out, and keeps its saved value.
     const names = (list(this.getAttribute("fields")) ?? Object.keys(props)).filter((n) => props[n] && editable(props[n]));
@@ -48,7 +52,7 @@ export default class UiForm extends BoundElement {
     /** @type {Values} what each field was drawn from; reading the form merges into it, so keys the form doesn't show are kept */
     const drawn = Object.create(null);
     /** @type {Context} */
-    const ctx = { errors: this.errors, shown, edit: (change) => this.edit(change) };
+    const ctx = { errors: this.errors, shown, refs, edit: (change) => this.edit(change) };
     const fields = names.map((name) => {
       // A field the person cleared stays cleared.
       const value = typed && Object.hasOwn(typed, name) ? typed[name] : (current?.[name] ?? initial(props[name]));
@@ -141,7 +145,7 @@ export default class UiForm extends BoundElement {
 }
 
 /** @typedef {Record<string, unknown>} Values */
-/** @typedef {{ errors: Record<string, string>, shown: Set<string>, edit: (change: (values: Values) => string | undefined) => void }} Context */
+/** @typedef {{ errors: Record<string, string>, shown: Set<string>, refs?: Record<string, Row[] | null>, edit: (change: (values: Values) => string | undefined) => void }} Context */
 /** @typedef {{ form: HTMLFormElement, saving: boolean, renames: Map<string, string> }} Reader */
 
 /** Rows added with Add and not yet touched: left out when saving. */
@@ -334,7 +338,14 @@ function field(/** @type {string} */ path, /** @type {string} */ name, /** @type
   }
   /** @type {HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement} */
   let control;
-  if (s.enum) {
+  const xref = s["x-ref"];
+  const refRows = xref ? ctx.refs?.[xref.collection] : undefined;
+  if (xref && Array.isArray(refRows)) {
+    const options = refRows.map((r) => h("option", { value: r.id }, String((xref.label ? r[xref.label] : undefined) ?? r.title ?? r.name ?? r.id)));
+    if (text && !refRows.some((r) => r.id === text)) options.push(h("option", { value: text }, text));
+    control = h("select", common, ...(required ? [] : [h("option", { value: "" }, "")]), ...options);
+    control.value = text;
+  } else if (s.enum) {
     control = h("select", common, ...(required ? [] : [h("option", { value: "" }, "")]), ...s.enum.map((o) => h("option", { value: String(o) }, String(o))));
     control.value = text;
   } else if (s.type === "string" && (s["x-multiline"] || (s.maxLength ?? 0) > 200)) {

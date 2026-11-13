@@ -22,13 +22,14 @@
 // use openai-compatible.js.
 //
 // This file translates between the platform's request and answer
-// (std/llm/module.ts) and the Responses API.
+// (std/llm/module.ts) and the Responses API, including streaming SSE responses
+// and multimodal user content parts.
 
 export const manifest = {
   id: "llm-openai",
   name: "OpenAI",
   description: "A language model for this app: OpenAI's models. Uses your own OpenAI API key, which goes only to OpenAI.",
-  version: "1.1.0",
+  version: "1.2.0",
   permissions: ["provide:llm", "network:api.openai.com", "secret:openai"],
   services: ["llm"],
   settings: {
@@ -69,6 +70,23 @@ const newest = (ids, pattern) =>
 
 const AUTH = { authorization: { secret: SECRET, prefix: "Bearer " } };
 
+const audioFormat = (mediaType) => {
+  const sub = String(mediaType).split("/")[1]?.toLowerCase() ?? "wav";
+  return sub === "mpeg" ? "mp3" : sub === "x-wav" ? "wav" : sub;
+};
+
+/** User content as Responses API input parts when multimodal, or plain text when a string. */
+const toUserContent = (content) =>
+  Array.isArray(content)
+    ? content.map((p) =>
+        p.type === "text"
+          ? { type: "input_text", text: p.text }
+          : p.type === "image"
+            ? { type: "input_image", image_url: `data:${p.mediaType};base64,${p.data}` }
+            : { type: "input_audio", input_audio: { data: p.data, format: audioFormat(p.mediaType) } },
+      )
+    : content;
+
 /** The platform's messages as Responses API input items. A turn with state goes back as OpenAI sent it, reasoning included. */
 function toInput(messages) {
   const out = [];
@@ -78,9 +96,111 @@ function toInput(messages) {
     else if (m.role === "assistant") {
       if (m.content) out.push({ role: "assistant", content: m.content });
       for (const c of m.toolCalls ?? []) out.push({ type: "function_call", call_id: c.id, name: c.name, arguments: JSON.stringify(c.args ?? {}) });
-    } else out.push({ role: "user", content: m.content });
+    } else out.push({ role: "user", content: toUserContent(m.content) });
   }
   return out;
+}
+
+/** Incremental Server-Sent Events parser for streaming net:chunk deliveries. */
+function makeSseParser(onEvent) {
+  let buffer = "";
+  let jsonFallback = false;
+  const parseBlock = (block) => {
+    let event = "";
+    const data = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (!data.length) return;
+    const joined = data.join("\n");
+    if (data.length > 1) {
+      try {
+        JSON.parse(joined);
+        onEvent({ event, data: joined });
+        return;
+      } catch {
+        for (const d of data) onEvent({ event, data: d });
+        return;
+      }
+    }
+    onEvent({ event, data: joined });
+  };
+  return {
+    push(chunk, done = false) {
+      if (chunk) buffer += chunk;
+      const heldCr = !done && buffer.endsWith("\r") ? "\r" : "";
+      let ready = (heldCr ? buffer.slice(0, -1) : buffer).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      if (jsonFallback) {
+        buffer = ready + heldCr;
+        return;
+      }
+      const trimmedStart = ready.trimStart();
+      if (trimmedStart.startsWith("{") || trimmedStart.startsWith("[")) {
+        jsonFallback = true;
+        buffer = ready + heldCr;
+        return;
+      }
+      let sep;
+      while ((sep = ready.indexOf("\n\n")) !== -1) {
+        const block = ready.slice(0, sep);
+        ready = ready.slice(sep + 2);
+        parseBlock(block);
+      }
+      if (done && ready.trim()) parseBlock(ready);
+      buffer = done ? "" : ready + heldCr;
+    },
+    get isJsonFallback() {
+      return jsonFallback;
+    },
+  };
+}
+
+/** Parses Server-Sent Events into `{ event, data }` items. */
+function parseSse(raw) {
+  const events = [];
+  makeSseParser((e) => events.push(e)).push(raw, true);
+  return events;
+}
+
+/** Sends deltas through llm.chunk, coalescing very long buffered streams so worker message rates stay bounded. */
+const CHUNK = "chunk";
+async function emitChunks(ctx, streamId, deltas) {
+  if (!streamId || !deltas.length) return;
+  const step = deltas.length <= 64 ? 1 : Math.ceil(deltas.length / 64);
+  for (let i = 0; i < deltas.length; i += step) {
+    const delta = step === 1 ? deltas[i] : deltas.slice(i, i + step).join("");
+    if (delta) await ctx.call("llm", CHUNK, streamId, delta);
+  }
+}
+
+function buildBody(request, model, stream = false) {
+  // Nothing is kept on OpenAI's side: each request carries the conversation, with the model's
+  // reasoning sent back encrypted so a tool call's answer continues from it.
+  const body = { model, input: toInput(request.messages), store: false, include: ["reasoning.encrypted_content"], ...(stream ? { stream: true } : {}) };
+  if (request.system) body.instructions = request.system;
+  if (request.maxTokens) body.max_output_tokens = request.maxTokens;
+  if (request.tools?.length) body.tools = request.tools.map((t) => ({ type: "function", name: t.name, description: t.description ?? "", parameters: t.parameters ?? { type: "object", properties: {} }, strict: false }));
+  if (request.schema) body.text = { format: { type: "json_schema", name: "answer", schema: request.schema, strict: false } };
+  return body;
+}
+
+function fromJson(data, model, request, fallbackText = "") {
+  const output = data.output ?? [];
+  const parts = output.filter((item) => item.type === "message").flatMap((item) => item.content ?? []);
+  const text = parts.filter((p) => p.type === "output_text").map((p) => p.text).join("") || fallbackText;
+  const toolCalls = output.filter((item) => item.type === "function_call").map((c) => ({ id: c.call_id, name: c.name, args: JSON.parse(c.arguments || "{}") }));
+  const refused = parts.some((p) => p.type === "refusal");
+  const answer = {
+    text,
+    toolCalls,
+    stop: refused ? "refused" : toolCalls.length ? "tool" : data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" ? "length" : "end",
+    usage: { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 },
+    model: data.model ?? model,
+    state: output.length ? output : [{ type: "message", role: "assistant", content: [{ type: "output_text", text }] }],
+  };
+  if (request.schema && answer.stop === "end") answer.json = JSON.parse(text);
+  return answer;
 }
 
 export default function (ctx) {
@@ -156,37 +276,97 @@ export default function (ctx) {
     try {
       if (!(await ensureKey())) return { error: "No OpenAI API key was given", declined: true };
       const model = await resolve(request.model ?? (await setting()));
-      // Nothing is kept on OpenAI's side: each request carries the conversation, with the model's
-      // reasoning sent back encrypted so a tool call's answer continues from it.
-      const body = { model, input: toInput(request.messages), store: false, include: ["reasoning.encrypted_content"] };
-      if (request.system) body.instructions = request.system;
-      if (request.maxTokens) body.max_output_tokens = request.maxTokens;
-      if (request.tools?.length) body.tools = request.tools.map((t) => ({ type: "function", name: t.name, description: t.description ?? "", parameters: t.parameters ?? { type: "object", properties: {} }, strict: false }));
-      if (request.schema) body.text = { format: { type: "json_schema", name: "answer", schema: request.schema, strict: false } };
       const used = given;
       const response = await ctx.call("net", "fetch", {
         url: `${API}/responses`,
         method: "POST",
         headers: { ...AUTH, "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(buildBody(request, model, false)),
       });
       const data = JSON.parse(response.text || "{}");
       if (!response.ok) return { error: await failure(response, data, used) };
-      const output = data.output ?? [];
-      const parts = output.filter((item) => item.type === "message").flatMap((item) => item.content ?? []);
-      const text = parts.filter((p) => p.type === "output_text").map((p) => p.text).join("");
-      const toolCalls = output.filter((item) => item.type === "function_call").map((c) => ({ id: c.call_id, name: c.name, args: JSON.parse(c.arguments || "{}") }));
-      const refused = parts.some((p) => p.type === "refusal");
-      const answer = {
-        text,
-        toolCalls,
-        stop: refused ? "refused" : toolCalls.length ? "tool" : data.status === "incomplete" && data.incomplete_details?.reason === "max_output_tokens" ? "length" : "end",
-        usage: { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 },
-        model: data.model ?? model,
-        state: output,
-      };
-      if (request.schema && answer.stop === "end") answer.json = JSON.parse(text);
-      return answer;
+      return fromJson(data, model, request);
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ctx.on("llm:stream", async (request) => {
+    if (request.provider !== manifest.id) return undefined;
+    try {
+      if (!(await ensureKey())) return { error: "No OpenAI API key was given", declined: true };
+      const model = await resolve(request.model ?? (await setting()));
+      const used = given;
+      const fetchStreamId = crypto.randomUUID();
+      const deltas = [];
+      const items = [];
+      let completed;
+      let refused = false;
+      let streamError = "";
+      let parseFailure = null;
+      let sending = Promise.resolve();
+      let batch = [];
+      const parser = makeSseParser(({ event, data: raw }) => {
+        if (streamError || !raw || raw === "[DONE]") return;
+        const packet = JSON.parse(raw);
+        const type = packet.type || event;
+        if (type === "error" || type === "response.failed") {
+          streamError = packet.error?.message ?? packet.response?.error?.message ?? "Stream error";
+          return;
+        }
+        if (type === "response.output_text.delta" && typeof packet.delta === "string") {
+          deltas.push(packet.delta);
+          if (packet.delta.length) batch.push(packet.delta);
+        } else if (type === "response.refusal.delta") refused = true;
+        else if (type === "response.output_item.done" && packet.item) items.push(packet.item);
+        else if ((type === "response.completed" || type === "response.incomplete" || type === "response.done") && packet.response) completed = packet.response;
+      });
+      const off = ctx.on("net:chunk", ({ streamId, chunk, done }) => {
+        if (streamId !== fetchStreamId || parseFailure || streamError) return;
+        batch = [];
+        try {
+          parser.push(chunk, Boolean(done));
+        } catch (err) {
+          parseFailure = err;
+          return;
+        }
+        if (batch.length && !streamError) {
+          const out = batch;
+          sending = sending.then(() => emitChunks(ctx, request.streamId, out));
+        }
+      });
+      let response;
+      try {
+        response = await ctx.call("net", "fetch", {
+          url: `${API}/responses`,
+          method: "POST",
+          headers: { ...AUTH, "content-type": "application/json", accept: "text/event-stream" },
+          body: JSON.stringify(buildBody(request, model, true)),
+          streamId: fetchStreamId,
+        });
+      } finally {
+        off();
+      }
+      await sending;
+      const trimmed = (response.text || "").trim();
+      if (!response.ok) {
+        let data = {};
+        try {
+          data = trimmed.startsWith("{") ? JSON.parse(trimmed) : JSON.parse(parseSse(trimmed).find((e) => e.event === "error")?.data || "{}");
+        } catch {}
+        return { error: await failure(response, data, used) };
+      }
+      if (parseFailure) throw parseFailure;
+      if (streamError) return { error: streamError };
+      if (parser.isJsonFallback || (!deltas.length && !completed && trimmed.startsWith("{"))) {
+        const answer = fromJson(JSON.parse(trimmed), model, request);
+        if (answer.text) await emitChunks(ctx, request.streamId, [answer.text]);
+        return answer;
+      }
+      const streamedText = deltas.join("");
+      if (completed) return fromJson(completed, model, request, streamedText);
+      const fallbackOutput = items.length ? items : refused ? [{ type: "message", role: "assistant", content: [{ type: "refusal", refusal: streamedText }] }] : [{ type: "message", role: "assistant", content: [{ type: "output_text", text: streamedText }] }];
+      return fromJson({ model, status: "completed", output: fallbackOutput }, model, request, streamedText);
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
     }

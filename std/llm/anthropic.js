@@ -18,13 +18,14 @@
 // list: best is Opus, balanced is Sonnet, fast is Haiku.
 //
 // This file translates between the platform's request and answer
-// (std/llm/module.ts) and Anthropic's Messages API.
+// (std/llm/module.ts) and Anthropic's Messages API, including streaming SSE
+// responses and multimodal user content parts.
 
 export const manifest = {
   id: "llm-anthropic",
   name: "Claude (Anthropic)",
   description: "A language model for this app: Claude, from Anthropic. Uses your own Anthropic API key, which goes only to Anthropic.",
-  version: "1.1.0",
+  version: "1.2.0",
   permissions: ["provide:llm", "network:api.anthropic.com", "secret:anthropic"],
   services: ["llm"],
   settings: {
@@ -70,6 +71,16 @@ const HEADERS = {
   "anthropic-dangerous-direct-browser-access": "true",
 };
 
+/** User content as Anthropic blocks when multimodal parts are given, or plain text when a string. */
+const toUserContent = (content) =>
+  Array.isArray(content)
+    ? content.map((p) =>
+        p.type === "text"
+          ? { type: "text", text: p.text }
+          : { type: p.type, source: { type: "base64", media_type: p.mediaType, data: p.data } },
+      )
+    : content;
+
 /** The platform's messages as Anthropic's. A turn with state goes back as Anthropic sent it; tool answers share one user message. */
 function toMessages(messages) {
   const out = [];
@@ -84,12 +95,110 @@ function toMessages(messages) {
       const content = m.content ? [{ type: "text", text: m.content }] : [];
       for (const c of m.toolCalls) content.push({ type: "tool_use", id: c.id, name: c.name, input: c.args ?? {} });
       out.push({ role: "assistant", content });
-    } else out.push({ role: m.role, content: m.content });
+    } else if (m.role === "user") out.push({ role: "user", content: toUserContent(m.content) });
+    else out.push({ role: m.role, content: m.content });
   }
   return out;
 }
 
 const STOP = { end_turn: "end", stop_sequence: "end", tool_use: "tool", max_tokens: "length", refusal: "refused" };
+
+/** Incremental Server-Sent Events parser for streaming net:chunk deliveries. */
+function makeSseParser(onEvent) {
+  let buffer = "";
+  let jsonFallback = false;
+  const parseBlock = (block) => {
+    let event = "";
+    const data = [];
+    for (const line of block.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (!data.length) return;
+    const joined = data.join("\n");
+    if (data.length > 1) {
+      try {
+        JSON.parse(joined);
+        onEvent({ event, data: joined });
+        return;
+      } catch {
+        for (const d of data) onEvent({ event, data: d });
+        return;
+      }
+    }
+    onEvent({ event, data: joined });
+  };
+  return {
+    push(chunk, done = false) {
+      if (chunk) buffer += chunk;
+      const heldCr = !done && buffer.endsWith("\r") ? "\r" : "";
+      let ready = (heldCr ? buffer.slice(0, -1) : buffer).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      if (jsonFallback) {
+        buffer = ready + heldCr;
+        return;
+      }
+      const trimmedStart = ready.trimStart();
+      if (trimmedStart.startsWith("{") || trimmedStart.startsWith("[")) {
+        jsonFallback = true;
+        buffer = ready + heldCr;
+        return;
+      }
+      let sep;
+      while ((sep = ready.indexOf("\n\n")) !== -1) {
+        const block = ready.slice(0, sep);
+        ready = ready.slice(sep + 2);
+        parseBlock(block);
+      }
+      if (done && ready.trim()) parseBlock(ready);
+      buffer = done ? "" : ready + heldCr;
+    },
+    get isJsonFallback() {
+      return jsonFallback;
+    },
+  };
+}
+
+/** Parses Server-Sent Events into `{ event, data }` items. */
+function parseSse(raw) {
+  const events = [];
+  makeSseParser((e) => events.push(e)).push(raw, true);
+  return events;
+}
+
+/** Sends deltas through llm.chunk, coalescing very long buffered streams so worker message rates stay bounded. */
+const CHUNK = "chunk";
+async function emitChunks(ctx, streamId, deltas) {
+  if (!streamId || !deltas.length) return;
+  const step = deltas.length <= 64 ? 1 : Math.ceil(deltas.length / 64);
+  for (let i = 0; i < deltas.length; i += step) {
+    const delta = step === 1 ? deltas[i] : deltas.slice(i, i + step).join("");
+    if (delta) await ctx.call("llm", CHUNK, streamId, delta);
+  }
+}
+
+function buildBody(request, model, stream = false) {
+  const body = { model, max_tokens: request.maxTokens ?? 16000, messages: toMessages(request.messages), ...(stream ? { stream: true } : {}) };
+  if (request.system) body.system = request.system;
+  if (request.tools?.length) body.tools = request.tools.map((t) => ({ name: t.name, description: t.description ?? "", input_schema: t.parameters ?? { type: "object", properties: {} } }));
+  if (request.schema) body.output_config = { format: { type: "json_schema", schema: request.schema } };
+  return body;
+}
+
+function fromJson(data, model, request) {
+  const content = data.content ?? [];
+  const text = content.filter((b) => b.type === "text").map((b) => b.text).join("");
+  const answer = {
+    text,
+    toolCalls: content.filter((b) => b.type === "tool_use").map((b) => ({ id: b.id, name: b.name, args: b.input })),
+    stop: STOP[data.stop_reason] ?? "end",
+    usage: { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 },
+    model: data.model ?? model,
+    // Claude's turn as sent, thinking included: a tool call's answer has to go back with it.
+    state: content,
+  };
+  if (request.schema && answer.stop === "end") answer.json = JSON.parse(text);
+  return answer;
+}
 
 export default function (ctx) {
   const setting = async () => (await ctx.settings.get()).model || manifest.settings.model.default;
@@ -164,31 +273,122 @@ export default function (ctx) {
     try {
       if (!(await ensureKey())) return { error: "No Anthropic API key was given", declined: true };
       const model = await resolve(request.model ?? (await setting()));
-      const body = { model, max_tokens: request.maxTokens ?? 16000, messages: toMessages(request.messages) };
-      if (request.system) body.system = request.system;
-      if (request.tools?.length) body.tools = request.tools.map((t) => ({ name: t.name, description: t.description ?? "", input_schema: t.parameters ?? { type: "object", properties: {} } }));
-      if (request.schema) body.output_config = { format: { type: "json_schema", schema: request.schema } };
       const used = given;
       const response = await ctx.call("net", "fetch", {
         url: `${API}/v1/messages`,
         method: "POST",
         headers: { ...HEADERS, "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify(buildBody(request, model, false)),
       });
       const data = JSON.parse(response.text || "{}");
       if (!response.ok) return { error: await failure(response, data, used) };
-      const text = data.content.filter((b) => b.type === "text").map((b) => b.text).join("");
-      const answer = {
-        text,
-        toolCalls: data.content.filter((b) => b.type === "tool_use").map((b) => ({ id: b.id, name: b.name, args: b.input })),
-        stop: STOP[data.stop_reason] ?? "end",
-        usage: { input: data.usage?.input_tokens ?? 0, output: data.usage?.output_tokens ?? 0 },
-        model: data.model ?? model,
-        // Claude's turn as sent, thinking included: a tool call's answer has to go back with it.
-        state: data.content,
-      };
-      if (request.schema && answer.stop === "end") answer.json = JSON.parse(text);
-      return answer;
+      return fromJson(data, model, request);
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ctx.on("llm:stream", async (request) => {
+    if (request.provider !== manifest.id) return undefined;
+    try {
+      if (!(await ensureKey())) return { error: "No Anthropic API key was given", declined: true };
+      const model = await resolve(request.model ?? (await setting()));
+      const used = given;
+      const fetchStreamId = crypto.randomUUID();
+      const content = [];
+      const partialInputs = new Map();
+      let stopReason = "end_turn";
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let streamModel = model;
+      let streamError = "";
+      let parseFailure = null;
+      let sawEvents = false;
+      let sending = Promise.resolve();
+      let batch = [];
+      const parser = makeSseParser(({ event, data: raw }) => {
+        if (streamError || !raw || raw === "[DONE]") return;
+        sawEvents = true;
+        const packet = JSON.parse(raw);
+        const type = packet.type || event;
+        if (type === "error") {
+          streamError = packet.error?.message ?? "Stream error";
+          return;
+        }
+        if (type === "message_start") {
+          streamModel = packet.message?.model ?? streamModel;
+          inputTokens = packet.message?.usage?.input_tokens ?? inputTokens;
+          outputTokens = packet.message?.usage?.output_tokens ?? outputTokens;
+        } else if (type === "content_block_start") {
+          content[packet.index] = packet.content_block;
+          if (packet.content_block?.type === "tool_use") partialInputs.set(packet.index, "");
+        } else if (type === "content_block_delta") {
+          const block = content[packet.index] ?? (content[packet.index] = { type: "text", text: "" });
+          const d = packet.delta ?? {};
+          if (d.type === "text_delta" && typeof d.text === "string") {
+            block.text = (block.text ?? "") + d.text;
+            if (d.text.length) batch.push(d.text);
+          } else if (d.type === "input_json_delta" && typeof d.partial_json === "string") {
+            partialInputs.set(packet.index, (partialInputs.get(packet.index) ?? "") + d.partial_json);
+          } else if (d.type === "thinking_delta" && typeof d.thinking === "string") {
+            block.thinking = (block.thinking ?? "") + d.thinking;
+          } else if (d.type === "signature_delta" && typeof d.signature === "string") {
+            block.signature = (block.signature ?? "") + d.signature;
+          }
+        } else if (type === "content_block_stop") {
+          if (partialInputs.has(packet.index) && content[packet.index]) {
+            const jsonText = partialInputs.get(packet.index);
+            if (jsonText) content[packet.index].input = JSON.parse(jsonText);
+          }
+        } else if (type === "message_delta") {
+          stopReason = packet.delta?.stop_reason ?? stopReason;
+          if (packet.usage?.input_tokens !== undefined) inputTokens = packet.usage.input_tokens;
+          if (packet.usage?.output_tokens !== undefined) outputTokens = packet.usage.output_tokens;
+        }
+      });
+      const off = ctx.on("net:chunk", ({ streamId, chunk, done }) => {
+        if (streamId !== fetchStreamId || parseFailure || streamError) return;
+        batch = [];
+        try {
+          parser.push(chunk, Boolean(done));
+        } catch (err) {
+          parseFailure = err;
+          return;
+        }
+        if (batch.length && !streamError) {
+          const out = batch;
+          sending = sending.then(() => emitChunks(ctx, request.streamId, out));
+        }
+      });
+      let response;
+      try {
+        response = await ctx.call("net", "fetch", {
+          url: `${API}/v1/messages`,
+          method: "POST",
+          headers: { ...HEADERS, "content-type": "application/json", accept: "text/event-stream" },
+          body: JSON.stringify(buildBody(request, model, true)),
+          streamId: fetchStreamId,
+        });
+      } finally {
+        off();
+      }
+      await sending;
+      const trimmed = (response.text || "").trim();
+      if (!response.ok) {
+        let data = {};
+        try {
+          data = trimmed.startsWith("{") ? JSON.parse(trimmed) : JSON.parse(parseSse(trimmed).find((e) => e.event === "error")?.data || "{}");
+        } catch {}
+        return { error: await failure(response, data, used) };
+      }
+      if (parseFailure) throw parseFailure;
+      if (streamError) return { error: streamError };
+      if (parser.isJsonFallback || (!sawEvents && trimmed.startsWith("{"))) {
+        const answer = fromJson(JSON.parse(trimmed), model, request);
+        if (answer.text) await emitChunks(ctx, request.streamId, [answer.text]);
+        return answer;
+      }
+      return fromJson({ content: content.filter(Boolean), stop_reason: stopReason, usage: { input_tokens: inputTokens, output_tokens: outputTokens }, model: streamModel }, model, request);
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) };
     }

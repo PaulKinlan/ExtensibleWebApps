@@ -62,7 +62,13 @@ if (useShared) {
   port = channel.port1;
 }
 
-const send = (message: HostToKernel, transfer: Transferable[] = []) => port.postMessage(message, transfer);
+/** Messages sent before `hello` (reports, or the workbench's first command) wait so the kernel knows this tab first. */
+let introduced = false;
+const unsent: [HostToKernel, Transferable[]][] = [];
+const send = (message: HostToKernel, transfer: Transferable[] = []) => {
+  if (introduced || message.t === "hello") port.postMessage(message, transfer);
+  else unsent.push([message, transfer]);
+};
 
 // ---- Reporting problems ----
 //
@@ -72,17 +78,13 @@ const send = (message: HostToKernel, transfer: Transferable[] = []) => port.post
 // wait until the kernel knows this tab, and a page that throws in a loop is
 // cut off at 20 a second.
 
-let introduced = false;
-const unsent: Extract<HostToKernel, { t: "report" }>[] = [];
 let reportWindow = 0;
 let reportCount = 0;
 function report(source: string, text: string) {
   const now = Math.floor(Date.now() / 1000);
   if (now !== reportWindow) [reportWindow, reportCount] = [now, 0];
   if (++reportCount > 20) return;
-  const message = { t: "report" as const, source, text: text.slice(0, 2000) };
-  if (introduced) send(message);
-  else unsent.push(message);
+  send({ t: "report", source, text: text.slice(0, 2000) });
 }
 addEventListener("error", (e) => report("error", `${e.message}${e.filename ? ` (${e.filename}:${e.lineno})` : ""}`));
 addEventListener("unhandledrejection", (e) => report("unhandled", e.reason instanceof Error ? e.reason.message : String(e.reason)));
@@ -894,7 +896,7 @@ const [, folder] = await Promise.all([
 ]);
 send({ t: "hello", tab, folder });
 introduced = true;
-for (const message of unsent.splice(0)) send(message);
+for (const [message, transfer] of unsent.splice(0)) send(message, transfer);
 // The workbench is an app too: it links the demo plugins in plugins/, which no other page runs.
 await openApp();
 sendUrl();

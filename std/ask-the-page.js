@@ -14,17 +14,18 @@
 // picks becomes their own plugin for the app, once they allow it on a review card
 // (llm.add), and asks for their API key the first time it is asked.
 //
-// It asks through the `llm` service, so it needs the `llm` permission and
-// never sees a key: the provider plugin asks the person for one the first
-// time, and the kernel keeps it. It reads the plugins with `plugins:read`,
-// and their permissions and hooks from the kernel's reference. What it sends
-// the model is shown under each answer, so nothing is hidden.
+// It asks through `llm.stream` and listens to `llm:chunk` so words appear live
+// as the model writes them, while never seeing a key: the provider plugin asks
+// the person for one the first time, and the kernel keeps it. It reads the
+// plugins with `plugins:read`, and their permissions and hooks from the
+// kernel's reference. What it sends the model is shown under each answer, so
+// nothing is hidden.
 
 export const manifest = {
   id: "ask-the-page",
   name: "Ask the page",
   description: "Answers questions about this page with a language model, from the plugins it is made of.",
-  version: "1.0.0",
+  version: "1.1.0",
   permissions: ["ui", "llm", "plugins:read"],
   services: ["llm"],
   // Its tab says which app it is about.
@@ -53,6 +54,7 @@ export default function (ctx) {
   const views = ctx.ui.views("ask-the-page.html");
   /** The provider the person picked; empty for the first that has its key. */
   let provider = "";
+  let cachedProviders = [];
   let question = "";
   let answer = null;
   let error = "";
@@ -62,6 +64,15 @@ export default function (ctx) {
   /** The model being added, and why the last add didn't happen. */
   let adding = "";
   let addError = "";
+  let activeStream = null;
+  let streamTimer;
+
+  /** Renders from the current state without awaiting a fresh provider query (used for live streaming chunks). */
+  const paint = () => {
+    const providers = cachedProviders.map((p) => ({ ...p, picked: p.id === provider, label: `${p.name}${p.ready ? "" : " (asks for a key)"}` }));
+    const none = !providers.length;
+    views.render("ask", "ask", { providers, none, choices, offered: choices.length > 0, adding, addError, question, answer, error, asking, suggested: SUGGESTED.map((text, n) => ({ n, text })) }, { order: 10 });
+  };
 
   /** Every plugin the app links, described for the model, and whether the question names it. */
   const describe = async (text) => {
@@ -88,15 +99,34 @@ export default function (ctx) {
 
   /** Draws, and says how many language models it found. */
   const draw = async () => {
-    const list = await ctx.call("llm", "providers").catch(() => []);
+    cachedProviders = await ctx.call("llm", "providers").catch(() => []);
     // A model switched off or removed can't answer: go back to the first with a key.
-    if (provider && !list.some((p) => p.id === provider)) provider = "";
-    const providers = list.map((p) => ({ ...p, picked: p.id === provider, label: `${p.name}${p.ready ? "" : " (asks for a key)"}` }));
-    const none = !providers.length;
-    if (none) choices = (await ctx.call("llm", "choices").catch(() => [])).map((c) => ({ ...c, busy: !!adding }));
-    views.render("ask", "ask", { providers, none, choices, offered: choices.length > 0, adding, addError, question, answer, error, asking, suggested: SUGGESTED.map((text, n) => ({ n, text })) }, { order: 10 });
-    return providers.length;
+    if (provider && !cachedProviders.some((p) => p.id === provider)) provider = "";
+    if (!cachedProviders.length) choices = (await ctx.call("llm", "choices").catch(() => [])).map((c) => ({ ...c, busy: !!adding }));
+    paint();
+    return cachedProviders.length;
   };
+
+  ctx.on("llm:chunk", (chunk) => {
+    if (!activeStream || chunk?.streamId !== activeStream.id || chunk.done || !chunk.delta) return;
+    activeStream.text += chunk.delta;
+    answer = {
+      text: activeStream.text,
+      by: activeStream.by,
+      tokens: "streaming…",
+      sent: activeStream.sent,
+      named: activeStream.named,
+    };
+    if (!activeStream.painted) {
+      activeStream.painted = true;
+      paint();
+    } else if (!streamTimer) {
+      streamTimer = setTimeout(() => {
+        streamTimer = undefined;
+        if (activeStream) paint();
+      }, 30);
+    }
+  });
 
   const ask = async (text) => {
     question = String(text ?? "").trim().slice(0, 2000);
@@ -105,22 +135,36 @@ export default function (ctx) {
     error = "";
     answer = null;
     await draw();
+    const streamId = crypto.randomUUID();
     try {
       const { context, named } = await describe(question);
-      const reply = await ctx.call("llm", "complete", {
+      const sent = `System:\n${SYSTEM}\n\n${context}\n\nYou:\n${question}`;
+      const namedNote = named.length ? `It also sent the code of ${named.join(", ")}.` : "";
+      const chosenName = (provider ? cachedProviders.find((p) => p.id === provider) : (cachedProviders.find((p) => p.preferred) ?? cachedProviders.find((p) => p.ready) ?? cachedProviders[0]))?.name ?? "the model";
+      activeStream = { id: streamId, text: "", by: chosenName, sent, named: namedNote, painted: false };
+      const STREAM = "stream";
+      const reply = await ctx.call("llm", STREAM, {
+        streamId,
         system: `${SYSTEM}\n\n${context}`,
         messages: [{ role: "user", content: question }],
         maxTokens: 1024,
         ...(provider ? { provider } : {}),
       });
+      clearTimeout(streamTimer);
+      streamTimer = undefined;
+      activeStream = null;
       answer = {
         text: reply.text || "(The model gave no answer.)",
         by: `${(await ctx.call("llm", "providers")).find((p) => p.id === reply.provider)?.name ?? reply.provider}${reply.model ? `, ${reply.model}` : ""}`,
         tokens: `${reply.usage.input} in, ${reply.usage.output} out`,
-        sent: `System:\n${SYSTEM}\n\n${context}\n\nYou:\n${question}`,
-        named: named.length ? `It also sent the code of ${named.join(", ")}.` : "",
+        sent,
+        named: namedNote,
       };
     } catch (e) {
+      clearTimeout(streamTimer);
+      streamTimer = undefined;
+      activeStream = null;
+      answer = null;
       error = e instanceof Error ? e.message : String(e);
     }
     asking = false;
