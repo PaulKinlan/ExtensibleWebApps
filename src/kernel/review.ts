@@ -150,6 +150,7 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
             clearTimeout(timer);
             api.relayDone?.(id);
             if (batches) batches.sync();
+            else if (loadingBatches) void loadingBatches.then((b) => b.sync(), () => {});
             reject(error);
           },
         );
@@ -167,8 +168,8 @@ export function reviews(store: Store, hosts: Hosts, log: ChangeLog) {
     },
 
     event(action: string, trace: string) {
-      if (action.startsWith("batch:")) return void batches?.event(action, trace);
       const [verb, id] = action.split(":");
+      if (verb === "accept-batch" || verb === "decline-batch" || verb === "batch") return void batches?.event(action, trace);
       if (verb === "accept") settle(id, "allowed-once", trace);
       else if (verb === "always") settle(id, "allowed-always", trace);
       else if (verb === "decline") settle(id, "rejected", trace);

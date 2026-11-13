@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { makeProject } from "../../scripts/create-app.mjs";
-import { layoutProject, siteEntries, test as testProject } from "../../scripts/extensible-app.mjs";
+import { dev, layoutProject, siteEntries, test as testProject } from "../../scripts/extensible-app.mjs";
 import { createTestHarness } from "../../scripts/test-app.mjs";
 import { generateTypes, writeProjectTypes, writeTypes } from "../../scripts/types.mjs";
 
@@ -163,26 +163,58 @@ export default (ctx) => {
     ]);
     check("starter/main.js with // @ts-check passes tsc before .extensible/types.d.ts exists", starterStandalone.ok, starterStandalone.out);
 
-    // 2. Scaffold a project and verify `package.json`, `app.test.mjs`, `NOT_SERVED` exclusion, and `extensible-app test`.
+    // 2. Scaffold a project and verify `package.json`, `app.test.mjs`, root `books.test.mjs` / `*.spec.js` / `__tests__` exclusion in `siteEntries`, `deploy` and `dev`, and `extensible-app test`.
     const projectDir = join(scratch, "packing-list");
     makeProject(projectDir, { name: "Packing list", platform: `file:${resolve(".")}` });
+    writeFileSync(join(projectDir, "books.test.mjs"), "// root test file\n");
+    writeFileSync(join(projectDir, "foo.spec.js"), "// root spec file\n");
+    mkdirSync(join(projectDir, "__tests__"), { recursive: true });
+    writeFileSync(join(projectDir, "__tests__", "helper.js"), "// test folder helper\n");
     mkdirSync(join(projectDir, "plugins"), { recursive: true });
     writeFileSync(join(projectDir, "plugins", "extra.test.mjs"), "// nested test file\n");
 
     const pkg = JSON.parse(readFileSync(join(projectDir, "package.json"), "utf8"));
     const entries = siteEntries(projectDir);
     const laid = layoutProject(projectDir);
+    let devStatuses = {};
+    const devServer = await dev(projectDir, { port: 0, quiet: true });
+    try {
+      const statusOf = async (p) => (await fetch(new URL(p, devServer.url))).status;
+      devStatuses = {
+        mainJs: await statusOf("main.js"),
+        booksTest: await statusOf("books.test.mjs"),
+        fooSpec: await statusOf("foo.spec.js"),
+        testsHelper: await statusOf("__tests__/helper.js"),
+        nestedTest: await statusOf("plugins/extra.test.mjs"),
+      };
+    } finally {
+      await devServer.stop();
+    }
     check(
-      "create-app adds npm test (`extensible-app test`) and excludes test files & jsconfig.json from the served site",
+      "create-app adds npm test (`extensible-app test`) and excludes root & nested test files (including books.test.mjs) from siteEntries, deploy, and extensible-app dev",
       pkg.scripts?.test === "extensible-app test" &&
         existsSync(join(projectDir, "app.test.mjs")) &&
         !("app.test.mjs" in entries) &&
+        !("books.test.mjs" in entries) &&
+        !("foo.spec.js" in entries) &&
+        !("__tests__" in entries) &&
         !("jsconfig.json" in entries) &&
         !existsSync(join(laid.site, "app.test.mjs")) &&
+        !existsSync(join(laid.site, "books.test.mjs")) &&
+        !existsSync(join(laid.site, "foo.spec.js")) &&
+        !existsSync(join(laid.site, "__tests__")) &&
         !existsSync(join(laid.site, "jsconfig.json")) &&
-        !existsSync(join(laid.site, "plugins", "extra.test.mjs")),
-      JSON.stringify({ scripts: pkg.scripts, keys: Object.keys(entries) }),
+        !existsSync(join(laid.site, "plugins", "extra.test.mjs")) &&
+        devStatuses.mainJs === 200 &&
+        devStatuses.booksTest === 404 &&
+        devStatuses.fooSpec === 404 &&
+        devStatuses.testsHelper === 404 &&
+        devStatuses.nestedTest === 404,
+      JSON.stringify({ scripts: pkg.scripts, keys: Object.keys(entries), devStatuses }),
     );
+    rmSync(join(projectDir, "books.test.mjs"), { force: true });
+    rmSync(join(projectDir, "foo.spec.js"), { force: true });
+    rmSync(join(projectDir, "__tests__"), { recursive: true, force: true });
     rmSync(join(projectDir, "plugins"), { recursive: true, force: true });
 
     const testRun = await testProject(projectDir, [], { quiet: true });
