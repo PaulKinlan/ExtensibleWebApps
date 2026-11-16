@@ -3,6 +3,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { extname, join, resolve, sep } from "node:path";
 import { type Duplex, Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
+import { FOLDER_PAGE, folderPages } from "./scripts/folder-pages.mjs";
 import { frontDoor } from "./src/server/front-door";
 import { createLiveMcpRelay } from "./src/server/live-mcp";
 import { accept } from "./src/server/websocket";
@@ -82,6 +83,15 @@ type Generated = { PATHS: string[]; generated(): Promise<Record<string, string>>
 let generatedModule: Promise<Generated> | undefined;
 const generatedFiles = (root: string) => (generatedModule ??= import(pathToFileURL(join(root, "scripts/generated.mjs")).href));
 
+// An app's page is also its folder's page. People share /demos/habits/, not /demos/habits/app.html, and a
+// first visit to the folder has no service worker yet to answer it with the app's page (sw/routes/apps.js):
+// without a file there the server sent 404.html, which started the service worker and loaded the address
+// again, about a second later on a real connection, and a crawler or a link preview saw "not found". So the
+// build writes each app.html at its folder's index.html too, the same text (its relative links resolve the
+// same from both), and development serves it there. Made, never committed; a folder with an index.html of
+// its own keeps it. A screen deeper in the app (/demos/reading-list/book/42) is no file, and still goes
+// through 404.html on a first visit (scripts/folder-pages.mjs has the rule).
+
 /** A kernel module's source, std/<name>/module.ts: built into the kernel, never served as a file. */
 const KERNEL_MODULE = /^\/std\/[a-z][a-z0-9-]*\/module\.ts$/;
 
@@ -141,8 +151,10 @@ function asWritten(): Plugin {
         const top = entries.find((e) => statSync(join(root, e.disk)).isDirectory() && path.startsWith(`/${e.url}/`));
         if (!top) return next();
         // A folder's address serves its index.html, as Vite (and Cloudflare) do for the folders at the top.
-        const file = resolve(root, top.disk, `.${path.slice(top.url.length + 1)}${path.endsWith("/") ? "index.html" : ""}`);
-        if (!file.startsWith(resolve(root, top.disk) + sep) || !existsSync(file) || !statSync(file).isFile()) return next();
+        const inFolder = (name: string) => resolve(root, top.disk, `.${path.slice(top.url.length + 1)}${path.endsWith("/") ? name : ""}`);
+        // An app's folder with no index.html of its own serves its app.html there, as the build writes it (folderPages, below).
+        const file = [inFolder("index.html"), ...(path.endsWith("/") ? [inFolder(FOLDER_PAGE.from)] : [])].find((f) => f.startsWith(resolve(root, top.disk) + sep) && existsSync(f) && statSync(f).isFile());
+        if (!file) return next();
         return serve(res, file);
       });
     },
@@ -151,12 +163,18 @@ function asWritten(): Plugin {
       // generated is skipped: what is built is always what the manifests say.
       const { generated } = await generatedFiles(root);
       const made = await generated();
+      /** Every page the build has, by its address: the ones copied as written and the generated ones. */
+      const pages: Record<string, string | Buffer> = Object.fromEntries(Object.entries(made).filter(([name]) => name.endsWith(".html")));
       for (const { url, disk } of asWrittenEntries(root))
         for (const file of files(disk)) {
           const fileName = url + file.slice(disk.length).split(sep).join("/");
-          if (!KERNEL_MODULE.test(`/${file.split(sep).join("/")}`) && !(fileName in made)) this.emitFile({ type: "asset", fileName, source: readFileSync(join(root, file)) });
+          if (KERNEL_MODULE.test(`/${file.split(sep).join("/")}`) || fileName in made) continue;
+          const source = readFileSync(join(root, file));
+          if (fileName.endsWith(".html")) pages[fileName] = source;
+          this.emitFile({ type: "asset", fileName, source });
         }
       for (const [fileName, source] of Object.entries(made)) this.emitFile({ type: "asset", fileName, source });
+      for (const [fileName, from] of Object.entries(folderPages(Object.keys(pages)))) this.emitFile({ type: "asset", fileName, source: pages[from] });
       this.emitFile({ type: "asset", fileName: "platform/host.css", source: readFileSync(join(root, HOST_CSS)) });
     },
   };

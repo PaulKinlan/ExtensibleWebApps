@@ -10,7 +10,7 @@
 //
 // For each app it opens the page twice in a fresh browser profile, as a visitor would:
 //
-//   - a first visit, with nothing kept: which files were asked for before the first plugin view was in the
+//   - a first visit to the app's folder (/demos/habits/, the address people share), with nothing kept: which files were asked for before the first plugin view was in the
 //     page, how much they weigh gzipped, and how long it took
 //   - the next visit, answered by the service worker: how long it took
 //
@@ -81,7 +81,7 @@ const server = createSecureServer({ key: readFileSync(join(tmp, "key.pem")), cer
     return void res.writeHead(400).end();
   }
   const file = fileFor(path) ?? (String(req.headers.accept ?? "").includes("text/html") && !path.split("/").pop().includes(".") ? join(DIST, "404.html") : undefined);
-  log.push({ at: Date.now(), path, dest: req.headers["sec-fetch-dest"], bytes: file && fileFor(path) ? gzipped(file) : 0 });
+  log.push({ at: Date.now(), path, dest: req.headers["sec-fetch-dest"], notFound: !fileFor(path), bytes: file && fileFor(path) ? gzipped(file) : 0 });
   setTimeout(() => {
     if (!file) return void res.writeHead(404).end();
     const headers = { "content-type": TYPES[extname(file)] ?? "application/octet-stream" };
@@ -144,17 +144,23 @@ async function measure(app) {
     await context.addInitScript(watch, VIEW);
     const page = await context.newPage();
     log = [];
-    // A first visit: a folder's address is answered by 404.html, which starts the service worker, so it is timed at app.html.
-    await page.goto(`${SITE}${app}${app === "" ? "" : "app.html"}`, { waitUntil: "commit" });
-    const drawn = await firstView(page).catch(() => undefined);
-    if (!drawn) return { failed: "no plugin view was in the page after 20 s" };
+    // A first visit, at the app's folder: the address people share. The build writes the app's page there
+    // (scripts/folder-pages.mjs). A build that didn't answers with 404.html, which starts the service worker and
+    // loads the address again: that detour is part of what the visitor waits for, so the time is then counted
+    // from when the visit began, not from the second load, and the report says so.
+    const began = Date.now();
+    await page.goto(`${SITE}${app}`, { waitUntil: "commit" });
+    const view = await firstView(page).catch(() => undefined);
+    if (!view) return { failed: "no plugin view was in the page after 20 s" };
+    const detour = log.some((r) => r.notFound && r.dest === "document");
+    const drawn = detour ? { started: began, ms: Math.round(view.started + view.ms - began) } : view;
     // The service worker's own files are asked for while the page loads, but nothing waits for them.
     const before = log.filter((r) => r.at <= drawn.started + drawn.ms && r.dest !== "serviceworker");
     const seen = new Set();
     const files = before.filter((r) => r.bytes && !seen.has(r.path) && seen.add(r.path));
     const by = {};
     for (const file of files) by[kindOf(file.path)] = (by[kindOf(file.path)] ?? 0) + file.bytes;
-    const first = { ms: drawn.ms, requests: files.length, kb: kb(files.reduce((sum, f) => sum + f.bytes, 0)), by: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, kb(v)])), files: files.map((f) => [Math.round(f.at - drawn.started), f.path]) };
+    const first = { ms: drawn.ms, ...(detour ? { detour } : {}), requests: files.length, kb: kb(files.reduce((sum, f) => sum + f.bytes, 0)), by: Object.fromEntries(Object.entries(by).map(([k, v]) => [k, kb(v)])), files: files.map((f) => [Math.round(f.at - drawn.started), f.path]) };
     await page.waitForFunction(() => navigator.serviceWorker?.controller, null, { timeout: 15000 }).catch(() => {});
     await quiet(2500);
     const modules = await page.evaluate(() => window.__host?.command("modules")).catch(() => undefined);
@@ -223,7 +229,9 @@ for (const [name, r] of Object.entries(results)) {
     continue;
   }
   const was = base?.apps?.[name];
-  lines.push(`| ${name} | ${r.first.requests}${delta(r.first.requests, was?.first?.requests, "")} | ${depthOf(r.first)}${delta(depthOf(r.first), depthOf(was?.first), "")} | ${r.first.kb}${delta(r.first.kb, was?.first?.kb, "KB")} | ${r.first.ms} ms${delta(r.first.ms, was?.first?.ms, "ms")} | ${r.again.ms} ms${delta(r.again.ms, was?.again?.ms, "ms")} | ${r.modules.join(", ")} |`);
+  lines.push(`| ${name} | ${r.first.requests}${delta(r.first.requests, was?.first?.requests, "")} | ${depthOf(r.first)}${delta(depthOf(r.first), depthOf(was?.first), "")} | ${r.first.kb}${delta(r.first.kb, was?.first?.kb, "KB")} | ${r.first.ms} ms${r.first.detour ? " (by way of the not-found page)" : ""}${delta(r.first.ms, was?.first?.ms, "ms")} | ${r.again.ms} ms${delta(r.again.ms, was?.again?.ms, "ms")} | ${r.modules.join(", ")} |`);
+  // The app's folder has no page of its own in this build, so the visit went by way of 404.html and a second load.
+  if (r.first.detour) warnings.push(`${name}'s first visit was answered "not found" before the app opened: the build should write the app's page at its folder's address (scripts/folder-pages.mjs)`);
   if (was?.first) {
     // A round trip more is a request that now waits on another: the pattern to look for.
     if (r.first.ms > was.first.ms + RTT * 0.8) warnings.push(`${name}'s first view takes ${r.first.ms} ms on a first visit, up from ${was.first.ms} ms on main: a request now waits on another`);
