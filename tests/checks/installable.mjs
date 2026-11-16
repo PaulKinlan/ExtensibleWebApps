@@ -11,7 +11,7 @@ export default async function ({ check, context, URL, errors }) {
 
   /** Opens an address, and again once the service worker controls the page, so it has kept what the page loads. */
   const open = async (address, drawn) => {
-    // On a first visit a folder's address is 404.html, which loads it again once the service worker starts:
+    // On a first visit an address with no file is 404.html, which loads it again once the service worker starts:
     // a navigation of ours that meets that reload waits for it instead.
     const go = (to) => page.goto(to).catch((e) => (/interrupted by another navigation/.test(e.message) ? page.waitForLoadState("load") : Promise.reject(e)));
     await go(address);
@@ -28,7 +28,7 @@ export default async function ({ check, context, URL, errors }) {
       .then((href) => page.evaluate((u) => fetch(u).then((r) => r.json().then((json) => ({ href: u, type: r.headers.get("Content-Type"), json }))), href))
       .catch((e) => ({ error: String(e) }));
 
-  // The service worker starts from a page that is a file, so the folders below aren't answered by 404.html.
+  // The service worker starts first, so the folders below are answered by it, as a visit after the first is.
   await page.goto(`${URL}demos/habits/app.html`);
   await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 10000 }).catch(() => {});
   await page.waitForLoadState("load");

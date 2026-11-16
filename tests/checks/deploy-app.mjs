@@ -28,6 +28,7 @@ export default async function ({ check }) {
     );
     const deployed = readFileSync(join(site, "demos/habits/app.html"), "utf8");
     check("an app's Worker leaves out the main site's navigation", !/class="site"/.test(deployed) && !deployed.includes("/workbench/") && /<slot name="main">/.test(deployed) && !warnings.length, warnings.join("; "));
+    check("an app's Worker serves the app at its folder too (/demos/habits/), as a file, so a first visit there isn't a not-found page", readFileSync(join(site, "demos/habits/index.html"), "utf8") === deployed && !existsSync(join(root, "demos/habits/index.html")));
     check("deploying leaves the app's own app.html as it was", readFileSync(join(root, "demos/habits/app.html"), "utf8").includes('href="/workbench/"'));
 
     // The security demo links plugins from two other demos with ../: those folders come too.
