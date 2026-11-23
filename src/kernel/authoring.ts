@@ -420,9 +420,9 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
       },
       check: {
         args: "(code)",
-        returns: "{ ok: true, manifest: { id, name, description, scope }, permissions: [{ name, about }] } or { ok: false, error }",
+        returns: "{ ok: true, manifest: { id, name, description, scope }, permissions: [{ name, about }], replaces?: { id, name }, note? } or { ok: false, error }",
         needs: "plugins:read",
-        description: "Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do.",
+        description: "Reads a draft's manifest the way the kernel will, without running it, and says what each permission would let it do. When its id is one of the app's own plugins, which saving it would replace in this app, replaces names that plugin and note says to pick another id unless replacing it was asked for.",
         params: [{ name: "code", schema: { type: "string", description: "The draft plugin's whole source" } }],
       },
     },
@@ -481,10 +481,15 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
           const m = readManifest(code);
           const taken = takenCollection(m);
           if (taken) return { ok: false, error: taken };
+          // An id the app's own plugin has: saving the draft would run it in that plugin's place. Said here, so a
+          // model writing something new picks another id before the person is asked to give up a plugin they have.
+          const app = saving.appIn(tab);
+          const own = app && (apps.linkedBy(tab) ?? []).includes(m.id) && !(await saving.userAdded.list(app)).some((p) => p.id === m.id) ? remote.installed.get(m.id) : undefined;
           return {
             ok: true,
             manifest: { id: m.id, name: m.name, description: m.description ?? "", scope: m.scope ?? "shared" },
             permissions: m.permissions.map((name) => ({ name, about: explain(name) })),
+            ...(own ? { replaces: { id: m.id, name: own.manifest.name }, note: `The id "${m.id}" belongs to ${own.manifest.name}, a plugin this app already has. Saving this would switch that plugin off here and run this one in its place. Give this one a different id, unless replacing ${own.manifest.name} is what was asked for.` } : {}),
           };
         } catch (error) {
           return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -725,7 +730,7 @@ export function authoring(remote: RemotePlugins, apps: Apps, saving: Saving): Se
         /** What the review says it does, and the code it shows as before: the app's own plugin's, when it replaces that. */
         const asked = (m: { id: string; name: string }, before: string | undefined) => {
           const app = replaces(m.id);
-          if (before === undefined && app) return { target: `your plugins: replaces ${app.manifest.name} with ${m.name}`, before: app.source };
+          if (before === undefined && app) return { target: `your plugins: replaces this app's own ${app.manifest.name} with your ${m.name}`, before: app.source };
           return { target: `your plugins: ${before === undefined ? "adds" : "changes"} ${m.name}`, before: before ?? "" };
         };
         /** What a checker on plugins:beforeAdd said: an error to give back if it stopped the plugin, or undefined. */

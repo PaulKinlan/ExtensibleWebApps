@@ -5,7 +5,9 @@
   choices is [{ id, name, description, busy }], the models this site offers
   (offered: there are some), adding the one being added and addError why the
   last one wasn't. Each choice's button sends "model:<id>". answer is
-  null or { text, by, tokens, sent, named }; suggested is [{ n, text }].
+  null or { text, by, tokens, sent, named, live }; live is true while the
+  answer is still arriving, when there is no count of tokens yet; suggested
+  is [{ n, text }].
   The model picker sends "provider" with an id ("" for the first with a key),
   the form sends "ask" with { question }, and each suggestion "suggest:<n>".
 -->
@@ -62,7 +64,8 @@
       <template if="answer">
         <div class="answered" aria-live="polite">
           <p class="answer">{{answer.text}}</p>
-          <p class="about-answer">Answered by {{answer.by}} · {{answer.tokens}} tokens. {{answer.named}}</p>
+          <template if="answer.live"><p class="about-answer answering">{{answer.by}} is answering…</p></template>
+          <template if="!answer.live"><p class="about-answer">Answered by {{answer.by}} · {{answer.tokens}} tokens. {{answer.named}}</p></template>
           <details class="sent">
             <summary>What it sent the model</summary>
             <pre>{{answer.sent}}</pre>

@@ -78,6 +78,9 @@ Work like this:
 3. If a reusable visual widget fits (or they asked for a component), save it first
    with `authoring_saveComponent` (`ui-<name>`, `<template>…</template>`).
 4. Check your plugin draft with `authoring_check`, and fix anything it reports.
+   Give a new plugin an id none of the app's plugins has: if the check answers
+   with a `note` that the id belongs to one of the app's own plugins, change
+   your id, unless the person asked you to replace that plugin.
 5. Save it with `authoring_save` (passing `files` if the manifest lists a `.html`
    template file). The person sees the code on a card and accepts or declines it;
    the call waits for them. If they decline, ask with `bus_ask` what to change, or stop.
