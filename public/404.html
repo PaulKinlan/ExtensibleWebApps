@@ -2,7 +2,9 @@
 <!--
   What the server sends for an address it has no file for (Cloudflare's
   404-page, or any host that serves a 404.html; vite.config.ts does the same
-  locally). Such an address is often a screen of an app, like
+  locally). An app's own folder (/demos/reading-list/) has a file: the build
+  writes the app's page there (scripts/folder-pages.mjs), so a shared link
+  never comes here. An address with no file is often a screen of an app, like
   /demos/reading-list/book/42, which the platform's service worker answers
   with the app's page (sw/routes/apps.js). On a first visit the service worker
   isn't running yet, so a shared link would stop here: this page starts it and

@@ -35,7 +35,7 @@ The deployed copy of `app.html` leaves out the main site's navigation (`<nav cla
 
 Then it runs `npx wrangler deploy -c .build/apps/<name>/wrangler.jsonc`.
 
-The app's files keep their path, so the packing list's are in `/demos/packing-list/`, and nothing in them is rewritten. People open it at `/`: the front page is the app's own page, whose `<base>` makes its plugins, templates and links resolve in its folder, as the service worker does for an app's screens. A screen (`book/42` in the reading list) opens at its address in the folder, `/demos/reading-list/book/42`, and the app works at `/demos/packing-list/` too. Installed, it opens at its folder. It warns when `app.html` links to a page the Worker won't have, such as a demo's header links to `/docs/`.
+The app's files keep their path, so the packing list's are in `/demos/packing-list/`, and nothing in them is rewritten. People open it at `/`: the front page is the app's own page, whose `<base>` makes its plugins, templates and links resolve in its folder, as the service worker does for an app's screens. A screen (`book/42` in the reading list) opens at its address in the folder, `/demos/reading-list/book/42`, and the app works at `/demos/packing-list/` too, where its page is a file as well, so a first visit there isn't a not-found page. Installed, it opens at its folder. It warns when `app.html` links to a page the Worker won't have, such as a demo's header links to `/docs/`.
 
 ## Deploying from GitHub instead
 

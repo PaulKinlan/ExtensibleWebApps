@@ -66,8 +66,9 @@ export default async function ({ check, context, URL, errors, measurements }) {
       await page.waitForSelector(view, { timeout: 15000 });
       return page.evaluate(() => Math.round(performance.now()));
     };
-    // A first visit: 404.html for a folder starts the service worker, so it is timed at app.html.
-    await page.goto(`${SITE}${app}app.html`);
+    // A first visit, at the folder's address, where the build writes the app's page (scripts/folder-pages.mjs).
+    const opened = await page.goto(`${SITE}${app}`);
+    if (opened?.status() !== 200) errors.push(`perf-budget ${app}: a first visit to the app's folder was answered ${opened?.status()}, not with the app's page`);
     const first = await firstView().catch(() => Infinity);
     await page.waitForFunction(() => navigator.serviceWorker.controller, null, { timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(1500);

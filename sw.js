@@ -50,7 +50,13 @@ self.addEventListener("message", (event) => {
   if (event.data?.t !== "sw:warm" || !Array.isArray(event.data.urls)) return;
   // And the site's front page, which answering an app's folder reads to tell the app's page from a server's
   // fallback page (sw/routes/apps.js): not kept, the first visit back to an app waited on the network for it.
-  const urls = ["/index.html", ...event.data.urls.filter((u) => typeof u === "string" && new URL(u, location.href).origin === location.origin).slice(0, 200)];
+  const asked = event.data.urls.filter((u) => typeof u === "string" && new URL(u, location.href).origin === location.origin).slice(0, 200);
+  // And the app.html of each folder the page was opened at. A first visit to an app's folder is answered with the
+  // folder's own page (the build writes the app's page there, scripts/folder-pages.mjs); from now on this worker
+  // answers the folder with its app.html, which that visit never asked for, and the first visit back waited on the
+  // network for it. A folder with no app.html answers "not found", which isn't kept.
+  const apps = asked.map((u) => new URL(u, location.href)).filter((u) => u.pathname.endsWith("/")).map((u) => new URL("app.html", u).href);
+  const urls = ["/index.html", ...asked, ...apps];
   event.waitUntil(Promise.all(urls.map((u) => cached(new Request(u), event).catch(() => {}))));
   // And, a little later, the parts no visit has used yet, so each works offline the first time too (sw/parts.js).
   // (Not while developing on this machine, where the network answers first and files change under the worker.)
