@@ -23,11 +23,15 @@
 //              model's id. Without it each feature uses what it ships with,
 //              which is `best`. With it, the built site in dist/ is changed
 //              for the length of the run and put back after: the Gemini
-//              provider's default model, and the app maker's `model:`.
+//              provider's default model, and the app maker's `model:`, with
+//              the fingerprint the site's plugin list holds for each changed
+//              file, since a person can only add a plugin whose file matches
+//              its fingerprint there.
 //
 // Exits non-zero if any check fails.
 
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -65,17 +69,38 @@ const restore = [];
 // Put back however the run ends.
 process.on("exit", () => restore.splice(0).forEach((undo) => undo()));
 if (MODEL) {
-  const change = (file, from, to) => {
+  /** A file's fingerprint as the registry writes it (scripts/packages.mjs, integrityOf), for a plugin with no other files. */
+  const fingerprint = (text) => `sha256-${createHash("sha256").update(Buffer.from(text, "utf8")).digest("base64")}`;
+  /**
+   * Changes one line of a built file. The registry's lists hold each plugin's fingerprint, and the kernel refuses
+   * to add a plugin whose file doesn't match it (the Plugin maker adds Gemini that way), so the lists get the
+   * changed file's fingerprint too. `listed`: the file must be in the registry, or the run stops.
+   */
+  const change = (file, from, to, listed = false) => {
     const path = join(ROOT, "dist", file);
     const text = readFileSync(path, "utf8");
     if (text.split(from).length !== 2) {
       console.error(`Can't set the model: dist/${file} doesn't have exactly one ${JSON.stringify(from)}. Run npm run build first.`);
       process.exit(2);
     }
+    const changed = text.replace(from, to);
     restore.push(() => writeFileSync(path, text));
-    writeFileSync(path, text.replace(from, to));
+    writeFileSync(path, changed);
+    let found = 0;
+    for (const list of ["packages/index.json", "packages/catalog.json"]) {
+      const listPath = join(ROOT, "dist", list);
+      const before = readFileSync(listPath, "utf8");
+      if (!before.includes(fingerprint(text))) continue;
+      found++;
+      restore.push(() => writeFileSync(listPath, before));
+      writeFileSync(listPath, before.split(fingerprint(text)).join(fingerprint(changed)));
+    }
+    if (listed && !readFileSync(join(ROOT, "dist/packages/index.json"), "utf8").includes(fingerprint(changed))) {
+      console.error(`Can't set the model: dist/packages/index.json doesn't hold the fingerprint of dist/${file} (found in ${found} lists), so a person couldn't add it after the change. Has how the registry fingerprints a plugin changed (scripts/packages.mjs)?`);
+      process.exit(2);
+    }
   };
-  change("std/llm/gemini.js", 'default: "best",', `default: ${JSON.stringify(MODEL)},`);
+  change("std/llm/gemini.js", 'default: "best",', `default: ${JSON.stringify(MODEL)},`, true);
   change("std/maker/app-maker.agent.md", "\nmodel: best\n", `\nmodel: ${MODEL}\n`);
 }
 
@@ -165,7 +190,7 @@ const story = (page) =>
   page
     .evaluate(() =>
       window.__host.traces
-        .filter((e) => e.kind === "error" || /^(llm:|agent:|net:|secret:|maker:|plugin:(failed|stopped|start-timeout|manifest)|review|change:|tools?:)/.test(e.name) || /maker\.|authoring\.|tools\./.test(e.name))
+        .filter((e) => e.kind === "error" || e.kind === "denied" || /^(llm:|agent:|net:|secret:|maker:|plugin:(failed|stopped|start-timeout|manifest)|review|change:|tools?:)/.test(e.name) || /maker\.|authoring\.|tools\./.test(e.name))
         .map((e) => `${e.kind} ${e.name} ${e.plugin ?? ""} ${e.ms != null ? `${e.ms}ms ` : ""}${e.detail ?? ""}`.slice(0, 1200)),
     )
     .catch(() => []);
@@ -254,7 +279,8 @@ await feature("ask", async ({ context, errors, info, track }) => {
   const person = attend(page, "ask");
   await page.fill(`${ask} input[name="question"]`, "How does Quiet please stop a note from being saved?");
   await page.click(`${ask} button[type="submit"]`);
-  const answered = await has(page, `${ask} .answer`, 120000);
+  // The answer arrives a few words at a time: it is whole once the page has stopped saying it is asking.
+  const answered = await page.waitForFunction((s) => !!document.querySelector(`${s} .answer`) && !document.querySelector(`${s} [role="status"]`), ask, { timeout: 120000 }).then(() => true, () => false);
   await person.stop();
   const text = answered ? await page.textContent(`${ask} .answer`) : await page.textContent(ask).catch(() => "");
   check("the Gemini key card came up once and took the key", person.seen.keys === 1 && !person.seen.refusedKeyCards.length, `${person.seen.keys} key cards; ${person.seen.refusedKeyCards.join(" | ")}`);
@@ -352,7 +378,9 @@ await feature("plugin-maker", async ({ context, errors, info, track }) => {
   check("with no model on the page, it offers Gemini to add", await has(page, `${maker} [data-action="model:${PROVIDER}"]`, 10000));
   await shot(page, "plugin-maker-add-a-model");
   await page.click(`${maker} [data-action="model:${PROVIDER}"]`);
-  check("accepting Gemini's review card makes it the page's model", await has(page, `${maker} option[value="${PROVIDER}"]`, 20000));
+  const added = await has(page, `${maker} option[value="${PROVIDER}"]`, 20000);
+  // When it isn't added, the page says why: that is what a person would read, so it is what the report shows.
+  check("accepting Gemini's review card makes it the page's model", added, added ? "" : ((await page.textContent(`${maker} [role="alert"]`).catch(() => "")) ?? "the page gave no reason"));
   const before = await command("user:list", {}).catch(() => []);
   await page.fill(`${maker} input[name="text"]`, "Show how many people are in my contacts, at the top of the page");
   await page.click(`${maker} button[type="submit"]`);

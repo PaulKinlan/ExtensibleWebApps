@@ -25,7 +25,7 @@ export const manifest = {
   id: "ask-the-page",
   name: "Ask the page",
   description: "Answers questions about this page with a language model, from the plugins it is made of.",
-  version: "1.1.0",
+  version: "1.1.1",
   permissions: ["ui", "llm", "plugins:read"],
   services: ["llm"],
   // Its tab says which app it is about.
@@ -113,7 +113,8 @@ export default function (ctx) {
     answer = {
       text: activeStream.text,
       by: activeStream.by,
-      tokens: "streaming…",
+      tokens: "",
+      live: true,
       sent: activeStream.sent,
       named: activeStream.named,
     };

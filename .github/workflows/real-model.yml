@@ -11,8 +11,8 @@
 # variable for one step. The test never prints it and takes its text out of
 # everything it writes; GitHub masks it in the log as well.
 #
-# The weekly run is Mondays at 05:00 UTC, three hours before the weekly health
-# review, on the `balanced` tier: Google's newest Flash model, which costs far
+# The weekly run is Mondays at 04:23 UTC, well before the weekly health review
+# at 08:00, on the `balanced` tier: Google's newest Flash model, which costs far
 # less than the `best` tier the features ship with. A run by hand can pick
 # another tier or a model's id. A failed run shows red in the Actions list.
 #
@@ -23,7 +23,9 @@ name: Real model checks
 
 on:
   schedule:
-    - cron: "0 5 * * 1"
+    # Not on the hour: GitHub starts scheduled runs late when many are due at once, and the top of an
+    # hour is the busiest. The run of 16 November, due at 05:00, started at 13:12.
+    - cron: "23 4 * * 1"
   workflow_dispatch:
     inputs:
       features:

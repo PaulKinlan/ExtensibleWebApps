@@ -629,7 +629,8 @@ export function userPluginChanges({ store, origin, list, setOn, plugin, tell }: 
       const expected = expectedIntegrity ?? (await registryIntegrityOf(href.pathname));
       if (expected && integrity !== expected) {
         record({ kind: "denied", name: "registry:integrity", plugin: manifest.id, detail: `${href.pathname}: expected ${expected}, got ${integrity}` });
-        return { ok: false, error: `Integrity check failed for ${manifest.name} (${href.pathname}): expected ${expected}, got ${integrity}` };
+        // The two fingerprints are in the trace for whoever runs the site; the person is told what happened and what to do.
+        return { ok: false, error: `${manifest.name} wasn't added. Its file on this site (${href.pathname}) isn't the one the site's plugin list describes, so it may have changed since you opened this page. Reload the page and try again. If it still isn't added, tell whoever runs this site that its plugin list is out of date. (Integrity check failed.)` };
       }
       return {
         ok: true,

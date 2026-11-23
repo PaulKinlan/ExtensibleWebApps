@@ -472,9 +472,13 @@ export default (ctx) => {
       await tab.fill(`${askSel} input[name="question"]`, "Stream this");
       await tab.click(`${askSel} button[type="submit"]`);
       const askMid = await tab.waitForSelector(`${askSel} .answer >> text=First part…`, { timeout: 6000 }).then(() => tab.textContent(`${askSel} .answer`), () => "");
+      // Until the answer is whole there is no count of tokens to show: the line under it says the model is still answering.
+      const aboutMid = (await tab.textContent(`${askSel} .about-answer`).catch(() => "")) ?? "";
       await tab.evaluate(() => window.__host.command("user:off", { app: "demos/habits", id: "nonexistent" })).catch(() => {});
       const askEnd = await tab.waitForSelector(`${askSel} .answer >> text=First part… second part!`, { timeout: 6000 }).then(() => true, () => false);
       check("Ask the page renders live streaming chunks before the stream finishes", askMid.includes("First part…") && !askMid.includes("second part!") && askEnd, askMid);
+      const aboutEnd = await tab.waitForSelector(`${askSel} .about-answer >> text=/Answered by Gated stream, gated-1 · \\d+ in, \\d+ out tokens/`, { timeout: 6000 }).then(() => true, () => false);
+      check("while it arrives, Ask the page says the model is answering; once whole, which model answered and what it cost", /^Gated stream is answering…$/.test(aboutMid.trim()) && aboutEnd, aboutMid);
 
       const chatSel = '[data-key^="chat@"]';
       await tab.waitForSelector(`${chatSel} input[name="text"]`, { timeout: 10000 });
