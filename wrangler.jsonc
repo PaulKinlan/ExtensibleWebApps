@@ -1,6 +1,8 @@
 // Cloudflare hosting: the built app served as Workers static assets, and a
 // Worker (src/server/cloudflare/worker.ts) that runs a kernel for each space a
-// client joins, at /s/<space>/kernel (docs/server.md). An address with no
+// client joins, at /s/<space>/kernel (docs/server.md). An app's folder
+// (/demos/habits/) is a file, the app's page, written by the build
+// (scripts/folder-pages.mjs). An address with no
 // file gets 404.html, which starts the service worker and loads the address
 // again through it, so a link to an app's screen (/demos/reading-list/book/42)
 // opens on a first visit too. Cloudflare applies public/_headers (copied into

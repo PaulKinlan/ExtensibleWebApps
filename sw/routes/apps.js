@@ -9,6 +9,11 @@
 // whichever screen it was opened at. An address whose last part has a dot
 // (books.json, app.html) is a file, and goes to the network as usual, as does
 // any address with no app above it.
+//
+// Before this worker is running (a first visit) the folder's address is answered
+// by the server, with the same page as a file: the build writes each app.html at
+// its folder's index.html too (scripts/folder-pages.mjs). Only a screen inside an
+// app has no file, and reaches this worker by way of 404.html.
 
 /** How many folders up a screen may be from its app: /demos/reading-list/a/b/c/d/e/f is the deepest. */
 const DEPTH = 8;

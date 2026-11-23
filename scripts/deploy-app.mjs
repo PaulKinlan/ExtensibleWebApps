@@ -46,6 +46,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statS
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { APP_VAR } from "./deploy-guard.mjs";
+import { folderPages } from "./folder-pages.mjs";
 import { addressGiven, beforeDeploy } from "./deploy-keep.mjs";
 import { keepAssets } from "./keep-assets.mjs";
 
@@ -131,6 +132,9 @@ export function layoutApp(app, { name, dist = join(ROOT, "dist"), out } = {}) {
     return tokens.includes("site") ? "" : whole;
   });
   if (served !== html) writeFileSync(join(site, path, "app.html"), served);
+  // The app's folder is its page too, as on the main site (scripts/folder-pages.mjs), so a first visit to
+  // /<path>/ isn't answered with 404.html. The app's files came from its source, where no such page is written.
+  for (const index of Object.keys(folderPages(readdirSync(join(site, path)).filter((name) => name.endsWith(".html"))))) writeFileSync(join(site, path, index), served);
 
   // The front page is the app: its page, with a <base> naming its folder, so its relative links (plugins,
   // templates, screens) resolve there. A plain file, not a Worker route, so the Worker's code stays the

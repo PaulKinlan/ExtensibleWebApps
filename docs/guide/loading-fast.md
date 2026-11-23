@@ -43,7 +43,13 @@ sequenceDiagram
 
 ## Measuring
 
-`npm run first-draw` (after `npm run build`) opens every demo as a first visit and as the next one, with every response held back one round trip, and prints for each the files and bytes asked for before the first view and how long it took ([`scripts/first-draw.mjs`](../../scripts/first-draw.mjs)). A request that waits on another shows as a round trip more, and the "requests deep" column counts them: how many times a file had to arrive before the next could be asked for. Every pull request gets the same report against main, as warnings that never fail it.
+`npm run first-draw` (after `npm run build`) opens every demo at its folder's address (`/demos/habits/`, the address people share) as a first visit and as the next one, with every response held back one round trip, and prints for each the files and bytes asked for before the first view and how long it took ([`scripts/first-draw.mjs`](../../scripts/first-draw.mjs)). A request that waits on another shows as a round trip more, and the "requests deep" column counts them: how many times a file had to arrive before the next could be asked for. Every pull request gets the same report against main, as warnings that never fail it.
+
+### A shared link opens the app, not a not-found page
+
+People share an app's folder, `/demos/habits/`, not `/demos/habits/app.html`. The folder used to have no file: a first visit was answered with `404.html`, which started the service worker and loaded the address again, so the app opened about a second later than at `app.html` on a real connection (2,172 ms against 1,090 ms for Habits on the live site), and a crawler or a link preview saw "not found". Now the build writes each `app.html` at its folder's `index.html` too ([`scripts/folder-pages.mjs`](../../scripts/folder-pages.mjs)): made, never committed, with the same preload hints, and a folder with an `index.html` of its own keeps it. One app's Worker (`npm run deploy:app`) gets the same page, and a project of your own already has its app at `/`. `first-draw` times the folder's address, and warns if a visit there goes by way of the not-found page again.
+
+A screen deeper in an app (`/demos/reading-list/book/42`) is no file, so a first visit there still goes through `404.html`.
 
 ### Where a next visit's time goes
 
@@ -51,7 +57,7 @@ Measured on Habits, Contacts and Trip with every response held back 100 ms, befo
 
 | Where | What it cost | What was done |
 | --- | --- | --- |
-| The first visit back waited a whole round trip for the folder's page: a first visit is at `app.html`, and nothing had kept `/demos/habits/` or `/` | 100 ms and more, once | The worker keeps the site's front page as it starts, and answers an app's folder from its kept `app.html` |
+| The first visit back waited a whole round trip for the folder's page: a first visit is at `app.html`, and nothing had kept `/demos/habits/` or `/` | 100 ms and more, once | The worker keeps the site's front page as it starts, and answers an app's folder from its kept `app.html` (which it also keeps after a first visit to the folder, where the page came from the folder's own `index.html`) |
 | The worker fetched every file again, and stored it again, while the page was starting; with hints in the page, thirty more requests arrived at once | 30 to 70 ms on Contacts (149 ms without hints, 216 ms with) | Kept pages come without hints; files are fetched again after the page has drawn, built files never |
 | The kernel read the data folder four times, one read after another, and only then fetched the modules the app names | about 20 ms (the first plugin was installed 39 ms after the kernel started, now 19 ms) | Read together, modules fetched meanwhile |
 | A plugin's worker took 11 to 14 ms to start after the kernel asked | about 10 ms | Two workers start with the page |
